@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1117">
+<title>Plan 10K — Laurent</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: #0f1117; color: #f1f5f9; font-family: -apple-system,'Helvetica Neue',Arial,sans-serif; max-width: 430px; margin: 0 auto; }
+button, input { font-family: inherit; }
+.pill { border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0; }
+.card { background: #1a1d27; border: 1px solid #2e3347; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+.card-orange { border-color: #f9731655; border-left: 3px solid #f97316; }
+.muted { color: #475569; }
+.text2 { color: #94a3b8; }
+.orange { color: #f97316; }
+.green { color: #22c55e; }
+.red { color: #ef4444; }
+.yellow { color: #eab308; }
+.blue { color: #60a5fa; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 8px; }
+input[type=text], input[type=number] {
+  background: #1a1d27; border: 1px solid #2e3347; border-radius: 10px;
+  padding: 10px 14px; color: #f1f5f9; font-size: 14px; outline: none; width: 100%;
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// DONNÉES DU PLAN
+// ══════════════════════════════════════════════════════════════════════════════
+const STRAVA_CLIENT_ID = "260339";
+
+const PHASES = [
+  { id:"construction", label:"Construction", weeks:[1,2,3,4,5], color:"#60a5fa" },
+  { id:"affutage",     label:"Affûtage",     weeks:[6,7,8,9],   color:"#eab308" },
+  { id:"pic",          label:"Pic de forme", weeks:[10,11],      color:"#f97316" },
+];
+
+const STYPES = {
+  EF:    { label:"Endurance fondamentale", color:"#60a5fa",  short:"EF"    },
+  VMA:   { label:"Intervalles VMA",        color:"#f97316",  short:"VMA"   },
+  SEUIL: { label:"Travail au seuil",       color:"#eab308",  short:"SEUIL" },
+  SPEC:  { label:"Allure spécifique 10K",  color:"#a855f7",  short:"SPEC"  },
+  LONGUE:{ label:"Sortie longue",          color:"#22c55e",  short:"LONG"  },
+  HIIT:  { label:"HIIT / Renforcement",    color:"#ec4899",  short:"HIIT"  },
+  TEST:  { label:"Séance test",            color:"#f97316",  short:"TEST"  },
+  REPOS: { label:"Repos",                  color:"#475569",  short:"REPOS" },
+  RACE:  { label:"Course",                 color:"#f97316",  short:"RACE"  },
+};
+
+const PLAN = [
+  { week:1, phase:"construction", sessions:[
+    { day:"Lun", date:"2026-06-22", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"Début du plan" },
+    { day:"Mar", date:"2026-06-23", type:"EF",     warmup:"10' marche/trot",session:"40' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Chaleur > 28°C → 6:20-6:40/km" },
+    { day:"Mer", date:"2026-06-24", type:"VMA",    warmup:"15' EF",         session:"6×3' @ 95% VMA — récup 2'",             cooldown:"10' EF",       notes:"VMA ~12 km/h" },
+    { day:"Jeu", date:"2026-06-25", type:"EF",     warmup:"5' marche",      session:"35' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Récupération active" },
+    { day:"Ven", date:"2026-06-26", type:"HIIT",   warmup:"10' EF",         session:"30' HIIT / renforcement",               cooldown:"5' étirements",notes:"Gainage, squats, fentes, pompes" },
+    { day:"Sam", date:"2026-06-27", type:"SEUIL",  warmup:"15' EF",         session:"2×15' @ 5:20/km — récup 3'",            cooldown:"10' EF",       notes:"Effort soutenu mais contrôlé" },
+    { day:"Dim", date:"2026-06-28", type:"LONGUE", warmup:"5' marche",      session:"60' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"Hydratation++" },
+  ]},
+  { week:2, phase:"construction", sessions:[
+    { day:"Lun", date:"2026-06-29", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-06-30", type:"EF",     warmup:"10' marche/trot",session:"45' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"+5' vs S1" },
+    { day:"Mer", date:"2026-07-01", type:"VMA",    warmup:"15' EF",         session:"7×3' @ 95% VMA — récup 90''",           cooldown:"10' EF",       notes:"" },
+    { day:"Jeu", date:"2026-07-02", type:"EF",     warmup:"5' marche",      session:"35' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-07-03", type:"HIIT",   warmup:"10' EF",         session:"30' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-07-04", type:"SPEC",   warmup:"15' EF",         session:"3×10' @ 4:51/km — récup 3'",            cooldown:"10' EF",       notes:"Première séance allure cible 10K !" },
+    { day:"Dim", date:"2026-07-05", type:"LONGUE", warmup:"5' marche",      session:"65' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:3, phase:"construction", sessions:[
+    { day:"Lun", date:"2026-07-06", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-07-07", type:"EF",     warmup:"10' marche/trot",session:"45' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-07-08", type:"VMA",    warmup:"15' EF",         session:"8×3' @ 95% VMA — récup 90''",           cooldown:"10' EF",       notes:"Volume VMA en hausse" },
+    { day:"Jeu", date:"2026-07-09", type:"EF",     warmup:"5' marche",      session:"40' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-07-10", type:"HIIT",   warmup:"10' EF",         session:"35' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-07-11", type:"SEUIL",  warmup:"15' EF",         session:"3×12' @ 5:20/km — récup 2'30''",        cooldown:"10' EF",       notes:"Volume seuil augmenté" },
+    { day:"Dim", date:"2026-07-12", type:"LONGUE", warmup:"5' marche",      session:"70' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:4, phase:"construction", sessions:[
+    { day:"Lun", date:"2026-07-13", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"Semaine test" },
+    { day:"Mar", date:"2026-07-14", type:"EF",     warmup:"10' marche/trot",session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Courte — prépa test demain" },
+    { day:"Mer", date:"2026-07-15", type:"TEST",   warmup:"20' EF progressif",session:"3×2km @ 4:51/km — récup 3'",          cooldown:"15' EF",       notes:"🎯 SÉANCE TEST CLEF !" },
+    { day:"Jeu", date:"2026-07-16", type:"EF",     warmup:"5' marche",      session:"35' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Récupération post-test" },
+    { day:"Ven", date:"2026-07-17", type:"HIIT",   warmup:"10' EF",         session:"30' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-07-18", type:"VMA",    warmup:"15' EF",         session:"6×3' @ 95% VMA — récup 90''",           cooldown:"10' EF",       notes:"" },
+    { day:"Dim", date:"2026-07-19", type:"LONGUE", warmup:"5' marche",      session:"70' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:5, phase:"construction", sessions:[
+    { day:"Lun", date:"2026-07-20", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-07-21", type:"EF",     warmup:"10' marche/trot",session:"50' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Volume max EF" },
+    { day:"Mer", date:"2026-07-22", type:"VMA",    warmup:"15' EF",         session:"4×4' @ 95% VMA — récup 2'",             cooldown:"10' EF",       notes:"Reps plus longues" },
+    { day:"Jeu", date:"2026-07-23", type:"EF",     warmup:"5' marche",      session:"40' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-07-24", type:"HIIT",   warmup:"10' EF",         session:"35' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-07-25", type:"SPEC",   warmup:"15' EF",         session:"4×10' @ 4:51/km — récup 2'30''",        cooldown:"10' EF",       notes:"Volume spécifique en hausse" },
+    { day:"Dim", date:"2026-07-26", type:"LONGUE", warmup:"5' marche",      session:"75' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"Fin phase Construction 💪" },
+  ]},
+  { week:6, phase:"affutage", sessions:[
+    { day:"Lun", date:"2026-07-27", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"Début affûtage" },
+    { day:"Mar", date:"2026-07-28", type:"EF",     warmup:"10' marche/trot",session:"40' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-07-29", type:"VMA",    warmup:"15' EF",         session:"5×3' @ 95% VMA — récup 2'",             cooldown:"10' EF",       notes:"Intensité maintenue, volume réduit" },
+    { day:"Jeu", date:"2026-07-30", type:"EF",     warmup:"5' marche",      session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-07-31", type:"HIIT",   warmup:"10' EF",         session:"25' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-08-01", type:"SEUIL",  warmup:"15' EF",         session:"2×15' @ 5:15/km — récup 3'",            cooldown:"10' EF",       notes:"Allure seuil légèrement plus rapide" },
+    { day:"Dim", date:"2026-08-02", type:"LONGUE", warmup:"5' marche",      session:"60' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:7, phase:"affutage", sessions:[
+    { day:"Lun", date:"2026-08-03", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-08-04", type:"EF",     warmup:"10' marche/trot",session:"35' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-08-05", type:"VMA",    warmup:"15' EF",         session:"5×3' @ 100% VMA — récup 2'",            cooldown:"10' EF",       notes:"Intensité max" },
+    { day:"Jeu", date:"2026-08-06", type:"EF",     warmup:"5' marche",      session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-08-07", type:"HIIT",   warmup:"10' EF",         session:"20' HIIT / renforcement",               cooldown:"5' étirements",notes:"" },
+    { day:"Sam", date:"2026-08-08", type:"SPEC",   warmup:"15' EF",         session:"3×12' @ 4:51/km — récup 2'",            cooldown:"10' EF",       notes:"Bloc spécifique prolongé" },
+    { day:"Dim", date:"2026-08-09", type:"LONGUE", warmup:"5' marche",      session:"55' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:8, phase:"affutage", sessions:[
+    { day:"Lun", date:"2026-08-10", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-08-11", type:"EF",     warmup:"10' marche/trot",session:"35' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-08-12", type:"SEUIL",  warmup:"15' EF",         session:"3×10' @ 5:10/km — récup 2'",            cooldown:"10' EF",       notes:"Seuil intensifié" },
+    { day:"Jeu", date:"2026-08-13", type:"EF",     warmup:"5' marche",      session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-08-14", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"Jour férié" },
+    { day:"Sam", date:"2026-08-15", type:"SPEC",   warmup:"15' EF",         session:"3×10' @ 4:51/km — récup 2'",            cooldown:"10' EF",       notes:"" },
+    { day:"Dim", date:"2026-08-16", type:"LONGUE", warmup:"5' marche",      session:"50' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:9, phase:"affutage", sessions:[
+    { day:"Lun", date:"2026-08-17", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-08-18", type:"EF",     warmup:"10' marche/trot",session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-08-19", type:"VMA",    warmup:"15' EF",         session:"4×3' @ 100% VMA — récup 2'",            cooldown:"10' EF",       notes:"Volume réduit, intensité top" },
+    { day:"Jeu", date:"2026-08-20", type:"EF",     warmup:"5' marche",      session:"25' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-08-21", type:"HIIT",   warmup:"10' EF",         session:"15' renforcement léger",                cooldown:"5' étirements",notes:"Séance très courte" },
+    { day:"Sam", date:"2026-08-22", type:"SPEC",   warmup:"15' EF",         session:"3×10' @ 4:51/km — récup 2'",            cooldown:"10' EF",       notes:"Dernière séance spécifique lourde" },
+    { day:"Dim", date:"2026-08-23", type:"LONGUE", warmup:"5' marche",      session:"45' sortie longue @ 6:10/km",           cooldown:"5' marche",    notes:"Fin affûtage ✨" },
+  ]},
+  { week:10, phase:"pic", sessions:[
+    { day:"Lun", date:"2026-08-24", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"Début pic de forme" },
+    { day:"Mar", date:"2026-08-25", type:"EF",     warmup:"10' marche/trot",session:"25' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"Volume très réduit" },
+    { day:"Mer", date:"2026-08-26", type:"VMA",    warmup:"15' EF",         session:"3×3' @ 100% VMA — récup 2'30''",        cooldown:"10' EF",       notes:"Maintien de la vivacité" },
+    { day:"Jeu", date:"2026-08-27", type:"EF",     warmup:"5' marche",      session:"20' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Ven", date:"2026-08-28", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Sam", date:"2026-08-29", type:"SPEC",   warmup:"15' EF",         session:"3×10' @ 4:51/km — récup 2'",            cooldown:"10' EF",       notes:"Rappel allure course" },
+    { day:"Dim", date:"2026-08-30", type:"EF",     warmup:"5' marche",      session:"30' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+  ]},
+  { week:11, phase:"pic", sessions:[
+    { day:"Lun", date:"2026-08-31", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"" },
+    { day:"Mar", date:"2026-09-01", type:"EF",     warmup:"10' marche/trot",session:"20' EF @ 6:10/km",                      cooldown:"5' marche",    notes:"" },
+    { day:"Mer", date:"2026-09-02", type:"VMA",    warmup:"15' EF",         session:"4×2' @ 100% VMA — récup 2'",            cooldown:"10' EF",       notes:"Séance courte, rester vif" },
+    { day:"Jeu", date:"2026-09-03", type:"EF",     warmup:"5' marche",      session:"15' EF très léger @ 6:20/km",           cooldown:"5' marche",    notes:"Footing de récup uniquement" },
+    { day:"Ven", date:"2026-09-04", type:"REPOS",  warmup:"",               session:"Repos complet",                         cooldown:"",             notes:"J-2 : hydratation, sommeil, repas glucidique" },
+    { day:"Sam", date:"2026-09-05", type:"EF",     warmup:"",               session:"10' trot léger + 4×100m accélérations", cooldown:"",             notes:"J-1 : activation neuromusculaire" },
+    { day:"Dim", date:"2026-09-06", type:"RACE",   warmup:"",               session:"🏁 COURSE 10K — Objectif 48'30\"",      cooldown:"",             notes:"Km 1-3 prudent · Km 4-7 contrôle · Km 8-10 tout donner !" },
+  ]},
+];
+
+const ALL_SESSIONS = PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════════════════════════════════════
+function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; } }
+function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let view = "dashboard";
+let selectedWeek = 1;
+let statuses = load("lk_statuses", {});
+let notesList = load("lk_notes", []);
+let stravaToken = load("lk_strava_token", null);
+let stravaRefresh = load("lk_strava_refresh", null);
+let stravaExpires = load("lk_strava_expires", 0);
+let stravaActivities = load("lk_strava_activities", []);
+let syncing = false;
+let syncMsg = "";
+
+// Récupère les tokens depuis l'URL après OAuth
+(function checkOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("access_token")) {
+    stravaToken = params.get("access_token");
+    stravaRefresh = params.get("refresh_token");
+    stravaExpires = parseInt(params.get("expires_at") || "0");
+    save("lk_strava_token", stravaToken);
+    save("lk_strava_refresh", stravaRefresh);
+    save("lk_strava_expires", stravaExpires);
+    window.history.replaceState({}, "", "/");
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════════════════════
+function today() { return new Date().toISOString().slice(0,10); }
+function countdown() { return Math.ceil((new Date("2026-09-06") - new Date()) / 86400000); }
+function currentWeek() {
+  const t = today();
+  for (const w of PLAN) {
+    if (t >= w.sessions[0].date && t <= w.sessions[6].date) return w.week;
+  }
+  return t < PLAN[0].sessions[0].date ? 1 : 11;
+}
+function fmtDate(d) { return new Date(d+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"}); }
+function fmtPace(speedMs) {
+  if (!speedMs || speedMs <= 0) return "--:--";
+  const secPerKm = 1000 / speedMs;
+  const min = Math.floor(secPerKm / 60);
+  const sec = Math.round(secPerKm % 60).toString().padStart(2,"0");
+  return `${min}:${sec}`;
+}
+function fmtTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60).toString().padStart(2,"0");
+  return `${m}'${s}"`;
+}
+function weekPct(week) {
+  const sess = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  const done = sess.filter(s=>statuses[`${week.week}-${week.sessions.indexOf(s)}`]==="✅").length;
+  return sess.length ? Math.round(done/sess.length*100) : 0;
+}
+function globalPct() {
+  const total = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
+  const done = ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
+  return Math.round(done/total*100);
+}
+function phaseOf(weekNum) { return PHASES.find(p=>p.weeks.includes(weekNum))||{color:"#475569",label:""}; }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PRÉDICTION 10K
+// ══════════════════════════════════════════════════════════════════════════════
+function predict10K() {
+  // Référence de base : Lavandou 7 juin 2026 → 50'21" = 3021s
+  const BASE_TIME = 3021;
+  const BASE_DATE = new Date("2026-06-07");
+  const RACE_DATE = new Date("2026-09-06");
+  const TOTAL_DAYS = (RACE_DATE - BASE_DATE) / 86400000;
+
+  // Récupère les activités de course depuis Strava
+  const runs = stravaActivities.filter(a =>
+    a.type === "Run" && a.distance >= 3000
+  );
+
+  let estimate = BASE_TIME;
+  let confidence = 30;
+  let method = "Base Lavandou 50'21\"";
+  let details = [];
+
+  if (runs.length > 0) {
+    // Formule de Riegel : T2 = T1 × (D2/D1)^1.06
+    // On cherche la meilleure performance récente sur distance >= 5km
+    const longRuns = runs.filter(r => r.distance >= 5000).sort((a,b) => new Date(b.start_date)-new Date(a.start_date));
+
+    if (longRuns.length > 0) {
+      const best = longRuns.reduce((best, r) => {
+        const pace = r.moving_time / r.distance;
+        const bestPace = best.moving_time / best.distance;
+        return pace < bestPace ? r : best;
+      }, longRuns[0]);
+
+      // Riegel depuis la meilleure perf
+      const riegelTime = best.moving_time * Math.pow(10000 / best.distance, 1.06);
+      details.push({ label: "Riegel (" + (best.distance/1000).toFixed(1) + "km)", value: fmtTime(riegelTime) });
+
+      // Moyenne allure des 3 dernières sorties longues (>8km)
+      const recentLong = runs.filter(r=>r.distance>=8000).slice(0,3);
+      let avgPaceTime = null;
+      if (recentLong.length > 0) {
+        const avgSpeed = recentLong.reduce((s,r)=>s+r.average_speed,0)/recentLong.length;
+        avgPaceTime = 10000 / avgSpeed;
+        details.push({ label: "Allure moy. longues", value: fmtTime(avgPaceTime) });
+      }
+
+      // Pondération
+      estimate = avgPaceTime ? (riegelTime * 0.6 + avgPaceTime * 0.4) : riegelTime;
+
+      // Facteur progression : plus on avance dans le plan, plus on améliore
+      const today_ = new Date();
+      const daysIn = (today_ - BASE_DATE) / 86400000;
+      const progressFactor = Math.min(daysIn / TOTAL_DAYS, 1);
+      const improvement = (BASE_TIME - estimate) * progressFactor;
+      estimate = BASE_TIME - improvement;
+
+      confidence = Math.min(30 + runs.length * 5 + longRuns.length * 10, 90);
+      method = `${runs.length} activité${runs.length>1?"s":""} Strava analysée${runs.length>1?"s":""}`;
+    }
+  }
+
+  // Ajustement séances SPEC complétées (chaque séance SPEC = -15s estimé)
+  const specDone = ALL_SESSIONS.filter(s=>s.type==="SPEC"&&statuses[s.uid]==="✅").length;
+  estimate -= specDone * 15;
+  if (specDone > 0) details.push({ label: `${specDone} séance${specDone>1?"s":""} SPEC`, value: `-${specDone*15}''` });
+
+  // Ajustement VMA complétées (chaque séance VMA = -8s)
+  const vmaDone = ALL_SESSIONS.filter(s=>s.type==="VMA"&&statuses[s.uid]==="✅").length;
+  estimate -= vmaDone * 8;
+  if (vmaDone > 0) details.push({ label: `${vmaDone} séance${vmaDone>1?"s":""} VMA`, value: `-${vmaDone*8}''` });
+
+  const target = 48.5 * 60; // 48'30"
+  const gap = estimate - target;
+
+  return {
+    time: Math.round(estimate),
+    timeStr: fmtTime(Math.round(estimate)),
+    target: fmtTime(target),
+    gap: Math.round(gap),
+    gapStr: (gap > 0 ? "+" : "") + fmtTime(Math.abs(Math.round(gap))),
+    onTrack: gap <= 30,
+    confidence,
+    method,
+    details,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STRAVA SYNC
+// ══════════════════════════════════════════════════════════════════════════════
+async function ensureFreshToken() {
+  if (!stravaToken) return false;
+  if (Date.now() / 1000 < stravaExpires - 60) return true;
+  try {
+    const resp = await fetch("/api/strava/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: stravaRefresh }),
+    });
+    const data = await resp.json();
+    stravaToken = data.access_token;
+    stravaRefresh = data.refresh_token;
+    stravaExpires = data.expires_at;
+    save("lk_strava_token", stravaToken);
+    save("lk_strava_refresh", stravaRefresh);
+    save("lk_strava_expires", stravaExpires);
+    return true;
+  } catch { return false; }
+}
+
+async function syncStrava() {
+  syncing = true;
+  syncMsg = "Connexion à Strava...";
+  render();
+
+  const ok = await ensureFreshToken();
+  if (!ok) {
+    syncing = false;
+    syncMsg = "Erreur de token";
+    render();
+    return;
+  }
+
+  try {
+    syncMsg = "Récupération des activités...";
+    render();
+    const resp = await fetch(`/api/strava/activities?token=${stravaToken}`);
+    const activities = await resp.json();
+
+    if (Array.isArray(activities)) {
+      stravaActivities = activities;
+      save("lk_strava_activities", activities);
+
+      // Match automatique activités ↔ séances du plan
+      matchActivitiesToPlan(activities);
+      syncMsg = `✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
+    } else {
+      syncMsg = "❌ Erreur Strava";
+    }
+  } catch(e) {
+    syncMsg = "❌ Erreur réseau";
+  }
+
+  syncing = false;
+  render();
+  setTimeout(()=>{ syncMsg=""; render(); }, 3000);
+}
+
+function matchActivitiesToPlan(activities) {
+  const runs = activities.filter(a => a.type === "Run");
+  ALL_SESSIONS.forEach(s => {
+    if (s.type === "REPOS" || s.type === "RACE") return;
+    const match = runs.find(r => r.start_date?.slice(0,10) === s.date);
+    if (match && !statuses[s.uid]) {
+      statuses[s.uid] = "✅";
+    }
+  });
+  save("lk_statuses", statuses);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOM HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+    if (k==="style" && typeof v==="object") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k==="class") e.className=v;
+    else e.setAttribute(k,v);
+  });
+  children.flat(Infinity).forEach(c => {
+    if (c==null||c===false) return;
+    e.appendChild(typeof c==="string" ? document.createTextNode(c) : c);
+  });
+  return e;
+}
+
+function svgCircle(pct, size, stroke, color, inner) {
+  const r2 = (size-stroke)/2, circ = 2*Math.PI*r2;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("width",size); svg.setAttribute("height",size);
+  svg.style.transform="rotate(-90deg)";
+  const mk = (clr,dash,off) => {
+    const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("cx",size/2);c.setAttribute("cy",size/2);c.setAttribute("r",r2);
+    c.setAttribute("fill","none");c.setAttribute("stroke",clr);c.setAttribute("stroke-width",stroke);
+    if(dash){c.setAttribute("stroke-dasharray",circ);c.setAttribute("stroke-dashoffset",off);c.setAttribute("stroke-linecap","round");}
+    return c;
+  };
+  svg.appendChild(mk("#232738",false));
+  svg.appendChild(mk(color,true,circ-(pct/100)*circ));
+  const wrap = el("div",{style:{position:"relative",width:size+"px",height:size+"px",flexShrink:"0"}});
+  wrap.appendChild(svg);
+  const center = el("div",{style:{position:"absolute",inset:"0",display:"flex",alignItems:"center",justifyContent:"center"}},inner);
+  wrap.appendChild(center);
+  return wrap;
+}
+
+function badge(type) {
+  const st = STYPES[type]||{color:"#475569",short:type};
+  return el("span",{class:"pill",style:{background:st.color+"22",color:st.color,border:`1px solid ${st.color}44`}},st.short);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+function renderDashboard() {
+  const cw = currentWeek(), cd = countdown(), gp = globalPct();
+  const done = ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
+  const missed = ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
+  const adapted = ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
+  const total = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
+  const todaySessions = ALL_SESSIONS.filter(s=>s.date===today());
+  const pred = predict10K();
+
+  // ── Hero ──
+  const hero = el("div",{style:{background:"linear-gradient(135deg,#1a1d27 0%,#1e1030 100%)",borderRadius:"16px",padding:"24px 20px",marginBottom:"16px",border:"1px solid #f9731633",marginTop:"8px"}},
+    el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+      el("div",{},
+        el("div",{class:"label"},"Objectif course"),
+        el("div",{style:{color:"#f97316",fontSize:"36px",fontWeight:"800",letterSpacing:"-1px",lineHeight:"1"}},"48'30\""),
+        el("div",{class:"text2",style:{fontSize:"14px",marginTop:"4px"}},"10K · 6 septembre 2026")
+      ),
+      svgCircle(gp,88,7,"#f97316",
+        el("div",{style:{textAlign:"center"}},
+          el("div",{style:{color:"#f97316",fontSize:"18px",fontWeight:"800"}},gp+"%"),
+          el("div",{class:"muted",style:{fontSize:"9px"}},"plan")
+        )
+      )
+    ),
+    el("div",{style:{height:"1px",background:"#2e3347",margin:"16px 0"}}),
+    el("div",{style:{display:"flex",gap:"24px"}},
+      el("div",{},el("div",{style:{color:cd<=14?"#f97316":"#f1f5f9",fontSize:"28px",fontWeight:"800",lineHeight:"1"}},"J–"+cd),el("div",{class:"muted",style:{fontSize:"11px"}},"avant la course")),
+      el("div",{},el("div",{style:{color:"#60a5fa",fontSize:"28px",fontWeight:"800",lineHeight:"1"}},"S"+cw),el("div",{class:"muted",style:{fontSize:"11px"}},phaseOf(cw).label)),
+      el("div",{},el("div",{style:{color:"#22c55e",fontSize:"28px",fontWeight:"800",lineHeight:"1"}},done+""),el("div",{class:"muted",style:{fontSize:"11px"}},"séances faites"))
+    )
+  );
+
+  // ── Prédiction 10K ──
+  const predCard = el("div",{style:{background:"#1a1d27",border:`1px solid ${pred.onTrack?"#22c55e44":"#f9731644"}`,borderRadius:"12px",padding:"16px",marginBottom:"16px"}},
+    el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
+      el("div",{class:"label"},"Estimation 10K"),
+      el("div",{style:{background:pred.onTrack?"#22c55e22":"#f9731622",color:pred.onTrack?"#22c55e":"#f97316",fontSize:"11px",fontWeight:"700",padding:"3px 8px",borderRadius:"20px"}},
+        pred.onTrack ? "✅ Dans les temps" : "⚠️ Effort requis"
+      )
+    ),
+    el("div",{style:{display:"flex",alignItems:"flex-end",gap:"16px",marginBottom:"12px"}},
+      el("div",{},
+        el("div",{style:{color:"#f1f5f9",fontSize:"38px",fontWeight:"800",letterSpacing:"-1px",lineHeight:"1"}},pred.timeStr),
+        el("div",{class:"muted",style:{fontSize:"11px",marginTop:"4px"}},"estimation actuelle")
+      ),
+      el("div",{style:{flex:"1"}},
+        el("div",{style:{color:"#475569",fontSize:"12px",marginBottom:"4px"}},"Objectif : "+pred.target),
+        el("div",{style:{color:pred.gap<=0?"#22c55e":pred.gap<=60?"#eab308":"#ef4444",fontSize:"14px",fontWeight:"700"}},"Écart : "+(pred.gap>0?"+":"")+pred.gapStr),
+        el("div",{style:{color:"#475569",fontSize:"11px",marginTop:"4px"}},"Confiance : "+pred.confidence+"%")
+      )
+    ),
+    // Barre de progression vers l'objectif
+    el("div",{style:{marginBottom:"10px"}},
+      el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
+        el("span",{class:"muted",style:{fontSize:"10px"}},"50'21\" (Lavandou)"),
+        el("span",{class:"muted",style:{fontSize:"10px"}},"48'30\" (objectif)")
+      ),
+      el("div",{style:{height:"6px",background:"#232738",borderRadius:"3px",position:"relative"}},
+        el("div",{style:{
+          position:"absolute",height:"100%",borderRadius:"3px",background:"linear-gradient(90deg,#60a5fa,#f97316)",
+          width: Math.min(Math.max((3021-pred.time)/(3021-2910)*100,0),100)+"%",
+          transition:"width 0.6s ease"
+        }}),
+        el("div",{style:{position:"absolute",right:"0",top:"-3px",width:"12px",height:"12px",borderRadius:"50%",background:"#f97316",border:"2px solid #0f1117"}})
+      )
+    ),
+    pred.details.length > 0 ? el("div",{style:{borderTop:"1px solid #2e3347",paddingTop:"10px"}},
+      ...pred.details.map(d=>el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"3px"}},
+        el("span",{class:"muted",style:{fontSize:"11px"}},d.label),
+        el("span",{style:{color:"#94a3b8",fontSize:"11px",fontWeight:"600"}},d.value)
+      )),
+      el("div",{class:"muted",style:{fontSize:"10px",marginTop:"6px",fontStyle:"italic"}},"📊 "+pred.method)
+    ) : el("div",{class:"muted",style:{fontSize:"11px",fontStyle:"italic"}},"📊 "+pred.method)
+  );
+
+  // ── Bouton Strava ──
+  const stravaSection = el("div",{style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"Strava"),
+    stravaToken
+      ? el("button",{
+          style:{width:"100%",background:syncing?"#1a1d27":"#fc4c0222",border:"1px solid #fc4c0255",borderRadius:"10px",padding:"12px 16px",cursor:"pointer",color:"#fc4c02",fontWeight:"700",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"},
+          onClick: ()=>{ if(!syncing) syncStrava(); }
+        },
+        syncing ? "⏳ "+syncMsg : syncMsg ? syncMsg : "🔄 Synchroniser avec Strava",
+        stravaActivities.length>0 && !syncing ? el("span",{class:"muted",style:{fontSize:"11px",fontWeight:"400"}}, " · "+stravaActivities.length+" activités") : null
+      )
+      : el("a",{
+          href:"/api/strava/auth",
+          style:{display:"block",width:"100%",background:"#fc4c0222",border:"1px solid #fc4c0255",borderRadius:"10px",padding:"12px 16px",color:"#fc4c02",fontWeight:"700",fontSize:"14px",textAlign:"center",textDecoration:"none"}
+        },"🔗 Connecter Strava")
+  );
+
+  // ── Aujourd'hui ──
+  let todayEl = null;
+  if (todaySessions.length) {
+    todayEl = el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"Aujourd'hui"),
+      ...todaySessions.map(s => {
+        const b = el("button",{style:{width:"100%",background:"#1a1d27",border:"1px solid #f9731655",borderLeft:"3px solid #f97316",borderRadius:"10px",padding:"12px 14px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:"12px",marginBottom:"8px"}},
+          badge(s.type),
+          el("div",{style:{flex:"1"}},
+            el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"600"}},s.session),
+            s.notes?el("div",{class:"muted",style:{fontSize:"12px",marginTop:"2px"}},s.notes):null
+          ),
+          el("div",{style:{color:"#f97316",fontSize:"18px"}},"›")
+        );
+        b.addEventListener("click",()=>{ selectedWeek=s.week; setView("weekDetail"); });
+        return b;
+      })
+    );
+  }
+
+  // ── Stats ──
+  const stats = el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}},
+    ...[ ["Complétées",done,"#22c55e"],["Manquées",missed,"#ef4444"],["Adaptées",adapted,"#eab308"],["Restantes",total-done-missed-adapted,"#94a3b8"] ]
+    .map(([label,val,color])=>el("div",{class:"card"},
+      el("div",{style:{color,fontSize:"24px",fontWeight:"800"}},val+""),
+      el("div",{class:"muted",style:{fontSize:"11px"}},label)
+    ))
+  );
+
+  // ── Phases ──
+  const phases = el("div",{},
+    el("div",{class:"label"},"Phases"),
+    ...PHASES.map(ph=>{
+      const ws=ALL_SESSIONS.filter(s=>ph.weeks.includes(s.week)&&s.type!=="REPOS"&&s.type!=="RACE");
+      const dn=ws.filter(s=>statuses[s.uid]==="✅").length;
+      const pct=ws.length?Math.round(dn/ws.length*100):0;
+      const b=el("button",{style:{width:"100%",background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:"14px"}},
+        svgCircle(pct,44,4,ph.color,el("span",{style:{color:ph.color,fontSize:"10px",fontWeight:"700"}},pct+"%")),
+        el("div",{style:{flex:"1"}},
+          el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"700"}},ph.label),
+          el("div",{class:"muted",style:{fontSize:"12px"}},"Sem. "+ph.weeks[0]+"–"+ph.weeks[ph.weeks.length-1]+" · "+dn+"/"+ws.length+" séances")
+        ),
+        el("div",{class:"muted",style:{fontSize:"18px"}},"›")
+      );
+      b.addEventListener("click",()=>{ selectedWeek=ph.weeks[0]; setView("weekDetail"); });
+      return b;
+    })
+  );
+
+  return el("div",{style:{padding:"0 16px 100px"}}, hero, predCard, stravaSection, todayEl||"", stats, phases);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SEMAINES
+// ══════════════════════════════════════════════════════════════════════════════
+function renderWeeks() {
+  const cw = currentWeek();
+  return el("div",{style:{padding:"0 16px 100px"}},
+    el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"#475569",fontSize:"12px"}},"Semaine actuelle : ",el("span",{style:{color:"#f97316",fontWeight:"700"}},"S"+cw)),
+    ...PLAN.map(week=>{
+      const pct=weekPct(week), isActive=week.week===cw, color=phaseOf(week.week).color;
+      const b=el("button",{style:{width:"100%",background:isActive?"#232738":"#1a1d27",border:`1px solid ${isActive?"#f9731655":"#2e3347"}`,borderLeft:`3px solid ${color}`,borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:"12px"}},
+        el("div",{style:{textAlign:"center",minWidth:"36px"}},
+          el("div",{style:{color,fontSize:"18px",fontWeight:"800",lineHeight:"1"}},"S"+week.week),
+          isActive?el("div",{style:{color:"#f97316",fontSize:"9px",fontWeight:"700"}},"NOW"):null
+        ),
+        el("div",{style:{flex:"1"}},
+          el("div",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},phaseOf(week.week).label),
+          el("div",{class:"muted",style:{fontSize:"11px",marginTop:"2px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
+          el("div",{style:{height:"3px",background:"#232738",borderRadius:"2px",marginTop:"6px"}},
+            el("div",{style:{height:"100%",width:pct+"%",background:color,borderRadius:"2px"}})
+          )
+        ),
+        el("div",{class:"muted",style:{fontSize:"12px"}},pct+"%")
+      );
+      b.addEventListener("click",()=>{ selectedWeek=week.week; setView("weekDetail"); });
+      return b;
+    })
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DÉTAIL SEMAINE
+// ══════════════════════════════════════════════════════════════════════════════
+const SOPTS = ["—","✅","❌","⚠️","😴"];
+const SCOLORS = {"—":"#475569","✅":"#22c55e","❌":"#ef4444","⚠️":"#eab308","😴":"#60a5fa"};
+
+function renderWeekDetail(weekNum) {
+  const week = PLAN.find(w=>w.week===weekNum);
+  if(!week) return el("div",{},"—");
+  const t = today();
+  const color = phaseOf(weekNum).color;
+
+  // Trouve les activités Strava de la semaine
+  const weekDates = week.sessions.map(s=>s.date);
+  const weekRuns = stravaActivities.filter(a=>a.type==="Run"&&weekDates.includes(a.start_date?.slice(0,10)));
+
+  const cards = week.sessions.map((s,i)=>{
+    const uid=`${weekNum}-${i}`, isToday=s.date===t, isPast=s.date<t;
+    const st=STYPES[s.type]||STYPES.REPOS;
+
+    // Activité Strava correspondante
+    const stravaRun = weekRuns.find(r=>r.start_date?.slice(0,10)===s.date);
+
+    const card=el("div",{style:{background:isToday?"#232738":"#1a1d27",border:`1px solid ${isToday?"#f9731644":"#2e3347"}`,borderLeft:`3px solid ${st.color}`,borderRadius:"10px",padding:"12px 14px",marginBottom:"8px"}},
+      el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
+        el("div",{style:{color:isPast?"#475569":"#94a3b8",fontSize:"11px",fontWeight:"700",minWidth:"60px"}},s.day+" "+s.date.slice(8)),
+        isToday?el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"9px",fontWeight:"700",padding:"1px 5px",borderRadius:"3px"}},"AUJOURD'HUI"):null,
+        badge(s.type)
+      ),
+      el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"600",marginBottom:"4px"}},s.session),
+      (s.warmup||s.cooldown)?el("div",{style:{display:"flex",gap:"12px",marginBottom:"6px",flexWrap:"wrap"}},
+        s.warmup?el("div",{class:"muted",style:{fontSize:"11px"}},"▶ "+s.warmup):null,
+        s.cooldown?el("div",{class:"muted",style:{fontSize:"11px"}},"◀ "+s.cooldown):null
+      ):null,
+      s.notes?el("div",{style:{color:"#60a5facc",fontSize:"12px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+s.notes):null,
+      // Données Strava si dispo
+      stravaRun?el("div",{style:{background:"#fc4c0211",border:"1px solid #fc4c0233",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px",display:"flex",gap:"16px",flexWrap:"wrap"}},
+        el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},(stravaRun.distance/1000).toFixed(2)+"km"),el("div",{class:"muted",style:{fontSize:"10px"}},"distance")),
+        el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},fmtTime(stravaRun.moving_time)),el("div",{class:"muted",style:{fontSize:"10px"}},"durée")),
+        el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},fmtPace(stravaRun.average_speed)+"/km"),el("div",{class:"muted",style:{fontSize:"10px"}},"allure moy.")),
+        stravaRun.average_heartrate?el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},Math.round(stravaRun.average_heartrate)+" bpm"),el("div",{class:"muted",style:{fontSize:"10px"}},"FC moy.")):null
+      ):null
+    );
+
+    if (s.type==="RACE") {
+      card.appendChild(el("div",{style:{background:"#f9731622",border:"1px solid #f9731644",borderRadius:"8px",padding:"10px 12px",marginTop:"4px"}},
+        el("div",{style:{color:"#f97316",fontWeight:"700",fontSize:"14px"}},"🏁 Jour J — Objectif 48'30\""),
+        el("div",{class:"text2",style:{fontSize:"12px",marginTop:"4px"}},"Km 1-3 : prudent · Km 4-7 : contrôle · Km 8-10 : tout donner !")
+      ));
+    } else if (s.type!=="REPOS") {
+      const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap",marginTop:"4px"}});
+      SOPTS.forEach(opt=>{
+        const cur=statuses[uid]||"—";
+        const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"13px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
+        b.addEventListener("click",()=>{ statuses[uid]=opt; save("lk_statuses",statuses); render(); });
+        statusRow.appendChild(b);
+      });
+      card.appendChild(statusRow);
+    }
+    return card;
+  });
+
+  return el("div",{style:{padding:"0 16px 100px"}},
+    el("div",{style:{display:"flex",alignItems:"center",gap:"12px",marginTop:"8px",marginBottom:"16px"}},
+      el("div",{style:{flex:"1"}},
+        el("div",{class:"muted",style:{fontSize:"11px",textTransform:"uppercase",letterSpacing:"1px"}},phaseOf(weekNum).label),
+        el("div",{style:{color:"#f1f5f9",fontSize:"20px",fontWeight:"800"}},"Semaine "+weekNum),
+        el("div",{class:"muted",style:{fontSize:"12px"}},fmtDate(week.sessions[0].date)+" – "+fmtDate(week.sessions[6].date))
+      ),
+      weekRuns.length>0?el("div",{style:{background:"#fc4c0211",border:"1px solid #fc4c0233",borderRadius:"8px",padding:"6px 10px",textAlign:"center"}},
+        el("div",{style:{color:"#fc4c02",fontSize:"14px",fontWeight:"700"}},weekRuns.length+""),
+        el("div",{class:"muted",style:{fontSize:"10px"}},"Strava")
+      ):null
+    ),
+    ...cards
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// ══════════════════════════════════════════════════════════════════════════════
+function renderNotes() {
+  const input = el("input",{type:"text",placeholder:"Ressentis, douleurs, météo..."});
+  const addBtn = el("button",{style:{background:"#f97316",border:"none",borderRadius:"10px",color:"#fff",padding:"0 18px",fontSize:"20px",cursor:"pointer",fontWeight:"700",height:"44px",flexShrink:"0"}},"＋");
+  addBtn.addEventListener("click",()=>{
+    const txt=input.value.trim(); if(!txt) return;
+    notesList.unshift({text:txt,date:today(),id:Date.now()});
+    save("lk_notes",notesList); input.value=""; render();
+  });
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter") addBtn.click(); });
+
+  return el("div",{style:{padding:"0 16px 100px"}},
+    el("div",{style:{marginTop:"8px",marginBottom:"16px"}},
+      el("div",{class:"label"},"Carnet de bord"),
+      el("div",{style:{display:"flex",gap:"8px"}},input,addBtn)
+    ),
+    notesList.length===0
+      ? el("div",{class:"muted",style:{textAlign:"center",padding:"40px 0",fontSize:"14px"}},"Aucune note pour l'instant.",el("span",{style:{fontSize:"28px",display:"block",marginTop:"8px"}},"📝"))
+      : el("div",{},...notesList.map(note=>{
+          const del=el("button",{style:{background:"none",border:"none",color:"#475569",fontSize:"18px",cursor:"pointer",padding:"0 4px",alignSelf:"flex-start"}},"×");
+          del.addEventListener("click",()=>{ notesList=notesList.filter(n=>n.id!==note.id); save("lk_notes",notesList); render(); });
+          return el("div",{class:"card",style:{display:"flex",gap:"10px"}},
+            el("div",{style:{flex:"1"}},el("div",{class:"muted",style:{fontSize:"11px",marginBottom:"4px"}},note.date),el("div",{style:{color:"#f1f5f9",fontSize:"14px"}},note.text)),
+            del
+          );
+        }))
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════════════════════
+function setView(v) { view=v; render(); window.scrollTo(0,0); }
+
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML="";
+
+  const backBtn = view==="weekDetail"
+    ? el("button",{style:{background:"none",border:"none",color:"#f97316",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("weeks")},"‹")
+    : null;
+
+  const titles = {dashboard:"Plan 10K",weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,notes:"Carnet de bord"};
+  const hdr = el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(15,17,23,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid #2e3347",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"6px"}},
+    backBtn||"",
+    el("div",{style:{flex:"1"}},
+      el("div",{style:{color:"#f1f5f9",fontSize:"17px",fontWeight:"700",lineHeight:"1"}},titles[view]||""),
+      view==="weekDetail"?el("div",{class:"muted",style:{fontSize:"11px",marginTop:"1px"}},phaseOf(selectedWeek).label):null
+    ),
+    el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"13px",fontWeight:"700"}},"J–"+countdown())
+  );
+
+  let content;
+  if(view==="dashboard") content=renderDashboard();
+  else if(view==="weeks") content=renderWeeks();
+  else if(view==="weekDetail") content=renderWeekDetail(selectedWeek);
+  else content=renderNotes();
+
+  const NAV=[{id:"dashboard",icon:"⚡",label:"Dashboard"},{id:"weeks",icon:"📅",label:"Semaines"},{id:"notes",icon:"📝",label:"Notes"}];
+  const activeNav=["dashboard","notes"].includes(view)?view:"weeks";
+  const nav=el("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"430px",background:"rgba(26,29,39,0.97)",backdropFilter:"blur(16px)",borderTop:"1px solid #2e3347",display:"flex",zIndex:"20"}},
+    ...NAV.map(n=>{
+      const b=el("button",{style:{flex:"1",background:"none",border:"none",cursor:"pointer",padding:"10px 0 14px",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",opacity:activeNav===n.id?"1":"0.45"}},
+        el("span",{style:{fontSize:"22px"}},n.icon),
+        el("span",{style:{fontSize:"10px",fontWeight:"700",letterSpacing:"0.3px",color:activeNav===n.id?"#f97316":"#475569"}},n.label)
+      );
+      b.addEventListener("click",()=>{ if(n.id==="weeks") selectedWeek=currentWeek(); setView(n.id); });
+      return b;
+    })
+  );
+
+  app.appendChild(hdr);
+  app.appendChild(content);
+  app.appendChild(nav);
+}
+
+render();
+</script>
+</body>
+</html>
