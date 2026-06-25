@@ -1,4 +1,4 @@
-const CACHE = "plan10k-v1";
+const CACHE = "plan10k-v18";
 const ASSETS = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", e => {
@@ -18,17 +18,20 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // Ne pas intercepter les appels API Strava
-  if (e.request.url.includes("/api/")) return;
+  // Ne pas intercepter les appels API Strava et Open-Meteo
+  if (e.request.url.includes("/api/") || e.request.url.includes("open-meteo") || e.request.url.includes("strava.com") || e.request.url.includes("github.com")) return;
 
+  // Stratégie network-first : toujours essayer le réseau en premier
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(resp => {
+    fetch(e.request)
+      .then(resp => {
         const clone = resp.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
         return resp;
-      }).catch(() => caches.match("/index.html"));
-    })
+      })
+      .catch(() =>
+        caches.match(e.request)
+          .then(cached => cached || caches.match("/index.html"))
+      )
   );
 });
