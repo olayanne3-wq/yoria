@@ -22,12 +22,11 @@ exports.handler = async (event) => {
     });
 
     const data = await resp.json();
-    const text = data.content?.[0]?.text || null;
-
+    // Renvoyer toute la réponse pour déboguer
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text: data.content?.[0]?.text || null, debug: data })
     };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
