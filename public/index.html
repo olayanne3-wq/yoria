@@ -556,6 +556,7 @@ let stravaExpires = load("lk_strava_expires", 0);
 let stravaActivities = load("lk_strava_activities", []);
 let syncing = false;
 let syncMsg = "";
+let lastSyncTime = load("lk_last_sync", 0);
 let githubToken = load("lk_github_token", "");
 let gistId = load("lk_gist_id", "");
 let gistMsg = "";
@@ -597,6 +598,14 @@ async function fetchWeather() {
 }
 fetchWeather();
 setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
+
+// Auto-synchro Strava si token valide et dernière synchro > 1h
+(function autoSync() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  if (stravaToken && (Date.now() - lastSyncTime) > ONE_HOUR) {
+    setTimeout(() => syncStrava(), 1500); // légère pause pour laisser l'UI se charger
+  }
+})();
 
 (function checkOAuthCallback() {
   const params = new URLSearchParams(window.location.search);
@@ -668,6 +677,36 @@ function riegelProjections(time10k) {
     const paceStr = Math.floor(pace/60)+":"+(Math.round(pace%60)).toString().padStart(2,"0")+"/km";
     return { ...d, timeStr, paceStr };
   });
+}
+
+// ── Stats semaine pour la vue Semaines ───────────────────────────────────
+function weekStats(weekNum) {
+  const week = PLAN.find(w=>w.week===weekNum);
+  if (!week) return null;
+
+  // Durée prévue
+  const sessions = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  let plannedMin = 0;
+  sessions.forEach(s => {
+    const m1 = s.session.match(/(\d+)(?:[–\-](\d+))?\s*min/);
+    if (m1) plannedMin += m1[2] ? (parseInt(m1[1])+parseInt(m1[2]))/2 : parseInt(m1[1]);
+    const m2 = s.warmup.match(/(\d+)'/);
+    if (m2) plannedMin += parseInt(m2[1]);
+    const m3 = s.cooldown.match(/(\d+)'/);
+    if (m3) plannedMin += parseInt(m3[1]);
+  });
+
+  // Distance prévue estimée (durée × allure EF ref)
+  const EF_PACE = 6.33; // min/km (6:20/km)
+  const plannedKm = Math.round(plannedMin / EF_PACE * 10) / 10;
+
+  // Réel depuis Strava
+  const weekDates = week.sessions.map(s=>s.date);
+  const weekRuns = stravaActivities.filter(a=>weekDates.includes(a.start_date_local?.slice(0,10)));
+  const realMin = Math.round(weekRuns.reduce((s,r)=>s+r.moving_time,0)/60);
+  const realKm = Math.round(weekRuns.reduce((s,r)=>s+r.distance,0)/100)/10;
+
+  return { plannedMin:Math.round(plannedMin), plannedKm, realMin, realKm, hasReal:weekRuns.length>0 };
 }
 
 // ── Bilan hebdomadaire ────────────────────────────────────────────────────
@@ -1023,8 +1062,12 @@ async function syncStrava() {
     const resp = await fetch(`/api/strava/activities?token=${stravaToken}`);
     const activities = await resp.json();
     if (Array.isArray(activities)) {
-      stravaActivities=activities; save("lk_strava_activities",activities);
+      // Filtrer uniquement les courses à pied
+      const runs = activities.filter(a => a.type === "Run" || a.sport_type === "Run");
+      stravaActivities=runs; save("lk_strava_activities",runs);
       matchActivitiesToPlan(activities);
+      lastSyncTime = Date.now();
+      save("lk_last_sync", lastSyncTime);
       syncMsg=`✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
       scheduleSave(); // Sauvegarder les activités dans le Gist
     } else { syncMsg="❌ Erreur Strava"; }
@@ -1232,21 +1275,21 @@ function renderDashboard() {
     )
   );
 
-  const stravaSection=el("div",{style:{marginBottom:"16px",display:"flex",alignItems:"center",justifyContent:"space-between"}},
-    stravaToken
-      ? el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-          el("div",{style:{width:"7px",height:"7px",borderRadius:"50%",background:syncing?"#eab308":"#fc4c02"}}),
-          el("span",{class:"muted",style:{fontSize:"12px"}},
-            syncing ? "⏳ "+syncMsg :
-            syncMsg ? syncMsg :
-            stravaActivities.length>0 ? "Strava · "+stravaActivities.length+" activités" : "Strava connecté"
-          )
-        )
-      : el("span",{class:"muted",style:{fontSize:"12px"}},"Strava non connecté"),
-    el("button",{
-      style:{background:"none",border:"none",color:"#94a3b8",fontSize:"12px",cursor:"pointer",padding:"0",textDecoration:"underline"},
-      onClick:()=>{ if(stravaToken&&!syncing){ syncStrava(); } else { setView("settings"); } }
-    }, stravaToken&&!syncing ? "🔄 Sync" : "Paramètres")
+  // Indicateur Strava discret
+  const syncAgo = lastSyncTime > 0 ? Math.round((Date.now()-lastSyncTime)/60000) : null;
+  const syncAgoStr = syncAgo === null ? "" :
+    syncAgo < 1 ? " · synchro à l\'instant" :
+    syncAgo < 60 ? " · synchro il y a "+syncAgo+" min" :
+    " · synchro il y a "+(Math.round(syncAgo/60))+"h";
+  const stravaColor = !stravaToken ? "#475569" : syncing ? "#eab308" : syncMsg.startsWith("❌") ? "#ef4444" : "#22c55e";
+  const stravaText = !stravaToken ? "Strava non connecté" :
+    syncing ? "Strava · synchronisation..." :
+    syncMsg.startsWith("❌") ? "Strava · "+syncMsg :
+    stravaActivities.length>0 ? "Strava · "+stravaActivities.length+" activité"+(stravaActivities.length>1?"s":"")+syncAgoStr :
+    "Strava connecté";
+  const stravaSection=el("div",{style:{display:"flex",alignItems:"center",gap:"8px",paddingBottom:"8px"}},
+    el("div",{style:{width:"7px",height:"7px",borderRadius:"50%",background:stravaColor,flexShrink:"0"}}),
+    el("span",{class:"muted",style:{fontSize:"12px"}},stravaText)
   );
 
   // ── Météo ──────────────────────────────────────────────────────────────
@@ -1429,26 +1472,7 @@ function renderDashboard() {
     el("div",{class:"muted",style:{fontSize:"11px",marginTop:"6px"}},done+" / "+total+" séances · "+donePct+"%")
   );
 
-  const phases=el("div",{},
-    el("div",{class:"label"},"Phases"),
-    ...PHASES.map(ph=>{
-      const ws=ALL_SESSIONS.filter(s=>ph.weeks.includes(s.week)&&s.type!=="REPOS"&&s.type!=="RACE");
-      const dn=ws.filter(s=>statuses[s.uid]==="✅").length;
-      const pct=ws.length?Math.round(dn/ws.length*100):0;
-      const b=el("button",{style:{width:"100%",background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:"14px"}},
-        svgCircle(pct,44,4,ph.color,el("span",{style:{color:ph.color,fontSize:"12px",fontWeight:"700"}},pct+"%")),
-        el("div",{style:{flex:"1"}},
-          el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"700"}},ph.label),
-          el("div",{class:"muted",style:{fontSize:"12px"}},"Sem. "+ph.weeks[0]+"–"+ph.weeks[ph.weeks.length-1]+" · "+dn+"/"+ws.length+" séances")
-        ),
-        el("div",{class:"muted",style:{fontSize:"18px"}},"›")
-      );
-      b.addEventListener("click",()=>{ selectedWeek=ph.weeks[0]; setView("weekDetail"); });
-      return b;
-    })
-  );
-
-    // ── Bilan semaine courante ──────────────────────────────────────────────
+  // ── Bilan semaine courante ──────────────────────────────────────────────
   const cw2 = currentWeek();
   const report = weeklyReport(cw2);
   let bilanEl = null;
@@ -1523,9 +1547,34 @@ function renderWeeks() {
         el("div",{style:{flex:"1"}},
           el("div",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},phaseOf(week.week).label),
           el("div",{class:"muted",style:{fontSize:"11px",marginTop:"2px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
-          el("div",{style:{height:"3px",background:"#232738",borderRadius:"2px",marginTop:"6px"}},
+          el("div",{style:{height:"3px",background:"#232738",borderRadius:"2px",marginTop:"6px",marginBottom:"6px"}},
             el("div",{style:{height:"100%",width:pct+"%",background:color,borderRadius:"2px"}})
-          )
+          ),
+          (()=>{
+            const ws=weekStats(week.week);
+            if (!ws) return null;
+            if (ws.hasReal) return el("div",{},
+              el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"2px"}},
+                el("span",{class:"muted",style:{fontSize:"10px"}},"Distance"),
+                el("span",{style:{fontSize:"10px"}},
+                  el("span",{style:{color:"#fc4c02",fontWeight:"700"}},ws.realKm+" km"),
+                  el("span",{class:"muted"}," / ~"+ws.plannedKm+" km")
+                )
+              ),
+              el("div",{style:{display:"flex",justifyContent:"space-between"}},
+                el("span",{class:"muted",style:{fontSize:"10px"}},"Durée"),
+                el("span",{style:{fontSize:"10px"}},
+                  el("span",{style:{color:"#fc4c02",fontWeight:"700"}},
+                    Math.floor(ws.realMin/60)+"h"+(ws.realMin%60).toString().padStart(2,"0")+"'"
+                  ),
+                  el("span",{class:"muted"}," / ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"'")
+                )
+              )
+            );
+            return el("div",{class:"muted",style:{fontSize:"10px",fontStyle:"italic"}},
+              "~"+ws.plannedKm+" km · ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"' prévus"
+            );
+          })()
         ),
         el("div",{class:"muted",style:{fontSize:"12px"}},pct+"%")
       );
@@ -1714,6 +1763,66 @@ function renderStats() {
     lvl.setAttribute("x",xScale(predHistory.length-1));lvl.setAttribute("y",yScale(lastVal.time)-6);
     lvl.setAttribute("fill","#f1f5f9");lvl.setAttribute("font-size","10");lvl.setAttribute("text-anchor","middle");lvl.setAttribute("font-weight","700");
     lvl.textContent=fmtTime(lastVal.time);svg.appendChild(lvl);
+    // Labels semaines sur l'axe X
+    // On mappe les dates du plan aux positions X
+    PLAN.forEach((week, wi) => {
+      const weekDate = new Date(week.sessions[0].date);
+      // Trouver si on a un point predHistory proche de cette semaine
+      const weekDateStr = week.sessions[0].date;
+      // Position X basée sur l'index de la semaine dans le plan (0-10)
+      const xPos = PAD.l + (wi / (PLAN.length - 1)) * iW;
+      // Petite marque verticale pour toutes les semaines
+      const tick = mk("line",{x1:xPos,y1:PAD.t+iH,x2:xPos,y2:PAD.t+iH+4,stroke:"#2e3347",strokeWidth:"1"});
+      svg.appendChild(tick);
+      // Label uniquement pour les semaines impaires
+      if ((wi+1) % 2 === 1) {
+        const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+        lbl.setAttribute("x", xPos);
+        lbl.setAttribute("y", PAD.t+iH+14);
+        lbl.setAttribute("fill","#64748b");
+        lbl.setAttribute("font-size","9");
+        lbl.setAttribute("text-anchor","middle");
+        lbl.textContent = "S"+(wi+1);
+        svg.appendChild(lbl);
+      }
+    });
+
+    // Tooltip au tap
+    const tooltip = document.createElementNS("http://www.w3.org/2000/svg","g");
+    tooltip.style.display = "none";
+    const tooltipBg = mk("rect",{x:0,y:0,width:80,height:32,rx:"4",fill:"#232738",stroke:"#2e3347",strokeWidth:"1"});
+    const tooltipDate = document.createElementNS("http://www.w3.org/2000/svg","text");
+    tooltipDate.setAttribute("font-size","9"); tooltipDate.setAttribute("fill","#94a3b8");
+    const tooltipVal = document.createElementNS("http://www.w3.org/2000/svg","text");
+    tooltipVal.setAttribute("font-size","11"); tooltipVal.setAttribute("fill","#f1f5f9"); tooltipVal.setAttribute("font-weight","700");
+    tooltip.appendChild(tooltipBg); tooltip.appendChild(tooltipDate); tooltip.appendChild(tooltipVal);
+    svg.appendChild(tooltip);
+
+    // Zone de tap sur chaque point
+    predHistory.forEach((p,i) => {
+      const cx = xScale(i), cy = yScale(p.time);
+      const hitArea = mk("circle",{cx,cy,r:"12",fill:"transparent",cursor:"pointer"});
+      hitArea.addEventListener("click", () => {
+        const d = new Date(p.date);
+        const dateStr = d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"});
+        const tx = Math.min(cx, W-PAD.r-84);
+        const ty = cy > PAD.t+30 ? cy-40 : cy+10;
+        tooltipBg.setAttribute("x", tx); tooltipBg.setAttribute("y", ty);
+        tooltipDate.setAttribute("x", tx+6); tooltipDate.setAttribute("y", ty+12);
+        tooltipDate.textContent = dateStr;
+        tooltipVal.setAttribute("x", tx+6); tooltipVal.setAttribute("y", ty+26);
+        tooltipVal.textContent = fmtTime(p.time);
+        tooltip.style.display = "block";
+      });
+      svg.appendChild(hitArea);
+    });
+
+    svg.addEventListener("click", e => {
+      if (e.target.tagName !== "circle" || e.target.getAttribute("r") !== "12") {
+        tooltip.style.display = "none";
+      }
+    });
+
     const wrap=el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"Évolution de l\'estimation"),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"12px",overflow:"hidden"}})
@@ -1741,11 +1850,11 @@ function renderStats() {
 
   // ── Référentiel allures ───────────────────────────────────────────────
   const paceRows = [
-    {type:"EF",      label:"Endurance fondamentale", pace:"6:20/km", heat:"6:40/km", fc:"118–136", pct:"65–75%", color:"#60a5fa"},
-    {type:"LONGUE",  label:"Sortie longue",           pace:"6:20/km", heat:"6:40/km", fc:"118–136", pct:"65–75%", color:"#22c55e"},
-    {type:"SEUIL",   label:"Seuil",                   pace:"4:55/km", heat:null,       fc:"163–172", pct:"90–95%", color:"#eab308"},
-    {type:"SPEC",    label:"Spécifique 10K",           pace:"4:51/km", heat:null,       fc:"154–163", pct:"85–90%", color:"#a855f7"},
-    {type:"VMA",     label:"VMA",                     pace:"4:10–4:25", heat:null,     fc:"163–181", pct:"90–100%",color:"#f97316"},
+    {type:"EF",      label:"Endurance fondamentale", pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#60a5fa"},
+    {type:"LONGUE",  label:"Sortie longue",           pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#22c55e"},
+    {type:"SEUIL",   label:"Seuil",                   pace:"4:55", heat:null,   fc:"163–172", pct:"90–95%", color:"#eab308"},
+    {type:"SPEC",    label:"Spécifique 10K",           pace:"4:51", heat:null,   fc:"154–163", pct:"85–90%", color:"#a855f7"},
+    {type:"VMA",     label:"VMA",                     pace:"4:10–4:25", heat:null, fc:"163–181", pct:"90–100%", color:"#f97316"},
   ];
   const paceEl=el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"Référentiel allures & FC"),
@@ -1856,7 +1965,25 @@ function renderSettings() {
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
       el("div",{style:{padding:"10px",background:"#f9731622",border:"1px solid #f9731633",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},"🟠 v1.8.5"),
+          el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},el("div",{style:{padding:"10px",background:"#f9731622",border:"1px solid #f9731633",borderRadius:"8px",marginBottom:"8px"}},
+        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
+          el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},"🟠 v1.8.6"),
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava auto & graphique"),
+          el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
+        ),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava automatique au chargement (si > 1h)"),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Indicateur Strava discret sur le dashboard"),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Labels semaines sur le graphique (S1, S3, S5...)"),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Tooltip au tap sur les points du graphique"),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Distance et durée réelles vs prévues dans la vue Semaines"),
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Filtre strict Run au stockage Strava")
+      ),
+      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
+          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8.5"),
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),
+          null
+        ),),
           el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),
           el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
         ),
@@ -1940,9 +2067,10 @@ function renderSettings() {
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Plan 11 semaines, suivi des séances, carnet de bord")
       )
     )
+  )
   );
 
-    return el("div",{style:{padding:"0 16px 100px"}},
+  return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px",marginBottom:"20px"}}),
     cloudSection, stravaSection, versionSection
   );
