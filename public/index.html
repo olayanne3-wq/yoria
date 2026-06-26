@@ -1527,7 +1527,7 @@ function renderDashboard() {
     )
   ) : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},weatherEl,fatigueEl,heroPred,stravaSection,todayEl||"",bilanEl);
+  return el("div",{style:{padding:"0 16px 100px"}},weatherEl,fatigueEl,heroPred,todayEl||"",bilanEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1965,109 +1965,100 @@ function renderSettings() {
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
       el("div",{style:{padding:"10px",background:"#f9731622",border:"1px solid #f9731633",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},el("div",{style:{padding:"10px",background:"#f9731622",border:"1px solid #f9731633",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},"🟠 v1.8.6"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava auto & graphique"),
-          el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava auto & graphique"),el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava automatique au chargement (si > 1h)"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Indicateur Strava discret sur le dashboard"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Labels semaines sur le graphique (S1, S3, S5...)"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Tooltip au tap sur les points du graphique"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Distance et durée réelles vs prévues dans la vue Semaines"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Filtre strict Run au stockage Strava")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Filtre strict Run au stockage Strava"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8.5"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),
-          null
-        ),),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),
-          el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Fusion objectif + estimation en une carte"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Barre de progression rouge→vert"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Rappel allures cibles dans la séance du jour"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Nouvel onglet Stats : graphique, projections, allures, infos"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Dashboard épuré")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Dashboard épuré"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"FC, météo, notes & projections"),
-          null
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"FC, météo, notes & projections"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• FC cible par séance + comparaison FC réelle Strava"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Température historique pendant la séance"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Notes par séance (suppression onglet Notes)"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Projections Riegel 5K / Semi / Marathon"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Stats globales compactes + lisibilité améliorée")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Stats globales compactes + lisibilité améliorée"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.7"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Bilan & Fatigue")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Bilan & Fatigue"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Bilan hebdomadaire automatique"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Alerte de fatigue")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Alerte de fatigue"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.6"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Météo, graphique & séance du jour")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Météo, graphique & séance du jour"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Météo temps réel Toulon"),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Graphique évolution estimation 10K"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séance du jour détaillée")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séance du jour détaillée"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.5"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Auto-validation & UX")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Auto-validation & UX"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Auto-validation via laps Strava"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava dans Paramètres")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava dans Paramètres"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.4"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lisibilité & cohérence")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lisibilité & cohérence"),null
         ),
         el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Amélioration des couleurs et tailles de texte"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• ODS synchronisé avec l\'appli")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• ODS synchronisé avec l\'appli"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.3"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Plan révisé")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Plan révisé"),null
         ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séances en temps, EF réduites, longues en fourchettes")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séances en temps, EF réduites, longues en fourchettes"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.2"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Prédicteur v2")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Prédicteur v2"),null
         ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Riegel sur laps SPEC/VMA, fetch Strava intervalles")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Riegel sur laps SPEC/VMA, fetch Strava intervalles"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"8px"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.1"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava & Cloud")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava & Cloud"),null
         ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Strava OAuth, sync activités, GitHub Gist")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Strava OAuth, sync activités, GitHub Gist"),
       ),
-      el("div",{style:{padding:"10px",background:"transparent",borderRadius:"8px",marginBottom:"0"}},
+      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"0"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
           el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.0"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lancement")
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lancement"),null
         ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Plan 11 semaines, suivi des séances, carnet de bord")
+        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Plan 11 semaines, suivi des séances, carnet de bord"),
       )
     )
-  )
   );
 
   return el("div",{style:{padding:"0 16px 100px"}},
