@@ -991,14 +991,14 @@ function predict10K() {
     details.push({ label:`SPEC · ${specData.runs.length} séance${specData.runs.length>1?"s":""} · dernier ${lastSpecDate||"?"}`, value:fmtPace(specData.speed)+"/km → "+fmtTime(Math.round(estimate10k)) });
   }
 
-  // ── 2. SEUIL → allure × 0.98 ─────────────────────────────────────────────
+  // ── 2. SEUIL → contribue uniquement à partir de 3 séances ─────────────────
   const seuilData = weightedAvgByEffortDuration("SEUIL", 1);
-  if (seuilData) {
-    const pace10k = seuilData.speed * (1/0.98); // seuil légèrement plus lent que 10K
-    const estimate10k = 10000 / pace10k;
-    estimates.push({ value: estimate10k, weight: 0.20 });
-    details.push({ label:`SEUIL moy. pond. (${seuilData.laps.length} laps, ${seuilData.runs.length} séances)`, value:fmtPace(seuilData.speed)+"/km" });
-    details.push({ label:"→ 10K estimé (×0.98)", value:fmtTime(Math.round(estimate10k)) });
+  if (seuilData && seuilData.runs.length >= 3) {
+    const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
+    const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
+    const riegelSeuil = totalEffortTime * Math.pow(10000/totalEffortDist, 1.06);
+    estimates.push({ value: riegelSeuil, weight: 0.10 });
+    details.push({ label:`SEUIL · ${seuilData.runs.length} séances · ${Math.round(totalEffortDist)}m effort`, value:fmtPace(seuilData.speed)+"/km → "+fmtTime(Math.round(riegelSeuil)) });
   }
 
   // ── 3. VMA → vitesse × 0.87 ──────────────────────────────────────────────
@@ -1013,7 +1013,7 @@ function predict10K() {
   // ── Pondération Lavandou selon qualité des données ────────────────────────
   const hasVma   = vmaData !== null;
   const hasSpec  = specData !== null;
-  const hasSeuil = seuilData !== null;
+  const hasSeuil = seuilData !== null && seuilData.laps.length > 0;
 
   // Compter le total de séances intensives disponibles
   const nVmaSessions = vmaData ? vmaData.runs.length : 0;
