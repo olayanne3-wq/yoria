@@ -561,6 +561,7 @@ let githubToken = load("lk_github_token", "");
 let gistId = load("lk_gist_id", "");
 let gistMsg = "";
 let predHistory = load("lk_pred_history", []); // [{date, time, confidence}]
+let changelogExpanded = false;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MÉTÉO — Open-Meteo (Toulon fixe)
@@ -870,6 +871,7 @@ function fcStatus(type, avgHr) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
+const PREDICTOR_VERSION = 3;
 
 function getEffortLaps(activity) {
   if (!activity.laps || !activity.laps.length) return [];
@@ -926,7 +928,7 @@ function rebuildPredHistory() {
     const dateStr = d.toISOString().slice(0,10);
     const time = predict10KAtDate(dateStr);
     const confidence = stravaActivities.filter(a=>a.start_date_local?.slice(0,10)<=dateStr).length > 0 ? 45 : 30;
-    newHistory.push({ date: dateStr, time, confidence });
+    newHistory.push({ date: dateStr, time, confidence, predictorVersion: PREDICTOR_VERSION });
     d.setDate(d.getDate()+1);
   }
   predHistory = newHistory;
@@ -934,7 +936,7 @@ function rebuildPredHistory() {
 }
 
 // Reconstruire l\'historique si manquant ou incomplet
-if (predHistory.length <= 1 && stravaActivities.length > 0) {
+if (stravaActivities.length > 0 && (predHistory.length <= 1 || (predHistory[0] && predHistory[0].predictorVersion !== PREDICTOR_VERSION))) {
   rebuildPredHistory();
 }
 
@@ -1044,7 +1046,7 @@ function predict10K() {
   const todayStr = today();
   const lastEntry = predHistory[predHistory.length-1];
   if (!lastEntry || lastEntry.date !== todayStr) {
-    predHistory.push({ date: todayStr, time: Math.round(estimate), confidence });
+    predHistory.push({ date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION });
     if (predHistory.length > 80) predHistory.shift();
     save("lk_pred_history", predHistory);
   }
@@ -1767,7 +1769,6 @@ function renderSettings() {
       :el("a",{href:"/api/strava/auth",style:{display:"block",background:"#fc4c0222",border:"1px solid #fc4c0255",borderRadius:"10px",padding:"12px 16px",color:"#fc4c02",fontWeight:"700",fontSize:"14px",textAlign:"center",textDecoration:"none"}},"🔗 Connecter Strava")
   );
 
-  let changelogExpanded = false;
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
       { ver:"v1.8.9", title:"Prédicteur honnête & UX", current:true, notes:[
