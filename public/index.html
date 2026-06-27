@@ -562,6 +562,7 @@ let gistId = load("lk_gist_id", "");
 let gistMsg = "";
 let predHistory = load("lk_pred_history", []); // [{date, time, confidence}]
 let changelogExpanded = false;
+let currentPred = null; // résultat de predict10K, calculé une fois par render
 let isRebuilding = false;
 let lastRebuildDate = load("lk_last_rebuild", null);
 
@@ -1086,7 +1087,7 @@ function renderDashboard() {
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
   const total=ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
   const todaySessions=ALL_SESSIONS.filter(s=>s.date===today());
-  const pred=predict10K();
+  const pred=currentPred||predict10K();
 
   const heroPred=el("div",{style:{background:"linear-gradient(135deg,#1a1d27 0%,#1e1030 100%)",borderRadius:"16px",padding:"20px",marginBottom:"12px",border:"1px solid #f9731633",marginTop:"8px"}},
     el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"16px"}},
@@ -1111,7 +1112,7 @@ function renderDashboard() {
         ),
         el("div",{},
           el("div",{style:{color:pred.gap<=0?"#22c55e":pred.gap<=30?"#eab308":"#ef4444",fontSize:"13px",fontWeight:"700"}},(pred.gap>0?"+":"")+pred.gapStr+" vs objectif"),
-          el("div",{class:"muted",style:{fontSize:"11px"}},"Confiance "+pred.confidence+"% · tap ↓")
+          el("div",{class:"muted",style:{fontSize:"11px"}},"Confiance "+pred.confidence+"% ⓘ")
         )
       );
       // Panneau détail sources (caché par défaut)
@@ -1257,15 +1258,38 @@ function renderDashboard() {
         )
       );
     } else {
+    // Prochaine séance (lendemain)
+    const tomorrowStr2 = new Date(new Date().getTime()+86400000).toISOString().slice(0,10);
+    const nextSess = ALL_SESSIONS.find(s=>s.date===tomorrowStr2);
+
     todayEl=el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"Aujourd\'hui"),
       ...todaySessions.filter(s=>s.type!=="REPOS").map(s=>{
         const st=STYPES[s.type]||STYPES.REPOS;
         const isRest=s.type==="REPOS";
-        const card=el("div",{style:{background:"#1a1d27",border:`1px solid ${st.color}55`,borderLeft:`3px solid ${st.color}`,borderRadius:"10px",padding:"14px",marginBottom:"8px"}},
-          el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}},
-            badge(s.type),
-            el("div",{style:{color:"#f1f5f9",fontSize:"15px",fontWeight:"700"}},s.session)
+        const uid2=s.uid;
+        const status2=statuses[uid2];
+        const isDone = status2==="✅"||status2==="⚠️"||status2==="❌";
+        const stravaRun2 = stravaActivities.find(r=>r.start_date_local?.slice(0,10)===s.date);
+        const effortLaps2 = stravaRun2 ? getEffortLaps(stravaRun2) : [];
+        const statusColor = status2==="✅"?"#22c55e":status2==="⚠️"?"#eab308":status2==="❌"?"#ef4444":st.color;
+
+        const card=el("div",{style:{
+          background:"#1a1d27",
+          border:`1px solid ${isDone?statusColor+"55":st.color+"55"}`,
+          borderLeft:`3px solid ${isDone?statusColor:st.color}`,
+          borderRadius:"10px",padding:"14px",marginBottom:"8px"
+        }},
+          el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}},
+            el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+              badge(s.type),
+              el("div",{style:{color:"#f1f5f9",fontSize:"15px",fontWeight:"700"}},s.session)
+            ),
+            isDone?el("span",{style:{
+              background:statusColor+"22",color:statusColor,
+              border:`1px solid ${statusColor}44`,
+              borderRadius:"6px",padding:"3px 8px",fontSize:"12px",fontWeight:"700"
+            }},status2===" ✅"?"✅ Validée":status2==="⚠️"?"⚠️ Adaptée":"❌ Ratée"):null
           ),
           !isRest && (s.warmup||s.cooldown) ? el("div",{style:{background:"#232738",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
             s.warmup ? el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:s.cooldown?"6px":"0"}},
@@ -1300,7 +1324,57 @@ function renderDashboard() {
               el("div",{class:"muted",style:{fontSize:"11px"}},FC_ZONES[s.type].label+" · FC max "+FC_MAX)
             )
           ) : null,
-          !isRest ? el("button",{style:{width:"100%",marginTop:"8px",background:"#f9731611",border:"1px solid #f9731633",borderRadius:"8px",padding:"8px",color:"#f97316",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
+          // Données Strava enrichies si séance terminée
+          isDone && stravaRun2 ? el("div",{style:{background:"#fc4c0211",border:"1px solid #fc4c0233",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
+            el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
+              el("span",{class:"muted",style:{fontSize:"11px"}},(stravaRun2.start_date_local||"").slice(11,16)+" · départ"),
+              el("a",{href:"https://www.strava.com/activities/"+stravaRun2.id_str,target:"_blank",style:{color:"#fc4c02",fontSize:"11px",fontWeight:"700",textDecoration:"none"}},"Voir sur Strava 🔗")
+            ),
+            el("div",{style:{display:"flex",gap:"14px",flexWrap:"wrap",marginBottom:effortLaps2.length>0?"8px":"0"}},
+              el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},(stravaRun2.distance/1000).toFixed(2)+"km"),el("div",{class:"muted",style:{fontSize:"11px"}},"distance")),
+              el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},fmtTime(stravaRun2.moving_time)),el("div",{class:"muted",style:{fontSize:"11px"}},"durée")),
+              el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},fmtPace(stravaRun2.average_speed)+"/km"),el("div",{class:"muted",style:{fontSize:"11px"}},"allure moy.")),
+              stravaRun2.average_heartrate?el("div",{},el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},Math.round(stravaRun2.average_heartrate)+" bpm"),el("div",{class:"muted",style:{fontSize:"11px"}},"FC moy.")):null,
+              stravaRun2.max_heartrate?el("div",{},el("div",{style:{color:"#ef4444",fontSize:"13px",fontWeight:"700"}},Math.round(stravaRun2.max_heartrate)+" bpm"),el("div",{class:"muted",style:{fontSize:"11px"}},"FC max")):null
+            ),
+            effortLaps2.length>0?el("div",{style:{borderTop:"1px solid #fc4c0222",paddingTop:"8px"}},
+              el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
+                el("div",{class:"muted",style:{fontSize:"10px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Répétitions ("+effortLaps2.length+") · cible "+(SESSION_TARGETS[s.type]?.effort||"—")),
+                (()=>{
+                  const tgt=SESSION_TARGETS[s.type];
+                  if(!tgt) return null;
+                  const nb=effortLaps2.filter(l=>(1000/l.average_speed)<=tgt.okPace).length;
+                  return el("span",{style:{color:nb===effortLaps2.length?"#22c55e":nb>0?"#eab308":"#ef4444",fontSize:"11px",fontWeight:"700"}},nb+"/"+effortLaps2.length+" dans la cible");
+                })()
+              ),
+              ...effortLaps2.map((lap,i)=>{
+                const tgt=SESSION_TARGETS[s.type];
+                const pace=1000/lap.average_speed;
+                let bc="#94a3b8",em="";
+                if(tgt){if(pace<=tgt.okPace){bc="#22c55e";em="🟢";}else if(pace<=tgt.warnPace){bc="#eab308";em="🟡";}else{bc="#ef4444";em="🔴";}}
+                const maxP=tgt?tgt.warnPace+30:400, minP=tgt?tgt.targetMin-20:240;
+                const bw=Math.max(0,Math.min(100,(1-(pace-minP)/(maxP-minP))*100));
+                return el("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 64px 56px 20px",gap:"4px",alignItems:"center",marginBottom:"5px"}},
+                  el("span",{style:{color:"#64748b",fontSize:"11px"}},"R"+(i+1)),
+                  el("div",{style:{height:"4px",background:"#232738",borderRadius:"2px"}},el("div",{style:{width:bw+"%",height:"100%",background:bc,borderRadius:"2px"}})),
+                  el("span",{style:{color:"#f1f5f9",fontSize:"12px",fontWeight:"500",textAlign:"right"}},fmtPace(lap.average_speed)+"/km"),
+                  lap.average_heartrate?el("span",{class:"muted",style:{fontSize:"11px",textAlign:"right"}},Math.round(lap.average_heartrate)+" bpm"):el("span",{},""),
+                  el("span",{style:{fontSize:"12px",textAlign:"center"}},em)
+                );
+              })
+            ):null
+          ):null,
+          // Prochaine séance
+          nextSess?el("div",{style:{borderTop:"1px solid #2e3347",paddingTop:"10px",marginTop:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"},
+            onClick:()=>{ selectedWeek=nextSess.week; setView("weekDetail"); }
+          },
+            el("div",{},
+              el("div",{class:"muted",style:{fontSize:"10px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"3px"}},"Prochaine séance · "+new Date(nextSess.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})),
+              el("div",{style:{color:"#94a3b8",fontSize:"12px"}},(STYPES[nextSess.type]?.short||nextSess.type)+" · "+nextSess.session)
+            ),
+            el("span",{style:{color:"#64748b",fontSize:"18px"}},"›")
+          ):null,
+          !isRest && !isDone ? el("button",{style:{width:"100%",marginTop:"8px",background:"#f9731611",border:"1px solid #f9731633",borderRadius:"8px",padding:"8px",color:"#f97316",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
             onClick:()=>{ selectedWeek=s.week; setView("weekDetail"); }
           },"Voir la semaine →") : null
         );
@@ -1599,7 +1673,7 @@ function renderWeekDetail(weekNum) {
 // STATS
 // ══════════════════════════════════════════════════════════════════════════════
 function renderStats() {
-  const pred = predict10K();
+  const pred = currentPred||predict10K();
 
   // ── Graphique évolution ───────────────────────────────────────────────
   let graphEl = null;
@@ -1850,7 +1924,14 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.8.10", title:"Répétitions & robustesse", current:true, notes:[
+      { ver:"v1.8.11", title:"Séance terminée & Gist", current:true, notes:[
+        "✅ Carte Aujourd\'hui enrichie quand séance terminée",
+        "📊 Données Strava + répétitions sur le dashboard",
+        "📅 Prochaine séance affichée en bas de carte",
+        "ⓘ Icône à la place de \'tap ↓\'",
+        "🔧 Fonctions Gist réinjectées (sauvegarde/restauration)",
+      ]},
+      { ver:"v1.8.10", title:"Répétitions & robustesse", current:false, notes:[
         "🔁 Affichage détaillé des répétitions (barre + allure + FC + 🟢🟡🔴)",
         "📊 Résumé X/Y répétitions dans la cible",
         "🔄 Graphique/dashboard synchronisés",
@@ -1947,6 +2028,111 @@ function renderSettings() {
     cloudSection, stravaSection, versionSection
   );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GITHUB GIST
+// ══════════════════════════════════════════════════════════════════════════════
+function compressActivities(activities) {
+  return activities.filter(a => a.type === "Run").map(a => {
+    const effortLaps = (() => {
+      if (!a.laps?.length) return undefined;
+      const speeds = a.laps.map(l => l.average_speed).sort((x,y) => x-y);
+      const p70 = speeds[Math.floor(speeds.length * 0.70)];
+      return a.laps.filter(l => l.average_speed >= p70 && l.average_speed > 0 && (1000/l.average_speed) < 360)
+        .map(l => ({ average_speed: l.average_speed, distance: l.distance, average_heartrate: l.average_heartrate }));
+    })();
+    return {
+      id_str: a.id_str,
+      type: a.type,
+      start_date_local: a.start_date_local,
+      distance: a.distance,
+      moving_time: a.moving_time,
+      average_speed: a.average_speed,
+      average_heartrate: a.average_heartrate,
+      max_heartrate: a.max_heartrate,
+      start_latlng: a.start_latlng,
+      laps: effortLaps,
+    };
+  });
+}
+
+function getBackupData() {
+  return JSON.stringify({
+    statuses,
+    notesList,
+    sessionNotes,
+    stravaActivities: compressActivities(stravaActivities),
+    predHistory,
+    version: 2,
+    savedAt: new Date().toISOString()
+  });
+}
+
+let gistSaveTimer = null;
+
+async function gistSave(silent=false) {
+  if (!githubToken) return;
+  try {
+    const body = {description:"Plan 10K Laurent — backup", public:false,
+      files:{"plan10k_backup.json":{content:getBackupData()}}};
+    let url="https://api.github.com/gists", method="POST";
+    if (gistId) { url+="/"+gistId; method="PATCH"; }
+    const resp = await fetch(url,{method,headers:{"Authorization":"token "+githubToken,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if (!resp.ok) throw new Error(resp.status);
+    const data = await resp.json();
+    gistId = data.id; save("lk_gist_id",gistId);
+    if (!silent) { gistMsg="☁️ Sauvegardé "+new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}); render(); setTimeout(()=>{gistMsg="";render();},3000); }
+  } catch(e) {
+    if (!silent) { gistMsg="❌ Erreur sync"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
+  }
+}
+
+function scheduleSave() {
+  if (!githubToken) return;
+  if (gistSaveTimer) clearTimeout(gistSaveTimer);
+  gistSaveTimer = setTimeout(()=>gistSave(true),2000);
+}
+
+async function gistLoad() {
+  if (!githubToken||!gistId) return;
+  try {
+    const resp = await fetch("https://api.github.com/gists/"+gistId,{headers:{"Authorization":"token "+githubToken}});
+    if (!resp.ok) throw new Error();
+    const data = await resp.json();
+    const raw = data.files["plan10k_backup.json"]?.content;
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Object.keys(statuses).length===0&&notesList.length===0) {
+      statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
+      if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
+      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
+      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
+      save("lk_statuses",statuses); save("lk_notes",notesList);
+      gistMsg="☁️ Données restaurées"; render(); setTimeout(()=>{gistMsg="";render();},4000);
+    }
+  } catch(e) {}
+}
+
+async function gistForceRestore() {
+  if (!githubToken||!gistId) { gistMsg="❌ Pas de sauvegarde"; render(); setTimeout(()=>{gistMsg="";render();},3000); return; }
+  try {
+    const resp = await fetch("https://api.github.com/gists/"+gistId,{headers:{"Authorization":"token "+githubToken}});
+    if (!resp.ok) throw new Error();
+    const data = await resp.json();
+    const raw = data.files["plan10k_backup.json"]?.content;
+    if (!raw) throw new Error();
+    const parsed = JSON.parse(raw);
+    statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
+    if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
+    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
+    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
+    save("lk_statuses",statuses); save("lk_notes",notesList);
+    gistMsg="✅ Restauré · "+(parsed.savedAt?new Date(parsed.savedAt).toLocaleDateString("fr-FR"):"");
+    render(); setTimeout(()=>{gistMsg="";render();},4000);
+  } catch(e) { gistMsg="❌ Erreur restauration"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
+}
+
+if (githubToken&&gistId) { gistLoad(); }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STRAVA
@@ -2201,6 +2387,9 @@ function render() {
     ),
     el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"13px",fontWeight:"700"}},"J–"+countdown())
   );
+
+  // Calculer predict10K une seule fois — synchronise dashboard et graphique
+  currentPred = predict10K();
 
   let content;
   if (view==="dashboard") content=renderDashboard();
