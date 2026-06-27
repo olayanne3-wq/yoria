@@ -723,12 +723,31 @@ function weeklyReport(weekNum) {
   const realMin = Math.round(weekRuns.reduce((s,r)=>s+r.moving_time,0)/60);
   const efDates = week.sessions.filter(s=>s.type==="EF"||s.type==="LONGUE").map(s=>s.date);
   const efRuns = stravaActivities.filter(a=>a.type==="Run"&&efDates.includes(a.start_date_local?.slice(0,10)));
-  let avgEfPace = null;
+  let avgEfPace = null, avgEfHr = null;
   if (efRuns.length>0) {
     const avgSpeed = efRuns.reduce((s,r)=>s+r.average_speed,0)/efRuns.length;
     if (avgSpeed>0) avgEfPace = 1000/avgSpeed;
+    const hrRuns = efRuns.filter(r=>r.average_heartrate>0);
+    if (hrRuns.length>0) avgEfHr = Math.round(hrRuns.reduce((s,r)=>s+r.average_heartrate,0)/hrRuns.length);
   }
-  return { done, adapted, missed, total:sessions.length, plannedMin:Math.round(plannedMin), realMin, avgEfPace };
+
+  // Tendance vs semaine précédente
+  let prevEfPace = null, prevEfHr = null;
+  if (weekNum > 1) {
+    const prevWeek = PLAN.find(w=>w.week===weekNum-1);
+    if (prevWeek) {
+      const prevEfDates = prevWeek.sessions.filter(s=>s.type==="EF"||s.type==="LONGUE").map(s=>s.date);
+      const prevEfRuns = stravaActivities.filter(a=>a.type==="Run"&&prevEfDates.includes(a.start_date_local?.slice(0,10)));
+      if (prevEfRuns.length>0) {
+        const ps = prevEfRuns.reduce((s,r)=>s+r.average_speed,0)/prevEfRuns.length;
+        if (ps>0) prevEfPace = 1000/ps;
+        const phr = prevEfRuns.filter(r=>r.average_heartrate>0);
+        if (phr.length>0) prevEfHr = Math.round(phr.reduce((s,r)=>s+r.average_heartrate,0)/phr.length);
+      }
+    }
+  }
+
+  return { done, adapted, missed, total:sessions.length, plannedMin:Math.round(plannedMin), realMin, avgEfPace, avgEfHr, prevEfPace, prevEfHr };
 }
 
 // ── Alerte de fatigue ─────────────────────────────────────────────────────
@@ -986,13 +1005,22 @@ function predict10K() {
   const hasSpec  = specData !== null;
   const hasSeuil = seuilData !== null;
 
+  // Compter le total de séances intensives disponibles
+  const nVmaSessions = vmaData ? vmaData.runs.length : 0;
+  const nSpecSessions = specData ? specData.runs.length : 0;
+  const nIntensive = nVmaSessions + nSpecSessions;
+
   let lavendouWeight;
-  if (hasVma && hasSpec) {
-    lavendouWeight = 0.10;
+  if (hasVma && hasSpec && nIntensive >= 5) {
+    lavendouWeight = 0.10; // Beaucoup de données → peu de Lavandou
+  } else if (hasVma && hasSpec && nIntensive >= 3) {
+    lavendouWeight = 0.20; // Données suffisantes
+  } else if (hasVma && hasSpec) {
+    lavendouWeight = 0.30; // VMA + SPEC mais peu de séances
   } else if (hasVma || hasSpec) {
-    lavendouWeight = 0.30;
+    lavendouWeight = 0.50; // Une seule source intensive
   } else if (hasSeuil) {
-    lavendouWeight = 0.50;
+    lavendouWeight = 0.70;
   } else {
     lavendouWeight = 1.00;
   }
@@ -1021,8 +1049,14 @@ function predict10K() {
     save("lk_pred_history", predHistory);
   }
 
+  // Fourchette selon la confiance
+  const margin = Math.round((1 - confidence/100) * 90); // ±0-90 sec selon confiance
+  const estimateLow = Math.round(estimate) - margin;
+  const estimateHigh = Math.round(estimate) + margin;
+
   return {
     time: Math.round(estimate), timeStr: fmtTime(Math.round(estimate)),
+    timeLow: fmtTime(estimateLow), timeHigh: fmtTime(estimateHigh),
     target: fmtTime(target), gap: Math.round(gap),
     gapStr: (gap>0?"+":"")+fmtTime(Math.abs(Math.round(gap))),
     onTrack: gap<=30, confidence, method, details,
@@ -1055,16 +1089,40 @@ function renderDashboard() {
       )
     ),
     el("div",{style:{height:"1px",background:"#2e3347",marginBottom:"16px"}}),
-    el("div",{style:{display:"flex",alignItems:"baseline",gap:"12px",marginBottom:"12px"}},
-      el("div",{},
-        el("div",{class:"label"},"Estimation actuelle"),
-        el("div",{style:{color:"#f1f5f9",fontSize:"32px",fontWeight:"800",letterSpacing:"-1px",lineHeight:"1"}},pred.timeStr)
-      ),
-      el("div",{},
-        el("div",{style:{color:pred.gap<=0?"#22c55e":pred.gap<=30?"#eab308":"#ef4444",fontSize:"13px",fontWeight:"700"}},(pred.gap>0?"+":"")+pred.gapStr+" vs objectif"),
-        el("div",{class:"muted",style:{fontSize:"11px"}},"Confiance "+pred.confidence+"%")
-      )
-    ),
+    (()=>{
+      const estimEl = el("div",{style:{display:"flex",alignItems:"baseline",gap:"12px",marginBottom:"12px",cursor:"pointer"}},
+        el("div",{},
+          el("div",{class:"label"},"Estimation actuelle"),
+          el("div",{style:{color:"#f1f5f9",fontSize:"32px",fontWeight:"800",letterSpacing:"-1px",lineHeight:"1"}},pred.timeStr),
+          el("div",{class:"muted",style:{fontSize:"11px",marginTop:"2px"}},pred.timeLow+" – "+pred.timeHigh)
+        ),
+        el("div",{},
+          el("div",{style:{color:pred.gap<=0?"#22c55e":pred.gap<=30?"#eab308":"#ef4444",fontSize:"13px",fontWeight:"700"}},(pred.gap>0?"+":"")+pred.gapStr+" vs objectif"),
+          el("div",{class:"muted",style:{fontSize:"11px"}},"Confiance "+pred.confidence+"% · tap ↓")
+        )
+      );
+      // Panneau détail sources (caché par défaut)
+      let detailOpen = false;
+      const detailEl = el("div",{style:{display:"none",background:"#232738",borderRadius:"8px",padding:"10px 12px",marginBottom:"8px"}},
+        el("div",{class:"muted",style:{fontSize:"10px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"8px"}},"Sources du prédicteur"),
+        ...pred.details.map(d => el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
+          el("span",{class:"muted",style:{fontSize:"11px"}},d.label),
+          el("span",{style:{color:"#f1f5f9",fontSize:"11px",fontWeight:"600"}},d.value)
+        )),
+        el("div",{style:{borderTop:"1px solid #2e3347",marginTop:"6px",paddingTop:"6px",display:"flex",justifyContent:"space-between"}},
+          el("span",{class:"muted",style:{fontSize:"11px"}},"Méthode"),
+          el("span",{style:{color:"#f1f5f9",fontSize:"11px"}},pred.method)
+        )
+      );
+      estimEl.addEventListener("click", () => {
+        detailOpen = !detailOpen;
+        detailEl.style.display = detailOpen ? "block" : "none";
+      });
+      const wrap = document.createElement("div");
+      wrap.appendChild(estimEl);
+      wrap.appendChild(detailEl);
+      return wrap;
+    })(),
     el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
       el("span",{class:"muted",style:{fontSize:"10px"}},"50\'21\" (départ)"),
       el("span",{class:"muted",style:{fontSize:"10px"}},"48\'30\" (objectif)")
@@ -1115,19 +1173,16 @@ function renderDashboard() {
 
   const isHot = weatherTemp !== null && weatherTemp > 28;
   const weatherEl = weatherTemp !== null ? el("div",{style:{
+    display:"flex", alignItems:"center", gap:"6px",
+    padding:"6px 10px",
     background: isHot ? "#f9731611" : "#60a5fa11",
-    border: `1px solid ${isHot ? "#f9731633" : "#60a5fa33"}`,
-    borderRadius:"10px", padding:"10px 14px", marginBottom:"12px",
-    display:"flex", alignItems:"center", justifyContent:"space-between"
+    borderRadius:"8px", marginBottom:"12px"
   }},
-    el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-      el("span",{style:{fontSize:"20px"}}, weatherDesc||"🌡️"),
-      el("div",{},
-        el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"700"}}, weatherTemp+"°C · Toulon"),
-        el("div",{class:"muted",style:{fontSize:"11px"}}, isHot ? "Chaleur — allure EF : 6:40/km" : "Allure EF normale : 6:20/km")
-      )
-    ),
-    isHot ? el("span",{style:{background:"#f9731622",color:"#f97316",fontSize:"11px",fontWeight:"700",padding:"3px 8px",borderRadius:"20px"}},"🔥 Chaud") : null
+    el("span",{style:{fontSize:"14px"}}, weatherDesc||"🌡️"),
+    el("span",{style:{color:isHot?"#f97316":"#60a5fa",fontSize:"12px",fontWeight:"700"}}, weatherTemp+"°C · Toulon"),
+    el("span",{class:"muted",style:{fontSize:"12px"}},"·"),
+    isHot ? el("span",{style:{fontSize:"12px"}},"🔥") : null,
+    el("span",{style:{color:isHot?"#f97316":"#94a3b8",fontSize:"12px",fontWeight:"600"}}, "Allure EF : "+(isHot?"6:40":"6:20")+"/km")
   ) : null;
 
   const coachEl = coachMsg ? el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
@@ -1240,8 +1295,24 @@ function renderDashboard() {
             el("div",{class:"muted",style:{fontSize:"11px"}},"min réelles / prévues")
           ):null,
           report.avgEfPace?el("div",{},
-            el("div",{style:{color:"#60a5fa",fontSize:"13px",fontWeight:"700"}},fmtPace(1000/report.avgEfPace)+"/km"),
-            el("div",{class:"muted",style:{fontSize:"11px"}},"allure moy. EF")
+            el("div",{style:{display:"flex",alignItems:"center",gap:"4px"}},
+              el("div",{style:{color:"#60a5fa",fontSize:"13px",fontWeight:"700"}},fmtPace(1000/report.avgEfPace)+"/km"),
+              report.prevEfPace ? el("span",{style:{
+                fontSize:"11px",
+                color: report.avgEfPace < report.prevEfPace ? "#22c55e" : report.avgEfPace > report.prevEfPace+10 ? "#ef4444" : "#94a3b8"
+              }}, report.avgEfPace < report.prevEfPace ? "📈" : report.avgEfPace > report.prevEfPace+10 ? "📉" : "➡️") : null
+            ),
+            el("div",{class:"muted",style:{fontSize:"11px"}},"allure moy. EF"+(report.prevEfPace?(" · "+(report.avgEfPace<report.prevEfPace?"-":"+")+(Math.abs(Math.round(report.avgEfPace-report.prevEfPace)))+"\" vs S"+(cw2-1)):""))
+          ):null,
+          report.avgEfHr?el("div",{},
+            el("div",{style:{display:"flex",alignItems:"center",gap:"4px"}},
+              el("div",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},report.avgEfHr+" bpm"),
+              report.prevEfHr ? el("span",{style:{
+                fontSize:"11px",
+                color: report.avgEfHr < report.prevEfHr ? "#22c55e" : report.avgEfHr > report.prevEfHr+3 ? "#ef4444" : "#94a3b8"
+              }}, report.avgEfHr < report.prevEfHr ? "📈" : report.avgEfHr > report.prevEfHr+3 ? "📉" : "➡️") : null
+            ),
+            el("div",{class:"muted",style:{fontSize:"11px"}},"FC moy. EF"+(report.prevEfHr?(" · "+(report.avgEfHr<report.prevEfHr?"-":"+")+(Math.abs(report.avgEfHr-report.prevEfHr))+" bpm vs S"+(cw2-1)):""))
           ):null,
           (()=>{
             const efSessions = ALL_SESSIONS.filter(s=>(s.type==="EF"||s.type==="LONGUE")&&s.week===cw2&&historicalWeatherCache[s.date]!=null);
@@ -1696,131 +1767,89 @@ function renderSettings() {
       :el("a",{href:"/api/strava/auth",style:{display:"block",background:"#fc4c0222",border:"1px solid #fc4c0255",borderRadius:"10px",padding:"12px 16px",color:"#fc4c02",fontWeight:"700",fontSize:"14px",textAlign:"center",textDecoration:"none"}},"🔗 Connecter Strava")
   );
 
-  const versionSection=el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"Version & Changelog"),
-    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
-      el("div",{style:{padding:"10px",background:"#f9731622",border:"1px solid #f9731633",borderRadius:"8px",marginBottom:"8px"}},
+  let changelogExpanded = false;
+  const versionSection = (function buildVersionSection() {
+    const VERSIONS = [
+      { ver:"v1.8.9", title:"Prédicteur honnête & UX", current:true, notes:[
+        "🎯 Fourchette d\'estimation (ex. 48\'10\"–49\'20\")",
+        "🔍 Détail des sources en tap sur l\'estimation",
+        "📊 Pondération Lavandou conservative (< 5 séances)",
+        "📈 Tendance allure EF + FC moy. dans le bilan semaine",
+        "🌤️ Météo minimaliste sous le header",
+        "📋 Changelog condensé",
+      ]},
+      { ver:"v1.8.8", title:"Validation & prédicteur affinés", current:false, notes:[
+        "📋 Source de vérité unique SESSION_TARGETS",
+        "💬 Raison du statut ❌ ou ⚠️ dans le détail de séance",
+        "📊 Exclusion des séances ❌ du prédicteur 10K",
+        "🎯 Seuil ✅ SPEC resserré à ≤ 4:58/km",
+      ]},
+      { ver:"v1.8.7", title:"Coach, séance clé & détails", current:false, notes:[
+        "🤖 Message Coach quotidien via Claude API",
+        "🎯 Prochaine séance clé sur le dashboard",
+        "🔗 Lien direct vers l\'activité Strava",
+        "🌅 Heure de départ + FC max dans le détail",
+      ]},
+      { ver:"v1.8.6", title:"Strava auto & graphique", current:false, notes:[
+        "Synchro Strava automatique au chargement",
+        "Labels semaines sur le graphique",
+        "Distance et durée réelles vs prévues",
+      ]},
+      { ver:"v1.8.5", title:"Dashboard épuré & onglet Stats", current:false, notes:[
+        "Fusion objectif + estimation en une carte",
+        "Barre de progression rouge→vert",
+        "Nouvel onglet Stats",
+      ]},
+      { ver:"v1.8", title:"FC, météo, notes & projections", current:false, notes:[
+        "FC cible par séance",
+        "Température historique pendant la séance",
+        "Projections Riegel",
+      ]},
+      { ver:"v1.7", title:"Bilan & Fatigue", current:false, notes:["Bilan hebdomadaire automatique","Alerte de fatigue"]},
+      { ver:"v1.6", title:"Météo, graphique & séance du jour", current:false, notes:["Météo temps réel Toulon","Graphique évolution estimation"]},
+      { ver:"v1.5", title:"Auto-validation & UX", current:false, notes:["Auto-validation via laps Strava"]},
+      { ver:"v1.4", title:"Lisibilité & cohérence", current:false, notes:["Amélioration des couleurs et tailles"]},
+      { ver:"v1.3", title:"Plan révisé", current:false, notes:["Séances en temps, EF réduites"]},
+      { ver:"v1.2", title:"Prédicteur v2", current:false, notes:["Riegel sur laps SPEC/VMA"]},
+      { ver:"v1.1", title:"Strava & Cloud", current:false, notes:["Strava OAuth, sync activités, GitHub Gist"]},
+      { ver:"v1.0", title:"Lancement", current:false, notes:["Plan 11 semaines, suivi des séances"]},
+    ];
+
+    function buildBloc(v, isLast) {
+      return el("div",{style:{padding:"10px",background:v.current?"#f9731622":"transparent",border:v.current?"1px solid #f9731633":"none",borderRadius:"8px",marginBottom:isLast?"0":"8px"}},
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},"🟠 v1.8.8"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Validation & prédicteur affinés"),
-          el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
+          el("span",{style:{color:v.current?"#f97316":"#94a3b8",fontSize:"13px",fontWeight:"700"}},v.current?"🟠 "+v.ver:v.ver),
+          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},v.title),
+          v.current?el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle"):null
         ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 📋 Source de vérité unique SESSION_TARGETS"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 💬 Raison du statut ❌ ou ⚠️ dans le détail de séance"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 📊 Exclusion des séances ❌ du prédicteur 10K"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🎯 Seuil ✅ SPEC resserré à ≤ 4:58/km"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 📈 Tableau allures synchronisé avec les seuils de validation")
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8.7"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Coach, séance clé & détails"),el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"10px",fontWeight:"700",padding:"2px 6px",borderRadius:"10px"}},"actuelle")
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🤖 Message Coach quotidien via Claude API"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🎯 Prochaine séance clé sur le dashboard (si ≤ 7 jours)"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 😴 Carte repos dédiée le jour de repos"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🔔 Badge rouge si séance du jour non validée après 18h"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🔗 Lien direct vers l\'activité Strava"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🌅 Heure de départ + FC max dans le détail de séance"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• 🌡️ Température moyenne des séances dans le bilan"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8.6"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava auto & graphique"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava automatique au chargement (si > 1h)"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Indicateur Strava discret sur le dashboard"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Labels semaines sur le graphique (S1, S3, S5...)"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Tooltip au tap sur les points du graphique"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Distance et durée réelles vs prévues dans la vue Semaines"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Filtre strict Run au stockage Strava"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8.5"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Dashboard épuré & onglet Stats"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Fusion objectif + estimation en une carte"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Barre de progression rouge→vert"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Rappel allures cibles dans la séance du jour"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Nouvel onglet Stats : graphique, projections, allures, infos"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Dashboard épuré"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.8"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"FC, météo, notes & projections"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• FC cible par séance + comparaison FC réelle Strava"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Température historique pendant la séance"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Notes par séance (suppression onglet Notes)"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Projections Riegel 5K / Semi / Marathon"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Stats globales compactes + lisibilité améliorée"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.7"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Bilan & Fatigue"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Bilan hebdomadaire automatique"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Alerte de fatigue"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.6"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Météo, graphique & séance du jour"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Météo temps réel Toulon"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Graphique évolution estimation 10K"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séance du jour détaillée"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.5"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Auto-validation & UX"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Auto-validation via laps Strava"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Synchro Strava dans Paramètres"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.4"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lisibilité & cohérence"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Amélioration des couleurs et tailles de texte"),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• ODS synchronisé avec l\'appli"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.3"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Plan révisé"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Séances en temps, EF réduites, longues en fourchettes"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.2"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Prédicteur v2"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Riegel sur laps SPEC/VMA, fetch Strava intervalles"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"8px"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.1"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Strava & Cloud"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Strava OAuth, sync activités, GitHub Gist"),
-      ),
-      el("div",{style:{padding:"10px",background:"transparent",border:"none",borderRadius:"8px",marginBottom:"0"}},
-        el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-          el("span",{style:{color:"#94a3b8",fontSize:"13px",fontWeight:"700"}},"v1.0"),
-          el("span",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600"}},"Lancement"),null
-        ),
-        el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• Plan 11 semaines, suivi des séances, carnet de bord"),
+        ...v.notes.map(n=>el("div",{style:{color:"#94a3b8",fontSize:"12px",marginTop:"3px"}},"• "+n))
+      );
+    }
+
+    const visibleBlocs = VERSIONS.slice(0,3).map((v,i)=>buildBloc(v,i===2&&!changelogExpanded));
+    const hiddenBlocs = VERSIONS.slice(3).map((v,i)=>buildBloc(v,i===VERSIONS.length-4));
+
+    const hiddenContainer = el("div",{style:{display:changelogExpanded?"block":"none"}}, ...hiddenBlocs);
+
+    const toggleBtn = el("button",{style:{
+      width:"100%",background:"none",border:"1px solid #2e3347",borderRadius:"8px",
+      padding:"8px",color:"#94a3b8",fontSize:"12px",cursor:"pointer",marginTop:"8px"
+    }}, changelogExpanded ? "▲ Réduire" : "▼ Voir tout l\'historique ("+VERSIONS.length+" versions)");
+    toggleBtn.addEventListener("click", () => {
+      changelogExpanded = !changelogExpanded;
+      render();
+    });
+
+    return el("div",{style:{marginBottom:"24px"}},
+      el("div",{class:"label"},"Version & Changelog"),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
+        ...visibleBlocs,
+        hiddenContainer,
+        toggleBtn
       )
-    )
-  );
+    );
+  })();
+
 
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px",marginBottom:"20px"}}),
