@@ -1,21 +1,24 @@
 {
+  "id": "/",
   "name": "Plan 10K — Laurent",
   "short_name": "Plan 10K",
-  "description": "Suivi du plan d'entraînement 10K Sub-48'30\"",
+  "description": "Suivi du plan d'entraînement 10K",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
