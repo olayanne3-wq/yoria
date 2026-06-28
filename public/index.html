@@ -827,19 +827,31 @@ async function fetchCoachMsg() {
   const isLastTwoWeeks = cd <= 14;
 
   const predNow = currentPred || predict10K();
-  const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l'objectif" : '+'+fmtTime(predNow.gap)+" de l'objectif";
-  const todaySessionStatus = statuses[ALL_SESSIONS.find(s=>s.date===t&&s.type!=="REPOS")?.uid];
+  const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l\'objectif" : '+'+fmtTime(predNow.gap)+" de l\'objectif";
+  const todaySessObj = ALL_SESSIONS.find(s=>s.date===t&&s.type!=="REPOS");
+  const todaySessionStatus = statuses[todaySessObj?.uid];
   const sessionDone = todaySessionStatus==="✅"||todaySessionStatus==="⚠️"||todaySessionStatus==="❌";
   const tomorrowKeyStr = new Date(new Date().getTime()+86400000).toISOString().slice(0,10);
   const tomorrowKeySess = ALL_SESSIONS.find(s=>s.date===tomorrowKeyStr&&["VMA","SPEC","SEUIL","TEST"].includes(s.type));
-  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le 6 septembre 2026 à ${RACE_LOCATION} (objectif 48'30").
+  const isEveOfKeySession = !!tomorrowKeySess;
+
+  // Données Strava de la séance du jour si terminée
+  const todayStravaRun = sessionDone ? stravaActivities.find(r=>r.start_date_local?.slice(0,10)===t) : null;
+  const todayEffortLaps = todayStravaRun ? getEffortLaps(todayStravaRun) : [];
+  const todayAvgPace = todayEffortLaps.length > 0
+    ? fmtPace(todayEffortLaps.reduce((s,l)=>s+l.average_speed,0)/todayEffortLaps.length)+"/km"
+    : todayStravaRun ? fmtPace(todayStravaRun.average_speed)+"/km" : null;
+  const todayInTarget = todayEffortLaps.length > 0 && SESSION_TARGETS[sessType]
+    ? todayEffortLaps.filter(l=>(1000/l.average_speed)<=SESSION_TARGETS[sessType].okPace).length+"/"+todayEffortLaps.length+" reps dans la cible"
+    : null;
+  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le 6 septembre 2026 à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
-Aujourd'hui : ${sessType} — ${sessDesc}.${sessionDone ? ' Séance '+todaySessionStatus+'.' : ''}${tomorrowKeySess ? ' Demain : '+tomorrowKeySess.type+' — '+tomorrowKeySess.session+'.' : ''}
+${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure effort : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
+${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : tomorrowKeySess ? `Demain : ${tomorrowKeySess.type}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
 ${isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
 ${vmaInfo}
-Génère UN message de coaching court et personnalisé (2-3 phrases max, ton naturel et motivant).
-Parle de l'estimation et/ou de la séance du jour ou de demain si pertinent.
+${sessionDone ? 'Fais une courte analyse de la séance terminée (qualité, points positifs, axes d\'amélioration). 2-3 phrases max.' : isEveOfKeySession ? 'Donne un conseil spécifique pour bien préparer la séance clé de demain (récupération, sommeil, hydratation). 2-3 phrases max.' : 'Génère UN message de coaching court et motivant. 2-3 phrases max.'}
 ${isLastTwoWeeks ? "Mentionne le compte à rebours." : "Ne mentionne pas le nombre de jours restants."}
 Réponds uniquement avec le message, sans guillemets.`;
 
@@ -1233,8 +1245,11 @@ function renderDashboard() {
     el("span",{style:{color:isHot?"#f97316":"#94a3b8",fontSize:"12px",fontWeight:"600"}}, "Allure EF : "+(isHot?"6:40":"6:20")+"/km")
   ) : null;
 
-  const coachEl = coachMsg ? el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
-    el("div",{class:"muted",style:{fontSize:"10px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"6px"}},"🤖 Coach"),
+  const todayStatus4Coach = statuses[ALL_SESSIONS.find(s=>s.date===today()&&s.type!=="REPOS")?.uid];
+  const coachBorderColor = todayStatus4Coach==="✅"?"#22c55e33":todayStatus4Coach==="⚠️"?"#eab30833":todayStatus4Coach==="❌"?"#ef444433":"#2e3347";
+  const coachLabel = todayStatus4Coach&&["✅","⚠️","❌"].includes(todayStatus4Coach) ? "🤖 Coach · Analyse" : "🤖 Coach";
+  const coachEl = coachMsg ? el("div",{style:{background:"#1a1d27",border:"1px solid "+coachBorderColor,borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
+    el("div",{class:"muted",style:{fontSize:"10px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"6px"}},coachLabel),
     el("div",{style:{color:"#f1f5f9",fontSize:"13px",fontStyle:"italic",lineHeight:"1.5"}},coachMsg)
   ) : null;
 
@@ -1316,7 +1331,7 @@ function renderDashboard() {
               background:statusColor+"22",color:statusColor,
               border:`1px solid ${statusColor}44`,
               borderRadius:"6px",padding:"3px 8px",fontSize:"12px",fontWeight:"700"
-            }},status2===" ✅"?"✅ Validée":status2==="⚠️"?"⚠️ Adaptée":"❌ Ratée"):null
+            }},status2==="✅"?"✅ Validée":status2==="⚠️"?"⚠️ Adaptée":"❌ Ratée"):null
           ),
           !isRest && (s.warmup||s.cooldown) ? el("div",{style:{background:"#232738",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
             s.warmup ? el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:s.cooldown?"6px":"0"}},
@@ -1438,6 +1453,14 @@ function renderDashboard() {
             ),
             el("div",{class:"muted",style:{fontSize:"11px"}},"min réelles / prévues")
           ):null,
+          (()=>{
+            const ws = weekStats(cw2);
+            if (!ws || !ws.hasReal) return null;
+            return el("div",{},
+              el("div",{style:{color:"#fc4c02",fontSize:"13px",fontWeight:"700"}},ws.realKm+" / ~"+ws.plannedKm+" km"),
+              el("div",{class:"muted",style:{fontSize:"11px"}},"km réels / prévus")
+            );
+          })(),
           report.avgEfPace?el("div",{},
             el("div",{style:{display:"flex",alignItems:"center",gap:"4px"}},
               el("div",{style:{color:"#60a5fa",fontSize:"13px",fontWeight:"700"}},fmtPace(1000/report.avgEfPace)+"/km"),
@@ -1704,7 +1727,7 @@ function renderWeekDetail(weekNum) {
       SOPTS.forEach(opt=>{
         const cur=statuses[uid]||"—";
         const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"13px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
-        b.addEventListener("click",()=>{ statuses[uid]=opt; save("lk_statuses",statuses); scheduleSave(); render(); });
+        b.addEventListener("click",()=>{ statuses[uid]=opt; save("lk_statuses",statuses); gistSave(true); render(); });
         statusRow.appendChild(b);
       });
       card.appendChild(statusRow);
@@ -1905,7 +1928,7 @@ function renderStats() {
       ...[
         ["Course",RACE_NAME,"#f97316"],
         ["Date","6 septembre 2026 · "+RACE_LOCATION,"#f1f5f9"],
-        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(1000/(raceGoalTime/10000))+"/km","#f97316"],
+        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(10000/raceGoalTime)+"/km","#f97316"],
         ["Référence","50'21\" (Lavandou)","#f1f5f9"],
         ["Allure EF","6:20/km · 6:40/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
@@ -1946,7 +1969,7 @@ function renderCourse() {
         el("div",{class:"muted",style:{fontSize:"10px"}},"Avant la course")
       ),
       el("div",{style:{flex:"1",background:"#232738",borderRadius:"8px",padding:"8px 10px",textAlign:"center"}},
-        el("div",{style:{color:"#f97316",fontSize:"14px",fontWeight:"700"}},fmtPace(1000/(raceGoalTime/10000))+"/km"),
+        el("div",{style:{color:"#f97316",fontSize:"14px",fontWeight:"700"}},fmtPace(10000/raceGoalTime)+"/km"),
         el("div",{class:"muted",style:{fontSize:"10px"}},"Allure cible")
       )
     )
@@ -2136,7 +2159,7 @@ function renderSettings() {
       ),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"Allure cible"),
-        el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},fmtPace(1000/(raceGoalTime/10000))+"/km")
+        el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},fmtPace(10000/raceGoalTime)+"/km")
       )
     )
   );
@@ -2437,6 +2460,12 @@ async function syncStrava() {
       save("lk_last_sync", lastSyncTime);
       syncMsg=`✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
       scheduleSave();
+      // Regénérer le coach après synchro si séance terminée aujourd'hui
+      const todaySynced = ALL_SESSIONS.find(s=>s.date===today()&&s.type!=="REPOS");
+      if (todaySynced && statuses[todaySynced.uid]) {
+        coachMsg = null; coachDate = "";
+        setTimeout(fetchCoachMsg, 1500);
+      }
     } else { syncMsg="❌ Erreur Strava"; }
   } catch(e) {
     syncMsg="❌ Erreur réseau — activités précédentes conservées";
