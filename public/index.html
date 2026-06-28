@@ -844,22 +844,39 @@ async function fetchCoachMsg() {
   const todayInTarget = todayEffortLaps.length > 0 && SESSION_TARGETS[sessType]
     ? todayEffortLaps.filter(l=>(1000/l.average_speed)<=SESSION_TARGETS[sessType].okPace).length+"/"+todayEffortLaps.length+" reps dans la cible"
     : null;
+
+  // Variables lundi matin
+  const isMonday = new Date().getDay() === 1;
+  const prevWeekNum = currentWeek() > 1 ? currentWeek() - 1 : null;
+  const prevWeekReport = prevWeekNum ? weeklyReport(prevWeekNum) : null;
+  const prevWeekKm = prevWeekNum ? Math.round(stravaActivities.filter(a=>{
+    const w = PLAN.find(w=>w.week===prevWeekNum);
+    return w && w.sessions.map(s=>s.date).includes(a.start_date_local?.slice(0,10));
+  }).reduce((s,a)=>s+a.distance,0)/100)/10 : 0;
+  const nextWeekSessions = ALL_SESSIONS.filter(s=>{
+    const w = PLAN.find(w=>w.week===currentWeek());
+    return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
+  }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
+
   const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le 6 septembre 2026 à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
+${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure effort : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
 ${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
 ${isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
 ${vmaInfo}
-${sessionDone
-  ? (sessType==='EF'||sessType==='LONGUE')
-    ? 'Commente brièvement la sortie EF (sensations, récupération). Pas de conseil technique de course intensive. 2-3 phrases max.'
-    : 'Fais une courte analyse de la séance terminée (qualité, points positifs, axes d\'amélioration). 2-3 phrases max.'
-  : isEveOfKeySession
-    ? 'Donne un conseil pour bien préparer la séance clé de demain (récupération, sommeil, hydratation). 2-3 phrases max.'
-    : (sessType==='EF'||sessType==='LONGUE'||sessType==='REPOS')
-      ? 'Message court sur la récupération ou la régularité de l\'entraînement. 2-3 phrases max.'
-      : 'Génère UN message de coaching court et motivant sur la séance à venir. 2-3 phrases max.'}
+${isMonday
+  ? `Fais un bilan motivant de la semaine ${prevWeekNum} (séances, km, progression) et donne un aperçu positif de la semaine ${currentWeek()} qui commence. 3-4 phrases max.`
+  : sessionDone
+    ? (sessType==='EF'||sessType==='LONGUE')
+      ? 'Commente brièvement la sortie EF (sensations, récupération). Pas de conseil technique intensif. 2-3 phrases max.'
+      : 'Fais une courte analyse de la séance terminée (qualité, points positifs, axes d\'amélioration). 2-3 phrases max.'
+    : isEveOfKeySession
+      ? 'Donne un conseil pour bien préparer la séance clé de demain (récupération, sommeil, hydratation). 2-3 phrases max.'
+      : (sessType==='EF'||sessType==='LONGUE'||sessType==='REPOS')
+        ? 'Message court sur la récupération ou la régularité. 2-3 phrases max.'
+        : 'Génère UN message de coaching court et motivant sur la séance à venir. 2-3 phrases max.'}
 ${isLastTwoWeeks ? "Mentionne le compte à rebours." : "Ne mentionne pas le nombre de jours restants."}
 Réponds uniquement avec le message, sans guillemets.`;
 
@@ -1935,6 +1952,42 @@ function renderStats() {
     )
   );
 
+  // ── Prédiction de progression ────────────────────────────────────────────
+  let progressionEl = null;
+  if (predHistory.length >= 3) {
+    const recent = predHistory.slice(-7);
+    const oldest = recent[0].time;
+    const newest = recent[recent.length-1].time;
+    const deltaPerDay = (newest - oldest) / Math.max(recent.length - 1, 1);
+    const daysLeft = countdown();
+    const projectedTime = Math.round(newest + deltaPerDay * daysLeft);
+    const trend = deltaPerDay < -5 ? "📉 En progression" : deltaPerDay > 5 ? "📈 En régression" : "➡️ Stable";
+    const trendColor = deltaPerDay < -5 ? "#22c55e" : deltaPerDay > 5 ? "#ef4444" : "#94a3b8";
+
+    progressionEl = el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"🎯 Prédiction de progression"),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px"}},
+        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
+          el("div",{},
+            el("div",{class:"muted",style:{fontSize:"11px",marginBottom:"2px"}},"À ce rythme le 6 septembre"),
+            el("div",{style:{color:"#f1f5f9",fontSize:"24px",fontWeight:"800",letterSpacing:"-0.5px"}},fmtTime(projectedTime))
+          ),
+          el("div",{style:{textAlign:"right"}},
+            el("div",{style:{color:trendColor,fontSize:"13px",fontWeight:"700"}},trend),
+            el("div",{class:"muted",style:{fontSize:"11px"}},Math.abs(Math.round(deltaPerDay))+" sec/jour "+(deltaPerDay<0?"de mieux":"de moins"))
+          )
+        ),
+        el("div",{style:{display:"flex",justifyContent:"space-between",paddingTop:"8px",borderTop:"1px solid #2e3347"}},
+          el("span",{class:"muted",style:{fontSize:"11px"}},"vs objectif 48\'30\""),
+          el("span",{style:{
+            color:projectedTime<=2910?"#22c55e":projectedTime<=2940?"#eab308":"#ef4444",
+            fontSize:"12px",fontWeight:"700"
+          }},projectedTime<=2910?"✅ Objectif atteignable !":projectedTime<=2970?"⚠️ Objectif serré":"❌ Objectif à risque")
+        )
+      )
+    );
+  }
+
   // ── Infos du plan ─────────────────────────────────────────────────────
   const infoEl=el("div",{},
     el("div",{class:"label"},"Informations"),
@@ -1957,6 +2010,7 @@ function renderStats() {
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"12px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
+    progressionEl,
     projEl,
     paceEl,
     infoEl
@@ -2071,9 +2125,74 @@ function renderCourse() {
     )
   );
 
+  // ── Météo prévue le jour de la course ───────────────────────────────────
+  let meteoRaceEl = null;
+  // Fetch météo si on est à moins de 16 jours (Open-Meteo limite à 16 jours)
+  const daysToRace = countdown();
+  if (daysToRace <= 16) {
+    // La météo sera fetchée et affichée
+    meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
+        el("div",{class:"muted",style:{fontSize:"12px",fontStyle:"italic"}},"Disponible dans les 16 jours avant la course")
+      )
+    );
+  } else {
+    meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
+        el("div",{class:"muted",style:{fontSize:"12px",fontStyle:"italic"}},"Disponible à partir du 21 août · J–"+daysToRace+" actuellement")
+      )
+    );
+  }
+
+  // ── Allures de passage aux km clés ───────────────────────────────────────
+  const paceSecKm = raceGoalTime / 10; // secondes par km
+  const splits = [
+    { km:1,  note:"Prudent +10sec",   pace: paceSecKm + 10 },
+    { km:3,  note:"Prudent +5sec",    pace: paceSecKm + 5  },
+    { km:5,  note:"Mi-course",       pace: paceSecKm      },
+    { km:7,  note:"Allure cible",    pace: paceSecKm      },
+    { km:10, note:"Arrivée",         pace: null            },
+  ];
+
+  // Calculer les temps de passage cumulés
+  const passageTimes = [];
+  let cumul = 0;
+  splits.forEach((s, i) => {
+    const prevKm = i===0 ? 0 : splits[i-1].km;
+    const dist = s.km - prevKm;
+    const pace = s.pace || paceSecKm;
+    cumul += dist * pace;
+    passageTimes.push(Math.round(cumul));
+  });
+
+  const splitsCard = el("div",{style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"🏃 Allures de passage"),
+    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",overflow:"hidden"}},
+      el("div",{style:{display:"grid",gridTemplateColumns:"40px 1fr 70px 70px",gap:"0",padding:"8px 12px",borderBottom:"1px solid #2e3347"}},
+        el("span",{class:"muted",style:{fontSize:"10px",fontWeight:"700"}},"KM"),
+        el("span",{class:"muted",style:{fontSize:"10px",fontWeight:"700"}},"STRATÉGIE"),
+        el("span",{class:"muted",style:{fontSize:"10px",fontWeight:"700",textAlign:"right"}},"ALLURE"),
+        el("span",{class:"muted",style:{fontSize:"10px",fontWeight:"700",textAlign:"right"}},"PASSAGE")
+      ),
+      ...splits.map((s,i)=>{
+        const paceStr = s.pace ? Math.floor(s.pace/60)+":"+(Math.round(s.pace%60)).toString().padStart(2,"0")+"/km" : "—";
+        const passageStr = fmtTime(passageTimes[i]);
+        const color = i===0||i===1?"#60a5fa":i===2||i===3?"#f97316":"#22c55e";
+        return el("div",{style:{display:"grid",gridTemplateColumns:"40px 1fr 70px 70px",gap:"0",padding:"10px 12px",borderBottom:i<splits.length-1?"1px solid #2e3347":"none",alignItems:"center"}},
+          el("span",{style:{color,fontSize:"14px",fontWeight:"800"}},s.km),
+          el("span",{class:"muted",style:{fontSize:"12px"}},s.note),
+          el("span",{style:{color:"#f1f5f9",fontSize:"12px",fontWeight:"600",textAlign:"right"}},paceStr),
+          el("span",{style:{color,fontSize:"12px",fontWeight:"700",textAlign:"right"}},passageStr)
+        );
+      })
+    )
+  );
+
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
-    infoCard, horairesCard, checklistCard, strategieCard, parcoursCard
+    infoCard, meteoRaceEl, splitsCard, horairesCard, checklistCard, strategieCard, parcoursCard
   );
 }
 
@@ -2220,7 +2339,13 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.8.12", title:"Course, profil & dashboard", current:true, notes:[
+      { ver:"v1.8.13", title:"Coach lundi, progression & course", current:true, notes:[
+        "📅 Message Coach spécial lundi matin (bilan + aperçu semaine)",
+        "🎯 Prédiction de progression dans Stats",
+        "🌡️ Météo prévue le 6 septembre dans l\'onglet Course",
+        "🏃 Allures de passage aux km clés (1, 3, 5, 7, 10)",
+      ]},
+      { ver:"v1.8.12", title:"Course, profil & dashboard", current:false, notes:[
         "🗑️ Suppression du header sur le dashboard",
         "🏁 Nom de la course cliquable (Gem\'Aubagne)",
         "📊 Barres de progression km + temps",
