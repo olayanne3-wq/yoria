@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fond orange avec coins arrondis -->
+  <rect width="512" height="512" rx="110" fill="#f97316"/>
+  
+  <!-- Runner minimaliste blanc -->
+  <!-- Tête -->
+  <circle cx="310" cy="115" r="38" fill="#ffffff"/>
+  
+  <!-- Corps -->
+  <path d="M310 153 L278 268 L224 348" stroke="#ffffff" stroke-width="26" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Bras avant (vers le haut) -->
+  <path d="M295 200 L365 168" stroke="#ffffff" stroke-width="22" fill="none" stroke-linecap="round"/>
+  
+  <!-- Bras arrière (vers le bas) -->
+  <path d="M290 215 L235 258" stroke="#ffffff" stroke-width="20" fill="none" stroke-linecap="round"/>
+  
+  <!-- Jambe avant (étendue) -->
+  <path d="M278 268 L335 338 L378 310" stroke="#ffffff" stroke-width="26" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Jambe arrière (repliée) -->
+  <path d="M278 268 L224 348 L182 330" stroke="#ffffff" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Ligne de sol subtile -->
+  <line x1="80" y1="410" x2="432" y2="410" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.3"/>
+</svg>
