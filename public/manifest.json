@@ -1,27 +1,14 @@
 {
-  "id": "/",
-  "name": "Plan 10K — Laurent",
-  "short_name": "Plan 10K",
-  "description": "Suivi du plan d'entraînement 10K",
+  "name": "Run by Léa",
+  "short_name": "Run by Léa",
+  "description": "Ton coach running personnel pour préparer ta course",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#0f1117",
-  "theme_color": "#0f1117",
-  "orientation": "portrait",
+  "theme_color": "#f97316",
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ]
 }
