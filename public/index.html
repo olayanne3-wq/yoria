@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0f1117">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
-<title>Plan 10K — Laurent</title>
+<title>Run by Léa</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body { background: #0f1117; color: #f1f5f9; font-family: -apple-system,'Helvetica Neue',Arial,sans-serif; max-width: 430px; margin: 0 auto; }
@@ -1503,7 +1503,7 @@ function renderDashboard() {
                   ),
                   (cadence||se)?el("div",{style:{display:"flex",gap:"8px",paddingLeft:"32px"}},
                     cadence?el("span",{class:"muted",style:{fontSize:"10px"}},cadence):null,
-                    se?el("span",{style:{color:seColor,fontSize:"10px",fontWeight:"600"}},"SE "+se+(seLabel?" "+seLabel:"")):null
+                    se?el("span",{style:{color:seColor,fontSize:"10px",fontWeight:"600"}},"IE "+se+(seLabel?" "+seLabel:"")):null
                   ):null
                 );
               })
@@ -1815,7 +1815,7 @@ function renderWeekDetail(weekNum) {
               ),
               (cadence2||se2)?el("div",{style:{display:"flex",gap:"8px",paddingLeft:"32px"}},
                 cadence2?el("span",{class:"muted",style:{fontSize:"10px"}},cadence2):null,
-                se2?el("span",{style:{color:seColor2,fontSize:"10px",fontWeight:"600"}},"SE "+se2+(seLabel2?" "+seLabel2:"")):null
+                se2?el("span",{style:{color:seColor2,fontSize:"10px",fontWeight:"600"}},"IE "+se2+(seLabel2?" "+seLabel2:"")):null
               ):null
             );
           })
@@ -2021,6 +2021,92 @@ function renderStats() {
     {type:"SPEC",    label:"Spécifique 10K",           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:"154–163", pct:"85–90%", color:"#a855f7"},
     {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:"163–181", pct:"90–100%", color:"#f97316"},
   ];
+  // ── Courbes IE + Cadence ─────────────────────────────────────────────────
+  const intensiveTypes = ["VMA","SPEC","SEUIL"];
+  const ieData = {}, cadData = {};
+  intensiveTypes.forEach(type => {
+    const sessions = ALL_SESSIONS.filter(s=>s.type===type&&s.date<=today());
+    const points = sessions.map(s => {
+      const run = stravaActivities.find(a=>a.start_date_local?.slice(0,10)===s.date);
+      if (!run) return null;
+      const laps = getEffortLaps(run);
+      if (!laps.length) return null;
+      const ieVals = laps.map(l=>economyScore(l,type)).filter(v=>v!==null);
+      const cadVals = laps.map(l=>l.average_cadence?Math.round(l.average_cadence*2):null).filter(v=>v!==null);
+      return {
+        week: s.week,
+        ie: ieVals.length ? Math.round(ieVals.reduce((a,b)=>a+b,0)/ieVals.length) : null,
+        cad: cadVals.length ? Math.round(cadVals.reduce((a,b)=>a+b,0)/cadVals.length) : null
+      };
+    }).filter(Boolean);
+    if (points.length) { ieData[type]=points; cadData[type]=points; }
+  });
+
+  const typeColors2 = { VMA:"#f97316", SPEC:"#a855f7", SEUIL:"#eab308" };
+
+  function drawCurve(data, label, yKey, yLabel, refLine) {
+    if (!Object.keys(data).length) return null;
+    const allVals = Object.values(data).flatMap(pts=>pts.map(p=>p[yKey]).filter(Boolean));
+    if (!allVals.length) return null;
+    const W=320, H=90, PL=30, PT=12, PB=22;
+    const minY=Math.min(...allVals)-5, maxY=Math.max(...allVals)+5;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("viewBox",`0 0 ${W} ${H+PT+PB}`);
+    svg.style.width="100%";
+
+    if (refLine) {
+      const ry = PT+(1-(refLine-minY)/(maxY-minY))*H;
+      const l = document.createElementNS("http://www.w3.org/2000/svg","line");
+      l.setAttribute("x1",PL); l.setAttribute("x2",W); l.setAttribute("y1",ry); l.setAttribute("y2",ry);
+      l.setAttribute("stroke","#475569"); l.setAttribute("stroke-width","1"); l.setAttribute("stroke-dasharray","4,3");
+      svg.appendChild(l);
+      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x",PL-2); t.setAttribute("y",ry+3); t.setAttribute("fill","#475569"); t.setAttribute("font-size","8"); t.setAttribute("text-anchor","end");
+      t.textContent=refLine; svg.appendChild(t);
+    }
+
+    let legendX = PL;
+    Object.entries(data).forEach(([type,pts]) => {
+      const color=typeColors2[type]||"#94a3b8";
+      const vp=pts.filter(p=>p[yKey]!==null);
+      if (!vp.length) return;
+      if (vp.length>=2) {
+        const poly=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+        poly.setAttribute("points",vp.map(p=>{
+          const x=PL+(p.week-1)/10*(W-PL);
+          const y=PT+(1-(p[yKey]-minY)/(maxY-minY))*H;
+          return x+","+y;
+        }).join(" "));
+        poly.setAttribute("stroke",color); poly.setAttribute("stroke-width","2"); poly.setAttribute("fill","none"); poly.setAttribute("stroke-linecap","round");
+        svg.appendChild(poly);
+      }
+      vp.forEach(p=>{
+        const x=PL+(p.week-1)/10*(W-PL);
+        const y=PT+(1-(p[yKey]-minY)/(maxY-minY))*H;
+        const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
+        c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","4"); c.setAttribute("fill",color);
+        svg.appendChild(c);
+        const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+        t.setAttribute("x",x); t.setAttribute("y",y-6); t.setAttribute("fill",color); t.setAttribute("font-size","9"); t.setAttribute("text-anchor","middle");
+        t.textContent=p[yKey]; svg.appendChild(t);
+      });
+      const dot=document.createElementNS("http://www.w3.org/2000/svg","circle");
+      dot.setAttribute("cx",legendX); dot.setAttribute("cy",H+PT+14); dot.setAttribute("r","4"); dot.setAttribute("fill",color);
+      svg.appendChild(dot);
+      const lt=document.createElementNS("http://www.w3.org/2000/svg","text");
+      lt.setAttribute("x",legendX+7); lt.setAttribute("y",H+PT+17); lt.setAttribute("fill",color); lt.setAttribute("font-size","9");
+      lt.textContent=type; svg.appendChild(lt);
+      legendX+=55;
+    });
+    return el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},label),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"12px"}},svg)
+    );
+  }
+
+  const ieCurveEl = drawCurve(ieData,"📊 Indice d\'Économie (IE) par séance","ie","IE",100);
+  const cadCurveEl = drawCurve(cadData,"🦶 Cadence par séance","cad","spm",null);
+
   const paceEl=el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"Référentiel allures & FC"),
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",overflow:"hidden"}},
@@ -2118,6 +2204,8 @@ function renderStats() {
     el("div",{style:{marginTop:"8px"}}),
     graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"12px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
     progressionEl,
+    ieCurveEl,
+    cadCurveEl,
     projEl,
     paceEl,
     infoEl
@@ -2447,11 +2535,16 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.8.14", title:"Économie, cadence & repos", current:true, notes:[
-        "💾 Sauvegarde Gist étendue (PPS, profil, horaires, notes)",
+      { ver:"v1.8.15", title:"Run by Léa & courbes IE", current:true, notes:[
+        "🏷️ Renommage en Run by Léa",
+        "🎨 Nouvelle icône runner",
+        "📊 Courbes IE + Cadence dans Stats",
+        "⚙️ Paramètres simplifiés",
+      ]},
+      { ver:"v1.8.14", title:"Économie, cadence & repos", current:false, notes:[
+        "💾 Sauvegarde Gist étendue",
         "🛋️ Carte Repos enrichie avec bilan semaine",
-        "🦶 Cadence (spm) par répétition",
-        "📊 Score d\'Économie normalisé par répétition (SE)",
+        "🦶 Cadence + IE par répétition",
       ]},
       { ver:"v1.8.13", title:"Coach lundi, progression & course", current:false, notes:[
         "📅 Message Coach spécial lundi matin (bilan + aperçu semaine)",
@@ -2569,9 +2662,24 @@ function renderSettings() {
   })();
 
 
+  // ── Section Avancé dépliable ─────────────────────────────────────────────
+  let advancedOpen = false;
+  const advancedToggle = el("button",{style:{
+    width:"100%",background:"none",border:"1px solid #2e3347",borderRadius:"8px",
+    padding:"10px",color:"#64748b",fontSize:"12px",cursor:"pointer",marginBottom:"8px"
+  }}, "⚙️ Options avancées");
+  const advancedContent = el("div",{style:{display:"none"}}, cloudSection, stravaSection);
+  advancedToggle.addEventListener("click",()=>{
+    advancedOpen=!advancedOpen;
+    advancedContent.style.display=advancedOpen?"block":"none";
+    advancedToggle.textContent=advancedOpen?"⚙️ Masquer les options avancées":"⚙️ Options avancées";
+  });
+
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px",marginBottom:"20px"}}),
-    profileSection, goalSection, ppsSection, cloudSection, stravaSection, versionSection
+    profileSection, goalSection, ppsSection, stravaSection,
+    el("div",{style:{marginBottom:"24px"}}, advancedToggle, advancedContent),
+    versionSection
   );
 }
 
