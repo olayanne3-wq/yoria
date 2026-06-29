@@ -2505,100 +2505,56 @@ function renderSettings() {
         )
   );
 
-  // ── Profil coureur ────────────────────────────────────────────────────────
-  const profileSection = el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"👤 Profil coureur"),
-    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
+  // ── Profil coureur + Objectif + PPS ─────────────────────────────────────
+  const profileSection = el("div",{style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"👤 Profil & objectif"),
+    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"12px"}},
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"Poids"),
         el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}},
-          el("input",{type:"number",placeholder:"kg",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},
-            value:runnerWeight||"",
-            onChange:(e)=>{ runnerWeight=parseInt(e.target.value)||null; save("lk_weight",runnerWeight); }
-          }),
+          el("input",{type:"number",id:"inp-poids",placeholder:"kg",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},value:runnerWeight||""}),
           el("span",{class:"muted",style:{fontSize:"12px"}},"kg")
         )
       ),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"Taille"),
         el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}},
-          el("input",{type:"number",placeholder:"cm",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},
-            value:runnerHeight||"",
-            onChange:(e)=>{ runnerHeight=parseInt(e.target.value)||null; save("lk_height",runnerHeight); }
-          }),
+          el("input",{type:"number",id:"inp-taille",placeholder:"cm",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},value:runnerHeight||""}),
           el("span",{class:"muted",style:{fontSize:"12px"}},"cm")
         )
       ),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"FC max"),
         el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}},
-          el("input",{type:"number",id:"inp-fcmax",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},
-            value:runnerFcMax||181
-          }),
+          el("input",{type:"number",id:"inp-fcmax",style:{width:"60px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},value:runnerFcMax||181}),
           el("span",{class:"muted",style:{fontSize:"12px"}},"bpm")
         )
-      )
-    )
-  );
-
-  // ── Objectif modifiable ───────────────────────────────────────────────────
-  const goalSection = el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"🎯 Objectif"),
-    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
+      ),
+      el("div",{style:{height:"1px",background:"#2e3347"}}),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-        el("span",{class:"muted",style:{fontSize:"13px"}},"Temps cible"),
+        el("span",{class:"muted",style:{fontSize:"13px"}},"Objectif"),
         el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}},
-          el("input",{type:"text",placeholder:"48:30",id:"inp-goal",style:{width:"70px",background:"#232738",border:"1px solid #f9731644",borderRadius:"6px",padding:"4px 8px",color:"#f97316",fontSize:"13px",fontWeight:"700",textAlign:"right"},
-            value:Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"),
-            onChange:(e)=>{
-              const parts=e.target.value.split(":");
-              if(parts.length===2){
-                const secs=parseInt(parts[0])*60+parseInt(parts[1]);
-                if(!isNaN(secs)&&secs>0){raceGoalTime=secs;save("lk_race_goal",raceGoalTime);render();}
-              }
-            }
-          })
+          el("input",{type:"text",id:"inp-goal",placeholder:"48:30",style:{width:"70px",background:"#232738",border:"1px solid #f9731644",borderRadius:"6px",padding:"4px 8px",color:"#f97316",fontSize:"13px",fontWeight:"700",textAlign:"right"},value:Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0")}),
+          el("span",{class:"muted",style:{fontSize:"12px"}},fmtPace(10000/raceGoalTime)+"/km")
         )
       ),
+      el("div",{style:{height:"1px",background:"#2e3347"}}),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-        el("span",{class:"muted",style:{fontSize:"13px"}},"Allure cible"),
-        el("span",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700"}},fmtPace(10000/raceGoalTime)+"/km")
+        el("span",{class:"muted",style:{fontSize:"13px"}},"PPS"),
+        (()=>{
+          const inp = document.createElement("input");
+          inp.type = "text"; inp.id = "pps-input"; inp.placeholder = "Code PPS...";
+          inp.style.cssText = "width:120px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;";
+          inp.value = runnerPps || "";
+          return inp;
+        })()
       )
     )
   );
+  const goalSection = null;
+  const ppsSection = null;
 
-  // ── PPS ───────────────────────────────────────────────────────────────────
-  const ppsSection = el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"🪪 PPS"),
-    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
-(()=>{
-        const wrap = document.createElement("div");
-        wrap.style.cssText = "display:flex;gap:8px;";
-        const inp = document.createElement("input");
-        inp.type = "text";
-        inp.placeholder = "Votre code PPS...";
-        inp.id = "pps-input";
-        inp.style.cssText = "flex:1;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:8px 12px;color:#f1f5f9;font-size:13px;box-sizing:border-box;";
-        inp.value = runnerPps || "";
-        const btn = document.createElement("button");
-        btn.textContent = "✓";
-        btn.style.cssText = "background:#f9731622;border:1px solid #f9731644;border-radius:6px;padding:8px 12px;color:#f97316;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;";
-        btn.addEventListener("click", ()=>{
-          runnerPps = inp.value.trim();
-          save("lk_pps", runnerPps);
-          scheduleSave();
-          btn.textContent = "✅";
-          setTimeout(()=>{ btn.textContent = "✓"; }, 1500);
-        });
-        wrap.appendChild(inp);
-        wrap.appendChild(btn);
-        return wrap;
-      })(),
-      el("div",{class:"muted",style:{fontSize:"11px",marginTop:"6px"}},"Requis pour l\'inscription aux courses FFA")
-    )
-  );
-
-  const stravaSection=el("div",{style:{marginBottom:"24px"}},
+    const stravaSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Strava"),
     stravaToken
       ?el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
@@ -2826,8 +2782,7 @@ function renderSettings() {
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
-    profileSection, goalSection, ppsSection, stravaSection,
-    saveBtn,
+    profileSection, saveBtn, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, advancedToggle, advancedContent),
     githubToken ? qrSection : null,
     versionSection
