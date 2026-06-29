@@ -567,25 +567,19 @@ let syncMsg = "";
 let lastSyncTime = load("lk_last_sync", 0);
 let githubToken = load("lk_github_token", "");
 
-// Récupérer le token depuis l\'URL si présent
+// URL params lus après déclarations
+let gistId = load("lk_gist_id", "");
+let gistMsg = "";
+
+// Récupérer token + gistId depuis l\'URL si présent
 (function() {
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get("token");
   const urlGist = params.get("gist");
-  if (urlToken) {
-    githubToken = urlToken;
-    save("lk_github_token", githubToken);
-  }
-  if (urlGist) {
-    gistId = urlGist;
-    save("lk_gist_id", gistId);
-  }
-  if (urlToken || urlGist) {
-    window.history.replaceState({}, "", window.location.pathname);
-  }
+  if (urlToken) { githubToken = urlToken; save("lk_github_token", githubToken); }
+  if (urlGist) { gistId = urlGist; save("lk_gist_id", gistId); }
+  if (urlToken || urlGist) { window.history.replaceState({}, "", window.location.pathname); }
 })();
-let gistId = load("lk_gist_id", "");
-let gistMsg = "";
 let predHistory = load("lk_pred_history", []); // [{date, time, confidence}]
 let raceGoalTime = load("lk_race_goal", 2910); // 48'30" en secondes
 let runnerWeight = load("lk_weight", null);
