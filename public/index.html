@@ -571,10 +571,16 @@ let githubToken = load("lk_github_token", "");
 (function() {
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get("token");
+  const urlGist = params.get("gist");
   if (urlToken) {
     githubToken = urlToken;
     save("lk_github_token", githubToken);
-    // Nettoyer l\'URL
+  }
+  if (urlGist) {
+    gistId = urlGist;
+    save("lk_gist_id", gistId);
+  }
+  if (urlToken || urlGist) {
     window.history.replaceState({}, "", window.location.pathname);
   }
 })();
@@ -2480,36 +2486,28 @@ function renderCourse() {
 // ══════════════════════════════════════════════════════════════════════════════
 function renderSettings() {
   const cloudSection=el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"Sauvegarde cloud (GitHub Gist)"),
+    el("div",{class:"label"},"☁️ Sauvegarde cloud"),
     !githubToken
-      ?el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
-          el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.6"}},"Entre ton token GitHub (Settings → Developer settings → Personal access tokens → scope ",el("span",{style:{color:"#60a5fa"}},"gist"),") pour activer la sauvegarde automatique."),
+      ? el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
+          el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.6"}},"Scanne le QR code depuis un appareil configuré, ou entre ton token GitHub."),
           el("div",{style:{display:"flex",gap:"8px"}},
-            el("input",{type:"password",placeholder:"ghp_...",id:"github-token-input"}),
-            el("button",{style:{background:"#60a5fa22",border:"1px solid #60a5fa55",borderRadius:"8px",padding:"8px 14px",color:"#60a5fa",fontWeight:"700",fontSize:"13px",cursor:"pointer",whiteSpace:"nowrap"},
+            el("input",{type:"password",placeholder:"ghp_...",id:"github-token-input",style:{flex:"1",background:"#232738",border:"1px solid #2e3347",borderRadius:"8px",padding:"8px",color:"#f1f5f9",fontSize:"13px"}}),
+            el("button",{style:{background:"#60a5fa22",border:"1px solid #60a5fa55",borderRadius:"8px",padding:"8px 14px",color:"#60a5fa",fontWeight:"700",fontSize:"13px",cursor:"pointer"},
               onClick:()=>{ const t=document.getElementById("github-token-input").value.trim(); if(t){githubToken=t;save("lk_github_token",t);render();} }
             },"OK")
           )
         )
-      :el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
-          el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"12px"}},
-            el("div",{style:{width:"8px",height:"8px",borderRadius:"50%",background:"#22c55e",flexShrink:"0"}}),
-            el("div",{style:{color:"#22c55e",fontSize:"13px",fontWeight:"600"}},"Sync automatique activée")
-          ),
-          gistMsg?el("div",{style:{fontSize:"12px",color:gistMsg.startsWith("✅")||gistMsg.startsWith("☁️")?"#22c55e":"#ef4444",marginBottom:"10px",padding:"8px 10px",background:"#232738",borderRadius:"8px"}},gistMsg):null,
-          el("div",{style:{display:"flex",gap:"8px",flexDirection:"column"}},
-            el("button",{style:{background:"#60a5fa22",border:"1px solid #60a5fa55",borderRadius:"10px",padding:"11px",color:"#60a5fa",fontWeight:"700",fontSize:"13px",cursor:"pointer"},
-              onClick:()=>{ gistSave(false); }
-            },"☁️ Sauvegarder maintenant"),
-            el("button",{style:{background:"#eab30822",border:"1px solid #eab30855",borderRadius:"10px",padding:"11px",color:"#eab308",fontWeight:"700",fontSize:"13px",cursor:"pointer"},
-              onClick:()=>{ gistForceRestore(); }
-            },"📥 Forcer restauration")
-          ),
-          el("div",{style:{marginTop:"12px",paddingTop:"12px",borderTop:"1px solid #2e3347"}},
-            el("button",{style:{background:"none",border:"none",color:"#e2e8f0",fontSize:"12px",cursor:"pointer",padding:"0"},
+      : el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
+          el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
+            el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+              el("div",{style:{width:"8px",height:"8px",borderRadius:"50%",background:"#22c55e",flexShrink:"0"}}),
+              el("div",{style:{color:"#22c55e",fontSize:"13px",fontWeight:"600"}},"Sync automatique activée")
+            ),
+            el("button",{style:{background:"none",border:"none",color:"#64748b",fontSize:"11px",cursor:"pointer"},
               onClick:()=>{ githubToken="";gistId="";save("lk_github_token","");save("lk_gist_id","");render(); }
-            },"🔓 Déconnecter le compte GitHub")
-          )
+            },"Déconnecter")
+          ),
+          gistMsg?el("div",{style:{fontSize:"12px",color:gistMsg.startsWith("✅")||gistMsg.startsWith("☁️")?"#22c55e":"#ef4444",marginTop:"8px",padding:"6px 10px",background:"#232738",borderRadius:"6px"}},gistMsg):null
         )
   );
 
@@ -2766,6 +2764,27 @@ function renderSettings() {
     advancedToggle.textContent=advancedOpen?"⚙️ Masquer les options avancées":"⚙️ Options avancées";
   });
 
+  // ── QR Code pour configurer un autre appareil ─────────────────────────────
+  const qrSection = el("div",{style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"📱 Configurer sur un autre appareil"),
+    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
+      el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px"}},"Scanne ce QR code depuis ton smartphone pour transférer la configuration automatiquement."),
+      el("div",{id:"qr-container",style:{display:"flex",justifyContent:"center",marginBottom:"10px"}}),
+      el("button",{style:{width:"100%",background:"#f9731611",border:"1px solid #f9731633",borderRadius:"8px",padding:"8px",color:"#f97316",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
+        onClick:()=>{
+          const url = window.location.origin + "/?token=" + encodeURIComponent(githubToken) + "&gist=" + encodeURIComponent(gistId);
+          const qrDiv = document.getElementById("qr-container");
+          qrDiv.innerHTML = "";
+          // Utiliser l\'API QR code Google
+          const img = document.createElement("img");
+          img.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
+          img.style.borderRadius = "8px";
+          qrDiv.appendChild(img);
+        }
+      },"📱 Générer le QR code")
+    )
+  );
+
   const appHeaderEl = el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",alignItems:"center",gap:"12px",marginBottom:"20px"}},
     runByLeaIcon(40, 10),
     el("div",{},
@@ -2779,6 +2798,7 @@ function renderSettings() {
     appHeaderEl,
     profileSection, goalSection, ppsSection, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, advancedToggle, advancedContent),
+    githubToken ? qrSection : null,
     versionSection
   );
 }
@@ -2902,12 +2922,17 @@ async function gistForceRestore() {
   } catch(e) { gistMsg="❌ Erreur restauration"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
 }
 
-if (githubToken&&gistId) {
-  gistLoad();
-  // Sauvegarder automatiquement si on a des données locales
-  setTimeout(()=>{
-    if (Object.keys(statuses).length > 0) gistSave(true);
-  }, 3000);
+if (githubToken && gistId) {
+  const hasLocalData = Object.keys(statuses).length > 0 || stravaActivities.length > 0;
+  if (!hasLocalData) {
+    // Pas de données locales → restauration automatique
+    console.log("Restauration automatique depuis le Gist...");
+    gistForceRestore();
+  } else {
+    // On a des données → chargement normal + sauvegarde si Gist vide
+    gistLoad();
+    setTimeout(()=>{ gistSave(true); }, 2000);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
