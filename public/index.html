@@ -1866,10 +1866,19 @@ function renderWeekDetail(weekNum) {
           })(),
           stravaRun.max_heartrate?el("div",{},el("div",{style:{color:"#ef4444",fontSize:"13px",fontWeight:"700"}},Math.round(stravaRun.max_heartrate)+" bpm"),el("div",{class:"muted",style:{fontSize:"12px"}},"FC max")):null
         ),
-        FC_ZONES[s.type]&&stravaRun.average_heartrate?el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"6px 0",borderTop:"1px solid #fc4c0222",marginBottom:effortLaps.length>0?"8px":"0"}},
-          el("span",{style:{fontSize:"14px"}},fcStatus(s.type,Math.round(stravaRun.average_heartrate))||""),
-          el("span",{class:"muted",style:{fontSize:"11px"}},"FC moy. "+Math.round(stravaRun.average_heartrate)+" bpm · cible "+FC_ZONES[s.type].min+"–"+FC_ZONES[s.type].max+" bpm")
-        ):null,
+        (()=>{
+          const isIntensiveFc = effortLaps.length > 0;
+          const fcHrVals = isIntensiveFc ? effortLaps.filter(l=>l.average_heartrate) : null;
+          const fcDispHr = isIntensiveFc
+            ? (fcHrVals.length ? Math.round(fcHrVals.reduce((s,l)=>s+l.average_heartrate,0)/fcHrVals.length) : null)
+            : (stravaRun.average_heartrate ? Math.round(stravaRun.average_heartrate) : null);
+          const fcLabel = isIntensiveFc ? "FC intervalles " : "FC moy. ";
+          if (!FC_ZONES[s.type] || !fcDispHr) return null;
+          return el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"6px 0",borderTop:"1px solid #fc4c0222",marginBottom:effortLaps.length>0?"8px":"0"}},
+            el("span",{style:{fontSize:"14px"}},fcStatus(s.type,fcDispHr)||""),
+            el("span",{class:"muted",style:{fontSize:"11px"}},fcLabel+fcDispHr+" bpm · cible "+FC_ZONES[s.type].min+"–"+FC_ZONES[s.type].max+" bpm")
+          );
+        })(),
         stravaRun&&stravaRun.start_latlng?.length===2&&s.date?
           el("div",{style:{fontSize:"11px",color:"#e2e8f0",paddingTop:"4px",paddingBottom:"4px"}},
             historicalWeatherCache[s.date]!=null
