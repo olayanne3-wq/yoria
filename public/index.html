@@ -2413,17 +2413,25 @@ function renderCourse() {
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"Retrait dossards"),
-        el("input",{type:"text",placeholder:"ex. 7h00",style:{width:"80px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},
-          value:raceHoraires.dossard||"",
-          onInput:(e)=>{ raceHoraires.dossard=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); }
-        })
+        (()=>{
+          const inp = document.createElement("input");
+          inp.type = "text"; inp.placeholder = "ex. 7h00"; inp.id = "horaire-dossard-input";
+          inp.style.cssText = "width:80px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
+          inp.value = raceHoraires.dossard || "";
+          inp.addEventListener("input", (e)=>{ raceHoraires.dossard=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          return inp;
+        })()
       ),
       el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
         el("span",{class:"muted",style:{fontSize:"13px"}},"Départ course"),
-        el("input",{type:"text",placeholder:"ex. 9h30",style:{width:"80px",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"4px 8px",color:"#f1f5f9",fontSize:"13px",textAlign:"right"},
-          value:raceHoraires.depart||"",
-          onInput:(e)=>{ raceHoraires.depart=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); }
-        })
+        (()=>{
+          const inp = document.createElement("input");
+          inp.type = "text"; inp.placeholder = "ex. 9h30"; inp.id = "horaire-depart-input";
+          inp.style.cssText = "width:80px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
+          inp.value = raceHoraires.depart || "";
+          inp.addEventListener("input", (e)=>{ raceHoraires.depart=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          return inp;
+        })()
       )
     )
   );
@@ -2482,10 +2490,14 @@ function renderCourse() {
   const parcoursCard = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🗺️ Parcours"),
     card(
-      el("input",{type:"text",placeholder:"Lien GPX ou carte du parcours...",style:{width:"100%",background:"#232738",border:"1px solid #2e3347",borderRadius:"6px",padding:"8px 12px",color:"#f1f5f9",fontSize:"13px"},
-        value:raceParcoursUrl,
-        onInput:(e)=>{ raceParcoursUrl=e.target.value; save("lk_race_parcours",raceParcoursUrl); scheduleSave(); }
-      }),
+      (()=>{
+        const inp = document.createElement("input");
+        inp.type = "text"; inp.placeholder = "Lien GPX ou carte du parcours...";
+        inp.style.cssText = "width:100%;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:8px 12px;color:#f1f5f9;font-size:13px;box-sizing:border-box;";
+        inp.value = raceParcoursUrl || "";
+        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save("lk_race_parcours",raceParcoursUrl); scheduleSave(); });
+        return inp;
+      })(),
       raceParcoursUrl?el("a",{href:raceParcoursUrl,target:"_blank",style:{display:"block",marginTop:"8px",color:"#60a5fa",fontSize:"12px"}},"→ Voir le parcours"):null
     )
   );
@@ -2556,47 +2568,8 @@ function renderCourse() {
     )
   );
 
-  // ── Petit guide d\'utilisation ─────────────────────────────────────────────
-  const guideOpenKey = "guide_open";
-  let guideOpen = false;
-  const guideToggle = el("button",{style:{
-    width:"100%",background:"none",border:"1px solid #2e3347",borderRadius:"8px",
-    padding:"10px",color:"#94a3b8",fontSize:"12px",cursor:"pointer",marginBottom:"16px",
-    display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"
-  }}, "❓ Comment utiliser Run by Léa ?");
-  const guideContent = el("div",{style:{display:"none",background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",marginBottom:"16px"}},
-    el("div",{style:{display:"flex",flexDirection:"column",gap:"12px"}},
-      el("div",{},
-        el("div",{style:{color:"#f97316",fontSize:"13px",fontWeight:"700",marginBottom:"3px"}},"⚡ Dashboard"),
-        el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Ta séance du jour, ton estimation de temps, et les conseils de Léa.")
-      ),
-      el("div",{},
-        el("div",{style:{color:"#60a5fa",fontSize:"13px",fontWeight:"700",marginBottom:"3px"}},"📅 Semaines"),
-        el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Le détail de chaque semaine d\'entraînement. Tape sur une séance pour la valider ✅⚠️❌.")
-      ),
-      el("div",{},
-        el("div",{style:{color:"#a855f7",fontSize:"13px",fontWeight:"700",marginBottom:"3px"}},"📊 Stats"),
-        el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Ta progression dans le temps, ton économie de course (IE) et ta cadence.")
-      ),
-      el("div",{},
-        el("div",{style:{color:"#22c55e",fontSize:"13px",fontWeight:"700",marginBottom:"3px"}},"🏁 Course"),
-        el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Toutes les infos du jour J — horaires, checklist, stratégie de course.")
-      ),
-      el("div",{},
-        el("div",{style:{color:"#e2e8f0",fontSize:"13px",fontWeight:"700",marginBottom:"3px"}},"⚙️ Paramètres"),
-        el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Ton profil, ton objectif et la sauvegarde automatique de tes données.")
-      )
-    )
-  );
-  guideToggle.addEventListener("click",()=>{
-    guideOpen = !guideOpen;
-    guideContent.style.display = guideOpen ? "block" : "none";
-    guideToggle.textContent = guideOpen ? "❓ Masquer le guide" : "❓ Comment utiliser Run by Léa ?";
-  });
-
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
-    guideToggle, guideContent,
     infoCard, meteoRaceEl, splitsCard, horairesCard, checklistCard, strategieCard, parcoursCard
   );
 }
@@ -2604,6 +2577,57 @@ function renderCourse() {
 // ══════════════════════════════════════════════════════════════════════════════
 // PARAMÈTRES
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// AIDE
+// ══════════════════════════════════════════════════════════════════════════════
+function renderHelp() {
+  const sections = [
+    { icon:"⚡", color:"#f97316", title:"Dashboard",
+      text:"Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Léa selon ta progression." },
+    { icon:"📅", color:"#60a5fa", title:"Semaines",
+      text:"Le détail de chaque semaine d\'entraînement. Tape sur une séance pour voir le détail et la valider ✅ (réussie), ⚠️ (partielle) ou ❌ (ratée). Les séances déjà validées sont repliées — tape dessus pour revoir le détail." },
+    { icon:"📊", color:"#a855f7", title:"Stats",
+      text:"Ta progression vers l\'objectif, ton Indice d\'Économie (IE) et ta cadence par type de séance, ainsi qu\'un référentiel complet des allures et zones FC." },
+    { icon:"🏁", color:"#22c55e", title:"Course",
+      text:"Toutes les infos du jour J — horaires, checklist équipement, stratégie de course et allures de passage aux km clés." },
+    { icon:"⚙️", color:"#e2e8f0", title:"Paramètres",
+      text:"Ton profil (poids, taille, FC max), ton objectif de temps, ton PPS, et la connexion Strava. Ta sauvegarde se fait automatiquement dans le cloud." },
+  ];
+
+  const sectionCards = sections.map(s => el("div",{style:{marginBottom:"14px"}},
+    el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
+      el("span",{style:{fontSize:"16px"}},s.icon),
+      el("span",{style:{color:s.color,fontSize:"14px",fontWeight:"700"}},s.title)
+    ),
+    el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.6",paddingLeft:"24px"}},s.text)
+  ));
+
+  const faqItems = [
+    { q:"Comment fonctionne l\'estimation de temps ?",
+      a:"Léa combine tes performances sur les séances VMA, SPEC et SEUIL pour calculer une estimation de ton temps probable sur 10K, avec une fourchette de confiance qui se resserre au fil des semaines." },
+    { q:"Qu\'est-ce que l\'Indice d\'Économie (IE) ?",
+      a:"L\'IE compare ta FC réelle à ta FC théorique pour une allure donnée. Un score supérieur à 100 signifie que tu cours plus économiquement qu\'attendu — ton cœur travaille moins pour la même vitesse." },
+    { q:"Pourquoi mes données ont disparu sur un nouvel appareil ?",
+      a:"Tes données sont sauvegardées automatiquement dans le cloud (GitHub Gist). Pour les récupérer sur un nouvel appareil, scanne le QR code généré depuis Paramètres → Options avancées sur ton appareil principal." },
+    { q:"À quoi sert la cadence affichée ?",
+      a:"La cadence (pas par minute) est un indicateur de technique de course. Idéalement entre 170 et 180 spm — une cadence stable ou en hausse au fil du plan indique une meilleure efficacité de foulée." },
+  ];
+
+  const faqCards = faqItems.map(f => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid #2e3347"}},
+    el("div",{style:{color:"#f1f5f9",fontSize:"13px",fontWeight:"600",marginBottom:"4px"}},f.q),
+    el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.6"}},f.a)
+  ));
+
+  return el("div",{style:{padding:"0 16px 100px"}},
+    el("div",{style:{marginTop:"8px"}}),
+    el("div",{style:{marginBottom:"20px"}},
+      card(...sectionCards)
+    ),
+    el("div",{class:"label"},"❓ Questions fréquentes"),
+    card(...faqCards)
+  );
+}
+
 function renderSettings() {
   const cloudSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"☁️ Sauvegarde cloud"),
@@ -2716,6 +2740,8 @@ function renderSettings() {
         "✅ Séances terminées mieux identifiées (opacité + badge, repliables)",
         "🎯 Allure/FC affichées sur l\'effort seul (hors échauffement) pour les séances intensives",
         "🤖 Coach mentionne l\'IE et la cadence après une séance intensive",
+        "💾 Correction sauvegarde horaires course et URL parcours",
+        "❓ Nouvel onglet Aide avec guide complet et FAQ",
       ]},
       { ver:"v1.8.16", title:"Nouveau design & Inter", current:false, notes:[
         "🔤 Police Inter",
@@ -3312,7 +3338,7 @@ function render() {
     ?el("button",{style:{background:"none",border:"none",color:"#f97316",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("weeks")},"‹")
     :null;
 
-  const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",settings:"Paramètres",course:"Course"};
+  const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",settings:"Paramètres",course:"Course",help:"Aide"};
   const hdr = view==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(15,17,23,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid #2e3347",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
     backBtn||"",
     runByLeaIcon(24, 6),
@@ -3332,6 +3358,7 @@ function render() {
   else if (view==="weekDetail") content=renderWeekDetail(selectedWeek);
   else if (view==="stats") content=renderStats();
   else if (view==="course") content=renderCourse();
+  else if (view==="help") content=renderHelp();
   else content=renderSettings();
 
   const NAV=[
@@ -3340,8 +3367,9 @@ function render() {
     {id:"stats",    icon:"📊",label:"Stats"},
     {id:"course",   icon:"🏁",label:"Course"},
     {id:"settings", icon:"⚙️",label:"Paramètres"},
+    {id:"help",     icon:"❓",label:"Aide"},
   ];
-  const activeNav=["dashboard","stats","settings","course"].includes(view)?view:"weeks";
+  const activeNav=["dashboard","stats","settings","course","help"].includes(view)?view:"weeks";
   const nav=el("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"430px",background:"rgba(26,29,39,0.97)",backdropFilter:"blur(16px)",borderTop:"1px solid #2e3347",display:"flex",zIndex:"20"}},
     ...NAV.map(n=>{
       const hasBadge = n.id==="dashboard" && (() => {
