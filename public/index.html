@@ -1731,6 +1731,13 @@ function renderDashboard() {
     )
   ) : null;
 
+  const helpBtn = el("button",{style:{
+    background:"#232738",border:"1px solid #2e3347",borderRadius:"50%",
+    width:"26px",height:"26px",display:"flex",alignItems:"center",justifyContent:"center",
+    color:"#94a3b8",fontSize:"13px",fontWeight:"700",cursor:"pointer",flexShrink:"0"
+  }}, "?");
+  helpBtn.addEventListener("click",()=>{ setView("help"); });
+
   const dashHeaderEl = el("div",{style:{
     display:"flex",alignItems:"center",gap:"8px",
     padding:"12px 0 10px",marginBottom:"4px",
@@ -1739,7 +1746,8 @@ function renderDashboard() {
     runByLeaIcon(24, 6),
     el("div",{style:{color:"#f1f5f9",fontSize:"16px",fontWeight:"800"}},"Run by Léa"),
     el("div",{style:{flex:"1"}}),
-    el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"12px",fontWeight:"700"}},"J–"+countdown())
+    el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"12px",fontWeight:"700"}},"J–"+countdown()),
+    helpBtn
   );
 
   return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,weatherEl,fatigueEl,heroPred,progressEl,coachEl,nextKeyEl,todayEl||"",bilanEl,stravaSection);
@@ -2741,7 +2749,7 @@ function renderSettings() {
         "🎯 Allure/FC affichées sur l\'effort seul (hors échauffement) pour les séances intensives",
         "🤖 Coach mentionne l\'IE et la cadence après une séance intensive",
         "💾 Correction sauvegarde horaires course et URL parcours",
-        "❓ Nouvel onglet Aide avec guide complet et FAQ",
+        "❓ Page Aide accessible via bouton dans le header (guide complet + FAQ)",
       ]},
       { ver:"v1.8.16", title:"Nouveau design & Inter", current:false, notes:[
         "🔤 Police Inter",
@@ -3336,6 +3344,8 @@ function render() {
   // Header uniquement pour les vues secondaires (pas le dashboard)
   const backBtn=view==="weekDetail"
     ?el("button",{style:{background:"none",border:"none",color:"#f97316",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("weeks")},"‹")
+    :view==="help"
+    ?el("button",{style:{background:"none",border:"none",color:"#f97316",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("dashboard")},"‹")
     :null;
 
   const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",settings:"Paramètres",course:"Course",help:"Aide"};
@@ -3367,7 +3377,6 @@ function render() {
     {id:"stats",    icon:"📊",label:"Stats"},
     {id:"course",   icon:"🏁",label:"Course"},
     {id:"settings", icon:"⚙️",label:"Paramètres"},
-    {id:"help",     icon:"❓",label:"Aide"},
   ];
   const activeNav=["dashboard","stats","settings","course","help"].includes(view)?view:"weeks";
   const nav=el("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"430px",background:"rgba(26,29,39,0.97)",backdropFilter:"blur(16px)",borderTop:"1px solid #2e3347",display:"flex",zIndex:"20"}},
