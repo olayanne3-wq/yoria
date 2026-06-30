@@ -3392,7 +3392,7 @@ function render() {
       );
       const b=el("button",{style:{flex:"1",background:"none",border:"none",cursor:"pointer",padding:"10px 0 14px",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",opacity:activeNav===n.id?"1":"0.45"}},
         iconWrap,
-        el("span",{style:{fontSize:"14px",fontWeight:"700",letterSpacing:"0.3px",color:activeNav===n.id?"#f97316":"#e2e8f0"}},n.label)
+        el("span",{style:{fontSize:"12px",fontWeight:"700",letterSpacing:"0.3px",color:activeNav===n.id?"#f97316":"#e2e8f0"}},n.label)
       );
       b.addEventListener("click",()=>{ if(n.id==="weeks") selectedWeek=currentWeek(); setView(n.id); });
       return b;
