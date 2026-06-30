@@ -1806,7 +1806,7 @@ function renderWeekDetail(weekNum) {
       borderRadius:"12px",
       boxShadow:`0 6px 24px ${st.color}1a, 0 2px 8px rgba(0,0,0,0.4)`,
       padding:"12px 14px",marginBottom:"8px",
-      opacity:isDoneSession?"0.5":"1",
+      opacity:isDoneSession?"0.7":"1",
       cursor:isDoneSession?"pointer":"default",
       transition:"opacity 0.2s ease"
     }},
@@ -1908,15 +1908,34 @@ function renderWeekDetail(weekNum) {
       card.appendChild(noteInput);
     }
 
-    // Si séance terminée : masquer le détail par défaut, cliquer pour le révéler
+    // Si séance terminée : afficher un résumé compact + détail repliable au clic
     if (isDoneSession) {
-      const childrenToHide = Array.from(card.children).slice(1); // tout sauf le header
+      // children[0] = header, children[1] = titre séance, le reste = détails
+      const childrenToHide = Array.from(card.children).slice(2);
       childrenToHide.forEach(c => { c.style.display = "none"; });
+
+      // Mini résumé Strava (distance, allure, FC)
+      if (stravaRun) {
+        const summaryRow = el("div",{style:{display:"flex",alignItems:"center",gap:"14px",paddingTop:"6px",borderTop:"1px solid #2e334766"}},
+          el("span",{style:{color:"#f97316",fontSize:"12px",fontWeight:"700"}},(stravaRun.distance/1000).toFixed(1)+" km"),
+          el("span",{style:{color:"#f97316",fontSize:"12px",fontWeight:"700"}},fmtPace(stravaRun.average_speed)+"/km"),
+          stravaRun.average_heartrate?el("span",{style:{color:"#f97316",fontSize:"12px",fontWeight:"700"}},Math.round(stravaRun.average_heartrate)+" bpm"):null,
+          el("div",{style:{flex:"1"}}),
+          el("span",{class:"muted",style:{fontSize:"11px"}},"détails ›")
+        );
+        summaryRow.dataset.summaryRow = "1";
+        card.appendChild(summaryRow);
+        // Réordonner : le résumé doit être juste après le titre, avant les détails cachés
+        card.insertBefore(summaryRow, childrenToHide[0] || null);
+      }
+
       card.addEventListener("click", (e)=>{
         if (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT") return;
         cardExpanded = !cardExpanded;
-        card.style.opacity = cardExpanded ? "1" : "0.5";
+        card.style.opacity = cardExpanded ? "1" : "0.7";
         childrenToHide.forEach(c => { c.style.display = cardExpanded ? "" : "none"; });
+        const summaryEl = card.querySelector('[data-summary-row]');
+        if (summaryEl) summaryEl.style.display = cardExpanded ? "none" : "flex";
       });
     }
 
