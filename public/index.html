@@ -1366,15 +1366,30 @@ function renderDashboard() {
           }})
     ),
     // ── Stats séances ─────────────────────────────────────────────────────
-    el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"14px",paddingTop:"10px",borderTop:"1px solid #2e334722",marginTop:"10px"}},
-      el("span",{style:{color:"#22c55e",fontWeight:"700"}},"✅ "+done),
-      el("span",{class:"muted"},"·"),
-      el("span",{style:{color:"#eab308",fontWeight:"700"}},"⚠️ "+adapted),
-      el("span",{class:"muted"},"·"),
-      el("span",{style:{color:"#ef4444",fontWeight:"700"}},"❌ "+missed),
-      el("span",{class:"muted"},"·"),
-      el("span",{class:"muted"},"J–"+cd+" · S"+cw)
-    )
+    (()=>{
+      const totalKmRun = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
+      return el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",paddingTop:"10px",borderTop:"1px solid #2e334733",marginTop:"10px"}},
+        el("span",{style:{color:"#22c55e",fontWeight:"700"}},"✅ "+done),
+        el("span",{class:"muted"},"·"),
+        el("span",{style:{color:"#eab308",fontWeight:"700"}},"⚠️ "+adapted),
+        el("span",{class:"muted"},"·"),
+        el("span",{style:{color:"#ef4444",fontWeight:"700"}},"❌ "+missed),
+        el("span",{class:"muted"},"·"),
+        el("span",{class:"muted"},"S"+cw),
+        el("div",{style:{flex:"1"}}),
+        (()=>{
+          // Calculer km total prévu sur le plan (basé sur durées × allures)
+          let pkm = 0;
+          ALL_SESSIONS.forEach(s=>{
+            if(s.type==="REPOS"||s.type==="RACE") return;
+            const dur = parseInt((s.session||"").match(/(\d+)\s*min/)?.[1])||0;
+            const pace = s.type==="EF"||s.type==="LONGUE" ? 6.33 : s.type==="VMA" ? 3.5 : s.type==="SPEC" ? 4.85 : s.type==="SEUIL" ? 5.2 : 6;
+            pkm += dur/pace;
+          });
+          return el("span",{class:"muted",style:{fontSize:"12px"}},totalKmRun+" / "+Math.round(pkm)+" km");
+        })()
+      );
+    })()
   );
 
 
@@ -1408,15 +1423,13 @@ function renderDashboard() {
   const refreshCoachBtn = el("button",{style:{background:"none",border:"none",color:"#475569",fontSize:"15px",cursor:"pointer",padding:"0",lineHeight:"1"},
     onClick:()=>{ coachMsg=null; coachDate=""; save("lk_coach_msg",null); save("lk_coach_date",""); fetchCoachMsg(); }
   },"🔄");
-  const coachEl = el("div",{style:{background:"#1a1d27",border:"1px solid "+coachBorderColor,borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
-    el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}},
-      el("div",{style:{display:"flex",alignItems:"center",gap:"7px"}},
-        runByLeaIcon(20, 5),
-        el("span",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},coachLabel)
-      ),
-      refreshCoachBtn
+  // Coach intégré dans la carte séance — bloc discret
+  const coachEl = el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",alignItems:"flex-start"}},
+    el("span",{style:{fontSize:"16px",flexShrink:"0"}},"🤖"),
+    el("div",{style:{flex:"1"}},
+      el("div",{style:{color:"#e2e8f0",fontSize:"14px",fontStyle:"italic",lineHeight:"1.5"}},coachMsg||el("span",{class:"muted",style:{fontSize:"13px"}},"Chargement..."))
     ),
-    el("div",{style:{color:"#f1f5f9",fontSize:"15px",fontStyle:"italic",lineHeight:"1.5"}},coachMsg||el("span",{class:"muted",style:{fontSize:"14px"}},"Chargement..."))
+    refreshCoachBtn
   );
 
   const nextKey = nextKeySession();
@@ -1615,6 +1628,7 @@ function renderDashboard() {
             ),
             el("span",{style:{color:"#e2e8f0",fontSize:"18px"}},"›")
           ):null,
+          !isRest ? coachEl : null,
           !isRest && !isDone ? el("button",{style:{width:"100%",marginTop:"8px",background:"#f9731611",border:"1px solid #f9731633",borderRadius:"8px",padding:"8px",color:"#f97316",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
             onClick:()=>{ selectedWeek=s.week; setView("weekDetail"); }
           },"Voir la semaine →") : null
@@ -1871,7 +1885,7 @@ function renderDashboard() {
     helpBtn
   );
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,heroPred,todayEl||"",coachEl,phaseEl,progressEl,nextKeyEl,bilanEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,heroPred,todayEl||"",phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
