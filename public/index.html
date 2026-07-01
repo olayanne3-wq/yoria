@@ -1030,6 +1030,28 @@ function getEffortLaps(activity) {
   return laps.filter(l => l.average_speed >= p70 && (1000/l.average_speed) < 360);
 }
 
+// ── Calcul dérive FC sur les répétitions ─────────────────────────────────
+function computeFcDrift(laps) {
+  const hrLaps = laps.filter(l => l.average_heartrate);
+  if (hrLaps.length < 2) return { driftBpm: null, driftEl: null };
+  const firstHr = hrLaps[0].average_heartrate;
+  const lastHr = hrLaps[hrLaps.length-1].average_heartrate;
+  const drift = Math.round(lastHr - firstHr);
+  const avgHr = hrLaps.reduce((s,l)=>s+l.average_heartrate,0)/hrLaps.length;
+  const firstHrVal = hrLaps[0].average_heartrate;
+  laps.forEach(l => {
+    l._fcAlert = l.average_heartrate && l.average_heartrate > avgHr + 8;
+    l._fcBase = firstHrVal;
+  });
+  const driftColor = drift <= 5 ? "#22c55e" : drift <= 12 ? "#eab308" : "#ef4444";
+  const driftIcon = drift <= 5 ? "✅" : drift <= 12 ? "⚠️" : "🔴";
+  const driftEl = el("div",{style:{background:"#232738",borderRadius:"8px",padding:"8px 12px",marginTop:"6px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+    el("span",{class:"muted",style:{fontSize:"13px"}},"Dérive FC"),
+    el("span",{style:{color:driftColor,fontSize:"14px",fontWeight:"700"}},(drift>0?"+":"")+drift+" bpm "+driftIcon)
+  );
+  return { driftBpm: drift, driftEl };
+}
+
 // ── Affichage commun d\'une répétition (dashboard + weekDetail) ────────────
 function renderLapRow(lap, i, sessionType) {
   const tgt = SESSION_TARGETS[sessionType];
@@ -1050,14 +1072,34 @@ function renderLapRow(lap, i, sessionType) {
   const seColor = economyColor(se, nSameType);
   const seLabel = economyLabel(se, nSameType);
   const cadence = lap.average_cadence ? Math.round(lap.average_cadence*2)+" spm" : "";
+
+  // ── Raison du verdict ────────────────────────────────────────────────────
+  let reasonParts = [];
+  if (tgt) {
+    if (pace <= tgt.okPace) reasonParts.push("Dans la cible");
+    else if (pace <= tgt.warnPace) reasonParts.push("Un peu lente");
+    else reasonParts.push("Trop lente");
+  }
+  if (lap.average_heartrate && lap._fcAlert) {
+    const fcDiff = Math.round(lap.average_heartrate - (lap._fcBase||lap.average_heartrate));
+    reasonParts.push("FC élevée"+(fcDiff>0?" (+"+fcDiff+" bpm)":""));
+  } else if (lap.average_heartrate && i > 0) {
+    const fcDiff = Math.round(lap.average_heartrate - (lap._fcBase||0));
+    if (fcDiff > 3) reasonParts.push("FC +"+fcDiff+" bpm");
+  }
+  const reasonText = reasonParts.join(" · ");
+  const reasonColor = bc === "#22c55e" ? "#22c55e" : bc === "#eab308" ? "#eab308" : "#ef4444";
   return el("div",{style:{marginBottom:"6px"}},
     el("div",{style:{display:"grid",gridTemplateColumns:"28px 1fr 64px 56px 20px",gap:"4px",alignItems:"center",marginBottom:"2px"}},
       el("span",{style:{color:"#e2e8f0",fontSize:"13px"}},"R"+(i+1)),
       el("div",{style:{height:"4px",background:"#232738",borderRadius:"2px"}},el("div",{style:{width:bw+"%",height:"100%",background:bc,borderRadius:"2px"}})),
       el("span",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"500",textAlign:"right"}},fmtPace(lap.average_speed)+"/km"),
-      lap.average_heartrate?el("span",{class:"muted",style:{fontSize:"13px",textAlign:"right"}},Math.round(lap.average_heartrate)+" bpm"):el("span",{},""),
+      lap.average_heartrate?el("span",{style:{fontSize:"13px",textAlign:"right",color:lap._fcAlert?"#ef4444":"#94a3b8",fontWeight:lap._fcAlert?"700":"400"}},Math.round(lap.average_heartrate)+" bpm"+(lap._fcAlert?" ↑":"")):el("span",{},""),
       el("span",{style:{fontSize:"14px",textAlign:"center"}},em)
     ),
+    reasonText?el("div",{style:{paddingLeft:"32px",marginBottom:"2px"}},
+      el("span",{style:{color:reasonColor,fontSize:"12px"}},reasonText)
+    ):null,
     (cadence||se)?el("div",{style:{display:"flex",gap:"8px",paddingLeft:"32px"}},
       cadence?el("span",{class:"muted",style:{fontSize:"12px"}},cadence):null,
       se?el("span",{style:{color:seColor,fontSize:"12px",fontWeight:"600"}},"IE "+se+(seLabel?" "+seLabel:"")):null
@@ -1589,7 +1631,11 @@ function renderDashboard() {
                   return el("span",{style:{color:nb===effortLaps2.length?"#22c55e":nb>0?"#eab308":"#ef4444",fontSize:"13px",fontWeight:"700"}},nb+"/"+effortLaps2.length+" dans la cible");
                 })()
               ),
-              ...effortLaps2.map((lap,i)=>renderLapRow(lap,i,s.type))
+              ...(() => {
+                const { driftEl } = computeFcDrift(effortLaps2);
+                const rows = effortLaps2.map((lap,i)=>renderLapRow(lap,i,s.type));
+                return driftEl ? [...rows, driftEl] : rows;
+              })()
             ):null
           ):null,
           // Prochaine séance
@@ -1748,14 +1794,17 @@ function renderDashboard() {
   const phasePct = Math.round((phasePos / phaseWeeks.length) * 100);
 
   // Stats de la phase
-  const phaseSessions = ALL_SESSIONS.filter(s => phaseWeeks.includes(s.week) && s.type !== "REPOS");
+  // Séances passées uniquement (jusqu'à aujourd\'hui)
+  const phaseSessions = ALL_SESSIONS.filter(s => phaseWeeks.includes(s.week) && s.type !== "REPOS" && s.date <= today());
   const phaseValidated = phaseSessions.filter(s => statuses[s.uid]==="✅"||statuses[s.uid]==="⚠️");
+  // Total prévu sur toute la phase (pour les barres par type)
+  const phaseSessionsTotal = ALL_SESSIONS.filter(s => phaseWeeks.includes(s.week) && s.type !== "REPOS");
   const phaseKm = Math.round(phaseWeeks.reduce((acc, w) => acc + weekKm(w), 0) * 10) / 10;
 
   // Stats par type de séance dans la phase
   const phaseTypes = ["VMA","SPEC","SEUIL","EF","LONGUE"];
   const phaseTypeStats = phaseTypes.map(type => {
-    const total = phaseSessions.filter(s => s.type===type).length;
+    const total = phaseSessionsTotal.filter(s => s.type===type).length;
     const done = phaseValidated.filter(s => s.type===type).length;
     return { type, total, done };
   }).filter(t => t.total > 0);
@@ -2040,7 +2089,11 @@ function renderWeekDetail(weekNum) {
           el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"6px"}},
             SESSION_TARGETS[s.type] ? "cible "+SESSION_TARGETS[s.type].effort+" "+SESSION_TARGETS[s.type].tolerance : ""
           ),
-          ...effortLaps.map((lap,i)=>renderLapRow(lap,i,s.type))
+          ...(() => {
+            const { driftEl } = computeFcDrift(effortLaps);
+            const rows = effortLaps.map((lap,i)=>renderLapRow(lap,i,s.type));
+            return driftEl ? [...rows, driftEl] : rows;
+          })()
         ):null
       ):null
     );
@@ -2293,10 +2346,13 @@ function renderStats() {
       if (!laps.length) return null;
       const ieVals = laps.map(l=>economyScore(l,type)).filter(v=>v!==null);
       const cadVals = laps.map(l=>l.average_cadence?Math.round(l.average_cadence*2):null).filter(v=>v!==null);
+      const hrVals = laps.filter(l=>l.average_heartrate).map(l=>l.average_heartrate);
       return {
         week: s.week,
+        date: s.date,
         ie: ieVals.length ? Math.round(ieVals.reduce((a,b)=>a+b,0)/ieVals.length) : null,
-        cad: cadVals.length ? Math.round(cadVals.reduce((a,b)=>a+b,0)/cadVals.length) : null
+        cad: cadVals.length ? Math.round(cadVals.reduce((a,b)=>a+b,0)/cadVals.length) : null,
+        fc: hrVals.length ? Math.round(hrVals.reduce((a,b)=>a+b,0)/hrVals.length) : null
       };
     }).filter(Boolean);
     if (points.length) { ieData[type]=points; cadData[type]=points; }
@@ -2400,6 +2456,146 @@ function renderStats() {
 
   const ieCurveEl = drawCurve(ieData,"📊 Indice d\'Économie (IE) par séance","ie","IE",100);
   const cadCurveEl = drawCurve(cadData,"🦶 Cadence par séance","cad","spm",null);
+
+  // ── Courbes FC par type de séance ──────────────────────────────────────────
+  const fcCurveEl = (()=>{
+    const types = ["VMA","SPEC","SEUIL"].filter(t => ieData[t] && ieData[t].some(p=>p.fc));
+    if (!types.length) return null;
+
+    const FC_ZONES_CURVE = { VMA:{min:163,max:181}, SPEC:{min:154,max:163}, SEUIL:{min:145,max:163} };
+
+    const cards = types.map(type => {
+      const pts = ieData[type].filter(p=>p.fc);
+      const color = typeColors2[type];
+      const zone = FC_ZONES_CURVE[type];
+
+      // Tendance
+      let trendEl = null;
+      if (pts.length >= 2) {
+        const diff = pts[pts.length-1].fc - pts[0].fc;
+        const trendColor = diff <= 0 ? "#22c55e" : diff <= 5 ? "#eab308" : "#ef4444";
+        const trendText = (diff > 0 ? "↑ +" : "↓ ") + Math.abs(diff) + " bpm";
+        trendEl = el("span",{style:{color:trendColor,fontSize:"14px",fontWeight:"700"}},trendText);
+      } else {
+        trendEl = el("span",{class:"muted",style:{fontSize:"13px"}},"1 séance");
+      }
+
+      // SVG courbe
+      const W=320, H=70, PL=28, PT=10, PB=22, PR=30;
+      const allWeeks = PLAN.flatMap(w=>w.sessions).filter(s=>s.type===type).map(s=>s.week);
+      const uniqueWeeks = [...new Set(allWeeks)].sort((a,b)=>a-b);
+      const nW = uniqueWeeks.length;
+      const xOf = w => PL + ((uniqueWeeks.indexOf(w)) / Math.max(nW-1,1)) * (W-PL-PR);
+
+      const fcVals = pts.map(p=>p.fc);
+      const allFc = zone ? [zone.min-5, zone.max+5, ...fcVals] : fcVals;
+      const minV = Math.min(...allFc), maxV = Math.max(...allFc);
+      const yOf = v => PT + (1-(v-minV)/(maxV-minV||1)) * (H-PT-PB);
+
+      const zonePts = zone
+        ? `0,${yOf(zone.max)} ${W},${yOf(zone.max)} ${W},${yOf(zone.min)} 0,${yOf(zone.min)}`
+        : null;
+
+      const linePts = pts.map(p => `${xOf(p.week)},${yOf(p.fc)}`).join(" ");
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+      svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+      svg.style.width = "100%";
+      svg.style.display = "block";
+
+      // Zone cible
+      if (zonePts) {
+        const poly = document.createElementNS("http://www.w3.org/2000/svg","polygon");
+        poly.setAttribute("points", zonePts);
+        poly.setAttribute("fill","#22c55e");
+        poly.setAttribute("opacity","0.07");
+        svg.appendChild(poly);
+        // Labels zone
+        const t1 = document.createElementNS("http://www.w3.org/2000/svg","text");
+        t1.setAttribute("x", W-2); t1.setAttribute("y", yOf(zone.max)+3);
+        t1.setAttribute("text-anchor","end"); t1.setAttribute("fill","#22c55e");
+        t1.setAttribute("font-size","8"); t1.setAttribute("opacity","0.7");
+        t1.textContent = zone.max;
+        svg.appendChild(t1);
+        const t2 = document.createElementNS("http://www.w3.org/2000/svg","text");
+        t2.setAttribute("x", W-2); t2.setAttribute("y", yOf(zone.min)+3);
+        t2.setAttribute("text-anchor","end"); t2.setAttribute("fill","#22c55e");
+        t2.setAttribute("font-size","8"); t2.setAttribute("opacity","0.7");
+        t2.textContent = zone.min;
+        svg.appendChild(t2);
+      }
+
+      // Points futurs
+      uniqueWeeks.forEach(w => {
+        if (!pts.find(p=>p.week===w)) {
+          const cx = xOf(w);
+          const cy = H/2;
+          const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+          c.setAttribute("cx",cx); c.setAttribute("cy",cy);
+          c.setAttribute("r","4"); c.setAttribute("fill","none");
+          c.setAttribute("stroke","#2e3347"); c.setAttribute("stroke-width","1.5");
+          c.setAttribute("stroke-dasharray","2,2");
+          svg.appendChild(c);
+          const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+          t.setAttribute("x",cx); t.setAttribute("y",H-4);
+          t.setAttribute("text-anchor","middle"); t.setAttribute("fill","#475569");
+          t.setAttribute("font-size","9"); t.textContent = "S"+w;
+          svg.appendChild(t);
+        }
+      });
+
+      // Ligne + points réels
+      if (pts.length >= 2) {
+        const poly2 = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+        poly2.setAttribute("points", linePts);
+        poly2.setAttribute("fill","none");
+        poly2.setAttribute("stroke",color);
+        poly2.setAttribute("stroke-width","2.5");
+        poly2.setAttribute("stroke-linecap","round");
+        svg.appendChild(poly2);
+      }
+      pts.forEach(p => {
+        const cx = xOf(p.week), cy = yOf(p.fc);
+        const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        c.setAttribute("cx",cx); c.setAttribute("cy",cy);
+        c.setAttribute("r","5"); c.setAttribute("fill",color);
+        svg.appendChild(c);
+        const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+        t.setAttribute("x",cx); t.setAttribute("y",cy-8);
+        t.setAttribute("text-anchor","middle"); t.setAttribute("fill","#f1f5f9");
+        t.setAttribute("font-size","9"); t.textContent = p.fc;
+        svg.appendChild(t);
+        const tw = document.createElementNS("http://www.w3.org/2000/svg","text");
+        tw.setAttribute("x",cx); tw.setAttribute("y",H-4);
+        tw.setAttribute("text-anchor","middle"); tw.setAttribute("fill","#94a3b8");
+        tw.setAttribute("font-size","9"); tw.textContent = "S"+p.week;
+        svg.appendChild(tw);
+      });
+
+      const card = el("div",{style:{background:"#1a1d27",border:`1px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px"}},
+        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
+          el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+            el("span",{style:{background:color+"22",color,border:`1px solid ${color}44`,borderRadius:"4px",padding:"2px 8px",fontSize:"12px",fontWeight:"700"}},type),
+            el("span",{class:"muted",style:{fontSize:"13px"}},"FC intervalles")
+          ),
+          trendEl
+        )
+      );
+      card.appendChild(svg);
+      if (pts.length < 2) {
+        const msg = el("div",{class:"muted",style:{fontSize:"12px",marginTop:"6px",fontStyle:"italic"}},
+          "Courbe disponible à partir de 2 séances"
+        );
+        card.appendChild(msg);
+      }
+      return card;
+    });
+
+    return el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"❤️ FC intervalles par type de séance"),
+      ...cards
+    );
+  })();
 
   const paceEl=el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"Référentiel allures & FC"),
@@ -2515,6 +2711,7 @@ function renderStats() {
     el("div",{style:{marginTop:"8px"}}),
     graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"14px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
     progressionEl,
+    fcCurveEl,
     ieCurveEl,
     cadCurveEl,
     projEl,
@@ -2884,6 +3081,9 @@ function renderSettings() {
     const VERSIONS = [
       { ver:"v1.9.1", title:"Bilan de phase & améliorations", current:true, notes:[
         "🏁 Bilan de phase cliquable dans le dashboard",
+        "📉 Courbes FC intervalles par type de séance dans Stats",
+        "🔁 Dérive FC affichée sur les répétitions",
+        "💬 Raison du verdict sur chaque répétition",
         "🎯 Date de la dernière séance à la ligne dans le prédicteur",
         "🗣️ Coach moins coupé (max_tokens augmenté)",
         "📊 Projection masquée avant 21 jours avec date de disponibilité",
