@@ -2050,7 +2050,8 @@ function renderWeekDetail(weekNum) {
     const uid=`${weekNum}-${i}`;
     const isHidden = !!hiddenSessions[uid];
     // Session effective (apres swap eventuel)
-    const effSess = getEffectiveSession(week, i);
+    const effSess = getEffectiveSession(week, i) || week.sessions[i];
+    if (!effSess) return null;
     const isToday=s.date===today(), isPast=s.date<today();
     const st=STYPES[effSeseffSess.type]||STYPES.REPOS;
     const stravaRun=weekRuns.find(r=>r.start_date_local?.slice(0,10)===s.date);
@@ -3092,10 +3093,12 @@ function getEffectiveSession(week, slotIdx) {
   if (swappedSessions[uid]) {
     const swapUid = swappedSessions[uid];
     const swapParts = swapUid.split("-");
-    const swapWeek = PLAN.find(w=>w.week===parseInt(swapParts[0]));
-    return swapWeek ? swapWeek.sessions[parseInt(swapParts[1])] : week.sessions[slotIdx];
+    const swapWeekNum = parseInt(swapParts[0]);
+    const swapIdx = parseInt(swapParts[1]);
+    const swapWeek = PLAN.find(w=>w.week===swapWeekNum);
+    if (swapWeek && swapWeek.sessions[swapIdx]) return swapWeek.sessions[swapIdx];
   }
-  return week.sessions[slotIdx];
+  return week.sessions[slotIdx] || null;
 }
 
 // Jours disponibles pour deplacement (REPOS non swappés, ou slots masqués)
