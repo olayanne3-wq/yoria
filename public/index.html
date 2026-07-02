@@ -3396,8 +3396,12 @@ function showMoveMenu(s, week) {
       const planWeek = PLAN.find(w => w.week === origWeekNum);
       const origDate = planWeek ? planWeek.sessions[origIdx].date : s.date;
 
+      // Debug
+      console.log("MOVE: uid="+s.uid+" origDate="+origDate+" -> targetDate="+target.date);
+      console.log("MOVE: movedSessions avant="+JSON.stringify(movedSessions));
       // Sauvegarder le deplacement
       movedSessions[s.uid] = target.date;
+      console.log("MOVE: movedSessions apres="+JSON.stringify(movedSessions));
 
       // Si la cible etait masquee, la restaurer a la date d'origine de s
       if (target.type !== "REPOS") {
