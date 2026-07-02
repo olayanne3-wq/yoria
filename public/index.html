@@ -540,6 +540,12 @@ const PLAN = [
 ];
 
 const ALL_SESSIONS = PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
+// Appliquer les déplacements sauvegardés
+function applyMovedSessions() {
+  ALL_SESSIONS.forEach(s => {
+    if (movedSessions[s.uid]) s.date = movedSessions[s.uid];
+  });
+}
 
 const INTERVAL_SESSION_DATES = new Set(
   ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
@@ -559,6 +565,7 @@ let selectedWeek = 1;
 let statuses = load("lk_statuses", {});
 let hiddenSessions = load("lk_hidden_sessions", {});
 let movedSessions = load("lk_moved_sessions", {});
+applyMovedSessions();
 let notesList = load("lk_notes", []);
 let sessionNotes = load("lk_session_notes", {}); // {uid: "texte"}
 let stravaToken = load("lk_strava_token", null);
@@ -4255,6 +4262,8 @@ function setView(v) {
 }
 
 function render() {
+  // Réappliquer les déplacements à chaque rendu
+  applyMovedSessions();
   const app=document.getElementById("app");
   app.innerHTML="";
 
