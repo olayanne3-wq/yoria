@@ -2088,7 +2088,7 @@ function renderWeekDetail(weekNum) {
   const week=PLAN.find(w=>w.week===weekNum);
   if (!week) return el("div",{},"—");
   const t=today();
-  const weekSessions = ALL_SESSIONS.filter(s=>s.week===weekNum);
+  const weekSessions = ALL_SESSIONS.filter(s=>s.week===weekNum).sort((a,b)=>a.date.localeCompare(b.date));
   const weekDates=weekSessions.map(s=>s.date);
   const weekRuns=stravaActivities.filter(a=>a.type==="Run"&&weekDates.includes(a.start_date_local?.slice(0,10)));
 
@@ -3285,11 +3285,24 @@ function exportPdfResultats() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function getAvailableDays(week, excludeUid) {
-  return week.sessions.filter(s => {
+  // Dates deja occupees par des seances actives (hors la seance a deplacer)
+  const weekSess = ALL_SESSIONS.filter(s => s.week === week.week);
+  const occupiedDates = weekSess
+    .filter(s => s.uid !== excludeUid && !hiddenSessions[s.uid] && s.type !== "REPOS")
+    .map(s => s.date);
+
+  return week.sessions.filter((s, i) => {
+    s.uid = week.week+"-"+i;
     if (s.uid === excludeUid) return false;
-    if (s.type === "REPOS") return true;
-    if (hiddenSessions[s.uid]) return true;
-    return false;
+    // Jour dispo si : REPOS ou seance masquee, ET date pas deja occupee
+    const isAvailable = s.type === "REPOS" || hiddenSessions[s.uid];
+    const dateFromAllSess = weekSess.find(ss => ss.uid === s.uid);
+    const actualDate = dateFromAllSess ? dateFromAllSess.date : s.date;
+    return isAvailable && !occupiedDates.includes(actualDate);
+  }).map((s, idx) => {
+    // Retourner la session avec sa date actuelle (apres deplacement eventuel)
+    const fromAll = ALL_SESSIONS.find(ss => ss.uid === s.uid);
+    return fromAll ? fromAll : s;
   });
 }
 
