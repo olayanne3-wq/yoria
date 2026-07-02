@@ -3103,14 +3103,18 @@ function getEffectiveSession(week, slotIdx) {
 
 // Jours disponibles pour deplacement (REPOS non swappés, ou slots masqués)
 function getAvailableSlots(week, excludeIdx) {
-  return week.sessions.map((s,i) => {
+  const slots = week.sessions.map((s,i) => {
     const uid = week.week+"-"+i;
     if (i === excludeIdx) return null;
     const effective = getEffectiveSession(week, i);
+    if (!effective) return null;
+    console.log("SLOT "+i+": effective.type="+effective.type+" hidden="+!!hiddenSessions[uid]+" swapped="+!!swappedSessions[uid]);
     if (effective.type === "REPOS") return {idx:i, uid, date:s.date, label:"Repos"};
     if (hiddenSessions[uid]) return {idx:i, uid, date:s.date, label:effective.type+" (masquee)"};
     return null;
   }).filter(Boolean);
+  console.log("AVAILABLE SLOTS:", JSON.stringify(slots));
+  return slots;
 }
 
 function showSessionMenu(week, slotIdx) {
