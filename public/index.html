@@ -3209,7 +3209,8 @@ function showSessionMenu(week, slotIdx) {
 
 function showMoveMenu(week, slotIdx) {
   const slots = getAvailableSlots(week, slotIdx);
-  if (!slots.length) { alert("Aucun jour disponible cette semaine."); return; }
+  console.log("showMoveMenu: slotIdx="+slotIdx+" slots="+JSON.stringify(slots)+" swapped="+JSON.stringify(swappedSessions));
+  if (!slots.length) { alert("Aucun jour disponible cette semaine. Slots vides pour idx="+slotIdx); return; }
 
   document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
   const overlay = document.createElement("div");
