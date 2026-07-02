@@ -542,6 +542,15 @@ const PLAN = [
 const ALL_SESSIONS = PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
 // Appliquer les déplacements sauvegardés
 function applyMovedSessions() {
+  console.log("APPLY START: movedSessions="+JSON.stringify(movedSessions));
+  console.log("APPLY START: ALL_SESSIONS[5].uid="+ALL_SESSIONS[5].uid+" type="+typeof ALL_SESSIONS[5].uid);
+  const movedKeys = Object.keys(movedSessions);
+  console.log("APPLY START: movedKeys="+JSON.stringify(movedKeys));
+  if (movedKeys.length > 0) {
+    const testUid = movedKeys[0];
+    const found = ALL_SESSIONS.find(s => s.uid === testUid);
+    console.log("APPLY START: search uid="+testUid+" found="+!!found);
+  }
   // D'abord remettre toutes les dates depuis PLAN (reset)
   PLAN.forEach(w => {
     w.sessions.forEach((ps, i) => {
