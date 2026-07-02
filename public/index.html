@@ -1279,6 +1279,98 @@ function renderDashboard() {
   const done=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const missed=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
+
+  // ── Bannière post-course ────────────────────────────────────────────────────
+  const raceResult = load("lk_race_result", null);
+  if (today() >= "2026-09-06" && raceResult) {
+    const diff = raceResult - raceGoalTime;
+    const achieved = diff <= 0;
+    const close = diff > 0 && diff <= 60;
+    const color = achieved ? "#22c55e" : close ? "#eab308" : "#a855f7";
+    const emoji = achieved ? "🏅" : close ? "⚡" : "📈";
+    const title = achieved ? "Objectif atteint !" : close ? "Tres belle course !" : "Belle progression !";
+    const diffVsStart = 3021 - raceResult;
+    const subtitle = achieved
+      ? (Math.abs(diff) > 0 ? "-"+fmtTime(Math.abs(diff))+" sous l'objectif" : "Exactement dans les temps")
+      : close
+        ? "+"+fmtTime(Math.abs(diff))+" au-dessus de l'objectif"
+        : "-"+fmtTime(Math.abs(diffVsStart))+" par rapport au depart";
+    const coachMsg2 = achieved
+      ? "Bravo Laurent ! 11 semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
+      : close
+        ? fmtTime(Math.abs(diff))+" ! C'etait si proche. Belle progression en 11 semaines. La prochaine fois sera la bonne."
+        : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en 11 semaines. On continue !";
+
+    // Input pour corriger le resultat
+    const resultInput = document.createElement("input");
+    resultInput.type = "time";
+    resultInput.step = "1";
+    resultInput.style.cssText = "flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
+    const hh = Math.floor(raceResult/3600);
+    const mm = Math.floor((raceResult%3600)/60);
+    const ss = raceResult%60;
+    resultInput.value = hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss.toString().padStart(2,"0");
+
+    const saveBtn2 = document.createElement("button");
+    saveBtn2.textContent = "OK";
+    saveBtn2.style.cssText = "background:"+color+";border:none;border-radius:8px;padding:8px 16px;color:"+(close?"#1a1d27":"#fff")+";font-size:14px;font-weight:700;cursor:pointer;";
+    saveBtn2.addEventListener("click", () => {
+      const parts = resultInput.value.split(":");
+      if (parts.length >= 2) {
+        const secs = parseInt(parts[0])*3600 + parseInt(parts[1])*60 + (parseInt(parts[2])||0);
+        if (!isNaN(secs) && secs > 0) { save("lk_race_result", secs); render(); }
+      }
+    });
+
+    const inputRow = document.createElement("div");
+    inputRow.style.cssText = "display:flex;gap:8px;";
+    inputRow.appendChild(resultInput);
+    inputRow.appendChild(saveBtn2);
+
+    const inputCard = el("div",{style:{background:"#1a1d27",borderRadius:"10px",padding:"12px",marginTop:"8px"}},
+      el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}},"Corriger mon resultat")
+    );
+    inputCard.appendChild(inputRow);
+
+    const banner = el("div",{style:{background:"#1a1d27",border:"1px solid "+color+"44",borderRadius:"16px",padding:"20px",marginBottom:"12px",marginTop:"8px",textAlign:"center"}},
+      el("div",{style:{fontSize:"48px",marginBottom:"8px"}},emoji),
+      el("div",{style:{color:color,fontSize:"22px",fontWeight:"900",marginBottom:"4px"}},title),
+      el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},"10 km Gem Aubagne - 6 septembre 2026"),
+      el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"12px"}},
+        el("div",{style:{textAlign:"center"}},
+          el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Objectif"),
+          el("div",{style:{color:"#f97316",fontSize:"24px",fontWeight:"900"}},fmtTime(raceGoalTime))
+        ),
+        el("div",{style:{background:"#2e3347"}}),
+        el("div",{style:{textAlign:"center"}},
+          el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Resultat"),
+          el("div",{style:{color:color,fontSize:"24px",fontWeight:"900"}},fmtTime(raceResult))
+        )
+      ),
+      el("div",{style:{background:color+"22",border:"1px solid "+color+"44",borderRadius:"10px",padding:"12px",marginBottom:"12px"}},
+        el("div",{style:{color:color,fontSize:"14px",fontWeight:"700"}},subtitle)
+      ),
+      el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",textAlign:"left",marginBottom:"8px"}},
+        el("span",{style:{fontSize:"18px",flexShrink:"0"}},"🤖"),
+        el("div",{style:{color:"#e2e8f0",fontSize:"13px",lineHeight:"1.5"}},coachMsg2)
+      )
+    );
+    banner.appendChild(inputCard);
+
+    // Header simple
+    const hdr = el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"12px 0 10px",marginBottom:"12px",borderBottom:"1px solid #2e3347"}},
+      runByLeaIcon(24,6),
+      el("div",{style:{color:"#f1f5f9",fontSize:"16px",fontWeight:"800"}},"Run by Lea"),
+      el("div",{style:{flex:"1"}}),
+      el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"14px",fontWeight:"700"}},"J-"+cd)
+    );
+
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "padding:0 16px 100px;";
+    wrapper.appendChild(hdr);
+    wrapper.appendChild(banner);
+    return wrapper;
+  }
   const total=ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
   const todaySessions=ALL_SESSIONS.filter(s=>s.date===today());
   const pred=currentPred||predict10K();
@@ -2955,7 +3047,42 @@ function renderCourse() {
 
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
-    infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard
+    infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
+    // Saisie resultat (visible apres le 6 septembre)
+    (()=>{
+      if (today() < "2026-09-06") return null;
+      const existingResult = load("lk_race_result", null);
+      const inp = document.createElement("input");
+      inp.type = "time"; inp.step = "1";
+      inp.style.cssText = "flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
+      if (existingResult) {
+        const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss2=existingResult%60;
+        inp.value = hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss2.toString().padStart(2,"0");
+      }
+      const btn = document.createElement("button");
+      btn.textContent = existingResult ? "Modifier" : "Enregistrer";
+      btn.style.cssText = "background:#f97316;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
+      btn.addEventListener("click", () => {
+        const parts = inp.value.split(":");
+        if (parts.length >= 2) {
+          const secs = parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);
+          if (!isNaN(secs) && secs > 0) { save("lk_race_result", secs); render(); }
+        }
+      });
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;margin-top:8px;";
+      row.appendChild(inp); row.appendChild(btn);
+      const card = el("div",{style:{marginBottom:"16px"}},
+        el("div",{class:"label"},"Mon resultat officiel"),
+        el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
+          el("div",{style:{color:"#94a3b8",fontSize:"13px"}},
+            existingResult ? "Resultat : "+fmtTime(existingResult) : "Saisis ton temps apres la course"
+          )
+        )
+      );
+      card.querySelector("div:last-child").appendChild(row);
+      return card;
+    })()
   );
 }
 
@@ -3120,7 +3247,11 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.9.2", title:"Dashboard condensé & Course enrichie", current:true, notes:[
+      { ver:"v1.9.3", title:"Banniere post-course", current:true, notes:[
+        "🏅 Banniere post-course (objectif atteint / proche / progression)",
+        "📝 Saisie du resultat officiel dans l'onglet Course",
+      ]},
+      { ver:"v1.9.2", title:"Dashboard condense & Course enrichie", current:false, notes:[
         "🎨 Dashboard condensé — Coach intégré dans la carte séance",
         "📊 Objectif + Estimation fusionnés, fourchette compacte",
         "🌡️ Météo historique sur les séances validées",
