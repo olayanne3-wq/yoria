@@ -2053,14 +2053,14 @@ function renderWeekDetail(weekNum) {
     const effSess = getEffectiveSession(week, i) || week.sessions[i];
     if (!effSess) return null;
     const isToday=s.date===today(), isPast=s.date<today();
-    const st=STYPES[effSeseffSess.type]||STYPES.REPOS;
+    const st=STYPES[effSess.type]||STYPES.REPOS;
     const stravaRun=weekRuns.find(r=>r.start_date_local?.slice(0,10)===s.date);
     const effortLaps=stravaRun?getEffortLaps(stravaRun):[];
 
     // Seance masquee
     if (isHidden) {
       const hCard = el("div",{style:{background:"#1a1d2766",border:"1px dashed #2e3347",borderRadius:"12px",padding:"10px 14px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",opacity:"0.5"}},
-        el("span",{class:"muted",style:{fontSize:"13px"}},"[supprimee] "+effSeseffSess.type+" - "+effSeseffSess.session.slice(0,30)),
+        el("span",{class:"muted",style:{fontSize:"13px"}},"[supprimee] "+effSess.type+" - "+effSess.session.slice(0,30)),
         el("span",{class:"muted",style:{fontSize:"11px"}},s.date)
       );
       let lpH=null;
@@ -2072,7 +2072,7 @@ function renderWeekDetail(weekNum) {
     }
 
     const uidStatus = statuses[uid];
-    const isDoneSession = (uidStatus==="✅"||uidStatus==="⚠️") && effSeseffSess.type!=="REPOS";
+    const isDoneSession = (uidStatus==="✅"||uidStatus==="⚠️") && effSess.type!=="REPOS";
     let cardExpanded = false;
     const card=el("div",{style:{
       background:isToday?"#232738":"#1a1d27",
