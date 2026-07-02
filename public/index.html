@@ -540,21 +540,6 @@ const PLAN = [
 ];
 
 const ALL_SESSIONS = PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
-// Appliquer les déplacements sauvegardés
-function applyMovedSessions() {
-  // D'abord remettre toutes les dates depuis PLAN (reset)
-  PLAN.forEach(w => {
-    w.sessions.forEach((ps, i) => {
-      const uid = w.week+"-"+i;
-      const sess = ALL_SESSIONS.find(s => s.uid === uid);
-      if (sess) sess.date = ps.date;
-    });
-  });
-  // Ensuite appliquer les deplacements
-  ALL_SESSIONS.forEach(s => {
-    if (movedSessions[s.uid]) s.date = movedSessions[s.uid];
-  });
-}
 
 const INTERVAL_SESSION_DATES = new Set(
   ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
@@ -572,9 +557,8 @@ function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); 
 let view = "dashboard";
 let selectedWeek = 1;
 let statuses = load("lk_statuses", {});
-let hiddenSessions = load("lk_hidden_sessions", {});
-let movedSessions = load("lk_moved_sessions", {});
-applyMovedSessions();
+let hiddenSessions = load("lk_hidden_sessions", {}); // {uid: true}
+let swappedSessions = load("lk_swapped_sessions", {}); // {uid: swapUid} swap bidirectionnel
 let notesList = load("lk_notes", []);
 let sessionNotes = load("lk_session_notes", {}); // {uid: "texte"}
 let stravaToken = load("lk_strava_token", null);
@@ -1299,7 +1283,7 @@ function renderDashboard() {
   const missed=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
 
-  // ── Bannière post-course ────────────────────────────────────────────────────
+  // Banniere post-course
   const raceResult = load("lk_race_result", null);
   if (today() >= "2026-09-06" && raceResult) {
     const diff = raceResult - raceGoalTime;
@@ -1311,83 +1295,54 @@ function renderDashboard() {
     const diffVsStart = 3021 - raceResult;
     const subtitle = achieved
       ? (Math.abs(diff) > 0 ? "-"+fmtTime(Math.abs(diff))+" sous objectif" : "Exactement dans les temps")
-      : close
-        ? "+"+fmtTime(Math.abs(diff))+" au-dessus objectif"
-        : "-"+fmtTime(Math.abs(diffVsStart))+" par rapport au depart";
+      : close ? "+"+fmtTime(Math.abs(diff))+" au-dessus objectif"
+      : "-"+fmtTime(Math.abs(diffVsStart))+" par rapport au depart";
     const coachMsg2 = achieved
       ? "Bravo Laurent ! 11 semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
-      : close
-        ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en 11 semaines."
-        : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en 11 semaines. On continue !";
+      : close ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en 11 semaines."
+      : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en 11 semaines. On continue !";
 
-    // Input pour corriger le resultat
-    const resultInput = document.createElement("input");
-    resultInput.type = "time";
-    resultInput.step = "1";
-    resultInput.style.cssText = "flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
-    const hh = Math.floor(raceResult/3600);
-    const mm = Math.floor((raceResult%3600)/60);
-    const ss = raceResult%60;
-    resultInput.value = hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss.toString().padStart(2,"0");
-
-    const saveBtn2 = document.createElement("button");
-    saveBtn2.textContent = "OK";
-    saveBtn2.style.cssText = "background:"+color+";border:none;border-radius:8px;padding:8px 16px;color:"+(close?"#1a1d27":"#fff")+";font-size:14px;font-weight:700;cursor:pointer;";
-    saveBtn2.addEventListener("click", () => {
-      const parts = resultInput.value.split(":");
-      if (parts.length >= 2) {
-        const secs = parseInt(parts[0])*3600 + parseInt(parts[1])*60 + (parseInt(parts[2])||0);
-        if (!isNaN(secs) && secs > 0) { save("lk_race_result", secs); render(); }
-      }
+    const inp = document.createElement("input");
+    inp.type="time"; inp.step="1";
+    inp.style.cssText="flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
+    const hh=Math.floor(raceResult/3600), mm=Math.floor((raceResult%3600)/60), ss2=raceResult%60;
+    inp.value=hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss2.toString().padStart(2,"0");
+    const saveBtn2=document.createElement("button");
+    saveBtn2.textContent="OK";
+    saveBtn2.style.cssText="background:"+color+";border:none;border-radius:8px;padding:8px 16px;color:"+(close?"#1a1d27":"#fff")+";font-size:14px;font-weight:700;cursor:pointer;";
+    saveBtn2.addEventListener("click",()=>{
+      const parts=inp.value.split(":");
+      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
     });
-
-    const inputRow = document.createElement("div");
-    inputRow.style.cssText = "display:flex;gap:8px;";
-    inputRow.appendChild(resultInput);
-    inputRow.appendChild(saveBtn2);
-
-    const inputCard = el("div",{style:{background:"#1a1d27",borderRadius:"10px",padding:"12px",marginTop:"8px"}},
+    const inputRow=document.createElement("div");
+    inputRow.style.cssText="display:flex;gap:8px;";
+    inputRow.appendChild(inp); inputRow.appendChild(saveBtn2);
+    const inputCard=el("div",{style:{background:"#1a1d27",borderRadius:"10px",padding:"12px",marginTop:"8px"}},
       el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}},"Corriger mon resultat")
     );
     inputCard.appendChild(inputRow);
-
-    const banner = el("div",{style:{background:"#1a1d27",border:"1px solid "+color+"44",borderRadius:"16px",padding:"20px",marginBottom:"12px",marginTop:"8px",textAlign:"center"}},
+    const banner=el("div",{style:{background:"#1a1d27",border:"1px solid "+color+"44",borderRadius:"16px",padding:"20px",marginBottom:"12px",marginTop:"8px",textAlign:"center"}},
       el("div",{style:{fontSize:"48px",marginBottom:"8px"}},emoji),
       el("div",{style:{color:color,fontSize:"22px",fontWeight:"900",marginBottom:"4px"}},title),
       el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},"10 km Gem Aubagne - 6 septembre 2026"),
       el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"12px"}},
-        el("div",{style:{textAlign:"center"}},
-          el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Objectif"),
-          el("div",{style:{color:"#f97316",fontSize:"24px",fontWeight:"900"}},fmtTime(raceGoalTime))
-        ),
+        el("div",{style:{textAlign:"center"}},el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Objectif"),el("div",{style:{color:"#f97316",fontSize:"24px",fontWeight:"900"}},fmtTime(raceGoalTime))),
         el("div",{style:{background:"#2e3347"}}),
-        el("div",{style:{textAlign:"center"}},
-          el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Resultat"),
-          el("div",{style:{color:color,fontSize:"24px",fontWeight:"900"}},fmtTime(raceResult))
-        )
+        el("div",{style:{textAlign:"center"}},el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Resultat"),el("div",{style:{color:color,fontSize:"24px",fontWeight:"900"}},fmtTime(raceResult)))
       ),
-      el("div",{style:{background:color+"22",border:"1px solid "+color+"44",borderRadius:"10px",padding:"12px",marginBottom:"12px"}},
-        el("div",{style:{color:color,fontSize:"14px",fontWeight:"700"}},subtitle)
-      ),
-      el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",textAlign:"left",marginBottom:"8px"}},
-        el("span",{style:{fontSize:"18px",flexShrink:"0"}},"🤖"),
-        el("div",{style:{color:"#e2e8f0",fontSize:"13px",lineHeight:"1.5"}},coachMsg2)
-      )
+      el("div",{style:{background:color+"22",border:"1px solid "+color+"44",borderRadius:"10px",padding:"12px",marginBottom:"12px"}},el("div",{style:{color:color,fontSize:"14px",fontWeight:"700"}},subtitle)),
+      el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",textAlign:"left",marginBottom:"8px"}},el("span",{style:{fontSize:"18px",flexShrink:"0"}},"🤖"),el("div",{style:{color:"#e2e8f0",fontSize:"13px",lineHeight:"1.5"}},coachMsg2))
     );
     banner.appendChild(inputCard);
-
-    // Header simple
-    const hdr = el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"12px 0 10px",marginBottom:"12px",borderBottom:"1px solid #2e3347"}},
+    const hdr=el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"12px 0 10px",marginBottom:"12px",borderBottom:"1px solid #2e3347"}},
       runByLeaIcon(24,6),
       el("div",{style:{color:"#f1f5f9",fontSize:"16px",fontWeight:"800"}},"Run by Lea"),
       el("div",{style:{flex:"1"}}),
       el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"14px",fontWeight:"700"}},"J-"+cd)
     );
-
-    const wrapper = document.createElement("div");
-    wrapper.style.cssText = "padding:0 16px 100px;";
-    wrapper.appendChild(hdr);
-    wrapper.appendChild(banner);
+    const wrapper=document.createElement("div");
+    wrapper.style.cssText="padding:0 16px 100px;";
+    wrapper.appendChild(hdr); wrapper.appendChild(banner);
     return wrapper;
   }
   const total=ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
@@ -2088,33 +2043,35 @@ function renderWeekDetail(weekNum) {
   const week=PLAN.find(w=>w.week===weekNum);
   if (!week) return el("div",{},"—");
   const t=today();
-  const weekSessions = ALL_SESSIONS.filter(s=>s.week===weekNum).sort((a,b)=>a.date.localeCompare(b.date));
-  const weekDates=weekSessions.map(s=>s.date);
+  const weekDates=week.sessions.map(s=>s.date);
   const weekRuns=stravaActivities.filter(a=>a.type==="Run"&&weekDates.includes(a.start_date_local?.slice(0,10)));
 
-  const cards=weekSessions.map((s,i)=>{
-     // uid deja dans ALL_SESSIONS
-     // Seance masquee : afficher en grise avec option restaurer
-     // Seance masquee : afficher en grise avec option restaurer
-     if (hiddenSessions[s.uid]) {
-       const hCard = el("div",{style:{background:"#1a1d2766",border:"1px dashed #2e3347",borderRadius:"12px",padding:"10px 14px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",opacity:"0.6"}},
-         el("span",{class:"muted",style:{fontSize:"13px"}},"[masquee] "+s.type+" - "+s.session.slice(0,30)),
-         el("span",{class:"muted",style:{fontSize:"11px"}},s.date)
-       );
-       let lpHidden = null;
-       hCard.addEventListener("touchstart", () => { lpHidden = setTimeout(() => { lpHidden=null; showSessionMenu(s, week); }, 600); }, {passive:true});
-       hCard.addEventListener("touchend", () => { if(lpHidden){clearTimeout(lpHidden);lpHidden=null;} });
-       hCard.addEventListener("touchmove", () => { if(lpHidden){clearTimeout(lpHidden);lpHidden=null;} });
-       hCard.addEventListener("contextmenu", e => { e.preventDefault(); showSessionMenu(s, week); });
-       return hCard;
-     }
-    const uid=`${weekNum}-${i}`, isToday=s.date===t, isPast=s.date<t;
-    const st=STYPES[s.type]||STYPES.REPOS;
+  const cards=week.sessions.map((s,i)=>{
+    const uid=`${weekNum}-${i}`;
+    const isHidden = !!hiddenSessions[uid];
+    // Session effective (apres swap eventuel)
+    const effSess = getEffectiveSession(week, i);
+    const isToday=s.date===today(), isPast=s.date<today();
+    const st=STYPES[effSeseffSess.type]||STYPES.REPOS;
     const stravaRun=weekRuns.find(r=>r.start_date_local?.slice(0,10)===s.date);
     const effortLaps=stravaRun?getEffortLaps(stravaRun):[];
 
+    // Seance masquee
+    if (isHidden) {
+      const hCard = el("div",{style:{background:"#1a1d2766",border:"1px dashed #2e3347",borderRadius:"12px",padding:"10px 14px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",opacity:"0.5"}},
+        el("span",{class:"muted",style:{fontSize:"13px"}},"[supprimee] "+effSeseffSess.type+" - "+effSeseffSess.session.slice(0,30)),
+        el("span",{class:"muted",style:{fontSize:"11px"}},s.date)
+      );
+      let lpH=null;
+      hCard.addEventListener("touchstart",()=>{lpH=setTimeout(()=>{lpH=null;showSessionMenu(week,i);},600);},{passive:true});
+      hCard.addEventListener("touchend",()=>{if(lpH){clearTimeout(lpH);lpH=null;}});
+      hCard.addEventListener("touchmove",()=>{if(lpH){clearTimeout(lpH);lpH=null;}});
+      hCard.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
+      return hCard;
+    }
+
     const uidStatus = statuses[uid];
-    const isDoneSession = (uidStatus==="✅"||uidStatus==="⚠️") && s.type!=="REPOS";
+    const isDoneSession = (uidStatus==="✅"||uidStatus==="⚠️") && effSeseffSess.type!=="REPOS";
     let cardExpanded = false;
     const card=el("div",{style:{
       background:isToday?"#232738":"#1a1d27",
@@ -2130,7 +2087,7 @@ function renderWeekDetail(weekNum) {
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
         el("div",{style:{color:isPast?"#475569":"#e2e8f0",fontSize:"13px",fontWeight:"700",minWidth:"60px"}},s.day+" "+s.date.slice(8)),
         isToday?el("span",{style:{background:"#f9731633",color:"#f97316",fontSize:"13px",fontWeight:"700",padding:"1px 5px",borderRadius:"3px"}},"AUJOURD\'HUI"):null,
-        badge(s.type),
+        badge(effSess.type),
         el("div",{style:{flex:"1"}}),
         isDoneSession?el("span",{style:{
           background:uidStatus==="✅"?"#22c55e":"#eab308",
@@ -2140,12 +2097,12 @@ function renderWeekDetail(weekNum) {
           fontSize:"14px",fontWeight:"900",flexShrink:"0"
         }}, uidStatus==="✅"?"✓":"!") : null
       ),
-      el("div",{style:{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},s.session),
-      (s.warmup||s.cooldown)?el("div",{style:{display:"flex",gap:"12px",marginBottom:"6px",flexWrap:"wrap"}},
-        s.warmup?el("div",{class:"muted",style:{fontSize:"13px"}},"▶ "+s.warmup):null,
-        s.cooldown?el("div",{class:"muted",style:{fontSize:"13px"}},"◀ "+s.cooldown):null
+      el("div",{style:{color:"#f1f5f9",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},effSess.session),
+      (effSess.warmup||effSess.cooldown)?el("div",{style:{display:"flex",gap:"12px",marginBottom:"6px",flexWrap:"wrap"}},
+        effSess.warmup?el("div",{class:"muted",style:{fontSize:"13px"}},"▶ "+effSess.warmup):null,
+        effSess.cooldown?el("div",{class:"muted",style:{fontSize:"13px"}},"◀ "+effSess.cooldown):null
       ):null,
-      s.notes?el("div",{style:{color:"#60a5facc",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+s.notes):null,
+      effSess.notes?el("div",{style:{color:"#60a5facc",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+effSess.notes):null,
       stravaRun?el("div",{style:{background:"#fc4c0211",border:"1px solid #fc4c0233",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
           el("span",{class:"muted",style:{fontSize:"13px"}},
@@ -2179,10 +2136,10 @@ function renderWeekDetail(weekNum) {
             ? (fcHrVals.length ? Math.round(fcHrVals.reduce((s,l)=>s+l.average_heartrate,0)/fcHrVals.length) : null)
             : (stravaRun.average_heartrate ? Math.round(stravaRun.average_heartrate) : null);
           const fcLabel = isIntensiveFc ? "FC intervalles " : "FC moy. ";
-          if (!FC_ZONES[s.type] || !fcDispHr) return null;
+          if (!FC_ZONES[effSess.type] || !fcDispHr) return null;
           return el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"6px 0",borderTop:"1px solid #fc4c0222",marginBottom:effortLaps.length>0?"8px":"0"}},
-            el("span",{style:{fontSize:"15px"}},fcStatus(s.type,fcDispHr)||""),
-            el("span",{class:"muted",style:{fontSize:"13px"}},fcLabel+fcDispHr+" bpm · cible "+FC_ZONES[s.type].min+"–"+FC_ZONES[s.type].max+" bpm")
+            el("span",{style:{fontSize:"15px"}},fcStatus(effSess.type,fcDispHr)||""),
+            el("span",{class:"muted",style:{fontSize:"13px"}},fcLabel+fcDispHr+" bpm · cible "+FC_ZONES[effSess.type].min+"–"+FC_ZONES[effSess.type].max+" bpm")
           );
         })(),
         stravaRun&&stravaRun.start_latlng?.length===2&&s.date?
@@ -2195,7 +2152,7 @@ function renderWeekDetail(weekNum) {
           el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
             el("div",{class:"muted",style:{fontSize:"14px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Répétitions ("+effortLaps.length+")"),
             (()=>{
-              const target = SESSION_TARGETS[s.type];
+              const target = SESSION_TARGETS[effSess.type];
               if (!target) return null;
               const inTarget = effortLaps.filter(l=>(1000/l.average_speed)<=target.okPace).length;
               const color = inTarget===effortLaps.length?"#22c55e":inTarget>0?"#eab308":"#ef4444";
@@ -2203,23 +2160,23 @@ function renderWeekDetail(weekNum) {
             })()
           ),
           el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"6px"}},
-            SESSION_TARGETS[s.type] ? "cible "+SESSION_TARGETS[s.type].effort+" "+SESSION_TARGETS[s.type].tolerance : ""
+            SESSION_TARGETS[effSess.type] ? "cible "+SESSION_TARGETS[effSess.type].effort+" "+SESSION_TARGETS[effSess.type].tolerance : ""
           ),
           ...(() => {
             const { driftEl } = computeFcDrift(effortLaps);
-            const rows = effortLaps.map((lap,i)=>renderLapRow(lap,i,s.type));
+            const rows = effortLaps.map((lap,i)=>renderLapRow(lap,i,effSess.type));
             return driftEl ? [...rows, driftEl] : rows;
           })()
         ):null
       ):null
     );
 
-    if (s.type==="RACE") {
+    if (effSess.type==="RACE") {
       card.appendChild(el("div",{style:{background:"#f9731622",border:"1px solid #f9731644",borderRadius:"8px",padding:"10px 12px",marginTop:"4px"}},
         el("div",{style:{color:"#f97316",fontWeight:"700",fontSize:"15px"}},"🏁 Jour J — Objectif 48\'30\""),
         el("div",{class:"text2",style:{fontSize:"14px",marginTop:"4px"}},"Km 1-3 : prudent · Km 4-7 : contrôle · Km 8-10 : tout donner !")
       ));
-    } else if (s.type!=="REPOS") {
+    } else if (effSess.type!=="REPOS") {
       // Raison du statut ❌ ou ⚠️
       const reason = stravaRun ? validateReason({...s, uid}, stravaRun) : null;
       if (reason) {
@@ -2287,15 +2244,13 @@ function renderWeekDetail(weekNum) {
       });
     }
 
-    // Appui long pour menu gestion (hors REPOS et RACE)
-    if (s.type !== "REPOS" && s.type !== "RACE") {
-      let lpTimer = null;
-      card.addEventListener("touchstart", () => {
-        lpTimer = setTimeout(() => { lpTimer=null; showSessionMenu(s, week); }, 600);
-      }, {passive:true});
-      card.addEventListener("touchend", () => { if(lpTimer){clearTimeout(lpTimer);lpTimer=null;} });
-      card.addEventListener("touchmove", () => { if(lpTimer){clearTimeout(lpTimer);lpTimer=null;} });
-      card.addEventListener("contextmenu", e => { e.preventDefault(); showSessionMenu(s, week); });
+    // Appui long : menu gestion seance
+    if (effSess.type !== "REPOS" && effSess.type !== "RACE") {
+      let lpCard=null;
+      card.addEventListener("touchstart",()=>{lpCard=setTimeout(()=>{lpCard=null;showSessionMenu(week,i);},600);},{passive:true});
+      card.addEventListener("touchend",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
+      card.addEventListener("touchmove",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
+      card.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
     }
     return card;
   });
@@ -3093,40 +3048,33 @@ function renderCourse() {
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
-    // Saisie resultat (visible apres le 6 septembre)
     (()=>{
       if (today() < "2026-09-06") return null;
       const existingResult = load("lk_race_result", null);
-      const inp = document.createElement("input");
-      inp.type = "time"; inp.step = "1";
-      inp.style.cssText = "flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
+      const inp2 = document.createElement("input");
+      inp2.type="time"; inp2.step="1";
+      inp2.style.cssText="flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
       if (existingResult) {
-        const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss2=existingResult%60;
-        inp.value = hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss2.toString().padStart(2,"0");
+        const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss3=existingResult%60;
+        inp2.value=hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss3.toString().padStart(2,"0");
       }
-      const btn = document.createElement("button");
-      btn.textContent = existingResult ? "Modifier" : "Enregistrer";
-      btn.style.cssText = "background:#f97316;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
-      btn.addEventListener("click", () => {
-        const parts = inp.value.split(":");
-        if (parts.length >= 2) {
-          const secs = parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);
-          if (!isNaN(secs) && secs > 0) { save("lk_race_result", secs); render(); }
-        }
+      const btn2=document.createElement("button");
+      btn2.textContent=existingResult?"Modifier":"Enregistrer";
+      btn2.style.cssText="background:#f97316;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
+      btn2.addEventListener("click",()=>{
+        const parts=inp2.value.split(":");
+        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
       });
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:8px;margin-top:8px;";
-      row.appendChild(inp); row.appendChild(btn);
-      const card = el("div",{style:{marginBottom:"16px"}},
+      const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
+      row2.appendChild(inp2); row2.appendChild(btn2);
+      const card2=el("div",{style:{marginBottom:"16px"}},
         el("div",{class:"label"},"Mon resultat officiel"),
         el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px"}},
-          el("div",{style:{color:"#94a3b8",fontSize:"13px"}},
-            existingResult ? "Resultat : "+fmtTime(existingResult) : "Saisis ton temps apres la course"
-          )
+          el("div",{style:{color:"#94a3b8",fontSize:"13px"}},existingResult?"Resultat : "+fmtTime(existingResult):"Saisis ton temps apres la course")
         )
       );
-      card.querySelector("div:last-child").appendChild(row);
-      return card;
+      card2.querySelector("div:last-child").appendChild(row2);
+      return card2;
     })()
   );
 }
@@ -3135,211 +3083,68 @@ function renderCourse() {
 // PARAMÈTRES
 // ══════════════════════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════════
-// EXPORT PDF
+// GESTION DES SEANCES (suppression + deplacement)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function fmtTimeShort(secs) {
-  const m = Math.floor(secs/60), s2 = secs%60;
-  return m+"min"+s2.toString().padStart(2,"0")+"s";
+// Obtenir la session effective sur un slot (apres swap)
+function getEffectiveSession(week, slotIdx) {
+  const uid = week.week+"-"+slotIdx;
+  if (swappedSessions[uid]) {
+    const swapUid = swappedSessions[uid];
+    const swapParts = swapUid.split("-");
+    const swapWeek = PLAN.find(w=>w.week===parseInt(swapParts[0]));
+    return swapWeek ? swapWeek.sessions[parseInt(swapParts[1])] : week.sessions[slotIdx];
+  }
+  return week.sessions[slotIdx];
 }
 
-// PDF A : Recap de preparation
-function exportPdfRecap() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-  const W=210, M=15;
-  let y=20;
-
-  doc.setFillColor(249,115,22);
-  doc.rect(0,0,W,30,"F");
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(20); doc.setFont("helvetica","bold");
-  doc.text("Run by Lea - Recap de preparation", M, 14);
-  doc.setFontSize(11); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026", M, 23);
-  y=40;
-
-  doc.setTextColor(30,30,30);
-  doc.setFontSize(13); doc.setFont("helvetica","bold");
-  doc.text("Bilan global", M, y); y+=7;
-  doc.setFontSize(10); doc.setFont("helvetica","normal");
-  const nbDone = ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
-  const nbAdapted = ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
-  const nbMissed = ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const kmCourus = Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
-  const predPdf = currentPred || predict10K();
-  doc.text("Objectif : "+fmtTimeShort(raceGoalTime)+" ("+fmtPace(10000/raceGoalTime)+"/km)", M, y); y+=6;
-  doc.text("Estimation : "+(predPdf.time ? fmtTimeShort(predPdf.time) : "N/A"), M, y); y+=6;
-  doc.text("Seances : "+nbDone+" validees - "+nbAdapted+" adaptees - "+nbMissed+" ratees", M, y); y+=6;
-  doc.text("Km courus : "+kmCourus+" km", M, y); y+=10;
-
-  doc.setFontSize(13); doc.setFont("helvetica","bold");
-  doc.text("Detail par semaine", M, y); y+=7;
-
-  PLAN.forEach(wk => {
-    if (y > 260) { doc.addPage(); y=20; }
-    const ph = phaseOf(wk.week);
-    doc.setFillColor(240,240,240);
-    doc.rect(M, y-4, W-2*M, 7, "F");
-    doc.setFontSize(10); doc.setFont("helvetica","bold");
-    doc.setTextColor(30,30,30);
-    doc.text("Semaine "+wk.week+" - "+(ph.label||""), M+2, y+1); y+=9;
-    wk.sessions.forEach(s => {
-      if (s.type==="REPOS") return;
-      const st = statuses[s.uid]||"-";
-      doc.setFontSize(9); doc.setFont("helvetica","normal");
-      doc.text(s.date+" - "+s.type+" - "+s.session+" -> "+st, M+4, y); y+=5;
-      if (y > 270) { doc.addPage(); y=20; }
-    });
-    y+=3;
-  });
-
-  doc.save("RunByLea_Recap.pdf");
+// Jours disponibles pour deplacement (REPOS non swappés, ou slots masqués)
+function getAvailableSlots(week, excludeIdx) {
+  return week.sessions.map((s,i) => {
+    const uid = week.week+"-"+i;
+    if (i === excludeIdx) return null;
+    const effective = getEffectiveSession(week, i);
+    if (effective.type === "REPOS") return {idx:i, uid, date:s.date, label:"Repos"};
+    if (hiddenSessions[uid]) return {idx:i, uid, date:s.date, label:effective.type+" (masquee)"};
+    return null;
+  }).filter(Boolean);
 }
 
-// PDF B : Plan vierge imprimable
-function exportPdfPlanVierge() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-  const W=210, M=12;
-  let y=20;
-
-  doc.setFillColor(249,115,22);
-  doc.rect(0,0,W,28,"F");
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(18); doc.setFont("helvetica","bold");
-  doc.text("Run by Lea - Plan entrainement", M, 13);
-  doc.setFontSize(10); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 sept. 2026 - Objectif "+fmtTimeShort(raceGoalTime), M, 22);
-  y=36;
-
-  PLAN.forEach(wk => {
-    if (y > 255) { doc.addPage(); y=20; }
-    const ph = phaseOf(wk.week);
-    doc.setFillColor(230,230,230);
-    doc.rect(M, y-4, W-2*M, 7, "F");
-    doc.setFontSize(10); doc.setFont("helvetica","bold");
-    doc.setTextColor(30,30,30);
-    doc.text("S"+wk.week+" - "+(ph.label||""), M+2, y+1); y+=9;
-    wk.sessions.forEach(s => {
-      if (y > 270) { doc.addPage(); y=20; }
-      doc.setFontSize(9); doc.setFont("helvetica","normal");
-      doc.rect(M+2, y-3.5, 4, 4);
-      doc.text(s.date+"  "+s.type+"  "+s.session, M+8, y); y+=6;
-    });
-    y+=2;
-  });
-
-  doc.save("RunByLea_Plan_Vierge.pdf");
-}
-
-// PDF C : Fiche de resultats (apres la course)
-function exportPdfResultats() {
-  const raceRes = load("lk_race_result", null);
-  if (!raceRes) { alert("Saisis ton resultat dans onglet Course !"); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-  const W=210, M=20;
-  let y=20;
-
-  const diff = raceRes - raceGoalTime;
-  const achieved = diff <= 0;
-  const close = diff > 0 && diff <= 60;
-  const [r,g,b] = achieved ? [34,197,94] : close ? [234,179,8] : [168,85,247];
-
-  doc.setFillColor(r,g,b);
-  doc.rect(0,0,W,40,"F");
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(22); doc.setFont("helvetica","bold");
-  doc.text(achieved ? "Objectif atteint !" : close ? "Tres belle course !" : "Belle progression !", M, 17);
-  doc.setFontSize(12); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026", M, 27);
-  doc.text("Run by Lea", M, 35);
-  y=55;
-
-  doc.setTextColor(30,30,30);
-  doc.setFontSize(14); doc.setFont("helvetica","bold");
-  doc.text("Resultats", M, y); y+=8;
-  doc.setFontSize(11); doc.setFont("helvetica","normal");
-  doc.text("Objectif  : "+fmtTimeShort(raceGoalTime)+" ("+fmtPace(10000/raceGoalTime)+"/km)", M, y); y+=7;
-  doc.text("Resultat  : "+fmtTimeShort(raceRes)+" ("+fmtPace(10000/raceRes)+"/km)", M, y); y+=7;
-  const diffVsStart = 3021 - raceRes;
-  doc.text("vs depart : "+(diffVsStart>0?"-":"+")+fmtTimeShort(Math.abs(diffVsStart))+" vs 50min21s", M, y); y+=7;
-  doc.text("vs objectif : "+(diff<=0?"-":"+")+fmtTimeShort(Math.abs(diff)), M, y); y+=14;
-
-  doc.setFontSize(13); doc.setFont("helvetica","bold");
-  doc.text("Preparation", M, y); y+=8;
-  doc.setFontSize(10); doc.setFont("helvetica","normal");
-  const nbDone2 = ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
-  const nbAdapted2 = ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
-  const nbMissed2 = ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const km2 = Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
-  doc.text(nbDone2+" seances validees - "+nbAdapted2+" adaptees - "+nbMissed2+" ratees", M, y); y+=6;
-  doc.text(km2+" km courus - 11 semaines", M, y);
-
-  doc.save("RunByLea_Resultats.pdf");
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// GESTION DES SEANCES
-// ══════════════════════════════════════════════════════════════════════════════
-
-function getAvailableDays(week, excludeUid) {
-  // Dates deja occupees par des seances actives (hors la seance a deplacer)
-  const weekSess = ALL_SESSIONS.filter(s => s.week === week.week);
-  const occupiedDates = weekSess
-    .filter(s => s.uid !== excludeUid && !hiddenSessions[s.uid] && s.type !== "REPOS")
-    .map(s => s.date);
-
-  return week.sessions.filter((s, i) => {
-    s.uid = week.week+"-"+i;
-    if (s.uid === excludeUid) return false;
-    // Jour dispo si : REPOS ou seance masquee, ET date pas deja occupee
-    const isAvailable = s.type === "REPOS" || hiddenSessions[s.uid];
-    const dateFromAllSess = weekSess.find(ss => ss.uid === s.uid);
-    const actualDate = dateFromAllSess ? dateFromAllSess.date : s.date;
-    return isAvailable && !occupiedDates.includes(actualDate);
-  }).map((s, idx) => {
-    // Retourner la session avec sa date actuelle (apres deplacement eventuel)
-    const fromAll = ALL_SESSIONS.find(ss => ss.uid === s.uid);
-    return fromAll ? fromAll : s;
-  });
-}
-
-function showSessionMenu(s, week) {
-  document.querySelectorAll(".session-menu-overlay").forEach(m => m.remove());
-  const isHidden = !!hiddenSessions[s.uid];
+function showSessionMenu(week, slotIdx) {
+  document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
+  const uid = week.week+"-"+slotIdx;
+  const isHidden = !!hiddenSessions[uid];
+  const sess = getEffectiveSession(week, slotIdx);
 
   const overlay = document.createElement("div");
-  overlay.className = "session-menu-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
+  overlay.className = "sess-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
 
   const panel = document.createElement("div");
-  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-width:430px;";
+  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 36px;width:100%;max-width:430px;";
 
-  const titleEl = document.createElement("div");
-  titleEl.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:2px;";
-  titleEl.textContent = s.type+" - "+s.session.slice(0,40);
-  const subEl = document.createElement("div");
-  subEl.style.cssText = "color:#94a3b8;font-size:13px;margin-bottom:16px;";
-  subEl.textContent = s.date;
-  panel.appendChild(titleEl);
-  panel.appendChild(subEl);
+  const t1 = document.createElement("div");
+  t1.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:2px;";
+  t1.textContent = sess.type+" - "+sess.session.slice(0,40);
+  const t2 = document.createElement("div");
+  t2.style.cssText = "color:#94a3b8;font-size:13px;margin-bottom:16px;";
+  t2.textContent = week.sessions[slotIdx].date;
+  panel.appendChild(t1); panel.appendChild(t2);
 
-  const btnBase = "width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
+  const btnStyle = "width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
 
   if (!isHidden) {
     const moveBtn = document.createElement("button");
-    moveBtn.style.cssText = btnBase+"background:#60a5fa22;color:#60a5fa;";
+    moveBtn.style.cssText = btnStyle+"background:#60a5fa22;color:#60a5fa;";
     moveBtn.textContent = "Deplacer cette seance";
-    moveBtn.addEventListener("click", () => { overlay.remove(); showMoveMenu(s, week); });
+    moveBtn.addEventListener("click", () => { overlay.remove(); showMoveMenu(week, slotIdx); });
     panel.appendChild(moveBtn);
 
     const hideBtn = document.createElement("button");
-    hideBtn.style.cssText = btnBase+"background:#ef444422;color:#ef4444;";
+    hideBtn.style.cssText = btnStyle+"background:#ef444422;color:#ef4444;";
     hideBtn.textContent = "Supprimer cette seance";
     hideBtn.addEventListener("click", () => {
-      hiddenSessions[s.uid] = true;
+      hiddenSessions[uid] = true;
       save("lk_hidden_sessions", hiddenSessions);
       gistSave(true);
       overlay.remove();
@@ -3348,79 +3153,66 @@ function showSessionMenu(s, week) {
     panel.appendChild(hideBtn);
   } else {
     const restoreBtn = document.createElement("button");
-    restoreBtn.style.cssText = btnBase+"background:#22c55e22;color:#22c55e;";
+    restoreBtn.style.cssText = btnStyle+"background:#22c55e22;color:#22c55e;";
     restoreBtn.textContent = "Restaurer cette seance";
     restoreBtn.addEventListener("click", () => {
       overlay.remove();
-      const conflict = week.sessions.find(ss =>
-        ss.uid !== s.uid && ss.date === s.date && !hiddenSessions[ss.uid] && ss.type !== "REPOS"
-      );
+      // Verifier si le jour original est libre
+      const conflict = !hiddenSessions[uid] && getEffectiveSession(week, slotIdx).type !== "REPOS";
       if (!conflict) {
-        delete hiddenSessions[s.uid];
+        delete hiddenSessions[uid];
         save("lk_hidden_sessions", hiddenSessions);
         gistSave(true);
         render();
       } else {
-        showRestoreMenu(s, week);
+        showRestoreMenu(week, slotIdx);
       }
     });
     panel.appendChild(restoreBtn);
   }
 
   const cancelBtn = document.createElement("button");
-  cancelBtn.style.cssText = btnBase+"background:#232738;color:#94a3b8;";
+  cancelBtn.style.cssText = btnStyle+"background:#232738;color:#94a3b8;";
   cancelBtn.textContent = "Annuler";
   cancelBtn.addEventListener("click", () => overlay.remove());
   panel.appendChild(cancelBtn);
 
   overlay.appendChild(panel);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener("click", e => { if(e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
 }
 
-function showMoveMenu(s, week) {
-  const available = getAvailableDays(week, s.uid);
-  if (!available.length) { alert("Aucun jour disponible cette semaine."); return; }
+function showMoveMenu(week, slotIdx) {
+  const slots = getAvailableSlots(week, slotIdx);
+  if (!slots.length) { alert("Aucun jour disponible cette semaine."); return; }
 
-  document.querySelectorAll(".session-menu-overlay").forEach(m => m.remove());
+  document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
   const overlay = document.createElement("div");
-  overlay.className = "session-menu-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
+  overlay.className = "sess-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
 
   const panel = document.createElement("div");
-  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-width:430px;";
+  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 36px;width:100%;max-width:430px;";
 
-  const titleEl = document.createElement("div");
-  titleEl.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:16px;";
-  titleEl.textContent = "Deplacer vers...";
-  panel.appendChild(titleEl);
+  const t1 = document.createElement("div");
+  t1.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:16px;";
+  t1.textContent = "Deplacer vers...";
+  panel.appendChild(t1);
 
-  const btnBase = "width:100%;padding:13px;border-radius:10px;border:1px solid #2e3347;background:#232738;color:#f1f5f9;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
+  const btnStyle = "width:100%;padding:13px;border-radius:10px;border:1px solid #2e3347;background:#232738;color:#f1f5f9;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
 
-  available.forEach(target => {
+  slots.forEach(slot => {
     const btn = document.createElement("button");
-    btn.style.cssText = btnBase;
-    const dayLabel = new Date(target.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
-    btn.textContent = dayLabel+" ("+(target.type==="REPOS" ? "Repos" : target.type+" - masquee")+")";
+    btn.style.cssText = btnStyle;
+    const dayLabel = new Date(slot.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+    btn.textContent = dayLabel+" ("+slot.label+")";
     btn.addEventListener("click", () => {
-      // Trouver la date originale depuis PLAN (pas depuis s.date qui peut etre deja deplace)
-      const origUidParts = s.uid.split("-");
-      const origWeekNum = parseInt(origUidParts[0]);
-      const origIdx = parseInt(origUidParts[1]);
-      const planWeek = PLAN.find(w => w.week === origWeekNum);
-      const origDate = planWeek ? planWeek.sessions[origIdx].date : s.date;
-
-      // Sauvegarder le deplacement
-      movedSessions[s.uid] = target.date;
-
-      // Si la cible etait masquee, la restaurer a la date d'origine de s
-      if (target.type !== "REPOS") {
-        movedSessions[target.uid] = origDate;
-        delete hiddenSessions[target.uid];
-      }
-
-      save("lk_moved_sessions", movedSessions);
-      save("lk_hidden_sessions", hiddenSessions);
+      // Swap entre les deux slots
+      const uidA = week.week+"-"+slotIdx;
+      const uidB = slot.uid;
+      swappedSessions[uidA] = uidB;
+      swappedSessions[uidB] = uidA;
+      save("lk_swapped_sessions", swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3435,45 +3227,45 @@ function showMoveMenu(s, week) {
   panel.appendChild(cancelBtn);
 
   overlay.appendChild(panel);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener("click", e => { if(e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
 }
 
-function showRestoreMenu(s, week) {
-  const available = getAvailableDays(week, s.uid);
-  if (!available.length) { alert("Aucun jour disponible pour restaurer."); return; }
+function showRestoreMenu(week, slotIdx) {
+  const slots = getAvailableSlots(week, slotIdx);
+  if (!slots.length) { alert("Aucun jour disponible."); return; }
 
-  document.querySelectorAll(".session-menu-overlay").forEach(m => m.remove());
+  document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
   const overlay = document.createElement("div");
-  overlay.className = "session-menu-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
+  overlay.className = "sess-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
 
   const panel = document.createElement("div");
-  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-width:430px;";
+  panel.style.cssText = "background:#1a1d27;border-radius:16px 16px 0 0;padding:20px 16px 36px;width:100%;max-width:430px;";
 
-  const titleEl = document.createElement("div");
-  titleEl.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:4px;";
-  titleEl.textContent = "Choisir un autre jour";
-  const subEl = document.createElement("div");
-  subEl.style.cssText = "color:#94a3b8;font-size:13px;margin-bottom:16px;";
-  subEl.textContent = "Le jour d'origine est occupe. Vers quel jour restaurer ?";
-  panel.appendChild(titleEl);
-  panel.appendChild(subEl);
+  const t1 = document.createElement("div");
+  t1.style.cssText = "color:#f1f5f9;font-size:15px;font-weight:700;margin-bottom:4px;";
+  t1.textContent = "Restaurer vers...";
+  const t2 = document.createElement("div");
+  t2.style.cssText = "color:#94a3b8;font-size:13px;margin-bottom:16px;";
+  t2.textContent = "Le jour original est occupe. Choisir un autre jour :";
+  panel.appendChild(t1); panel.appendChild(t2);
 
-  const btnBase = "width:100%;padding:13px;border-radius:10px;border:1px solid #2e3347;background:#232738;color:#f1f5f9;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
+  const btnStyle = "width:100%;padding:13px;border-radius:10px;border:1px solid #2e3347;background:#232738;color:#f1f5f9;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:left;display:block;";
 
-  available.forEach(target => {
+  slots.forEach(slot => {
     const btn = document.createElement("button");
-    btn.style.cssText = btnBase;
-    const dayLabel = new Date(target.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+    btn.style.cssText = btnStyle;
+    const dayLabel = new Date(slot.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
     btn.textContent = dayLabel;
     btn.addEventListener("click", () => {
-      const sessToRestore = ALL_SESSIONS.find(ss => ss.uid === s.uid);
-      if (sessToRestore) sessToRestore.date = target.date;
-      delete hiddenSessions[s.uid];
-      movedSessions[s.uid] = target.date;
+      const uidA = week.week+"-"+slotIdx;
+      const uidB = slot.uid;
+      delete hiddenSessions[uidA];
+      swappedSessions[uidA] = uidB;
+      swappedSessions[uidB] = uidA;
       save("lk_hidden_sessions", hiddenSessions);
-      save("lk_moved_sessions", movedSessions);
+      save("lk_swapped_sessions", swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3488,8 +3280,124 @@ function showRestoreMenu(s, week) {
   panel.appendChild(cancelBtn);
 
   overlay.appendChild(panel);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener("click", e => { if(e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EXPORT PDF
+// ══════════════════════════════════════════════════════════════════════════════
+
+function fmtTimeShort(secs) {
+  const m=Math.floor(secs/60), s2=secs%60;
+  return m+"min"+s2.toString().padStart(2,"0")+"s";
+}
+
+function exportPdfRecap() {
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=210,M=15; let y=20;
+  doc.setFillColor(249,115,22); doc.rect(0,0,W,30,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(20); doc.setFont("helvetica","bold");
+  doc.text("Run by Lea - Recap de preparation",M,14);
+  doc.setFontSize(11); doc.setFont("helvetica","normal");
+  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,23); y=40;
+  doc.setTextColor(30,30,30);
+  doc.setFontSize(13); doc.setFont("helvetica","bold");
+  doc.text("Bilan global",M,y); y+=7;
+  doc.setFontSize(10); doc.setFont("helvetica","normal");
+  const nb1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
+  const nb2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
+  const nb3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
+  const km1=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  const pr=currentPred||predict10K();
+  doc.text("Objectif : "+fmtTimeShort(raceGoalTime),M,y); y+=6;
+  doc.text("Estimation : "+(pr.time?fmtTimeShort(pr.time):"N/A"),M,y); y+=6;
+  doc.text("Seances : "+nb1+" validees - "+nb2+" adaptees - "+nb3+" ratees",M,y); y+=6;
+  doc.text("Km courus : "+km1+" km",M,y); y+=10;
+  doc.setFontSize(13); doc.setFont("helvetica","bold");
+  doc.text("Detail par semaine",M,y); y+=7;
+  PLAN.forEach(wk=>{
+    if(y>260){doc.addPage();y=20;}
+    const ph=phaseOf(wk.week);
+    doc.setFillColor(240,240,240); doc.rect(M,y-4,W-2*M,7,"F");
+    doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(30,30,30);
+    doc.text("Semaine "+wk.week+" - "+(ph.label||""),M+2,y+1); y+=9;
+    wk.sessions.forEach((s,i)=>{
+      if(s.type==="REPOS") return;
+      const uid=wk.week+"-"+i;
+      const eff=getEffectiveSession(wk,i);
+      const st=statuses[uid]||"-";
+      doc.setFontSize(9); doc.setFont("helvetica","normal");
+      doc.text(s.date+" - "+eff.type+" - "+eff.session.slice(0,50)+" -> "+st,M+4,y); y+=5;
+      if(y>270){doc.addPage();y=20;}
+    });
+    y+=3;
+  });
+  doc.save("RunByLea_Recap.pdf");
+}
+
+function exportPdfPlanVierge() {
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=210,M=12; let y=20;
+  doc.setFillColor(249,115,22); doc.rect(0,0,W,28,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(18); doc.setFont("helvetica","bold");
+  doc.text("Run by Lea - Plan d entrainement",M,13);
+  doc.setFontSize(10); doc.setFont("helvetica","normal");
+  doc.text("10 km Gem Aubagne - 6 sept. 2026 - Objectif "+fmtTimeShort(raceGoalTime),M,22); y=36;
+  PLAN.forEach(wk=>{
+    if(y>255){doc.addPage();y=20;}
+    const ph=phaseOf(wk.week);
+    doc.setFillColor(230,230,230); doc.rect(M,y-4,W-2*M,7,"F");
+    doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(30,30,30);
+    doc.text("S"+wk.week+" - "+(ph.label||""),M+2,y+1); y+=9;
+    wk.sessions.forEach((s,i)=>{
+      if(y>270){doc.addPage();y=20;}
+      const eff=getEffectiveSession(wk,i);
+      doc.setFontSize(9); doc.setFont("helvetica","normal");
+      doc.rect(M+2,y-3.5,4,4);
+      doc.text(s.date+"  "+eff.type+"  "+eff.session.slice(0,50),M+8,y); y+=6;
+    });
+    y+=2;
+  });
+  doc.save("RunByLea_Plan_Vierge.pdf");
+}
+
+function exportPdfResultats() {
+  const raceRes=load("lk_race_result",null);
+  if(!raceRes){alert("Saisis ton resultat dans onglet Course !");return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=210,M=20; let y=20;
+  const diff=raceRes-raceGoalTime;
+  const achieved=diff<=0, close=diff>0&&diff<=60;
+  const [r,g,b]=achieved?[34,197,94]:close?[234,179,8]:[168,85,247];
+  doc.setFillColor(r,g,b); doc.rect(0,0,W,40,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(22); doc.setFont("helvetica","bold");
+  doc.text(achieved?"Objectif atteint !":close?"Tres belle course !":"Belle progression !",M,17);
+  doc.setFontSize(12); doc.setFont("helvetica","normal");
+  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,27); doc.text("Run by Lea",M,35); y=55;
+  doc.setTextColor(30,30,30);
+  doc.setFontSize(14); doc.setFont("helvetica","bold"); doc.text("Resultats",M,y); y+=8;
+  doc.setFontSize(11); doc.setFont("helvetica","normal");
+  doc.text("Objectif  : "+fmtTimeShort(raceGoalTime),M,y); y+=7;
+  doc.text("Resultat  : "+fmtTimeShort(raceRes),M,y); y+=7;
+  const dvs=3021-raceRes;
+  doc.text("vs depart : "+(dvs>0?"-":"+")+fmtTimeShort(Math.abs(dvs))+" vs 50min21s",M,y); y+=7;
+  doc.text("vs objectif : "+(diff<=0?"-":"+")+fmtTimeShort(Math.abs(diff)),M,y); y+=14;
+  doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.text("Preparation",M,y); y+=8;
+  doc.setFontSize(10); doc.setFont("helvetica","normal");
+  const n1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
+  const n2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
+  const n3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
+  const km2=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  doc.text(n1+" seances validees - "+n2+" adaptees - "+n3+" ratees",M,y); y+=6;
+  doc.text(km2+" km courus - 11 semaines",M,y);
+  doc.save("RunByLea_Resultats.pdf");
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3650,13 +3558,7 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.9.3", title:"Banniere post-course & Export PDF", current:true, notes:[
-        "🏅 Banniere post-course (objectif atteint / proche / progression)",
-        "📝 Saisie du resultat officiel dans onglet Course",
-        "📄 Export PDF (recap, plan vierge, fiche resultats)",
-        "🔀 Deplacer une seance (appui long dans Semaines)",
-        "🗑️ Supprimer / restaurer une seance (appui long dans Semaines)",
-      ]},
+      { ver:"v1.9.3", title:"Banniere post-course, PDF & gestion seances", current:true, notes:["🏅 Banniere post-course","📄 Export PDF (3 types)","🔀 Deplacement de seance (appui long)","🗑️ Suppression et restauration (appui long)"]},
       { ver:"v1.9.2", title:"Dashboard condense & Course enrichie", current:false, notes:[
         "🎨 Dashboard condensé — Coach intégré dans la carte séance",
         "📊 Objectif + Estimation fusionnés, fourchette compacte",
@@ -3882,20 +3784,15 @@ function renderSettings() {
     render();
   });
 
-  // Section PDF
-  const hasResult = !!load("lk_race_result", null);
-  const pdfSection = el("div",{style:{marginBottom:"24px"}},
+  const hasRes=!!load("lk_race_result",null);
+  const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"8px"}},
-      el("button",{style:{width:"100%",background:"#f9731622",border:"1px solid #f9731644",borderRadius:"8px",padding:"10px",color:"#f97316",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
-        onClick:()=>exportPdfRecap()},"Recap de preparation"),
-      el("button",{style:{width:"100%",background:"#60a5fa22",border:"1px solid #60a5fa44",borderRadius:"8px",padding:"10px",color:"#60a5fa",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
-        onClick:()=>exportPdfPlanVierge()},"Plan vierge imprimable"),
-      el("button",{style:{width:"100%",background:hasResult?"#22c55e22":"#232738",border:"1px solid "+(hasResult?"#22c55e44":"#2e3347"),borderRadius:"8px",padding:"10px",color:hasResult?"#22c55e":"#475569",fontSize:"14px",fontWeight:"700",cursor:hasResult?"pointer":"not-allowed"},
-        onClick:()=>hasResult?exportPdfResultats():null},"Fiche resultats"+(hasResult?"":" (disponible apres la course)"))
+      el("button",{style:{width:"100%",background:"#f9731622",border:"1px solid #f9731644",borderRadius:"8px",padding:"10px",color:"#f97316",fontSize:"14px",fontWeight:"700",cursor:"pointer"},onClick:()=>exportPdfRecap()},"Recap de preparation"),
+      el("button",{style:{width:"100%",background:"#60a5fa22",border:"1px solid #60a5fa44",borderRadius:"8px",padding:"10px",color:"#60a5fa",fontSize:"14px",fontWeight:"700",cursor:"pointer"},onClick:()=>exportPdfPlanVierge()},"Plan vierge imprimable"),
+      el("button",{style:{width:"100%",background:hasRes?"#22c55e22":"#232738",border:"1px solid "+(hasRes?"#22c55e44":"#2e3347"),borderRadius:"8px",padding:"10px",color:hasRes?"#22c55e":"#475569",fontSize:"14px",fontWeight:"700",cursor:hasRes?"pointer":"not-allowed"},onClick:()=>hasRes?exportPdfResultats():null},"Fiche resultats"+(hasRes?"":" (apres la course)"))
     )
   );
-
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
@@ -3949,7 +3846,7 @@ function getBackupData() {
     raceParcoursUrl,
     checklistItems,
     hiddenSessions,
-    movedSessions,
+    swappedSessions,
     version: 3,
     savedAt: new Date().toISOString()
   });
@@ -4290,8 +4187,6 @@ function setView(v) {
 }
 
 function render() {
-  // Réappliquer les déplacements à chaque rendu
-  applyMovedSessions();
   const app=document.getElementById("app");
   app.innerHTML="";
 
