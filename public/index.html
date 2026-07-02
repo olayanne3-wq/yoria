@@ -2998,10 +2998,11 @@ function renderCourse() {
 
   // ── Résumé de préparation ─────────────────────────────────────────────────
   const pred = currentPred || predict10K();
-  const totalDone = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE"&&statuses[s.uid]==="✅").length;
-  const totalAdapted = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE"&&statuses[s.uid]==="⚠️").length;
-  const totalMissed = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE"&&statuses[s.uid]==="❌").length;
-  const totalSess = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
+  const pastSess = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE"&&s.date<=today());
+  const totalDone = pastSess.filter(s=>statuses[s.uid]==="✅").length;
+  const totalAdapted = pastSess.filter(s=>statuses[s.uid]==="⚠️").length;
+  const totalMissed = pastSess.filter(s=>statuses[s.uid]==="❌").length;
+  const totalSess = pastSess.length;
   const totalKmRace = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
   const completionRate = totalSess > 0 ? Math.round((totalDone+totalAdapted)/totalSess*100) : 0;
   const verdictRaceColor = completionRate >= 80 ? "#22c55e" : completionRate >= 60 ? "#eab308" : "#ef4444";
@@ -3166,17 +3167,19 @@ function showSessionMenu(week, slotIdx) {
       panel.appendChild(moveBtn);
     }
 
-    const hideBtn = document.createElement("button");
-    hideBtn.style.cssText = btnStyle+"background:#ef444422;color:#ef4444;";
-    hideBtn.textContent = "Supprimer cette seance";
-    hideBtn.addEventListener("click", () => {
-      hiddenSessions[uid] = true;
-      save("lk_hidden_sessions", hiddenSessions);
-      gistSave(true);
-      overlay.remove();
-      render();
-    });
-    panel.appendChild(hideBtn);
+    if (!isDone) {
+      const hideBtn = document.createElement("button");
+      hideBtn.style.cssText = btnStyle+"background:#ef444422;color:#ef4444;";
+      hideBtn.textContent = "Supprimer cette seance";
+      hideBtn.addEventListener("click", () => {
+        hiddenSessions[uid] = true;
+        save("lk_hidden_sessions", hiddenSessions);
+        gistSave(true);
+        overlay.remove();
+        render();
+      });
+      panel.appendChild(hideBtn);
+    }
   } else {
     const restoreBtn = document.createElement("button");
     restoreBtn.style.cssText = btnStyle+"background:#22c55e22;color:#22c55e;";
