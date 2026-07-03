@@ -4270,6 +4270,15 @@ function matchActivitiesToPlan(activities) {
 // Auto-synchro Strava si token valide et dernière synchro > 1h
 (function autoSync() {
   const ONE_HOUR = 60 * 60 * 1000;
+  // Charger les streams pour les activités en cache si pas encore fait
+  if (stravaToken && stravaActivities.length > 0 && Object.keys(streamsCache).length === 0) {
+    const intensiveDates2 = ALL_SESSIONS.filter(s=>["VMA","SPEC","SEUIL"].includes(s.type)).map(s=>s.date);
+    stravaActivities.filter(r=>intensiveDates2.includes(r.start_date_local?.slice(0,10))).forEach(r=>{
+      const actId2 = String(r.id_str||r.id);
+      fetchStreamsForActivity(actId2, stravaToken);
+    });
+  }
+
   if (stravaToken && (Date.now() - lastSyncTime) > ONE_HOUR) {
     setTimeout(() => syncStrava(), 1500);
   }
