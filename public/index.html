@@ -1011,7 +1011,7 @@ function getEffortLaps(activity) {
 
   // Garder les laps rapides dont la duree est proche de la mediane (±50%)
   // Cela exclut l'echauffement et le retour calme qui ont des durees tres differentes
-  return fastLaps.filter(l => l.elapsed_time >= medDur * 0.5 && l.elapsed_time <= medDur * 1.5);
+  return fastLaps.filter(l => l.elapsed_time >= medDur * 0.7 && l.elapsed_time <= medDur * 1.5);
 }
 
 // ── Calcul dérive FC sur les répétitions ─────────────────────────────────
