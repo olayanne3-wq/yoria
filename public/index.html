@@ -996,6 +996,13 @@ function runByLeaIcon(size, radius) {
 }
 
 // ── Détection des intervalles via streams (seconde par seconde) ──────────────
+function extractTargetSpeed(sessionStr) {
+  if (!sessionStr) return null;
+  const m = sessionStr.match(/(\d+):(\d+)\/km/);
+  if (m) return 1000 / (parseInt(m[1])*60 + parseInt(m[2]));
+  return null;
+}
+
 function getEffortLaps(activity) {
   if (!activity.laps || activity.laps.length < 4) return [];
   // Trouver la seance dans le plan pour connaitre l allure cible
