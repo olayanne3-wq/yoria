@@ -606,6 +606,7 @@ let lastRebuildDate = load("lk_last_rebuild", null);
 let weatherTemp = null;
 let weatherDesc = "";
 let historicalWeatherCache = load("lk_weather_cache", {});
+let streamsCache = {}; // {activityId: {velocity_smooth, heart_rate, time}} — en mémoire uniquement
 
 async function fetchHistoricalWeather(date, lat, lon) {
   try {
@@ -995,23 +996,128 @@ function runByLeaIcon(size, radius) {
   return el2;
 }
 
+// ── Détection des intervalles via streams (seconde par seconde) ──────────────
+function getEffortLapsFromStreams(streams) {
+  // streams: {velocity_smooth: [...], heart_rate: [...], time: [...]}
+  const vel = streams.velocity_smooth;
+  const hr = streams.heart_rate;
+  const t = streams.time;
+  if (!vel || vel.length < 10) return [];
+
+  // Seuil de vitesse : 5:30/km = 3.03 m/s
+  const SPEED_THRESHOLD = 1000/330;
+
+  // Détecter les blocs d'effort continus > 20s au-dessus du seuil
+  const intervals = [];
+  let inEffort = false;
+  let startIdx = 0;
+
+  for (let i = 0; i < vel.length; i++) {
+    const fast = vel[i] >= SPEED_THRESHOLD;
+    if (fast && !inEffort) {
+      inEffort = true;
+      startIdx = i;
+    } else if (!fast && inEffort) {
+      inEffort = false;
+      const duration = t[i] - t[startIdx];
+      if (duration >= 20) { // ignorer les micro-accélérations < 20s
+        // Calculer vitesse et FC moyennes sur ce bloc
+        const velSlice = vel.slice(startIdx, i);
+        const hrSlice = hr ? hr.slice(startIdx, i).filter(v => v > 0) : [];
+        const avgSpeed = velSlice.reduce((s,v)=>s+v,0)/velSlice.length;
+        const avgHr = hrSlice.length ? hrSlice.reduce((s,v)=>s+v,0)/hrSlice.length : null;
+        intervals.push({
+          average_speed: avgSpeed,
+          average_heartrate: avgHr,
+          elapsed_time: duration,
+          _fromStreams: true
+        });
+      }
+    }
+  }
+  if (inEffort) {
+    const i = vel.length;
+    const duration = t[i-1] - t[startIdx];
+    if (duration >= 20) {
+      const velSlice = vel.slice(startIdx);
+      const hrSlice = hr ? hr.slice(startIdx).filter(v => v > 0) : [];
+      const avgSpeed = velSlice.reduce((s,v)=>s+v,0)/velSlice.length;
+      const avgHr = hrSlice.length ? hrSlice.reduce((s,v)=>s+v,0)/hrSlice.length : null;
+      intervals.push({ average_speed: avgSpeed, average_heartrate: avgHr, elapsed_time: duration, _fromStreams: true });
+    }
+  }
+
+  // Fusionner les intervalles séparés par moins de 5s (artefacts GPS)
+  const merged = [];
+  for (const iv of intervals) {
+    if (merged.length > 0) {
+      const prev = merged[merged.length-1];
+      // Pas besoin de fusionner ici — on garde les blocs distincts
+    }
+    merged.push(iv);
+  }
+
+  // Garder seulement les intervalles d'effort (vitesse > médiane des blocs)
+  if (merged.length <= 1) return merged;
+  const speeds = merged.map(iv=>iv.average_speed).sort((a,b)=>a-b);
+  const medSpeed = speeds[Math.floor(speeds.length/2)];
+
+  // Si grosse disparité de durées (échauffement long + intervalles courts) :
+  // on garde ceux dont la vitesse est dans le top 50%
+  const durations = merged.map(iv=>iv.elapsed_time).sort((a,b)=>a-b);
+  const durRange = durations[durations.length-1] - durations[0];
+  if (durRange > 120) {
+    // Garder uniquement les blocs dont la durée est proche de la médiane ±60%
+    const medDur = durations[Math.floor(durations.length/2)];
+    return merged.filter(iv => iv.elapsed_time >= medDur*0.4 && iv.elapsed_time <= medDur*1.8 && iv.average_speed >= medSpeed);
+  }
+
+  return merged.filter(iv => iv.average_speed >= medSpeed);
+}
+
 function getEffortLaps(activity) {
+  // Si on a les streams, les utiliser
+  const actId = String(activity.id_str || activity.id);
+  if (streamsCache[actId]) {
+    const intervals = getEffortLapsFromStreams(streamsCache[actId]);
+    if (intervals.length > 0) return intervals;
+  }
+
+  // Fallback sur les laps
   if (!activity.laps || !activity.laps.length) return [];
   const laps = activity.laps.filter(l => l.average_speed > 0);
   if (!laps.length) return [];
-
-  // Trouver la duree dominante des laps d'effort (la plus frequente parmi les laps rapides)
-  // Laps rapides = allure < 6:00/km
   const fastLaps = laps.filter(l => (1000/l.average_speed) < 360);
   if (!fastLaps.length) return [];
-
-  // Duree mediane des laps rapides
   const durations = fastLaps.map(l => l.elapsed_time).sort((a,b) => a-b);
   const medDur = durations[Math.floor(durations.length/2)];
-
-  // Garder les laps rapides dont la duree est proche de la mediane (±50%)
-  // Cela exclut l'echauffement et le retour calme qui ont des durees tres differentes
+  const durRange = durations[durations.length-1] - durations[0];
+  if (durRange < 15) {
+    const speeds = fastLaps.map(l => l.average_speed).sort((a,b) => a-b);
+    const medSpeed = speeds[Math.floor(speeds.length/2)];
+    return fastLaps.filter(l => l.average_speed >= medSpeed);
+  }
   return fastLaps.filter(l => l.elapsed_time >= medDur * 0.7 && l.elapsed_time <= medDur * 1.5);
+}
+
+// ── Chargement des streams pour les séances intensives ────────────────────────
+async function fetchStreamsForActivity(actId, token) {
+  if (streamsCache[actId]) return; // déjà chargé
+  try {
+    const resp = await fetch("/api/streams?activity_id="+actId+"&token="+encodeURIComponent(token));
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.velocity_smooth && data.velocity_smooth.data) {
+      streamsCache[actId] = {
+        velocity_smooth: data.velocity_smooth.data,
+        heart_rate: data.heart_rate ? data.heart_rate.data : null,
+        time: data.time ? data.time.data : data.velocity_smooth.data.map((_,i)=>i)
+      };
+      render(); // Re-render avec les nouvelles données
+    }
+  } catch(e) {
+    console.warn("Streams non disponibles pour", actId, e);
+  }
 }
 
 // ── Calcul dérive FC sur les répétitions ─────────────────────────────────
@@ -4030,6 +4136,12 @@ async function syncStrava() {
       stravaActivities=runs; save("lk_strava_activities",runs);
       matchActivitiesToPlan(activities);
       lastSyncTime = Date.now();
+      // Charger les streams pour les séances intensives
+      const intensiveDates = ALL_SESSIONS.filter(s=>["VMA","SPEC","SEUIL"].includes(s.type)).map(s=>s.date);
+      runs.filter(r=>intensiveDates.includes(r.start_date_local?.slice(0,10))).forEach(r=>{
+        const actId = String(r.id_str||r.id);
+        fetchStreamsForActivity(actId, stravaToken);
+      });
       save("lk_last_sync", lastSyncTime);
       syncMsg=`✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
       scheduleSave();
