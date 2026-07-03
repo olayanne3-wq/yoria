@@ -1073,43 +1073,20 @@ function getEffortLapsFromStreams(streams, targetDuration, targetSpeed) {
 
 
 function getEffortLaps(activity) {
-  const actId = String(activity.id_str || activity.id);
-  if (streamsCache[actId]) {
-    const date = activity.start_date_local ? activity.start_date_local.slice(0,10) : null;
-    const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
-    const targetDur = planSess ? extractTargetDuration(planSess.session) : null;
-    const targetSpd = planSess ? extractTargetSpeed(planSess.session) : null;
-    const intervals = getEffortLapsFromStreams(streamsCache[actId], targetDur, targetSpd);
-    if (intervals.length > 0) return intervals;
-  }
-  // Fallback laps
-  if (!activity.laps || !activity.laps.length) return [];
-  const laps = activity.laps.filter(l => l.average_speed > 0 && (1000/l.average_speed) < 360);
-  if (!laps.length) return [];
-  const speeds = laps.map(l => l.average_speed).sort((a,b) => a-b);
-  const medSpeed = speeds[Math.floor(speeds.length/2)];
-  return laps.filter(l => l.average_speed >= medSpeed);
+  if (!activity.laps || activity.laps.length < 4) return [];
+  // Structure : 1 lap echauffement + intervalles (effort+recup) + 2 laps retour au calme
+  const middle = activity.laps.slice(1, -2);
+  if (!middle.length) return [];
+  // Parmi les laps du milieu, garder les plus rapides (laps d effort)
+  // Trier par vitesse et garder la moitie superieure
+  const sorted = [...middle].sort((a,b) => b.average_speed - a.average_speed);
+  const half = Math.ceil(sorted.length / 2);
+  const effortLaps = sorted.slice(0, half);
+  // Re-trier dans l ordre chronologique
+  const effortIndices = new Set(effortLaps.map(l => l.lap_index || l.id));
+  return middle.filter(l => effortIndices.has(l.lap_index || l.id));
 }
 
-// ── Chargement des streams pour les séances intensives ────────────────────────
-async function fetchStreamsForActivity(actId, token) {
-  if (streamsCache[actId]) return; // déjà chargé
-  try {
-    const resp = await fetch("/api/streams?activity_id="+actId+"&token="+encodeURIComponent(token));
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (data.velocity_smooth && data.velocity_smooth.data) {
-      streamsCache[actId] = {
-        velocity_smooth: data.velocity_smooth.data,
-        heart_rate: data.heart_rate ? data.heart_rate.data : null,
-        time: data.time ? data.time.data : data.velocity_smooth.data.map((_,i)=>i)
-      };
-      render(); // Re-render avec les nouvelles données
-    }
-  } catch(e) {
-    console.warn("Streams non disponibles pour", actId, e);
-  }
-}
 
 // ── Calcul dérive FC sur les répétitions ─────────────────────────────────
 function computeFcDrift(laps) {
