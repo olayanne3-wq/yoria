@@ -7,6 +7,7 @@
   "routes": [
     { "src": "/api/strava/(.*)", "dest": "/api/strava.js" },
     { "src": "/api/coach", "dest": "/api/coach.js" },
+    { "src": "/api/streams", "dest": "/api/streams.js" },
     { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
