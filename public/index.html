@@ -1004,8 +1004,10 @@ function getEffortLapsFromStreams(streams) {
   const t = streams.time;
   if (!vel || vel.length < 10) return [];
 
-  // Seuil de vitesse : 5:30/km = 3.03 m/s
-  const SPEED_THRESHOLD = 1000/330;
+  // Seuil adaptatif : percentile 85 des vitesses de la séance
+  // Cela s'adapte automatiquement quelle que soit l'allure (VMA, SPEC, SEUIL)
+  const velSorted = [...vel].sort((a,b) => a-b);
+  const SPEED_THRESHOLD = velSorted[Math.floor(velSorted.length * 0.85)];
 
   // Détecter les blocs d'effort continus > 20s au-dessus du seuil
   const intervals = [];
