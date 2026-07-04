@@ -1184,7 +1184,7 @@ function placerSemaine({ joursDisponibles, niveau, renforcementActif, modulation
     const lendemainLongue = (longueDay + 1) % 7;
     const jourRepos = Object.keys(assignment).length < 7 && !assignment[lendemainLongue] ? lendemainLongue : null;
     if (jourRepos !== null) {
-      assignment[jourRepos] = { type: 'repos', renfo: true };
+      assignment[jourRepos] = { type: 'repos', renfo: true, contenu: 'Repos + renforcement musculaire (25-30min)', kmEstime: 0 };
     }
   }
 
@@ -1328,73 +1328,151 @@ function resoudreSousType(sousType, restrictionsAllure) {
  */
 function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure }) {
   const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
-  if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)' };
+  if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)', kmEstime: 0 };
 
   const sousTypeBrut = rotation[(semaineDansPhase + indexQualiteSemaine) % rotation.length];
   const sousType = resoudreSousType(sousTypeBrut, restrictionsAllure);
 
   const T = alluresSec.T, I = alluresSec.I, V = alluresSec.V, C = alluresSec.C;
+  // km à partir d'une durée en minutes à une allure donnée (sec/km)
+  const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
 
   switch (sousType) {
     case 'seuil-court': {
       const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
-      return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s` };
+      const kmEstime = kmDepuisMinutes(reps * 6, T);
+      return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`, kmEstime };
     }
     case 'seuil': {
       const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
-      return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min` };
+      const kmEstime = kmDepuisMinutes(reps * 8, T);
+      return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
     }
     case 'i-30-30': {
       const series = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
-      return { sousType, contenu: `${series}×8×30″-30″ @ ${formatPace(I)} (VMA)` };
+      // 8×30″ effort par série ; on ignore les 30″ de récup (approximation assumée)
+      const kmEstime = kmDepuisMinutes(series * 8 * 0.5, I);
+      return { sousType, contenu: `${series}×8×30″-30″ @ ${formatPace(I)} (VMA)`, kmEstime };
     }
     case 'i-3min': {
       const reps = reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase);
-      return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min` };
+      const kmEstime = kmDepuisMinutes(reps * 3, I);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`, kmEstime };
     }
     case 'vitesse': {
       const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
-      return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète` };
+      const kmEstime = reps * 0.3; // distance directement connue (300m)
+      return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`, kmEstime };
     }
     case 'cotes': {
       const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
-      return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot` };
+      const kmEstime = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
+      return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot`, kmEstime };
     }
     case 'allure-course': {
       const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
-      return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min` };
+      const kmEstime = kmDepuisMinutes(reps * 5, C);
+      return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
     }
     case 'allure-course-court': {
       const reps = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
-      return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min` };
+      const kmEstime = kmDepuisMinutes(reps * 3, C);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
     }
     case 'tempo-court': {
       const duree = reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase);
-      return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)` };
+      const kmEstime = kmDepuisMinutes(duree, T);
+      return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)`, kmEstime };
     }
-    default:
-      return { sousType: 'seuil', contenu: `3×8min @ ${formatPace(T)} (Seuil), récup 2min` };
+    default: {
+      const kmEstime = kmDepuisMinutes(24, T);
+      return { sousType: 'seuil', contenu: `3×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
+    }
   }
+}
+
+// Durée max raisonnable par séance, au-delà de laquelle on plafonne plutôt que
+// de générer une séance disproportionnée (garde-fou révélé par la réconciliation
+// volume/durée : sans ça, un volume hebdo élevé réparti sur peu de séances
+// produisait des EF de 100+ minutes)
+const DUREE_MAX_EF_MIN = 75;
+const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150 };
+
+/**
+ * EF et sortie longue : la durée est dérivée du volume hebdo cible
+ * (volumeCibleKm), une fois retiré le kilométrage déjà consommé par les
+ * séances qualité de la semaine — voir répartirVolumeSemaine(). Plafonnée à
+ * une durée max raisonnable ; l'excédent éventuel est signalé, pas caché.
+ * Approximation assumée : échauffement/retour au calme et jogs de récupération
+ * ne sont pas comptés séparément, ils sont absorbés dans l'allure EF globale.
+ */
+function genererContenuEF({ alluresSec, kmCible }) {
+  const dureeMinBrut = (kmCible * alluresSec.E) / 60;
+  const dureeMin = Math.round(Math.min(dureeMinBrut, DUREE_MAX_EF_MIN));
+  const kmEffectif = (dureeMin * 60) / alluresSec.E;
+  const warning = dureeMinBrut > DUREE_MAX_EF_MIN + 1
+    ? { code: 'SEANCE_EF_PLAFONNEE', message: `Séance EF plafonnée à ${DUREE_MAX_EF_MIN}min (${Math.round(dureeMinBrut)}min auraient été nécessaires pour caser tout le volume) — trop peu de séances/semaine pour ce volume cible.` }
+    : null;
+  return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmEffectif * 10) / 10}km`, kmEstime: kmEffectif, warning };
+}
+
+function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
+  const dureeMaxMin = DUREE_MAX_LONGUE_MIN[distance] ?? 120;
+  const avecSegmentCourse = (distance === 'Semi' || distance === 'Marathon') &&
+    (phase === 'Specifique' || phase === 'Affutage');
+
+  const dureeBruteMin = (kmCible * alluresSec.E) / 60; // estimation avant plafond, allure EF globale
+  const kmCiblePlafonne = dureeBruteMin > dureeMaxMin ? (dureeMaxMin * 60) / alluresSec.E : kmCible;
+  const warning = dureeBruteMin > dureeMaxMin + 1
+    ? { code: 'SEANCE_LONGUE_PLAFONNEE', message: `Sortie longue plafonnée à ${dureeMaxMin}min (${Math.round(dureeBruteMin)}min auraient été nécessaires pour caser tout le volume) — trop peu de séances/semaine pour ce volume cible.` }
+    : null;
+
+  if (avecSegmentCourse) {
+    const kmSegmentCourse = Math.round(kmCiblePlafonne * 0.25 * 10) / 10;
+    const kmEF = Math.round((kmCiblePlafonne - kmSegmentCourse) * 10) / 10;
+    const dureeSegmentMin = Math.round((kmSegmentCourse * alluresSec.C) / 60);
+    const dureeEFMin = Math.round((kmEF * alluresSec.E) / 60);
+    return {
+      contenu: `${dureeEFMin}min à allure EF (${formatPace(alluresSec.E)}), dont ${dureeSegmentMin}min @ ${formatPace(alluresSec.C)} (allure course) en fin de sortie — ${Math.round(kmCiblePlafonne * 10) / 10}km au total`,
+      kmEstime: kmCiblePlafonne,
+      warning
+    };
+  }
+
+  const dureeMin = Math.round((kmCiblePlafonne * alluresSec.E) / 60);
+  return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmCiblePlafonne * 10) / 10}km`, kmEstime: kmCiblePlafonne, warning };
 }
 
 /**
- * Contenu simple pour EF et sortie longue. Simplification assumée : la durée
- * est estimée par un repère fixe selon la phase, indépendamment du volume
- * hebdo exact (pas encore de répartition volume -> durée par séance dans le
- * moteur — à réconcilier dans un chantier ultérieur).
+ * Répartit le volume hebdo cible entre les séances de la semaine : la sortie
+ * longue reçoit ~40% du volume restant après les séances qualité, les EF se
+ * partagent le reste à parts égales. La somme reste toujours égale au volume
+ * cible (pas de plancher artificiel qui la dépasserait) — si ça donne des
+ * séances dérisoires, un avertissement le signale plutôt que de gonfler
+ * silencieusement le total réel.
  */
-function genererContenuEF({ alluresSec }) {
-  return `40-50min à allure EF (${formatPace(alluresSec.E)})`;
-}
+function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue }) {
+  const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
+  let kmLongue = 0, kmParEF = 0;
 
-function genererContenuLongue({ distance, phase, alluresSec }) {
-  const base = `70-90min à allure EF (${formatPace(alluresSec.E)})`;
-  const avecSegmentCourse = (distance === 'Semi' || distance === 'Marathon') &&
-    (phase === 'Specifique' || phase === 'Affutage');
-  if (avecSegmentCourse) {
-    return `${base}, dont 20-25min @ ${formatPace(alluresSec.C)} (allure course) en fin de sortie`;
+  if (aLongue) {
+    kmLongue = kmRestant * 0.40;
+    const kmRestantApresLongue = kmRestant - kmLongue;
+    kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
+  } else {
+    kmParEF = nbEF > 0 ? kmRestant / nbEF : 0;
   }
-  return base;
+
+  let warning = null;
+  const seanceMinKm = Math.min(aLongue ? kmLongue : Infinity, nbEF > 0 ? kmParEF : Infinity);
+  if (kmRestant > 0 && seanceMinKm < 3) {
+    warning = {
+      code: 'VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION',
+      message: `Volume hebdo restant (${Math.round(kmRestant * 10) / 10}km) trop faible pour des séances EF/longue substantielles.`
+    };
+  }
+
+  return { kmLongue, kmParEF, warning };
 }
 
 // ---------------------------------------------------------------------------
@@ -1457,6 +1535,7 @@ function generatePlan(profil, params) {
   }
 
   const semaines = [];
+  const warningsSemaines = [];
   let semaineGlobale = 0;
   for (const phase of phasesAvecReacclimatation) {
     for (let i = 0; i < phase.semaines; i++) {
@@ -1470,9 +1549,11 @@ function generatePlan(profil, params) {
       });
 
       // Contenu concret de chaque séance (section 2 — bibliothèque)
+      // 1ère passe : générer les séances qualité et cumuler leur km estimé
+      let kmQualiteTotal = 0;
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'qualite') {
-          const { sousType, contenu } = genererContenuQualite({
+          const { sousType, contenu, kmEstime } = genererContenuQualite({
             distance: params.distance,
             phase: phase.nom,
             semaineDansPhase: i,
@@ -1482,10 +1563,38 @@ function generatePlan(profil, params) {
           });
           seance.sousType = sousType;
           seance.contenu = contenu;
-        } else if (seance.type === 'ef') {
-          seance.contenu = genererContenuEF({ alluresSec: allSeconds });
+          seance.kmEstime = kmEstime;
+          kmQualiteTotal += kmEstime;
+        }
+      }
+
+      // 2e passe : répartir le volume restant entre longue et EF
+      const nbEF = Object.values(assignment).filter(s => s.type === 'ef').length;
+      const aLongue = Object.values(assignment).some(s => s.type === 'longue');
+      const volumeCibleSemaine = volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? 0;
+      const { kmLongue, kmParEF, warning: warningRepartition } = repartirVolumeSemaine({
+        volumeCibleKm: volumeCibleSemaine,
+        kmQualiteTotal,
+        nbEF,
+        aLongue
+      });
+      if (warningRepartition) {
+        warningsSemaines.push({ ...warningRepartition, message: `S${semaineGlobale} : ${warningRepartition.message}` });
+      }
+
+      for (const [jour, seance] of Object.entries(assignment)) {
+        if (seance.type === 'ef') {
+          const { contenu, kmEstime, warning } = genererContenuEF({ alluresSec: allSeconds, kmCible: kmParEF });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+          if (warning) warningsSemaines.push({ ...warning, message: `S${semaineGlobale} (jour ${jour}) : ${warning.message}` });
         } else if (seance.type === 'longue') {
-          seance.contenu = genererContenuLongue({ distance: params.distance, phase: phase.nom, alluresSec: allSeconds });
+          const { contenu, kmEstime, warning } = genererContenuLongue({
+            distance: params.distance, phase: phase.nom, alluresSec: allSeconds, kmCible: kmLongue
+          });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+          if (warning) warningsSemaines.push({ ...warning, message: `S${semaineGlobale} : ${warning.message}` });
         }
       }
 
@@ -1504,7 +1613,8 @@ function generatePlan(profil, params) {
     ...warningsPhases,
     ...warningsVolume,
     ...modulation.warnings,
-    ...semaines.flatMap(s => s.warnings)
+    ...semaines.flatMap(s => s.warnings),
+    ...warningsSemaines
   ];
 
   return {
