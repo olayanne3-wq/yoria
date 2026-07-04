@@ -361,6 +361,28 @@ La validation sur 4 profils fictifs (marathon débutant 20 semaines, semi confir
 
 Ces deux bugs auraient été très difficiles à détecter sur un seul profil dont l'objectif est modeste (ampleur "faible", qui désactive justement ce garde-fou) — la validation sur des profils aux objectifs plus ambitieux était donc nécessaire pour les révéler.
 
+## 15. Bug de circularité de la semaine (trouvé par validation, 7 jours/semaine)
+
+Un profil à 7 jours/semaine disponibles a révélé que le placement traitait la semaine comme une ligne (Lundi=0 → Dimanche=6), pas comme un cycle. Avec la sortie longue sur Dimanche, l'algorithme choisissait Lundi pour une séance qualité — "le plus loin" sur cette ligne (distance 6) — sans réaliser que Lundi suit directement Dimanche dans un vrai calendrier, violant silencieusement la règle "jamais de qualité au lendemain de la longue".
+
+Corrigé par une distance circulaire (Dimanche↔Lundi = 1 jour d'écart, pas 6), appliquée à la fois à l'espacement des séances qualité entre elles, à l'écart avec la longue, et au garde-fou des 48h de récupération (qui vérifie maintenant aussi le bouclage fin de semaine → début de la semaine suivante, pas seulement les jours consécutifs à l'intérieur d'une même semaine).
+
+Ce bug ne se manifestait qu'avec un nombre de jours disponibles élevé (6-7) où l'algorithme a la place de choisir un jour "loin" au sens linéaire — invisible sur les profils à moins de jours disponibles testés jusque-là.
+
+## 16. Nettoyage — date invalide ne remonte plus de faux avertissement secondaire
+
+Validation supplémentaire (2 séances/semaine minimum, date de course avant date de début testée via l'orchestrateur complet, contraintes cumulées sur Semi, débutant à objectif modeste) : pas de nouveau bug de fond, mais un défaut de propreté trouvé — quand la date est invalide (`DATE_INVALIDE`), le calcul de progression du volume tournait quand même sur une durée nulle et remontait un second avertissement `PROGRESSION_INSUFFISANTE` sans valeur ajoutée. Corrigé : le calcul de volume court-circuite proprement dès que la durée est nulle.
+
+Le cas 2 séances/semaine confirme que la règle "Qualité + Longue uniquement, pas d'EF" (section 4/5) fonctionne bien en pratique, y compris avec le plafonnement de durée de la section 13.
+
+## 17. Correction — rotation à un seul type pour Marathon/Semi en Construction
+
+Dernière vague de validation (blessure active sur marathon, plan de 5 semaines, renforcement pendant réacclimatation) : deux points confirmés sains (renforcement toujours bien placé même sans qualité cette semaine-là ; garde-fous cohérents sur un plan très court), et un trou de contenu trouvé.
+
+**Le trou** : Marathon et Semi n'avaient qu'un seul sous-type de séance qualité en Construction (`tempo-court` seul). Pour un profil à 2 séances qualité/semaine (ex. confirmé à 6 jours/semaine), les deux séances qualité de la semaine devenaient identiques — même durée, même allure, aucune variété — alors que 5K/10K en avaient toujours deux qui alternaient.
+
+**Corrigé** : ajout d'un 2e sous-type pour chaque distance — **fartlek** pour le Semi (mentionné dans la section 2 comme alternative au tempo court, jamais implémenté jusqu'ici), **seuil-court** pour le Marathon (déjà existant, réutilisé). Les deux séances qualité alternent maintenant correctement, semaine après semaine.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
