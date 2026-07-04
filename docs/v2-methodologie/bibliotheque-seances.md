@@ -338,6 +338,17 @@ Le moteur ne se contente plus de dire "qualité"/"EF"/"longue" — il génère l
 - **Repli sur restriction** : si une contrainte interdit V ou I (section 7), le sous-type prévu par la rotation est automatiquement remplacé par un cran moins intense (V → I → Seuil), y compris quand la rotation naturelle serait tombée sur le sous-type interdit — testé et confirmé sur plusieurs semaines consécutives
 - **EF et sortie longue** : contenu simplifié (durée fixe par repère, pas encore dérivée du volume hebdo exact — simplification assumée, à réconcilier plus tard) ; sortie longue enrichie d'un segment à allure course pour Semi/Marathon en phase Spécifique/Affûtage, cohérent avec la pratique réelle validée en section 7 de l'app existante
 
+## 13. Réconciliation volume ↔ durée de séance (implémenté)
+
+La simplification notée en section 12 est résolue : EF et sortie longue ont maintenant une durée dérivée du volume hebdo cible, pas un repère fixe.
+
+- **Répartition** : le volume hebdo cible moins le kilométrage des séances qualité (estimé à partir de leur structure — reps × durée/distance × allure) donne le kilométrage restant. La sortie longue reçoit ~40% de ce reste, les EF se partagent le reste à parts égales
+- **Somme exacte** : la somme des séances égale toujours le volume cible de la semaine — pas de plancher artificiel qui la dépasserait
+- **Garde-fou découvert par cette réconciliation** : avec peu de séances/semaine et un volume cible élevé, une séance EF ou longue peut devenir déraisonnable (100+ minutes). Plafonds ajoutés : **75min pour l'EF**, **90-150min pour la longue selon la distance** (5K/10K : 90min, Semi : 120min, Marathon : 150min). Au-delà, la séance est plafonnée et un avertissement le signale explicitement plutôt que de produire une séance disproportionnée en silence
+- **Garde-fou symétrique** (volume hebdo trop faible pour le nombre de séances) : si le kilométrage restant après les séances qualité est trop faible pour donner des séances substantielles (< 3km), un avertissement le signale aussi — pertinent en tout début de reprise ou avec un volume de départ très bas
+
+Ces deux garde-fous s'ajoutent à la checklist de la section 10.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
