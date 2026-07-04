@@ -274,8 +274,8 @@ export function placerSemaine({ joursDisponibles, niveau, renforcementActif, mod
     pool = pool.filter(d => d !== best);
   }
 
-  qualiteDays.forEach(d => {
-    assignment[d] = { type: 'qualite' };
+  qualiteDays.forEach((d, idx) => {
+    assignment[d] = { type: 'qualite', indexQualite: idx };
     if (modulation.interdireV || modulation.interdireI) {
       assignment[d].restrictionsAllure = {
         interdireV: !!modulation.interdireV,
@@ -385,6 +385,144 @@ export function computeFcMaxTanaka(anneeNaissance) {
 }
 
 // ---------------------------------------------------------------------------
+// Section 2 (bibliothèque de séances) — contenu concret des séances qualité
+// ---------------------------------------------------------------------------
+
+// Rotation des sous-types de séance qualité par distance et par phase.
+// Cycle sur (semaineDansPhase + index de la séance qualité dans la semaine).
+const ROTATION_SOUS_TYPE = {
+  '5K': {
+    Reacclimatation: [],
+    Construction: ['cotes', 'i-30-30'],
+    Specifique: ['i-3min', 'vitesse'],
+    Affutage: ['vitesse', 'i-3min']
+  },
+  '10K': {
+    Reacclimatation: [],
+    Construction: ['seuil-court', 'i-30-30'],
+    Specifique: ['i-3min', 'seuil'],
+    Affutage: ['allure-course', 'seuil-court']
+  },
+  'Semi': {
+    Reacclimatation: [],
+    Construction: ['tempo-court'],
+    Specifique: ['seuil', 'i-3min', 'allure-course'],
+    Affutage: ['allure-course-court']
+  },
+  'Marathon': {
+    Reacclimatation: [],
+    Construction: ['tempo-court'],
+    Specifique: ['seuil', 'allure-course'],
+    Affutage: ['tempo-court']
+  }
+};
+
+// Repli si V ou I sont interdits par une contrainte (section 7) : on ne supprime
+// pas la séance, on descend d'un cran vers un sous-type moins intense
+const REPLI_SOUS_TYPE = {
+  'vitesse': 'i-3min',
+  'i-3min': 'seuil',
+  'i-30-30': 'seuil-court',
+  'cotes': 'seuil-court'
+};
+
+function reduireSelonNiveauProgression(base, increment, cap, semaineDansPhase) {
+  return Math.min(cap, base + Math.floor(semaineDansPhase / 3) * increment);
+}
+
+function resoudreSousType(sousType, restrictionsAllure) {
+  if (!restrictionsAllure) return sousType;
+  let resolved = sousType;
+  const estV = t => t === 'vitesse';
+  const estI = t => t === 'i-3min' || t === 'i-30-30';
+  let iterations = 0;
+  while (
+    ((restrictionsAllure.interdireV && estV(resolved)) ||
+     (restrictionsAllure.interdireI && estI(resolved))) &&
+    REPLI_SOUS_TYPE[resolved] && iterations < 5
+  ) {
+    resolved = REPLI_SOUS_TYPE[resolved];
+    iterations++;
+  }
+  return resolved;
+}
+
+/**
+ * Génère la structure concrète d'une séance qualité (texte affichable).
+ * alluresSec : allures en secondes/km (sortie de computeAllures, avant formatage)
+ */
+export function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure }) {
+  const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
+  if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)' };
+
+  const sousTypeBrut = rotation[(semaineDansPhase + indexQualiteSemaine) % rotation.length];
+  const sousType = resoudreSousType(sousTypeBrut, restrictionsAllure);
+
+  const T = alluresSec.T, I = alluresSec.I, V = alluresSec.V, C = alluresSec.C;
+
+  switch (sousType) {
+    case 'seuil-court': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s` };
+    }
+    case 'seuil': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min` };
+    }
+    case 'i-30-30': {
+      const series = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      return { sousType, contenu: `${series}×8×30″-30″ @ ${formatPace(I)} (VMA)` };
+    }
+    case 'i-3min': {
+      const reps = reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min` };
+    }
+    case 'vitesse': {
+      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète` };
+    }
+    case 'cotes': {
+      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot` };
+    }
+    case 'allure-course': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min` };
+    }
+    case 'allure-course-court': {
+      const reps = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min` };
+    }
+    case 'tempo-court': {
+      const duree = reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase);
+      return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)` };
+    }
+    default:
+      return { sousType: 'seuil', contenu: `3×8min @ ${formatPace(T)} (Seuil), récup 2min` };
+  }
+}
+
+/**
+ * Contenu simple pour EF et sortie longue. Simplification assumée : la durée
+ * est estimée par un repère fixe selon la phase, indépendamment du volume
+ * hebdo exact (pas encore de répartition volume -> durée par séance dans le
+ * moteur — à réconcilier dans un chantier ultérieur).
+ */
+export function genererContenuEF({ alluresSec }) {
+  return `40-50min à allure EF (${formatPace(alluresSec.E)})`;
+}
+
+export function genererContenuLongue({ distance, phase, alluresSec }) {
+  const base = `70-90min à allure EF (${formatPace(alluresSec.E)})`;
+  const avecSegmentCourse = (distance === 'Semi' || distance === 'Marathon') &&
+    (phase === 'Specifique' || phase === 'Affutage');
+  if (avecSegmentCourse) {
+    return `${base}, dont 20-25min @ ${formatPace(alluresSec.C)} (allure course) en fin de sortie`;
+  }
+  return base;
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrateur — assemble tout en un Plan conforme au schéma (section 9)
 // ---------------------------------------------------------------------------
 
@@ -455,6 +593,27 @@ export function generatePlan(profil, params) {
         modulation,
         forcerAucuneQualite: phase.nom === 'Reacclimatation'
       });
+
+      // Contenu concret de chaque séance (section 2 — bibliothèque)
+      for (const [jour, seance] of Object.entries(assignment)) {
+        if (seance.type === 'qualite') {
+          const { sousType, contenu } = genererContenuQualite({
+            distance: params.distance,
+            phase: phase.nom,
+            semaineDansPhase: i,
+            indexQualiteSemaine: seance.indexQualite ?? 0,
+            alluresSec: allSeconds,
+            restrictionsAllure: seance.restrictionsAllure
+          });
+          seance.sousType = sousType;
+          seance.contenu = contenu;
+        } else if (seance.type === 'ef') {
+          seance.contenu = genererContenuEF({ alluresSec: allSeconds });
+        } else if (seance.type === 'longue') {
+          seance.contenu = genererContenuLongue({ distance: params.distance, phase: phase.nom, alluresSec: allSeconds });
+        }
+      }
+
       semaines.push({
         semaineNum: semaineGlobale,
         phase: phase.nom,
