@@ -159,7 +159,7 @@ export function computePhases({ dateDebut, dateCourse, distance, niveau, ampleur
 // Section 6 — progression du volume (règle des 10%, décharge tous les 3-4 sem)
 // ---------------------------------------------------------------------------
 
-export function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif }) {
+export function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif, phases }) {
   const [plafondBas, plafondHaut] = PLAFONDS_VOLUME[distance][niveau];
   const plafondPopulation = (plafondBas + plafondHaut) / 2;
   const warnings = [];
@@ -181,23 +181,60 @@ export function computeVolumeProgression({ volumeDepart, distance, niveau, total
   const blessureActive = contraintes.includes('blessure-active');
   const tauxMax = blessureActive ? 0.07 : 0.10; // section 7 : 5-8% au lieu de 10%
 
+  // Semaines d'Affûtage = les N dernières du plan (phases calculées en amont,
+  // avant carottage de la réacclimatation qui ne touche que la Construction)
+  const semainesAffutage = phases?.find(p => p.nom === 'Affutage')?.semaines ?? 0;
+  const semainesProgression = Math.max(1, totalSemaines - semainesAffutage);
+
   const volumesParSemaine = [];
-  let volumeCourant = volumeDepart;
-  for (let s = 1; s <= totalSemaines; s++) {
-    const estDecharge = s % 4 === 0; // décharge toutes les 4 semaines (section 1)
-    if (s > 1) {
-      volumeCourant = estDecharge
-        ? volumesParSemaine[s - 2].volumeKm * 0.75 // -25%, milieu de la fourchette 20-30%
-        : Math.min(volumeCourant * (1 + tauxMax), plafond);
+  let peak = volumeDepart; // plus haut niveau atteint hors semaines de décharge
+
+  // Phase Construction + Spécifique : croissance 10%/semaine sur le "peak",
+  // la décharge est un creux temporaire qui ne remet pas la progression à zéro
+  // (sans ça, 3 semaines à +10% suivies d'une décharge à -25% s'annulent
+  // quasiment : 1,1³ × 0,75 ≈ 0,998 — le volume ne progressait jamais)
+  for (let s = 1; s <= semainesProgression; s++) {
+    const estDecharge = s % 4 === 0 && s > 1;
+    if (s === 1) {
+      volumesParSemaine.push({ semaine: 1, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
+      continue;
     }
-    volumesParSemaine.push({ semaine: s, volumeKm: Math.round(volumeCourant * 10) / 10, estDecharge });
+    if (estDecharge) {
+      volumesParSemaine.push({ semaine: s, volumeKm: Math.round(peak * 0.75 * 10) / 10, estDecharge: true });
+    } else {
+      peak = Math.min(peak * (1 + tauxMax), plafond);
+      volumesParSemaine.push({ semaine: s, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
+    }
+  }
+
+  // Pic de volume = fin de Spécifique, juste avant l'Affûtage — c'est LA référence
+  // pour juger si la progression a atteint le plafond, pas la dernière semaine du plan
+  const picVolume = peak;
+
+  // Phase Affûtage : vraie réduction progressive (section 1 : -40 à -60% au total),
+  // pas une continuation de la formule de croissance
+  if (semainesAffutage > 0) {
+    const fractions = semainesAffutage === 1
+      ? [0.55]
+      : Array.from({ length: semainesAffutage }, (_, j) =>
+          0.75 - (0.40 * j / (semainesAffutage - 1))
+        );
+    fractions.forEach((frac, j) => {
+      volumesParSemaine.push({
+        semaine: semainesProgression + j + 1,
+        volumeKm: Math.round(picVolume * frac * 10) / 10,
+        estDecharge: false,
+        estAffutage: true
+      });
+    });
   }
 
   // Garde-fou #5 : écart volume/plafond trop grand pour la durée disponible
   // (ne s'applique pas si l'objectif est modeste : le plafond effectif est déjà
   // recalculé au-dessus pour rester atteignable, cf. ajustement ampleurObjectif)
-  const volumeFinConstruction = volumesParSemaine[volumesParSemaine.length - 1].volumeKm;
-  if (volumeFinConstruction < plafond * 0.85 && !blessureActive && ampleurObjectif !== 'faible') {
+  // Comparé au PIC de volume (fin Spécifique), pas à la dernière semaine du plan
+  // qui est en plein taper et donc toujours basse par construction.
+  if (picVolume < plafond * 0.85 && !blessureActive && ampleurObjectif !== 'faible') {
     warnings.push({
       code: 'PROGRESSION_INSUFFISANTE',
       message: "L'écart entre le volume de départ et le plafond visé est trop grand pour la durée du plan, même en respectant la règle des 10%."
@@ -640,7 +677,8 @@ export function generatePlan(profil, params) {
     niveau: profil.niveau,
     totalSemaines,
     contraintes: params.contraintesPonctuelles ?? [],
-    ampleurObjectif
+    ampleurObjectif,
+    phases
   });
 
   // Carotte les semaines de réacclimatation (contrainte "reprise") sur le budget
@@ -703,7 +741,7 @@ export function generatePlan(profil, params) {
         nbEF,
         aLongue
       });
-      if (warningRepartition) {
+      if (warningRepartition && phase.nom !== 'Affutage') {
         warningsSemaines.push({ ...warningRepartition, message: `S${semaineGlobale} : ${warningRepartition.message}` });
       }
 
