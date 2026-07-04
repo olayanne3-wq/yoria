@@ -1,0 +1,2258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run by Léa — Nouveau plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14181C;
+    --ink-soft:#2A3138;
+    --paper:#EEF0EA;
+    --paper-dim:#DCDFD5;
+    --signal:#FF5A34;
+    --signal-dim:#3A241C;
+    --pace:#2F6E5F;
+    --pace-soft:#DCE9E3;
+    --line: rgba(238,240,234,0.14);
+    --longue:#4C7EE0;
+    --longue-soft:#1E2A44;
+  }
+  .week{ display:flex; flex-direction:column; gap:8px; }
+  .day-row{
+    display:flex; align-items:center; gap:12px;
+    padding:12px 14px; border-radius:12px;
+    border:1px solid var(--line); background:rgba(238,240,234,0.02);
+  }
+  .day-row .dname{
+    font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;
+    color:rgba(238,240,234,0.5); width:34px; flex-shrink:0;
+  }
+  .badge{
+    flex:1; display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600;
+  }
+  .badge.qualite{ background:var(--signal-dim); color:var(--signal); }
+  .badge.ef{ background:var(--pace-soft); color:var(--pace); }
+  .badge.longue{ background:var(--longue-soft); color:var(--longue); }
+  .badge.repos{ background:transparent; color:rgba(238,240,234,0.35); font-weight:500; }
+  .badge .tag{ font-family:'JetBrains Mono',monospace; font-size:10px; opacity:.8; }
+  .day-detail{
+    font-size:11.5px; color:rgba(238,240,234,0.5);
+    margin-top:4px; padding-left:2px; line-height:1.4;
+  }
+
+  .toggle-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; border:1px solid var(--line); border-radius:12px;
+    background:rgba(238,240,234,0.03);
+  }
+  .toggle-row .label{ font-size:14px; font-weight:600; }
+  .switch{
+    width:42px; height:24px; border-radius:20px;
+    background:rgba(238,240,234,0.15); position:relative; cursor:pointer; flex-shrink:0;
+  }
+  .switch.on{ background:var(--pace); }
+  .switch::after{
+    content:''; position:absolute; top:3px; left:3px;
+    width:18px; height:18px; border-radius:50%; background:var(--paper); transition:left .15s;
+  }
+  .switch.on::after{ left:21px; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Manrope',sans-serif;
+    display:flex;
+    justify-content:center;
+    min-height:100vh;
+  }
+  .phone{
+    width:100%;
+    max-width:430px;
+    min-height:100vh;
+    background:var(--ink);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .track{
+    display:flex;
+    gap:6px;
+    padding:22px 20px 0 20px;
+  }
+  .track .lap{
+    flex:1;
+    height:3px;
+    background:var(--line);
+    border-radius:2px;
+    overflow:hidden;
+    position:relative;
+  }
+  .track .lap.done{ background:var(--signal); }
+  .track .lap.current::after{
+    content:'';
+    position:absolute; inset:0;
+    background:var(--signal);
+    width:40%;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:.5} 50%{opacity:1} }
+
+  .stepmeta{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:12px 20px 0 20px;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .stepmeta .num{ font-size:12px; color:var(--signal); letter-spacing:.06em; }
+  .stepmeta .total{ font-size:12px; color:rgba(238,240,234,0.4); }
+
+  .content{
+    flex:1;
+    padding:14px 20px 130px 20px;
+    overflow-y:auto;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--pace);
+    background:var(--pace-soft);
+    display:inline-block;
+    padding:4px 9px;
+    border-radius:20px;
+    margin-bottom:14px;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:26px;
+    line-height:1.18;
+    font-weight:700;
+    margin:0 0 8px 0;
+    letter-spacing:-0.01em;
+  }
+  .sub{
+    font-size:14.5px;
+    line-height:1.5;
+    color:rgba(238,240,234,0.62);
+    margin:0 0 26px 0;
+  }
+
+  .options{ display:flex; flex-direction:column; gap:10px; }
+  .opt{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:16px 16px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:rgba(238,240,234,0.03);
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .opt:active{ transform:scale(0.99); }
+  .opt.selected{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+  }
+  .opt .ico{
+    width:38px;height:38px;
+    border-radius:10px;
+    background:rgba(238,240,234,0.06);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;
+    flex-shrink:0;
+  }
+  .opt.selected .ico{ background:var(--signal); }
+  .opt .label{ font-weight:600; font-size:15px; }
+  .opt .desc{ font-size:12.5px; color:rgba(238,240,234,0.5); margin-top:2px; }
+  .opt .check{
+    margin-left:auto;
+    width:20px;height:20px;
+    border-radius:50%;
+    border:1.5px solid rgba(238,240,234,0.3);
+    flex-shrink:0;
+  }
+  .opt.selected .check{
+    border-color:var(--signal);
+    background:var(--signal);
+    position:relative;
+  }
+  .opt.selected .check::after{
+    content:'';
+    position:absolute; left:6px; top:2px;
+    width:5px; height:9px;
+    border:solid var(--ink);
+    border-width:0 2px 2px 0;
+    transform:rotate(45deg);
+  }
+
+  .block-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(238,240,234,0.4);
+    margin-bottom:10px;
+  }
+
+  /* Distance chips */
+  .distance-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-bottom:8px;
+  }
+  .dist{
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:18px 14px;
+    cursor:pointer;
+    background:rgba(238,240,234,0.03);
+    position:relative;
+  }
+  .dist.selected{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+  }
+  .dist .km{
+    font-family:'JetBrains Mono',monospace;
+    font-size:24px;
+    font-weight:600;
+    color:var(--paper);
+  }
+  .dist .name{
+    font-size:12.5px;
+    color:rgba(238,240,234,0.55);
+    margin-top:2px;
+  }
+  .dist.selected .km{ color:var(--signal); }
+  .dist .tag{
+    position:absolute; top:12px; right:12px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:rgba(238,240,234,0.35);
+    letter-spacing:.05em;
+  }
+
+  /* Time input step */
+  .time-input{
+    display:flex;
+    align-items:baseline;
+    justify-content:center;
+    gap:6px;
+    font-family:'JetBrains Mono',monospace;
+    background:rgba(238,240,234,0.04);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:26px 10px;
+    margin-bottom:10px;
+  }
+  .time-input input{
+    background:none;
+    border:none;
+    color:var(--paper);
+    font-family:'JetBrains Mono',monospace;
+    font-size:40px;
+    font-weight:600;
+    width:2.1ch;
+    text-align:center;
+    outline:none;
+  }
+  .time-input .sep{ font-size:34px; color:rgba(238,240,234,0.35); }
+  .time-input .unit{ font-size:13px; color:rgba(238,240,234,0.45); align-self:flex-end; margin-bottom:6px;}
+  .helper-row{
+    display:flex; justify-content:space-between;
+    font-size:12px; color:rgba(238,240,234,0.45);
+    font-family:'JetBrains Mono',monospace;
+    padding:0 4px;
+  }
+  .helper-row b{ color:var(--pace); font-weight:600; }
+
+  /* Days grid */
+  .days-grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:8px;
+    margin-bottom:22px;
+  }
+  .day{
+    aspect-ratio:1/1.15;
+    border-radius:12px;
+    border:1px solid var(--line);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:4px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:rgba(238,240,234,0.5);
+    cursor:pointer;
+  }
+  .day .d{ font-size:13px; font-weight:600; color:var(--paper); }
+  .day.selected{ border-color:var(--pace); background:var(--pace-soft); }
+  .day.selected .d{ color:var(--pace); }
+  .day.selected span:last-child{ color:var(--pace); }
+
+  .count-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px; color:var(--pace);
+    background:var(--pace-soft);
+    padding:5px 10px; border-radius:20px;
+    margin-bottom:18px;
+  }
+
+  /* Footer nav */
+  .footer{
+    position:absolute; bottom:0; left:0; right:0;
+    padding:16px 20px 22px 20px;
+    background:linear-gradient(to top, var(--ink) 60%, transparent);
+    display:flex; gap:10px;
+  }
+  .btn{
+    flex:1;
+    padding:15px;
+    border-radius:14px;
+    border:none;
+    font-family:'Manrope',sans-serif;
+    font-weight:700;
+    font-size:15px;
+    cursor:pointer;
+    text-align:center;
+  }
+  .btn-back{
+    flex:0 0 52px;
+    background:rgba(238,240,234,0.06);
+    color:var(--paper);
+    font-size:18px;
+  }
+  .btn-next{
+    background:var(--signal);
+    color:var(--ink);
+  }
+  .btn-next:disabled{
+    background:rgba(238,240,234,0.1);
+    color:rgba(238,240,234,0.3);
+    cursor:not-allowed;
+  }
+
+  .date-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:rgba(238,240,234,0.45);
+    margin-bottom:8px;
+  }
+  .date-quick-row{
+    display:flex;
+    gap:8px;
+    margin-top:8px;
+  }
+  .date-quick{
+    padding:7px 12px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    color:rgba(238,240,234,0.55);
+    cursor:pointer;
+  }
+  .date-quick.selected{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+    color:var(--signal);
+  }
+
+  /* Volume actuel — carte Strava */
+  .strava-card{
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:18px;
+    background:rgba(238,240,234,0.03);
+  }
+  .strava-head{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:12px;
+  }
+  .strava-badge{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--pace);
+    background:var(--pace-soft);
+    padding:4px 9px;
+    border-radius:20px;
+  }
+  .strava-period{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:rgba(238,240,234,0.4);
+  }
+  .strava-value{
+    display:flex; align-items:baseline; gap:8px;
+    margin-bottom:14px;
+  }
+  .strava-value span:first-child{
+    font-family:'JetBrains Mono',monospace;
+    font-size:34px;
+    font-weight:700;
+    color:var(--paper);
+  }
+  .strava-unit{ font-size:13px; color:rgba(238,240,234,0.5); }
+  .manual-volume .time-input{ justify-content:flex-start; padding:20px 18px; }
+
+  /* Date picker + computed duration */
+  .date-field{
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:rgba(238,240,234,0.04);
+    padding:4px;
+    margin-bottom:16px;
+  }
+  .date-field input[type="date"]{
+    width:100%;
+    background:none;
+    border:none;
+    outline:none;
+    color:var(--paper);
+    font-family:'JetBrains Mono',monospace;
+    font-size:17px;
+    font-weight:600;
+    padding:16px 14px;
+    color-scheme:dark;
+  }
+  .duration-card{
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:20px;
+    background:rgba(238,240,234,0.03);
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .dc-weeks{
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700;
+    font-size:30px;
+    color:var(--signal);
+    line-height:1;
+    flex-shrink:0;
+    min-width:64px;
+  }
+  .dc-weeks .dc-unit{
+    display:block;
+    font-family:'Manrope',sans-serif;
+    font-weight:600;
+    font-size:11px;
+    color:rgba(238,240,234,0.45);
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    margin-top:2px;
+  }
+  .dc-structure{
+    font-size:13px;
+    line-height:1.45;
+    color:rgba(238,240,234,0.65);
+    border-left:1px solid var(--line);
+    padding-left:16px;
+  }
+
+  /* Alt distance estimation */
+  .alt-toggle{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    color:var(--pace);
+    text-decoration:underline;
+    text-decoration-color:rgba(47,110,95,0.4);
+    text-underline-offset:3px;
+    cursor:pointer;
+    margin-top:16px;
+    display:inline-block;
+  }
+  .alt-panel{
+    margin-top:16px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:16px;
+    background:rgba(238,240,234,0.03);
+  }
+  .alt-panel .alt-label{
+    font-size:12.5px;
+    color:rgba(238,240,234,0.55);
+    margin-bottom:10px;
+  }
+  .alt-chips{
+    display:flex;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .alt-pill{
+    flex:1;
+    text-align:center;
+    padding:9px 4px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace;
+    font-size:12.5px;
+    font-weight:600;
+    color:rgba(238,240,234,0.6);
+    cursor:pointer;
+  }
+  .alt-pill.selected{
+    border-color:var(--pace);
+    background:var(--pace-soft);
+    color:var(--pace);
+  }
+  .alt-time-input{
+    padding:16px 10px;
+    margin-bottom:10px;
+  }
+  .alt-time-input input{ font-size:28px; }
+  .btn-mini{
+    width:100%;
+    margin-top:12px;
+    padding:11px;
+    border-radius:10px;
+    border:1px solid var(--pace);
+    background:transparent;
+    color:var(--pace);
+    font-family:'Manrope',sans-serif;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+
+  /* Summary card step (bib) */
+  .bib{
+    border:1.5px dashed rgba(238,240,234,0.25);
+    border-radius:18px;
+    padding:22px 20px;
+    position:relative;
+    margin-bottom:18px;
+  }
+  .bib .bib-num{
+    position:absolute; top:-12px; right:16px;
+    background:var(--signal);
+    color:var(--ink);
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px; font-weight:700;
+    padding:4px 10px; border-radius:20px;
+    letter-spacing:.04em;
+  }
+  .bib-row{
+    display:flex; justify-content:space-between;
+    align-items:center;
+    padding:11px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .bib-row:last-child{ border-bottom:none; }
+  .bib-row .k{ font-size:13px; color:rgba(238,240,234,0.5); }
+  .bib-row .v{
+    font-family:'JetBrains Mono',monospace;
+    font-size:14.5px; font-weight:600;
+    color:var(--paper);
+    text-align:right;
+  }
+  .bib-row .v.accent{ color:var(--pace); }
+
+  .flag{
+    display:flex; gap:10px;
+    background:rgba(255,90,52,0.08);
+    border:1px solid rgba(255,90,52,0.25);
+    border-radius:12px;
+    padding:13px 14px;
+    font-size:13px;
+    line-height:1.45;
+    color:#FFB9A3;
+    margin-top:4px;
+  }
+  .flag .ico{ font-size:16px; flex-shrink:0; }
+
+  .screen{ display:none; }
+  .screen.active{ display:block; }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <div class="track" id="track"></div>
+  <div class="stepmeta">
+    <span class="num" id="stepNum">ÉTAPE 1</span>
+    <span class="total">SUR 9</span>
+  </div>
+
+  <div class="content">
+
+    <!-- STEP 1: Distance -->
+    <div class="screen active" data-step="1">
+      <span class="eyebrow">Distance visée</span>
+      <h1>Tu prépares quelle course&nbsp;?</h1>
+      <p class="sub">Le type de séances et la structure des phases changent selon la distance.</p>
+      <div class="distance-grid">
+        <div class="dist" data-group="distance" data-dist="5" onclick="selectDist(this)">
+          <span class="tag">RAPIDE</span>
+          <div class="km">5K</div>
+          <div class="name">Vitesse & VMA</div>
+        </div>
+        <div class="dist selected" data-group="distance" data-dist="10" onclick="selectDist(this)">
+          <span class="tag">STANDARD</span>
+          <div class="km">10K</div>
+          <div class="name">Seuil & allure course</div>
+        </div>
+        <div class="dist" data-group="distance" data-dist="21.1" onclick="selectDist(this)">
+          <span class="tag">ENDURANCE</span>
+          <div class="km">Semi</div>
+          <div class="name">21,1 km</div>
+        </div>
+        <div class="dist" data-group="distance" data-dist="42.2" onclick="selectDist(this)">
+          <span class="tag">LONGUE DIST.</span>
+          <div class="km">Marathon</div>
+          <div class="name">42,2 km</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: Niveau -->
+    <div class="screen" data-step="2">
+      <span class="eyebrow">Point de départ</span>
+      <h1>Où en es-tu aujourd'hui&nbsp;?</h1>
+      <p class="sub">Ça nous aide à calibrer le point de départ du plan — pas de mauvaise réponse.</p>
+      <div class="options">
+        <div class="opt" data-group="niveau" onclick="selectOpt(this)">
+          <div class="ico">🌱</div>
+          <div><div class="label">Je débute</div><div class="desc">Moins de 6 mois de course régulière</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt selected" data-group="niveau" onclick="selectOpt(this)">
+          <div class="ico">🏃</div>
+          <div><div class="label">Intermédiaire</div><div class="desc" id="niveauInterDesc">Je cours depuis un moment, j'ai déjà couru un 10K</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt" data-group="niveau" onclick="selectOpt(this)">
+          <div class="ico">⚡</div>
+          <div><div class="label">Confirmé</div><div class="desc">Plusieurs courses, je connais mes allures</div></div>
+          <div class="check"></div>
+        </div>
+      </div>
+
+      <div class="block-label" style="margin-top:22px;">Profil — enregistré une seule fois</div>
+      <div class="date-field">
+        <input type="number" id="birthYear" placeholder="Année de naissance" style="font-size:16px; padding:14px;">
+      </div>
+      <p class="sub" style="margin-top:8px; margin-bottom:0;">Sert à calculer une zone de fréquence cardiaque par défaut, en complément des zones d'allure.</p>
+    </div>
+
+    <!-- STEP 3: Volume actuel -->
+    <div class="screen" data-step="3">
+      <span class="eyebrow">Point de départ</span>
+      <h1>Combien tu cours actuellement&nbsp;?</h1>
+      <p class="sub">Sert à calculer une progression du volume sûre, sans à-coups d'une semaine à l'autre.</p>
+
+      <div class="strava-card" id="stravaCard">
+        <div class="strava-head">
+          <span class="strava-badge">📡 Depuis Strava</span>
+          <span class="strava-period">Médiane, 8 dernières semaines</span>
+        </div>
+        <div class="strava-value"><span id="stravaKm">32</span><span class="strava-unit">km / semaine</span></div>
+        <span class="alt-toggle" onclick="toggleManualVolume()">Ce chiffre ne te semble pas juste ? Corriger manuellement</span>
+      </div>
+
+      <div class="manual-volume" id="manualVolume" style="display:none;">
+        <div class="time-input">
+          <input type="text" maxlength="3" value="30" id="manualKm" style="width:3ch;">
+          <span class="unit">km / semaine</span>
+        </div>
+        <span class="alt-toggle" onclick="toggleManualVolume()">Revenir à l'estimation Strava</span>
+      </div>
+
+      <div class="flag" id="noStravaFlag" style="display:none; margin-top:16px;">
+        <span class="ico">ℹ️</span>
+        <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
+      </div>
+    </div>
+
+    <!-- STEP 4: Temps de référence -->
+    <div class="screen" data-step="4">
+      <span class="eyebrow">Chrono actuel</span>
+      <h1><span id="refDistLabel">Ton dernier 10K</span>, ou une estimation</h1>
+      <p class="sub" id="refHelpText">Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.</p>
+      <div class="time-input">
+        <input type="text" maxlength="2" value="50" id="tHour" style="display:none;">
+        <span class="sep" id="tHourSep" style="display:none;">:</span>
+        <input type="text" maxlength="2" value="50" id="tMin">
+        <span class="sep">:</span>
+        <input type="text" maxlength="2" value="21" id="tSec">
+        <span class="unit" id="tUnit">min:sec</span>
+      </div>
+      <div class="helper-row">
+        <span>Allure équivalente</span>
+        <b id="paceHelper">5:02 /km</b>
+      </div>
+
+      <span class="alt-toggle" onclick="toggleAltPanel()">Pas de temps sur <span id="altToggleDistLabel">le 10K</span> ? Estimer depuis une autre distance</span>
+
+      <div class="alt-panel" id="altPanel" style="display:none;">
+        <div class="alt-label">Un chrono récent sur une autre distance</div>
+        <div class="alt-chips" id="altChips"></div>
+        <div class="time-input alt-time-input">
+          <input type="text" maxlength="2" value="0" id="aHour" style="display:none;">
+          <span class="sep" id="aHourSep" style="display:none;">:</span>
+          <input type="text" maxlength="2" value="22" id="aMin">
+          <span class="sep">:</span>
+          <input type="text" maxlength="2" value="30" id="aSec">
+          <span class="unit" id="aUnit">min:sec</span>
+        </div>
+        <div class="helper-row">
+          <span>Estimation équivalente</span>
+          <b id="altEstimate">≈ 50:14</b>
+        </div>
+        <button class="btn-mini" onclick="applyAltEstimate()">Utiliser cette estimation</button>
+      </div>
+    </div>
+
+    <!-- STEP 5: Objectif -->
+    <div class="screen" data-step="5">
+      <span class="eyebrow">Objectif</span>
+      <h1>Quel chrono tu vises&nbsp;?</h1>
+      <p class="sub">On vérifie la faisabilité selon le temps disponible avant course.</p>
+      <div class="time-input">
+        <input type="text" maxlength="2" value="48" id="oHour" style="display:none;">
+        <span class="sep" id="oHourSep" style="display:none;">:</span>
+        <input type="text" maxlength="2" value="48" id="oMin">
+        <span class="sep">:</span>
+        <input type="text" maxlength="2" value="30" id="oSec">
+        <span class="unit" id="oUnit">min:sec</span>
+      </div>
+      <div class="helper-row">
+        <span>Gain visé</span>
+        <b id="gainHelper">−1'51" (−3,7%)</b>
+      </div>
+      <div class="flag" style="margin-top:16px;">
+        <span class="ico">✅</span>
+        <span id="feasibilityText">Objectif réaliste sur 11 semaines pour un profil intermédiaire.</span>
+      </div>
+    </div>
+
+    <!-- STEP 6: Date de course -->
+    <div class="screen" data-step="6">
+      <span class="eyebrow">Échéance</span>
+      <h1>C'est pour quand&nbsp;?</h1>
+      <p class="sub">La durée du plan se calcule automatiquement entre le début et le jour J.</p>
+
+      <div class="date-label">Début du plan</div>
+      <div class="date-field">
+        <input type="date" id="startDate">
+      </div>
+      <div class="date-quick-row" id="startQuickRow"></div>
+
+      <div class="date-label" style="margin-top:16px;">Jour de la course</div>
+      <div class="date-field">
+        <input type="date" id="raceDate">
+      </div>
+
+      <div class="duration-card" id="durationCard">
+        <div class="dc-weeks"><span id="dcWeeksNum">11</span><span class="dc-unit">semaines</span></div>
+        <div class="dc-structure" id="dcStructure">Format standard — Construction / Affûtage / Pic</div>
+      </div>
+    </div>
+
+    <!-- STEP 7: Contraintes -->
+    <div class="screen" data-step="7">
+      <span class="eyebrow">Vigilance</span>
+      <h1>Des contraintes à connaître&nbsp;?</h1>
+      <p class="sub">Sélectionne ce qui s'applique — le plan adapte la progression du volume et évite les appuis à risque.</p>
+      <div class="options" id="constraintsGroup">
+        <div class="opt" data-group="contraintes" data-value="blessure-active" onclick="toggleConstraint(this)">
+          <div class="ico">🩹</div>
+          <div><div class="label">Blessure en cours ou récente</div><div class="desc">Tendinite, fasciite, périostite…</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt" data-group="contraintes" data-value="douleur-chronique" onclick="toggleConstraint(this)">
+          <div class="ico">⚠️</div>
+          <div><div class="label">Douleur ou fragilité chronique</div><div class="desc">Genou, dos, articulation à surveiller</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt" data-group="contraintes" data-value="reprise" onclick="toggleConstraint(this)">
+          <div class="ico">⏸️</div>
+          <div><div class="label">Reprise après une longue pause</div><div class="desc">Plus de 4 semaines sans courir récemment</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt selected" data-group="contraintes" data-value="aucune" onclick="toggleConstraint(this)">
+          <div class="ico">✅</div>
+          <div><div class="label">Aucune contrainte particulière</div><div class="desc">Je suis apte à suivre le plan standard</div></div>
+          <div class="check"></div>
+        </div>
+      </div>
+      <div class="flag" id="constraintFlag" style="display:none; margin-top:16px;">
+        <span class="ico">🩺</span>
+        <span>Le plan restera prudent sur la progression des volumes et limitera les impacts au début.</span>
+      </div>
+
+      <div class="alt-panel" id="repriseDureePanel" style="display:none; margin-top:16px;">
+        <div class="alt-label">Depuis combien de temps tu n'as pas couru régulièrement&nbsp;?</div>
+        <div class="alt-chips" id="repriseDureeChips"></div>
+      </div>
+    </div>
+
+    <!-- STEP 8: Disponibilité -->
+    <div class="screen" data-step="8">
+      <span class="eyebrow">Disponibilité</span>
+      <h1>Quels jours tu peux courir&nbsp;?</h1>
+      <p class="sub">Sélectionne tes créneaux possibles, le plan placera les séances clés dessus.</p>
+      <div class="count-badge">● <span id="dayCount">3</span> séances / semaine</div>
+      <div class="days-grid" id="daysGrid"></div>
+
+      <div class="block-label" style="margin-top:22px;">Renforcement musculaire</div>
+      <div class="toggle-row">
+        <span class="label">Inclure dans le plan</span>
+        <div class="switch" id="renfoSwitch" onclick="toggleRenfoWizard()"></div>
+      </div>
+    </div>
+
+    <!-- STEP 9: Récap / bib -->
+    <div class="screen" data-step="9">
+      <span class="eyebrow">Dossard généré</span>
+      <h1>Ton plan est prêt à être construit</h1>
+      <p class="sub">Vérifie les paramètres avant de lancer la génération.</p>
+      <div class="bib">
+        <span class="bib-num">N° 0142</span>
+        <div class="bib-row"><span class="k">Distance</span><span class="v accent" id="bibDist">10K</span></div>
+        <div class="bib-row"><span class="k">Niveau</span><span class="v" id="bibNiveau">Intermédiaire</span></div>
+        <div class="bib-row"><span class="k">Temps actuel</span><span class="v" id="bibRef">50:21</span></div>
+        <div class="bib-row"><span class="k">Objectif</span><span class="v accent" id="bibObj">48:30</span></div>
+        <div class="bib-row"><span class="k">Durée du plan</span><span class="v" id="bibWeeks">11 semaines</span></div>
+        <div class="bib-row"><span class="k">Séances / semaine</span><span class="v" id="bibNbSeances">3</span></div>
+        <div class="bib-row"><span class="k">Contraintes</span><span class="v" id="bibConstraints">Aucune</span></div>
+        <div class="bib-row"><span class="k">Allure EF estimée</span><span class="v accent" id="bibAllureEF">—</span></div>
+      </div>
+      <div class="flag" id="bibNbSeancesFlag" style="display:none;">
+        <span class="ico">⚠️</span>
+        <span id="bibNbSeancesFlagText"></span>
+      </div>
+    </div>
+
+    <!-- STEP 10: Résultats du moteur -->
+    <div class="screen" data-step="10">
+      <span class="eyebrow">Plan généré</span>
+      <h1>Voici ton plan</h1>
+      <p class="sub" id="resultsAmpleur"></p>
+
+      <div class="bib">
+        <span class="bib-num" id="resultsWarnCount">0 alerte</span>
+        <div class="bib-row"><span class="k">Durée</span><span class="v" id="resDuree">—</span></div>
+        <div class="bib-row"><span class="k">Phases</span><span class="v" id="resPhases">—</span></div>
+        <div class="bib-row"><span class="k">Plafond volume</span><span class="v accent" id="resPlafond">—</span></div>
+        <div class="bib-row"><span class="k">Zone FC (Tanaka)</span><span class="v" id="resFcMax">—</span></div>
+      </div>
+
+      <div class="block-label" style="margin-top:20px;">Allures calculées</div>
+      <div class="bib" id="resAllures"></div>
+
+      <div class="block-label" id="resSemaineLabel" style="margin-top:20px;">Semaine type</div>
+      <div class="week" id="resSemaine"></div>
+
+      <div id="resWarnings"></div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <button class="btn btn-back" id="backBtn" onclick="prevStep()">←</button>
+    <button class="btn btn-next" id="nextBtn" onclick="nextStep()">Continuer</button>
+  </div>
+
+</div>
+
+<script>
+  // === Moteur de génération (plan-generator.js, inline) ===
+/**
+ * plan-generator.js
+ * Moteur de génération de plan — Run by Léa v2.0
+ *
+ * Implémente les sections 2, 4bis, 5, 6, 7, 9 et 10 de bibliotheque-seances.md.
+ * Module pur (aucune dépendance DOM) — testable en isolation.
+ *
+ * Convention : toutes les allures sont manipulées en secondes/km en interne,
+ * formatées en "m:ss/km" uniquement à l'affichage (formatPace).
+ */
+
+// ---------------------------------------------------------------------------
+// Utilitaires de temps / allure
+// ---------------------------------------------------------------------------
+
+function parseTimeToSeconds(str) {
+  // "50:21" -> 3021 ; "1:52:00" -> 6720
+  const parts = str.split(':').map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  throw new Error(`Format de temps invalide: ${str}`);
+}
+
+function formatPace(secPerKm) {
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}:${String(s).padStart(2, '0')}/km`;
+}
+
+function paceFromTime(totalSeconds, distanceKm) {
+  return totalSeconds / distanceKm;
+}
+
+// Formule de Riegel : prédit un temps sur d2 à partir d'un temps connu sur d1
+function riegelPredict(t1Seconds, d1Km, d2Km) {
+  return t1Seconds * Math.pow(d2Km / d1Km, 1.06);
+}
+
+const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
+
+// ---------------------------------------------------------------------------
+// Section 6 (zones d'allure) — ratios calibrés sur le plan réel validé
+// (Laurent V., 10K réf 50'21" -> allures observées EF/Seuil/VMA)
+// ---------------------------------------------------------------------------
+
+const PACE_RATIOS = {
+  recup: 1.33,
+  E: 1.225,   // milieu de la fourchette observée 1.19-1.26
+  T: 0.99,
+  I: 0.855,
+  V: 0.80
+};
+
+/**
+ * Calcule les zones d'allure à partir d'une performance de référence
+ * (n'importe quelle distance), normalisée en équivalent 10K via Riegel.
+ * La zone C (allure course objectif) est calculée séparément à partir
+ * de l'objectif, pas de la référence (section 6 corrigée).
+ */
+function computeAllures({ refTimeSeconds, refDistanceKm, objectifTimeSeconds, distanceCibleKm }) {
+  const paceRef10k = paceFromTime(riegelPredict(refTimeSeconds, refDistanceKm, 10), 10);
+
+  const allures = {};
+  for (const [zone, ratio] of Object.entries(PACE_RATIOS)) {
+    allures[zone] = paceRef10k * ratio;
+  }
+  allures.C = paceFromTime(objectifTimeSeconds, distanceCibleKm);
+  return allures; // secondes/km par zone
+}
+
+// ---------------------------------------------------------------------------
+// Section 2 — plafonds de volume hebdo par distance et niveau (km/sem)
+// ---------------------------------------------------------------------------
+
+const PLAFONDS_VOLUME = {
+  '5K':       { debutant: [20, 25], intermediaire: [25, 35], confirme: [35, 45] },
+  '10K':      { debutant: [25, 35], intermediaire: [35, 50], confirme: [50, 65] },
+  'Semi':     { debutant: [35, 45], intermediaire: [45, 60], confirme: [60, 80] },
+  'Marathon': { debutant: [35, 40], intermediaire: [45, 55], confirme: [55, 70] }
+};
+
+// Durée fixe de l'Affûtage (jours), section 4bis / validée section "10 jours pour 10K"
+const DUREE_AFFUTAGE_JOURS = {
+  '5K': 7,
+  '10K': 10,
+  'Semi': 10,       // milieu de la fourchette 7-14j
+  'Marathon': 18    // milieu de la fourchette 14-21j (2-3 semaines)
+};
+
+// Ratio Construction / Spécifique du temps restant après Affûtage, par niveau
+const RATIO_CONSTRUCTION = { debutant: 0.55, intermediaire: 0.40, confirme: 0.30 };
+
+// Ajustement du ratio selon l'ampleur de l'objectif (piste ouverte de la doc, tranchée ici :
+// validée concrètement sur le profil réel — un objectif modeste n'a pas besoin d'un pic de
+// volume, juste de plus de temps à affiner et récupérer)
+const AJUSTEMENT_RATIO_PAR_AMPLEUR = { faible: +0.15, moderee: 0, ambitieuse: -0.05 };
+
+/**
+ * Catégorise l'ampleur du gain visé (% de temps à gagner par rapport à la référence).
+ * < 5% : faible (ex. profil déjà en forme, petit ajustement)
+ * 5-10% : modérée
+ * > 10% : ambitieuse (vrai gain de fond à construire)
+ */
+function categoriserAmpleurObjectif(refTimeSeconds, objectifTimeSeconds) {
+  const gain = (refTimeSeconds - objectifTimeSeconds) / refTimeSeconds;
+  if (gain < 0.05) return 'faible';
+  if (gain <= 0.10) return 'moderee';
+  return 'ambitieuse';
+}
+
+// ---------------------------------------------------------------------------
+// Section 4bis — calcul des phases à partir des dates réelles
+// ---------------------------------------------------------------------------
+
+function computePhases({ dateDebut, dateCourse, distance, niveau, ampleurObjectif }) {
+  const debut = new Date(dateDebut);
+  const course = new Date(dateCourse);
+  const totalJours = Math.round((course - debut) / 86400000);
+  const totalSemaines = Math.max(1, Math.round(totalJours / 7));
+
+  const warnings = [];
+  if (totalJours < 0) {
+    warnings.push({ code: 'DATE_INVALIDE', message: "La date de course doit être après le début du plan." });
+    return { totalSemaines: 0, phases: [], warnings };
+  }
+
+  const affutageJours = DUREE_AFFUTAGE_JOURS[distance];
+  // Arrondi au supérieur : mieux vaut un peu plus de taper qu'un plan qui le sous-dimensionne
+  // (le modèle reste en semaines entières — un vrai découpage au jour près est un chantier à part)
+  const affutageSemaines = Math.max(1, Math.ceil(affutageJours / 7));
+  const resteJours = totalJours - affutageJours;
+
+  // Garde-fou #3 : durée de plan trop courte (checklist section 10)
+  if (resteJours < 21) {
+    warnings.push({
+      code: 'DUREE_PLAN_TROP_COURTE',
+      message: `${totalSemaines} semaines avant course : ce plan sera essentiellement un maintien, pas une vraie progression.`
+    });
+  }
+
+  const resteSemaines = Math.max(0, totalSemaines - affutageSemaines);
+  const ajustement = AJUSTEMENT_RATIO_PAR_AMPLEUR[ampleurObjectif] ?? 0;
+  const ratioConstruction = Math.min(0.75, Math.max(0.20, RATIO_CONSTRUCTION[niveau] + ajustement));
+  const constructionSemaines = Math.max(1, Math.round(resteSemaines * ratioConstruction));
+  const specifiqueSemaines = Math.max(0, resteSemaines - constructionSemaines);
+
+  return {
+    totalSemaines,
+    phases: [
+      { nom: 'Construction', semaines: constructionSemaines },
+      { nom: 'Specifique', semaines: specifiqueSemaines },
+      { nom: 'Affutage', semaines: affutageSemaines, dureeFixe: true }
+    ],
+    warnings
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Section 6 — progression du volume (règle des 10%, décharge tous les 3-4 sem)
+// ---------------------------------------------------------------------------
+
+function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif, phases }) {
+  const [plafondBas, plafondHaut] = PLAFONDS_VOLUME[distance][niveau];
+  const plafondPopulation = (plafondBas + plafondHaut) / 2;
+  const warnings = [];
+
+  // Objectif modeste : pas besoin de viser le plafond de population, un plateau
+  // proche du volume de départ suffit (validé sur profil réel — cf. section 4bis "piste ouverte")
+  const plafond = ampleurObjectif === 'faible'
+    ? Math.min(plafondPopulation, volumeDepart * 1.20)
+    : plafondPopulation;
+
+  // Durée nulle : date invalide déjà signalée par computePhases, pas la peine
+  // de calculer une fausse progression ni de remonter un 2e avertissement
+  if (totalSemaines <= 0) {
+    return { plafond, volumesParSemaine: [], warnings };
+  }
+
+  // Garde-fou #4 : volume de départ déjà proche/au-dessus du plafond
+  if (volumeDepart >= plafond * 0.9) {
+    warnings.push({
+      code: 'MARGE_PROGRESSION_FAIBLE',
+      message: `Volume de départ (${volumeDepart}km) déjà proche du plafond visé (${plafond}km) — marge de progression réduite.`
+    });
+  }
+
+  const blessureActive = contraintes.includes('blessure-active');
+  const tauxMax = blessureActive ? 0.07 : 0.10; // section 7 : 5-8% au lieu de 10%
+
+  // Semaines d'Affûtage = les N dernières du plan (phases calculées en amont,
+  // avant carottage de la réacclimatation qui ne touche que la Construction)
+  const semainesAffutage = phases?.find(p => p.nom === 'Affutage')?.semaines ?? 0;
+  const semainesProgression = Math.max(1, totalSemaines - semainesAffutage);
+
+  const volumesParSemaine = [];
+  let peak = volumeDepart; // plus haut niveau atteint hors semaines de décharge
+
+  // Phase Construction + Spécifique : croissance 10%/semaine sur le "peak",
+  // la décharge est un creux temporaire qui ne remet pas la progression à zéro
+  // (sans ça, 3 semaines à +10% suivies d'une décharge à -25% s'annulent
+  // quasiment : 1,1³ × 0,75 ≈ 0,998 — le volume ne progressait jamais)
+  for (let s = 1; s <= semainesProgression; s++) {
+    const estDecharge = s % 4 === 0 && s > 1;
+    if (s === 1) {
+      volumesParSemaine.push({ semaine: 1, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
+      continue;
+    }
+    if (estDecharge) {
+      volumesParSemaine.push({ semaine: s, volumeKm: Math.round(peak * 0.75 * 10) / 10, estDecharge: true });
+    } else {
+      peak = Math.min(peak * (1 + tauxMax), plafond);
+      volumesParSemaine.push({ semaine: s, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
+    }
+  }
+
+  // Pic de volume = fin de Spécifique, juste avant l'Affûtage — c'est LA référence
+  // pour juger si la progression a atteint le plafond, pas la dernière semaine du plan
+  const picVolume = peak;
+
+  // Phase Affûtage : vraie réduction progressive (section 1 : -40 à -60% au total),
+  // pas une continuation de la formule de croissance
+  if (semainesAffutage > 0) {
+    const fractions = semainesAffutage === 1
+      ? [0.55]
+      : Array.from({ length: semainesAffutage }, (_, j) =>
+          0.75 - (0.40 * j / (semainesAffutage - 1))
+        );
+    fractions.forEach((frac, j) => {
+      volumesParSemaine.push({
+        semaine: semainesProgression + j + 1,
+        volumeKm: Math.round(picVolume * frac * 10) / 10,
+        estDecharge: false,
+        estAffutage: true
+      });
+    });
+  }
+
+  // Garde-fou #5 : écart volume/plafond trop grand pour la durée disponible
+  // (ne s'applique pas si l'objectif est modeste : le plafond effectif est déjà
+  // recalculé au-dessus pour rester atteignable, cf. ajustement ampleurObjectif)
+  // Comparé au PIC de volume (fin Spécifique), pas à la dernière semaine du plan
+  // qui est en plein taper et donc toujours basse par construction.
+  if (picVolume < plafond * 0.85 && !blessureActive && ampleurObjectif !== 'faible') {
+    warnings.push({
+      code: 'PROGRESSION_INSUFFISANTE',
+      message: "L'écart entre le volume de départ et le plafond visé est trop grand pour la durée du plan, même en respectant la règle des 10%."
+    });
+  }
+
+  return { plafond, volumesParSemaine, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Section 5 — nombre de séances qualité et placement dans la semaine
+// ---------------------------------------------------------------------------
+
+function nbQualiteFor(nbSeances, niveau) {
+  if (nbSeances <= 4) return nbSeances >= 2 ? 1 : 0;
+  if (nbSeances === 5) return niveau === 'debutant' ? 1 : 2;
+  return 2; // 6+
+}
+
+function pickLongueDay(joursDisponibles) {
+  if (joursDisponibles.includes(6)) return 6; // Dimanche
+  if (joursDisponibles.includes(5)) return 5; // Samedi
+  return Math.max(...joursDisponibles);
+}
+
+// Distance circulaire entre deux jours (0=Lundi...6=Dimanche) : Dimanche(6) et
+// Lundi(0) sont adjacents dans un vrai calendrier (écart réel de 1 jour, pas 6)
+function distanceCirculaire(a, b) {
+  const diff = Math.abs(a - b);
+  return Math.min(diff, 7 - diff);
+}
+
+/**
+ * Place les séances de la semaine sur les jours disponibles.
+ * joursDisponibles : indices 0=Lundi ... 6=Dimanche
+ * modulation : sortie de appliquerContraintes() — applique le plafond de qualité
+ *   et transmet les restrictions d'allure (interdireV/interdireI) sur chaque séance
+ *   qualité, en attendant que le contenu réel des séances soit généré (chantier à part)
+ * forcerAucuneQualite : true pendant une semaine de réacclimatation — pas de qualité,
+ *   quel que soit le niveau ou le nombre de séances
+ * Retourne { assignment: {jourIndex: {type, ...}}, warnings: [] }
+ */
+function placerSemaine({ joursDisponibles, niveau, renforcementActif, modulation = {}, forcerAucuneQualite = false }) {
+  const days = [...joursDisponibles].sort((a, b) => a - b);
+  const nb = days.length;
+  const warnings = [];
+  const assignment = {};
+
+  if (nb < 2) {
+    warnings.push({ code: 'JOURS_INSUFFISANTS', message: 'Au moins 2 jours disponibles sont nécessaires.' });
+    return { assignment, warnings };
+  }
+
+  const longueDay = pickLongueDay(days);
+  assignment[longueDay] = { type: 'longue' };
+
+  let pool = days.filter(d => d !== longueDay);
+  const nbQualiteBase = forcerAucuneQualite ? 0 : nbQualiteFor(nb, niveau);
+  const nbQualite = Math.min(
+    nbQualiteBase,
+    modulation.quantiteMaxQualite ?? Infinity,
+    pool.length
+  );
+  const qualiteDays = [];
+
+  // Garde-fou #7 : éviter la qualité veille/lendemain de la longue, sauf repli forcé
+  const strictPool = pool.filter(d => distanceCirculaire(d, longueDay) !== 1);
+  const candidatePool = strictPool.length >= nbQualite ? strictPool : pool;
+  const usedFallbackAdjacence = candidatePool === pool && strictPool.length < nbQualite;
+
+  let working = [...candidatePool];
+  for (let q = 0; q < nbQualite; q++) {
+    let best = null, bestScore = -1;
+    working.forEach(d => {
+      const refs = [longueDay, ...qualiteDays];
+      const minDist = Math.min(...refs.map(r => distanceCirculaire(d, r)));
+      if (minDist > bestScore) { bestScore = minDist; best = d; }
+    });
+    qualiteDays.push(best);
+    working = working.filter(d => d !== best);
+    pool = pool.filter(d => d !== best);
+  }
+
+  qualiteDays.forEach((d, idx) => {
+    assignment[d] = { type: 'qualite', indexQualite: idx };
+    if (modulation.interdireV || modulation.interdireI) {
+      assignment[d].restrictionsAllure = {
+        interdireV: !!modulation.interdireV,
+        interdireI: !!modulation.interdireI,
+        repli5KDouleurChronique: !!modulation.repli5KDouleurChronique
+      };
+    }
+  });
+  pool.forEach(d => { assignment[d] = { type: 'ef' }; });
+
+  if (usedFallbackAdjacence) {
+    warnings.push({
+      code: 'REPLI_ADJACENCE_LONGUE',
+      message: "Pas assez de jours disponibles pour éviter une séance qualité juste avant/après la sortie longue."
+    });
+  }
+
+  // Garde-fou #6 : écart < 48h entre séances dures (y compris le dernier jour
+  // de la semaine vers le premier jour de la semaine suivante, circulairement)
+  const hardDays = [longueDay, ...qualiteDays].sort((a, b) => a - b);
+  for (let i = 1; i < hardDays.length; i++) {
+    if (hardDays[i] - hardDays[i - 1] < 2) {
+      warnings.push({
+        code: 'ECART_RECUPERATION_INSUFFISANT',
+        message: `Moins de 48h de récupération entre deux séances dures (jours ${hardDays[i - 1]} et ${hardDays[i]}).`
+      });
+    }
+  }
+  if (hardDays.length > 1) {
+    const ecartBouclage = 7 - (hardDays[hardDays.length - 1] - hardDays[0]);
+    if (ecartBouclage < 2) {
+      warnings.push({
+        code: 'ECART_RECUPERATION_INSUFFISANT',
+        message: `Moins de 48h de récupération entre la fin d'une semaine (jour ${hardDays[hardDays.length - 1]}) et le début de la suivante (jour ${hardDays[0]}).`
+      });
+    }
+  }
+
+  // Renforcement -> jour de repos, idéalement lendemain de la longue (correction validée)
+  if (renforcementActif) {
+    const lendemainLongue = (longueDay + 1) % 7;
+    const jourRepos = Object.keys(assignment).length < 7 && !assignment[lendemainLongue] ? lendemainLongue : null;
+    if (jourRepos !== null) {
+      assignment[jourRepos] = { type: 'repos', renfo: true, contenu: 'Repos + renforcement musculaire (25-30min)', kmEstime: 0 };
+    }
+  }
+
+  return { assignment, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Section 7 — modulation par contraintes
+// ---------------------------------------------------------------------------
+
+const DUREE_REACCLIMATATION_SEMAINES = {
+  '2-4sem': 0,
+  '1-3mois': 1,
+  '3-6mois': 2,
+  '6mois+': 3.5
+};
+
+function appliquerContraintes({ contraintes, repriseDuree, distance }) {
+  const modulation = {
+    tauxProgressionMax: 0.10,
+    quantiteMaxQualite: null, // null = pas de plafond spécifique
+    interdireV: false,
+    interdireI: false,
+    semainesReacclimatation: 0,
+    desactiverEstimationStrava: false,
+    warnings: []
+  };
+
+  if (contraintes.includes('blessure-active')) {
+    modulation.tauxProgressionMax = 0.07;
+    modulation.interdireV = true;
+    modulation.interdireI = true;
+    modulation.warnings.push({
+      code: 'BLESSURE_ACTIVE',
+      message: "Aucune séance V/I pendant les 2-3 premières semaines. Avis professionnel recommandé avant de reprendre l'intensité."
+    });
+  }
+
+  if (contraintes.includes('douleur-chronique')) {
+    modulation.quantiteMaxQualite = 1;
+    modulation.interdireV = true;
+    // Cas particulier 5K (section 7 corrigée) : repli sur I plutôt que suppression pure
+    if (distance === '5K') {
+      modulation.repli5KDouleurChronique = true;
+      modulation.warnings.push({
+        code: 'REPLI_5K_DOULEUR_CHRONIQUE',
+        message: "V contre-indiqué pour un plan 5K : repli sur I (VMA) plus soutenu pour garder un stimulus de vitesse."
+      });
+    }
+  }
+
+  if (contraintes.includes('reprise')) {
+    modulation.semainesReacclimatation = DUREE_REACCLIMATATION_SEMAINES[repriseDuree] ?? 1;
+    if (repriseDuree !== '2-4sem') {
+      modulation.desactiverEstimationStrava = true;
+      modulation.warnings.push({
+        code: 'STRAVA_DESACTIVE_REPRISE',
+        message: "Estimation Strava désactivée (biais probable) — saisie manuelle du volume de départ requise."
+      });
+    }
+  }
+
+  return modulation;
+}
+
+// ---------------------------------------------------------------------------
+// Section 8 — zone FC par défaut (formule de Tanaka, à partir de l'année de naissance)
+// ---------------------------------------------------------------------------
+
+function computeFcMaxTanaka(anneeNaissance) {
+  const age = new Date().getFullYear() - anneeNaissance;
+  return Math.round(208 - 0.7 * age);
+}
+
+// ---------------------------------------------------------------------------
+// Section 2 (bibliothèque de séances) — contenu concret des séances qualité
+// ---------------------------------------------------------------------------
+
+// Rotation des sous-types de séance qualité par distance et par phase.
+// Cycle sur (semaineDansPhase + index de la séance qualité dans la semaine).
+const ROTATION_SOUS_TYPE = {
+  '5K': {
+    Reacclimatation: [],
+    Construction: ['cotes', 'i-30-30'],
+    Specifique: ['i-3min', 'vitesse'],
+    Affutage: ['vitesse', 'i-3min']
+  },
+  '10K': {
+    Reacclimatation: [],
+    Construction: ['seuil-court', 'i-30-30'],
+    Specifique: ['i-3min', 'seuil'],
+    Affutage: ['allure-course', 'seuil-court']
+  },
+  'Semi': {
+    Reacclimatation: [],
+    Construction: ['tempo-court', 'fartlek'],
+    Specifique: ['seuil', 'i-3min', 'allure-course'],
+    Affutage: ['allure-course-court']
+  },
+  'Marathon': {
+    Reacclimatation: [],
+    Construction: ['tempo-court', 'seuil-court'],
+    Specifique: ['seuil', 'allure-course'],
+    Affutage: ['tempo-court']
+  }
+};
+
+// Repli si V ou I sont interdits par une contrainte (section 7) : on ne supprime
+// pas la séance, on descend d'un cran vers un sous-type moins intense
+const REPLI_SOUS_TYPE = {
+  'vitesse': 'i-3min',
+  'i-3min': 'seuil',
+  'i-30-30': 'seuil-court',
+  'cotes': 'seuil-court'
+};
+
+function reduireSelonNiveauProgression(base, increment, cap, semaineDansPhase) {
+  return Math.min(cap, base + Math.floor(semaineDansPhase / 3) * increment);
+}
+
+function resoudreSousType(sousType, restrictionsAllure) {
+  if (!restrictionsAllure) return sousType;
+  let resolved = sousType;
+  const estV = t => t === 'vitesse';
+  const estI = t => t === 'i-3min' || t === 'i-30-30';
+  let iterations = 0;
+  while (
+    ((restrictionsAllure.interdireV && estV(resolved)) ||
+     (restrictionsAllure.interdireI && estI(resolved))) &&
+    REPLI_SOUS_TYPE[resolved] && iterations < 5
+  ) {
+    resolved = REPLI_SOUS_TYPE[resolved];
+    iterations++;
+  }
+  return resolved;
+}
+
+/**
+ * Génère la structure concrète d'une séance qualité (texte affichable).
+ * alluresSec : allures en secondes/km (sortie de computeAllures, avant formatage)
+ */
+function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure }) {
+  const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
+  if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)', kmEstime: 0 };
+
+  const sousTypeBrut = rotation[(semaineDansPhase + indexQualiteSemaine) % rotation.length];
+  const sousType = resoudreSousType(sousTypeBrut, restrictionsAllure);
+
+  const T = alluresSec.T, I = alluresSec.I, V = alluresSec.V, C = alluresSec.C;
+  // km à partir d'une durée en minutes à une allure donnée (sec/km)
+  const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
+
+  switch (sousType) {
+    case 'seuil-court': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 6, T);
+      return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`, kmEstime };
+    }
+    case 'seuil': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 8, T);
+      return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
+    }
+    case 'i-30-30': {
+      const series = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      // 8×30″ effort par série ; on ignore les 30″ de récup (approximation assumée)
+      const kmEstime = kmDepuisMinutes(series * 8 * 0.5, I);
+      return { sousType, contenu: `${series}×8×30″-30″ @ ${formatPace(I)} (VMA)`, kmEstime };
+    }
+    case 'i-3min': {
+      const reps = reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 3, I);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`, kmEstime };
+    }
+    case 'vitesse': {
+      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      const kmEstime = reps * 0.3; // distance directement connue (300m)
+      return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`, kmEstime };
+    }
+    case 'cotes': {
+      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
+      return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot`, kmEstime };
+    }
+    case 'allure-course': {
+      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 5, C);
+      return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
+    }
+    case 'allure-course-court': {
+      const reps = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(reps * 3, C);
+      return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
+    }
+    case 'tempo-court': {
+      const duree = reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase);
+      const kmEstime = kmDepuisMinutes(duree, T);
+      return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)`, kmEstime };
+    }
+    case 'fartlek': {
+      const reps = reduireSelonNiveauProgression(4, 1, 8, semaineDansPhase);
+      // Portions rapides comptées à l'allure T, portions faciles ignorées dans
+      // l'estimation km (approximation assumée, comme pour i-30-30)
+      const kmEstime = kmDepuisMinutes(reps * 2, T);
+      return { sousType, contenu: `${reps}×2min rapide (${formatPace(T)}) / 2min facile, en continu (fartlek)`, kmEstime };
+    }
+    default: {
+      const kmEstime = kmDepuisMinutes(24, T);
+      return { sousType: 'seuil', contenu: `3×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
+    }
+  }
+}
+
+// Durée max raisonnable par séance, au-delà de laquelle on plafonne plutôt que
+// de générer une séance disproportionnée (garde-fou révélé par la réconciliation
+// volume/durée : sans ça, un volume hebdo élevé réparti sur peu de séances
+// produisait des EF de 100+ minutes)
+const DUREE_MAX_EF_MIN = 75;
+const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150 };
+
+/**
+ * EF et sortie longue : la durée est dérivée du volume hebdo cible
+ * (volumeCibleKm), une fois retiré le kilométrage déjà consommé par les
+ * séances qualité de la semaine — voir répartirVolumeSemaine(). Plafonnée à
+ * une durée max raisonnable ; l'excédent éventuel est signalé, pas caché.
+ * Approximation assumée : échauffement/retour au calme et jogs de récupération
+ * ne sont pas comptés séparément, ils sont absorbés dans l'allure EF globale.
+ */
+function genererContenuEF({ alluresSec, kmCible }) {
+  const dureeMinBrut = (kmCible * alluresSec.E) / 60;
+  const dureeMin = Math.round(Math.min(dureeMinBrut, DUREE_MAX_EF_MIN));
+  const kmEffectif = (dureeMin * 60) / alluresSec.E;
+  const warning = dureeMinBrut > DUREE_MAX_EF_MIN + 1
+    ? { code: 'SEANCE_EF_PLAFONNEE', message: `Séance EF plafonnée à ${DUREE_MAX_EF_MIN}min (${Math.round(dureeMinBrut)}min auraient été nécessaires pour caser tout le volume) — trop peu de séances/semaine pour ce volume cible.` }
+    : null;
+  return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmEffectif * 10) / 10}km`, kmEstime: kmEffectif, warning };
+}
+
+function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
+  const dureeMaxMin = DUREE_MAX_LONGUE_MIN[distance] ?? 120;
+  const avecSegmentCourse = (distance === 'Semi' || distance === 'Marathon') &&
+    (phase === 'Specifique' || phase === 'Affutage');
+
+  const dureeBruteMin = (kmCible * alluresSec.E) / 60; // estimation avant plafond, allure EF globale
+  const kmCiblePlafonne = dureeBruteMin > dureeMaxMin ? (dureeMaxMin * 60) / alluresSec.E : kmCible;
+  const warning = dureeBruteMin > dureeMaxMin + 1
+    ? { code: 'SEANCE_LONGUE_PLAFONNEE', message: `Sortie longue plafonnée à ${dureeMaxMin}min (${Math.round(dureeBruteMin)}min auraient été nécessaires pour caser tout le volume) — trop peu de séances/semaine pour ce volume cible.` }
+    : null;
+
+  if (avecSegmentCourse) {
+    const kmSegmentCourse = Math.round(kmCiblePlafonne * 0.25 * 10) / 10;
+    const kmEF = Math.round((kmCiblePlafonne - kmSegmentCourse) * 10) / 10;
+    const dureeSegmentMin = Math.round((kmSegmentCourse * alluresSec.C) / 60);
+    const dureeEFMin = Math.round((kmEF * alluresSec.E) / 60);
+    return {
+      contenu: `${dureeEFMin}min à allure EF (${formatPace(alluresSec.E)}), dont ${dureeSegmentMin}min @ ${formatPace(alluresSec.C)} (allure course) en fin de sortie — ${Math.round(kmCiblePlafonne * 10) / 10}km au total`,
+      kmEstime: kmCiblePlafonne,
+      warning
+    };
+  }
+
+  const dureeMin = Math.round((kmCiblePlafonne * alluresSec.E) / 60);
+  return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmCiblePlafonne * 10) / 10}km`, kmEstime: kmCiblePlafonne, warning };
+}
+
+/**
+ * Répartit le volume hebdo cible entre les séances de la semaine : la sortie
+ * longue reçoit ~40% du volume restant après les séances qualité, les EF se
+ * partagent le reste à parts égales. La somme reste toujours égale au volume
+ * cible (pas de plancher artificiel qui la dépasserait) — si ça donne des
+ * séances dérisoires, un avertissement le signale plutôt que de gonfler
+ * silencieusement le total réel.
+ */
+function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue }) {
+  const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
+  let kmLongue = 0, kmParEF = 0;
+
+  if (aLongue) {
+    kmLongue = kmRestant * 0.40;
+    const kmRestantApresLongue = kmRestant - kmLongue;
+    kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
+  } else {
+    kmParEF = nbEF > 0 ? kmRestant / nbEF : 0;
+  }
+
+  let warning = null;
+  const seanceMinKm = Math.min(aLongue ? kmLongue : Infinity, nbEF > 0 ? kmParEF : Infinity);
+  if (kmRestant > 0 && seanceMinKm < 3) {
+    warning = {
+      code: 'VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION',
+      message: `Volume hebdo restant (${Math.round(kmRestant * 10) / 10}km) trop faible pour des séances EF/longue substantielles.`
+    };
+  }
+
+  return { kmLongue, kmParEF, warning };
+}
+
+// ---------------------------------------------------------------------------
+// Orchestrateur — assemble tout en un Plan conforme au schéma (section 9)
+// ---------------------------------------------------------------------------
+
+function generatePlan(profil, params) {
+  const distanceKm = KM_BY_DISTANCE[params.distance];
+  const refTimeSeconds = parseTimeToSeconds(params.tempsReference);
+  const objectifTimeSeconds = parseTimeToSeconds(params.objectif);
+  const ampleurObjectif = categoriserAmpleurObjectif(refTimeSeconds, objectifTimeSeconds);
+
+  const allSeconds = computeAllures({
+    refTimeSeconds,
+    refDistanceKm: KM_BY_DISTANCE[params.refDistance ?? params.distance],
+    objectifTimeSeconds,
+    distanceCibleKm: distanceKm
+  });
+  const allures = Object.fromEntries(
+    Object.entries(allSeconds).map(([k, v]) => [k, formatPace(v)])
+  );
+
+  const { totalSemaines, phases, warnings: warningsPhases } = computePhases({
+    dateDebut: params.dateDebut,
+    dateCourse: params.dateCourse,
+    distance: params.distance,
+    niveau: profil.niveau,
+    ampleurObjectif
+  });
+
+  const modulation = appliquerContraintes({
+    contraintes: params.contraintesPonctuelles ?? [],
+    repriseDuree: params.repriseDuree,
+    distance: params.distance
+  });
+
+  const { plafond, volumesParSemaine, warnings: warningsVolume } = computeVolumeProgression({
+    volumeDepart: params.volumeActuel,
+    distance: params.distance,
+    niveau: profil.niveau,
+    totalSemaines,
+    contraintes: params.contraintesPonctuelles ?? [],
+    ampleurObjectif,
+    phases
+  });
+
+  // Carotte les semaines de réacclimatation (contrainte "reprise") sur le budget
+  // Construction, plutôt que d'allonger le plan (durée totale fixée par les dates)
+  const semainesReacclimatation = Math.min(
+    Math.ceil(modulation.semainesReacclimatation),
+    Math.max(0, (phases.find(p => p.nom === 'Construction')?.semaines ?? 1) - 1)
+  );
+  const phasesAvecReacclimatation = [];
+  for (const phase of phases) {
+    if (phase.nom === 'Construction' && semainesReacclimatation > 0) {
+      phasesAvecReacclimatation.push({ nom: 'Reacclimatation', semaines: semainesReacclimatation });
+      phasesAvecReacclimatation.push({ nom: 'Construction', semaines: phase.semaines - semainesReacclimatation });
+    } else {
+      phasesAvecReacclimatation.push(phase);
+    }
+  }
+
+  const semaines = [];
+  const warningsSemaines = [];
+  let semaineGlobale = 0;
+  for (const phase of phasesAvecReacclimatation) {
+    for (let i = 0; i < phase.semaines; i++) {
+      semaineGlobale++;
+      const { assignment, warnings: warningsPlacement } = placerSemaine({
+        joursDisponibles: profil.joursDisponiblesHabituels,
+        niveau: profil.niveau,
+        renforcementActif: profil.renforcementMusculaire,
+        modulation,
+        forcerAucuneQualite: phase.nom === 'Reacclimatation'
+      });
+
+      // Contenu concret de chaque séance (section 2 — bibliothèque)
+      // 1ère passe : générer les séances qualité et cumuler leur km estimé
+      let kmQualiteTotal = 0;
+      for (const [jour, seance] of Object.entries(assignment)) {
+        if (seance.type === 'qualite') {
+          const { sousType, contenu, kmEstime } = genererContenuQualite({
+            distance: params.distance,
+            phase: phase.nom,
+            semaineDansPhase: i,
+            indexQualiteSemaine: seance.indexQualite ?? 0,
+            alluresSec: allSeconds,
+            restrictionsAllure: seance.restrictionsAllure
+          });
+          seance.sousType = sousType;
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+          kmQualiteTotal += kmEstime;
+        }
+      }
+
+      // 2e passe : répartir le volume restant entre longue et EF
+      const nbEF = Object.values(assignment).filter(s => s.type === 'ef').length;
+      const aLongue = Object.values(assignment).some(s => s.type === 'longue');
+      const volumeCibleSemaine = volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? 0;
+      const { kmLongue, kmParEF, warning: warningRepartition } = repartirVolumeSemaine({
+        volumeCibleKm: volumeCibleSemaine,
+        kmQualiteTotal,
+        nbEF,
+        aLongue
+      });
+      if (warningRepartition && phase.nom !== 'Affutage') {
+        warningsSemaines.push({ ...warningRepartition, message: `S${semaineGlobale} : ${warningRepartition.message}` });
+      }
+
+      for (const [jour, seance] of Object.entries(assignment)) {
+        if (seance.type === 'ef') {
+          const { contenu, kmEstime, warning } = genererContenuEF({ alluresSec: allSeconds, kmCible: kmParEF });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+          if (warning) warningsSemaines.push({ ...warning, message: `S${semaineGlobale} (jour ${jour}) : ${warning.message}` });
+        } else if (seance.type === 'longue') {
+          const { contenu, kmEstime, warning } = genererContenuLongue({
+            distance: params.distance, phase: phase.nom, alluresSec: allSeconds, kmCible: kmLongue
+          });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+          if (warning) warningsSemaines.push({ ...warning, message: `S${semaineGlobale} : ${warning.message}` });
+        }
+      }
+
+      semaines.push({
+        semaineNum: semaineGlobale,
+        phase: phase.nom,
+        volumeCibleKm: volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? null,
+        estDechargeSemaine: volumesParSemaine[semaineGlobale - 1]?.estDecharge ?? false,
+        assignment,
+        warnings: warningsPlacement
+      });
+    }
+  }
+
+  const warnings = [
+    ...warningsPhases,
+    ...warningsVolume,
+    ...modulation.warnings,
+    ...semaines.flatMap(s => s.warnings),
+    ...warningsSemaines
+  ];
+
+  return {
+    distance: params.distance,
+    objectif: params.objectif,
+    ampleurObjectif,
+    dateDebut: params.dateDebut,
+    dateCourse: params.dateCourse,
+    dureeSemaines: totalSemaines,
+    phases: phasesAvecReacclimatation,
+    allures,
+    zoneFC: profil.anneeNaissance ? { methode: 'tanaka', fcMax: computeFcMaxTanaka(profil.anneeNaissance) } : null,
+    volumePlafondKm: plafond,
+    semaines,
+    warnings
+  };
+}
+
+  // === Fin moteur ===
+</script>
+
+<script>
+  const totalSteps = 9;
+  let current = 1;
+
+  const distanceMeta = {
+    "5":   { label:"5K",       name:"Ton dernier 5K",   refDefault:{h:0,m:22,s:30}, objDefault:{h:0,m:21,s:0},  unit:"min:sec" },
+    "10":  { label:"10K",      name:"Ton dernier 10K",  refDefault:{h:0,m:50,s:21}, objDefault:{h:0,m:48,s:30}, unit:"min:sec" },
+    "21.1":{ label:"Semi",     name:"Ton dernier semi", refDefault:{h:1,m:52,s:0},  objDefault:{h:1,m:47,s:0},  unit:"h:min:sec" },
+    "42.2":{ label:"Marathon", name:"Ton dernier marathon", refDefault:{h:4,m:5,s:0}, objDefault:{h:3,m:50,s:0}, unit:"h:min:sec" }
+  };
+  let currentDist = "10";
+
+  function renderTrack(){
+    const track = document.getElementById('track');
+    track.innerHTML = '';
+    for(let i=1;i<=totalSteps;i++){
+      const lap = document.createElement('div');
+      lap.className = 'lap' + (i < current ? ' done' : '') + (i === current ? ' current' : '');
+      track.appendChild(lap);
+    }
+  }
+
+  let renfoOn = false;
+  function toggleRenfoWizard(){
+    renfoOn = !renfoOn;
+    document.getElementById('renfoSwitch').classList.toggle('on', renfoOn);
+  }
+
+  function renderDays(){
+    const days = ['L','M','M','J','V','S','D'];
+    const selectedDefault = [1,3,5];
+    const grid = document.getElementById('daysGrid');
+    grid.innerHTML = '';
+    days.forEach((d,i)=>{
+      const el = document.createElement('div');
+      el.className = 'day' + (selectedDefault.includes(i) ? ' selected' : '');
+      el.dataset.dayIndex = i;
+      el.innerHTML = `<span class="d">${d}</span><span>●</span>`;
+      el.onclick = () => { el.classList.toggle('selected'); updateDayCount(); };
+      grid.appendChild(el);
+    });
+    updateDayCount();
+  }
+
+  function updateDayCount(){
+    const n = document.querySelectorAll('#daysGrid .day.selected').length;
+    document.getElementById('dayCount').textContent = n;
+    const bibNbSeances = document.getElementById('bibNbSeances');
+    if (bibNbSeances) bibNbSeances.textContent = n;
+
+    const flag = document.getElementById('bibNbSeancesFlag');
+    const flagText = document.getElementById('bibNbSeancesFlagText');
+    if (flag && flagText) {
+      if (n <= 3) {
+        flag.style.display = 'flex';
+        flagText.textContent = `${n} séance${n > 1 ? 's' : ''}/semaine : le plan restera prudent sur le volume, la marge de manœuvre est plus faible qu'avec 4 séances ou plus.`;
+      } else {
+        flag.style.display = 'none';
+      }
+    }
+  }
+
+  const dureeOptions = [
+    { key: '2-4sem', label: '2-4 semaines' },
+    { key: '1-3mois', label: '1-3 mois' },
+    { key: '3-6mois', label: '3-6 mois' },
+    { key: '6mois+', label: '6 mois ou plus' }
+  ];
+  let repriseDuree = '1-3mois';
+
+  function renderRepriseDureeChips(){
+    const row = document.getElementById('repriseDureeChips');
+    row.innerHTML = '';
+    dureeOptions.forEach(opt=>{
+      const pill = document.createElement('div');
+      pill.className = 'alt-pill' + (opt.key === repriseDuree ? ' selected' : '');
+      pill.textContent = opt.label;
+      pill.onclick = () => { repriseDuree = opt.key; renderRepriseDureeChips(); };
+      row.appendChild(pill);
+    });
+  }
+
+  function toggleConstraint(el){
+    const value = el.dataset.value;
+    if(value === 'aucune'){
+      document.querySelectorAll('.opt[data-group="contraintes"]').forEach(o=>o.classList.remove('selected'));
+      el.classList.add('selected');
+    } else {
+      el.classList.toggle('selected');
+      document.querySelector('.opt[data-group="contraintes"][data-value="aucune"]').classList.remove('selected');
+      const anySelected = [...document.querySelectorAll('.opt[data-group="contraintes"]')].some(o=>o.classList.contains('selected'));
+      if(!anySelected){
+        document.querySelector('.opt[data-group="contraintes"][data-value="aucune"]').classList.add('selected');
+      }
+    }
+    updateConstraintSummary();
+  }
+
+  function updateConstraintSummary(){
+    const selected = [...document.querySelectorAll('.opt[data-group="contraintes"].selected')]
+      .map(o => o.querySelector('.label').textContent);
+    const flag = document.getElementById('constraintFlag');
+    const isNone = selected.length === 1 && selected[0].includes('Aucune');
+    flag.style.display = isNone ? 'none' : 'flex';
+    document.getElementById('bibConstraints').textContent = isNone ? 'Aucune' : selected.join(', ');
+
+    const repriseSelected = document.querySelector('.opt[data-group="contraintes"][data-value="reprise"]').classList.contains('selected');
+    const dureePanel = document.getElementById('repriseDureePanel');
+    dureePanel.style.display = repriseSelected ? 'block' : 'none';
+    if(repriseSelected) renderRepriseDureeChips();
+  }
+
+  const kmMap = { "5":5, "10":10, "21.1":21.1, "42.2":42.2 };
+  let altDist = "5";
+
+  function fmtHMS(totalSeconds, longFormat){
+    const h = Math.floor(totalSeconds/3600);
+    const m = Math.floor((totalSeconds%3600)/60);
+    const s = Math.round(totalSeconds%60);
+    return longFormat
+      ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+      : `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function riegel(t1Seconds, d1, d2){
+    return t1Seconds * Math.pow(d2/d1, 1.06);
+  }
+
+  function toggleAltPanel(){
+    const panel = document.getElementById('altPanel');
+    const willShow = panel.style.display === 'none';
+    panel.style.display = willShow ? 'block' : 'none';
+    if(willShow){
+      renderAltChips();
+      computeAltEstimate();
+    }
+  }
+
+  function renderAltChips(){
+    const chips = document.getElementById('altChips');
+    chips.innerHTML = '';
+    Object.keys(distanceMeta).forEach(key=>{
+      if(key === currentDist) return; // pas de sens de proposer la distance déjà ciblée
+      const pill = document.createElement('div');
+      pill.className = 'alt-pill' + (key === altDist ? ' selected' : '');
+      pill.textContent = distanceMeta[key].label;
+      pill.onclick = () => { altDist = key; renderAltChips(); syncAltTimeFormat(); computeAltEstimate(); };
+      chips.appendChild(pill);
+    });
+    if(altDist === currentDist){
+      altDist = Object.keys(distanceMeta).find(k => k !== currentDist);
+      renderAltChips();
+    }
+    syncAltTimeFormat();
+  }
+
+  function syncAltTimeFormat(){
+    const longFormat = distanceMeta[altDist].unit === "h:min:sec";
+    document.getElementById('aHour').style.display = longFormat ? 'inline-block' : 'none';
+    document.getElementById('aHourSep').style.display = longFormat ? 'inline-block' : 'none';
+    document.getElementById('aUnit').textContent = distanceMeta[altDist].unit;
+  }
+
+  function readAltSeconds(){
+    const h = longFormatActive() ? parseInt(document.getElementById('aHour').value || 0) : 0;
+    const m = parseInt(document.getElementById('aMin').value || 0);
+    const s = parseInt(document.getElementById('aSec').value || 0);
+    return h*3600 + m*60 + s;
+  }
+
+  function longFormatActive(){
+    return distanceMeta[altDist].unit === "h:min:sec";
+  }
+
+  function computeAltEstimate(){
+    const t1 = readAltSeconds();
+    const d1 = kmMap[altDist];
+    const d2 = kmMap[currentDist];
+    const estSeconds = riegel(t1, d1, d2);
+    const targetLong = distanceMeta[currentDist].unit === "h:min:sec";
+    document.getElementById('altEstimate').textContent = '≈ ' + fmtHMS(estSeconds, targetLong);
+    document.getElementById('altToggleDistLabel').textContent = 'le ' + distanceMeta[currentDist].label;
+  }
+
+  function applyAltEstimate(){
+    const t1 = readAltSeconds();
+    const d1 = kmMap[altDist];
+    const d2 = kmMap[currentDist];
+    const estSeconds = Math.round(riegel(t1, d1, d2));
+    const targetLong = distanceMeta[currentDist].unit === "h:min:sec";
+    const h = Math.floor(estSeconds/3600);
+    const m = Math.floor((estSeconds%3600)/60);
+    const s = Math.round(estSeconds%60);
+    document.getElementById('tHour').value = h;
+    document.getElementById('tMin').value = String(m).padStart(2,'0');
+    document.getElementById('tSec').value = String(s).padStart(2,'0');
+    document.getElementById('altPanel').style.display = 'none';
+    updateBibTimesAndAllure();
+    updatePaceHelper();
+    updateGainHelper();
+  }
+
+  ['tHour','tMin','tSec','oHour','oMin','oSec'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', updateBibTimesAndAllure);
+    document.getElementById(id).addEventListener('input', updateFeasibilityText);
+    document.getElementById(id).addEventListener('input', updatePaceHelper);
+    document.getElementById(id).addEventListener('input', updateGainHelper);
+  });
+
+  ['aHour','aMin','aSec'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', computeAltEstimate);
+  });
+
+  function toggleManualVolume(){
+    const strava = document.getElementById('stravaCard');
+    const manual = document.getElementById('manualVolume');
+    const showManual = strava.style.display !== 'none';
+    strava.style.display = showManual ? 'none' : 'block';
+    manual.style.display = showManual ? 'block' : 'none';
+  }
+
+  const NIVEAU_MAP = { "Je débute": "debutant", "Intermédiaire": "intermediaire", "Confirmé": "confirme" };
+  const DISTANCE_MAP = { "5": "5K", "10": "10K", "21.1": "Semi", "42.2": "Marathon" };
+
+  function readTimeFields(prefix, longFormat){
+    const h = longFormat ? (document.getElementById(prefix + 'Hour').value || '0') : null;
+    const m = document.getElementById(prefix + 'Min').value || '0';
+    const s = document.getElementById(prefix + 'Sec').value || '0';
+    return longFormat ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function collectParamsFromWizard(){
+    const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+    const niveauLabel = document.querySelector('.opt[data-group="niveau"].selected .label').textContent;
+    const joursDisponibles = [...document.querySelectorAll('#daysGrid .day.selected')]
+      .map(el => parseInt(el.dataset.dayIndex));
+
+    const contraintesSelected = [...document.querySelectorAll('.opt[data-group="contraintes"].selected')]
+      .map(el => el.dataset.value)
+      .filter(v => v !== 'aucune');
+
+    const volumeActuel = document.getElementById('stravaCard').style.display !== 'none'
+      ? parseFloat(document.getElementById('stravaKm').textContent)
+      : parseFloat(document.getElementById('manualKm').value);
+
+    const profil = {
+      niveau: NIVEAU_MAP[niveauLabel] ?? 'intermediaire',
+      anneeNaissance: parseInt(document.getElementById('birthYear').value) || undefined,
+      joursDisponiblesHabituels: joursDisponibles,
+      renforcementMusculaire: renfoOn
+    };
+
+    const params = {
+      distance: DISTANCE_MAP[currentDist],
+      refDistance: DISTANCE_MAP[currentDist],
+      tempsReference: readTimeFields('t', longFormat),
+      objectif: readTimeFields('o', longFormat),
+      dateDebut: document.getElementById('startDate').value,
+      dateCourse: document.getElementById('raceDate').value,
+      volumeActuel: isNaN(volumeActuel) ? 30 : volumeActuel,
+      contraintesPonctuelles: contraintesSelected,
+      repriseDuree: contraintesSelected.includes('reprise') ? repriseDuree : undefined
+    };
+
+    return { profil, params };
+  }
+
+  function renderResults(plan){
+    document.getElementById('resultsAmpleur').textContent =
+      `Objectif catégorisé "${plan.ampleurObjectif}" — ${plan.warnings.length} avertissement(s).`;
+    document.getElementById('resultsWarnCount').textContent = `${plan.warnings.length} alerte(s)`;
+    document.getElementById('resDuree').textContent = `${plan.dureeSemaines} semaines`;
+    document.getElementById('resPhases').textContent = plan.phases.map(p => `${p.nom} ${p.semaines}sem`).join(' / ');
+    document.getElementById('resPlafond').textContent = `${plan.volumePlafondKm} km/sem`;
+    document.getElementById('resFcMax').textContent = plan.zoneFC
+      ? `${plan.zoneFC.fcMax} bpm max (méthode ${plan.zoneFC.methode})`
+      : 'Année de naissance manquante';
+
+    const alluresDiv = document.getElementById('resAllures');
+    alluresDiv.innerHTML = Object.entries(plan.allures).map(([zone, val]) =>
+      `<div class="bib-row"><span class="k">${zone}</span><span class="v accent">${val}</span></div>`
+    ).join('');
+
+    const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+    const semaine = plan.semaines.find(s => s.phase === 'Specifique') ?? plan.semaines[Math.min(1, plan.semaines.length - 1)];
+    document.getElementById('resSemaineLabel').textContent = `Semaine ${semaine.semaineNum} (${semaine.phase})`;
+    const semaineDiv = document.getElementById('resSemaine');
+    semaineDiv.innerHTML = dayNames.map((d, i) => {
+      const a = semaine.assignment[i];
+      let badgeClass, label, detail = '';
+      if (!a) { badgeClass = 'repos'; label = 'Repos'; }
+      else if (a.type === 'longue') { badgeClass = 'longue'; label = 'Sortie longue'; detail = a.contenu; }
+      else if (a.type === 'qualite') {
+        badgeClass = 'qualite'; label = 'Qualité'; detail = a.contenu;
+        const r = a.restrictionsAllure;
+        if (r) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
+      }
+      else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; }
+      else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos' + (a.renfo ? ' <span class="tag">+ RENFO</span>' : ''); }
+      const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
+      return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span></div>${detailHtml}</div></div>`;
+    }).join('');
+
+    const warnDiv = document.getElementById('resWarnings');
+    warnDiv.innerHTML = plan.warnings.map(w =>
+      `<div class="flag" style="margin-top:10px;"><span class="ico">⚠️</span><span>${w.message}</span></div>`
+    ).join('') || '<div class="flag" style="margin-top:10px;"><span class="ico">✅</span><span>Aucun avertissement.</span></div>';
+  }
+
+  let showingResults = false;
+
+  function generateAndShowResults(){
+    const { profil, params } = collectParamsFromWizard();
+    let plan;
+    try {
+      plan = generatePlan(profil, params);
+    } catch (err) {
+      alert("Erreur de génération : " + err.message);
+      console.error(err);
+      return;
+    }
+    renderResults(plan);
+    showingResults = true;
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelector('.screen[data-step="10"]').classList.add('active');
+    document.getElementById('nextBtn').textContent = 'Terminer';
+  }
+
+  function updatePaceHelper(){
+    try {
+      const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+      const refSeconds = parseTimeToSeconds(readTimeFields('t', longFormat));
+      const km = KM_BY_DISTANCE[DISTANCE_MAP[currentDist]];
+      document.getElementById('paceHelper').textContent = formatPace(refSeconds / km) ;
+    } catch (e) { /* champs incomplets */ }
+  }
+
+  function updateGainHelper(){
+    try {
+      const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+      const refSeconds = parseTimeToSeconds(readTimeFields('t', longFormat));
+      const objSeconds = parseTimeToSeconds(readTimeFields('o', longFormat));
+      const diff = refSeconds - objSeconds; // positif si l'objectif est plus rapide
+      const pct = (diff / refSeconds) * 100;
+      const sign = diff >= 0 ? '−' : '+';
+      const absDiff = Math.round(Math.abs(diff));
+      const m = Math.floor(absDiff / 60);
+      const s = absDiff % 60;
+      document.getElementById('gainHelper').textContent = `${sign}${m}'${String(s).padStart(2,'0')}" (${sign}${Math.abs(pct).toFixed(1)}%)`;
+    } catch (e) { /* champs incomplets */ }
+  }
+
+  function updateFeasibilityText(){
+    try {
+      const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+      const refSeconds = parseTimeToSeconds(readTimeFields('t', longFormat));
+      const objSeconds = parseTimeToSeconds(readTimeFields('o', longFormat));
+      const niveauLabel = document.querySelector('.opt[data-group="niveau"].selected .label').textContent;
+
+      const startVal = document.getElementById('startDate').value;
+      const raceVal = document.getElementById('raceDate').value;
+      let semaines = null;
+      if (startVal && raceVal) {
+        const diffJours = Math.round((new Date(raceVal) - new Date(startVal)) / 86400000);
+        semaines = Math.max(1, Math.round(diffJours / 7));
+      }
+
+      const flagEl = document.getElementById('feasibilityText').closest('.flag');
+      const icoEl = flagEl ? flagEl.querySelector('.ico') : null;
+      let text, ico;
+
+      if (objSeconds >= refSeconds) {
+        text = "L'objectif n'est pas plus rapide que le temps de référence — vérifie les valeurs saisies.";
+        ico = '⚠️';
+      } else {
+        const ampleur = categoriserAmpleurObjectif(refSeconds, objSeconds);
+        const gainPct = Math.round((refSeconds - objSeconds) / refSeconds * 100);
+        if (ampleur === 'ambitieuse' && semaines !== null && semaines < 12) {
+          text = `Objectif ambitieux (${gainPct}% de gain visé) sur seulement ${semaines} semaines — marge de progression serrée.`;
+          ico = '⚠️';
+        } else {
+          const qualif = ampleur === 'faible' ? 'prudent' : (ampleur === 'moderee' ? 'réaliste' : 'ambitieux mais jouable');
+          text = `Objectif ${qualif} sur ${semaines ?? '?'} semaines pour un profil ${niveauLabel.toLowerCase()}.`;
+          ico = '✅';
+        }
+      }
+      document.getElementById('feasibilityText').textContent = text;
+      if (icoEl) icoEl.textContent = ico;
+    } catch (e) { /* champs incomplets, on laisse tel quel */ }
+  }
+
+  function selectOpt(el){
+    const group = el.dataset.group;
+    document.querySelectorAll(`.opt[data-group="${group}"]`).forEach(o=>o.classList.remove('selected'));
+    el.classList.add('selected');
+    if (group === 'niveau') {
+      const bibNiveau = document.getElementById('bibNiveau');
+      if (bibNiveau) bibNiveau.textContent = el.querySelector('.label').textContent;
+      updateFeasibilityText();
+    }
+  }
+
+  function selectDist(el){
+    document.querySelectorAll('.dist').forEach(o=>o.classList.remove('selected'));
+    el.classList.add('selected');
+    currentDist = el.dataset.dist;
+    applyDistanceMeta();
+  }
+
+  function applyDistanceMeta(){
+    const meta = distanceMeta[currentDist];
+    const longFormat = meta.unit === "h:min:sec";
+
+    document.getElementById('refDistLabel').textContent = meta.name;
+    document.getElementById('refHelpText').textContent = longFormat
+      ? "Sers-toi d'une course récente sur cette distance, ou d'une estimation à partir de ton allure seuil."
+      : "Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.";
+
+    ['tHour','tHourSep','oHour','oHourSep'].forEach(id=>{
+      document.getElementById(id).style.display = longFormat ? 'inline-block' : 'none';
+    });
+    document.getElementById('tUnit').textContent = meta.unit;
+    document.getElementById('oUnit').textContent = meta.unit;
+
+    document.getElementById('tHour').value = meta.refDefault.h;
+    document.getElementById('tMin').value = String(meta.refDefault.m).padStart(2,'0');
+    document.getElementById('tSec').value = String(meta.refDefault.s).padStart(2,'0');
+
+    document.getElementById('oHour').value = meta.objDefault.h;
+    document.getElementById('oMin').value = String(meta.objDefault.m).padStart(2,'0');
+    document.getElementById('oSec').value = String(meta.objDefault.s).padStart(2,'0');
+
+    document.getElementById('bibDist').textContent = meta.label;
+    updateBibTimesAndAllure();
+    updateFeasibilityText();
+    updatePaceHelper();
+    updateGainHelper();
+
+    document.getElementById('altToggleDistLabel').textContent = 'le ' + meta.label;
+    document.getElementById('altPanel').style.display = 'none';
+  }
+
+  function updateBibTimesAndAllure(){
+    const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+    const refStr = readTimeFields('t', longFormat);
+    const objStr = readTimeFields('o', longFormat);
+    document.getElementById('bibRef').textContent = refStr;
+    document.getElementById('bibObj').textContent = objStr;
+    try {
+      const refSeconds = parseTimeToSeconds(refStr);
+      const refKm = KM_BY_DISTANCE[DISTANCE_MAP[currentDist]];
+      const paceRef10k = paceFromTime(riegelPredict(refSeconds, refKm, 10), 10);
+      document.getElementById('bibAllureEF').textContent = formatPace(paceRef10k * PACE_RATIOS.E);
+    } catch (e) { /* champs incomplets, on laisse tel quel */ }
+  }
+
+  function showStep(n){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.querySelector(`.screen[data-step="${n}"]`).classList.add('active');
+    document.getElementById('stepNum').textContent = 'ÉTAPE ' + n;
+    document.getElementById('backBtn').style.visibility = n === 1 ? 'hidden' : 'visible';
+    document.getElementById('nextBtn').textContent = n === totalSteps ? 'Générer le plan' : 'Continuer';
+    renderTrack();
+  }
+
+  function nextStep(){
+    if(showingResults){ return; } // "Terminer" ne fait rien de plus dans ce mockup
+    if(current < totalSteps){ current++; showStep(current); }
+    else { generateAndShowResults(); }
+  }
+  function prevStep(){
+    if(showingResults){
+      showingResults = false;
+      showStep(current); // current est resté à totalSteps (9) : retour au récap
+      return;
+    }
+    if(current > 1){ current--; showStep(current); }
+  }
+
+  function computeDuration(){
+    const startInput = document.getElementById('startDate');
+    const raceInput = document.getElementById('raceDate');
+    if(!startInput.value || !raceInput.value) return;
+    const start = new Date(startInput.value);
+    const race = new Date(raceInput.value);
+    const diffDays = Math.round((race - start) / 86400000);
+    const weeks = Math.max(1, Math.round(diffDays / 7));
+
+    document.getElementById('dcWeeksNum').textContent = weeks;
+
+    let structureText;
+    if(diffDays < 0){
+      structureText = "La date de course doit être après le début du plan.";
+    } else if(weeks < 9){
+      structureText = "Plan condensé — moins de marge de progression, on priorise le spécifique.";
+    } else if(weeks <= 12){
+      structureText = "Format standard — Construction / Spécifique / Affûtage.";
+    } else {
+      structureText = "Base aérobie plus longue avant la phase spécifique.";
+    }
+    document.getElementById('dcStructure').textContent = structureText;
+    document.getElementById('bibWeeks').textContent = weeks + ' semaines';
+    updateFeasibilityText();
+  }
+
+  function renderStartQuickOptions(){
+    const options = [
+      { label: "Aujourd'hui", days: 0 },
+      { label: "Dans 1 semaine", days: 7 },
+      { label: "Dans 2 semaines", days: 14 }
+    ];
+    const row = document.getElementById('startQuickRow');
+    row.innerHTML = '';
+    options.forEach((opt, i) => {
+      const pill = document.createElement('div');
+      pill.className = 'date-quick' + (i === 0 ? ' selected' : '');
+      pill.textContent = opt.label;
+      pill.onclick = () => {
+        const d = new Date();
+        d.setDate(d.getDate() + opt.days);
+        document.getElementById('startDate').value = d.toISOString().slice(0,10);
+        document.querySelectorAll('.date-quick').forEach(p=>p.classList.remove('selected'));
+        pill.classList.add('selected');
+        computeDuration();
+      };
+      row.appendChild(pill);
+    });
+  }
+
+  function setDefaultRaceDate(){
+    document.getElementById('startDate').value = new Date().toISOString().slice(0,10);
+    const d = new Date();
+    d.setDate(d.getDate() + 77); // ~11 semaines par défaut
+    document.getElementById('raceDate').value = d.toISOString().slice(0,10);
+    computeDuration();
+  }
+
+  document.getElementById('startDate').addEventListener('change', () => {
+    document.querySelectorAll('.date-quick').forEach(p=>p.classList.remove('selected'));
+    computeDuration();
+  });
+  document.getElementById('raceDate').addEventListener('change', computeDuration);
+
+  renderDays();
+  applyDistanceMeta();
+  renderStartQuickOptions();
+  setDefaultRaceDate();
+  updateConstraintSummary();
+  showStep(current);
+</script>
+</body>
+</html>
