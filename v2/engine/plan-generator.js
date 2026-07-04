@@ -598,14 +598,15 @@ const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150
  * Approximation assumée : échauffement/retour au calme et jogs de récupération
  * ne sont pas comptés séparément, ils sont absorbés dans l'allure EF globale.
  */
-export function genererContenuEF({ alluresSec, kmCible }) {
+export function genererContenuEF({ alluresSec, kmCible, role = 'standard' }) {
   const dureeMinBrut = (kmCible * alluresSec.E) / 60;
   const dureeMin = Math.round(Math.min(dureeMinBrut, DUREE_MAX_EF_MIN));
   const kmEffectif = (dureeMin * 60) / alluresSec.E;
   const warning = dureeMinBrut > DUREE_MAX_EF_MIN + 1
     ? { code: 'SEANCE_EF_PLAFONNEE', message: `Séance EF plafonnée à ${DUREE_MAX_EF_MIN}min (${Math.round(dureeMinBrut)}min auraient été nécessaires pour caser tout le volume) — trop peu de séances/semaine pour ce volume cible.` }
     : null;
-  return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmEffectif * 10) / 10}km`, kmEstime: kmEffectif, warning };
+  const labelRole = role === 'recuperation' ? ' (récupération)' : '';
+  return { contenu: `${dureeMin}min à allure EF${labelRole} (${formatPace(alluresSec.E)}) — ${Math.round(kmEffectif * 10) / 10}km`, kmEstime: kmEffectif, warning };
 }
 
 export function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
@@ -647,8 +648,13 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
   const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
   let kmLongue = 0, kmParEF = 0;
 
+  // Ratio Daniels : la sortie longue ne devrait jamais dépasser 25-30% du
+  // volume hebdo TOTAL, quelle que soit la distance visée (5K ou marathon) —
+  // pas de variation par distance ici, la règle est volontairement universelle.
+  const RATIO_LONGUE = 0.28;
+
   if (aLongue) {
-    kmLongue = kmRestant * 0.40;
+    kmLongue = Math.min(volumeCibleKm * RATIO_LONGUE, kmRestant);
     const kmRestantApresLongue = kmRestant - kmLongue;
     kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
   } else {
@@ -665,6 +671,34 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
   }
 
   return { kmLongue, kmParEF, warning };
+}
+
+/**
+ * Différencie les séances EF entre elles selon leur position dans la semaine :
+ * une EF qui suit directement une séance dure (qualité ou longue) devient une
+ * EF de récupération plus courte ; les autres restent "standard". Le total
+ * reste égal à kmParEF × nbEF (pas de nouvelle incohérence avec le volume cible).
+ */
+function differencierEF({ assignment, kmParEF }) {
+  const efDays = Object.entries(assignment).filter(([, s]) => s.type === 'ef').map(([j]) => parseInt(j));
+  const hardDays = Object.entries(assignment).filter(([, s]) => s.type === 'qualite' || s.type === 'longue').map(([j]) => parseInt(j));
+
+  if (efDays.length <= 1) {
+    return Object.fromEntries(efDays.map(j => [j, { role: 'standard', kmCible: kmParEF }]));
+  }
+
+  // "Récupération" = le jour suit directement (circulairement) une séance dure
+  const estRecuperation = j => hardDays.some(h => (j - h + 7) % 7 === 1);
+  const roles = Object.fromEntries(efDays.map(j => [j, estRecuperation(j) ? 'recuperation' : 'standard']));
+
+  const POIDS = { recuperation: 0.75, standard: 1.0 };
+  const sommePoids = efDays.reduce((acc, j) => acc + POIDS[roles[j]], 0);
+  const kmTotal = kmParEF * efDays.length;
+
+  return Object.fromEntries(efDays.map(j => [
+    j,
+    { role: roles[j], kmCible: sommePoids > 0 ? (kmTotal * POIDS[roles[j]]) / sommePoids : kmParEF }
+  ]));
 }
 
 // ---------------------------------------------------------------------------
@@ -775,11 +809,16 @@ export function generatePlan(profil, params) {
         warningsSemaines.push({ ...warningRepartition, message: `S${semaineGlobale} : ${warningRepartition.message}` });
       }
 
+      const roleParJourEF = differencierEF({ assignment, kmParEF });
+
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'ef') {
-          const { contenu, kmEstime, warning } = genererContenuEF({ alluresSec: allSeconds, kmCible: kmParEF });
+          const jourNum = parseInt(jour);
+          const { role, kmCible } = roleParJourEF[jourNum] ?? { role: 'standard', kmCible: kmParEF };
+          const { contenu, kmEstime, warning } = genererContenuEF({ alluresSec: allSeconds, kmCible, role });
           seance.contenu = contenu;
           seance.kmEstime = kmEstime;
+          seance.role = role;
           if (warning) warningsSemaines.push({ ...warning, message: `S${semaineGlobale} (jour ${jour}) : ${warning.message}` });
         } else if (seance.type === 'longue') {
           const { contenu, kmEstime, warning } = genererContenuLongue({
