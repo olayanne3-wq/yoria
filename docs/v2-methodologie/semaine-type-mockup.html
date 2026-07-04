@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run by Léa — Semaine type</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14181C;
+    --paper:#EEF0EA;
+    --signal:#FF5A34;
+    --signal-dim:#3A241C;
+    --pace:#2F6E5F;
+    --pace-soft:#DCE9E3;
+    --longue:#4C7EE0;
+    --longue-soft:#1E2A44;
+    --line: rgba(238,240,234,0.14);
+    --dim: rgba(238,240,234,0.35);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Manrope',sans-serif;
+    display:flex;
+    justify-content:center;
+    min-height:100vh;
+  }
+  .phone{ width:100%; max-width:430px; padding:22px 20px 40px 20px; }
+
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:23px;
+    font-weight:700;
+    margin:0 0 4px 0;
+  }
+  .sub{ font-size:13.5px; color:rgba(238,240,234,0.55); margin:0 0 22px 0; line-height:1.5; }
+
+  .block-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:rgba(238,240,234,0.4);
+    margin:20px 0 10px 0;
+  }
+
+  .pill-row{ display:flex; gap:8px; }
+  .pill{
+    flex:1;
+    text-align:center;
+    padding:10px 4px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    font-size:13px;
+    font-weight:600;
+    color:rgba(238,240,234,0.6);
+    cursor:pointer;
+    background:rgba(238,240,234,0.03);
+  }
+  .pill.selected{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+    color:var(--signal);
+  }
+
+  .days-grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:7px;
+  }
+  .day-toggle{
+    aspect-ratio:1;
+    border-radius:10px;
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px; font-weight:600;
+    color:rgba(238,240,234,0.4);
+    cursor:pointer;
+    background:rgba(238,240,234,0.03);
+  }
+  .day-toggle.selected{
+    border-color:var(--paper);
+    background:rgba(238,240,234,0.1);
+    color:var(--paper);
+  }
+
+  .toggle-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:rgba(238,240,234,0.03);
+  }
+  .toggle-row .label{ font-size:14px; font-weight:600; }
+  .switch{
+    width:42px; height:24px;
+    border-radius:20px;
+    background:rgba(238,240,234,0.15);
+    position:relative;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .switch.on{ background:var(--pace); }
+  .switch::after{
+    content:'';
+    position:absolute; top:3px; left:3px;
+    width:18px; height:18px;
+    border-radius:50%;
+    background:var(--paper);
+    transition:left .15s;
+  }
+  .switch.on::after{ left:21px; }
+
+  .week{ margin-top:24px; display:flex; flex-direction:column; gap:8px; }
+  .day-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background:rgba(238,240,234,0.02);
+  }
+  .day-row .dname{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    font-weight:600;
+    color:rgba(238,240,234,0.5);
+    width:34px;
+    flex-shrink:0;
+  }
+  .badge{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:8px 12px;
+    border-radius:9px;
+    font-size:13px;
+    font-weight:600;
+  }
+  .badge.qualite{ background:var(--signal-dim); color:var(--signal); }
+  .badge.ef{ background:var(--pace-soft); color:var(--pace); }
+  .badge.longue{ background:var(--longue-soft); color:var(--longue); }
+  .badge.repos{ background:transparent; color:var(--dim); font-weight:500; }
+  .badge .tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    opacity:.8;
+  }
+  .warn-icon{ color:#FFB9A3; font-size:13px; margin-left:6px; }
+
+  .flag{
+    margin-top:16px;
+    display:flex; gap:10px;
+    background:rgba(255,90,52,0.08);
+    border:1px solid rgba(255,90,52,0.25);
+    border-radius:12px;
+    padding:13px 14px;
+    font-size:12.5px;
+    line-height:1.45;
+    color:#FFB9A3;
+  }
+
+  .legend{
+    display:flex; gap:14px; flex-wrap:wrap;
+    margin-top:14px;
+    font-size:11.5px;
+    color:rgba(238,240,234,0.5);
+  }
+  .legend span{ display:flex; align-items:center; gap:5px; }
+  .dot{ width:8px; height:8px; border-radius:50%; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <h1>Semaine type</h1>
+  <p class="sub">Aperçu du placement des séances selon le niveau, les jours disponibles et le renforcement — appliqué en direct.</p>
+
+  <div class="block-label">Niveau</div>
+  <div class="pill-row" id="niveauRow"></div>
+
+  <div class="block-label">Jours disponibles</div>
+  <div class="days-grid" id="daysGrid"></div>
+
+  <div class="block-label">Renforcement musculaire</div>
+  <div class="toggle-row">
+    <span class="label">Inclure dans le plan</span>
+    <div class="switch" id="renfoSwitch" onclick="toggleRenfo()"></div>
+  </div>
+
+  <div class="week" id="week"></div>
+
+  <div class="flag" id="warningFlag" style="display:none;"></div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--signal);"></span>Qualité</span>
+    <span><span class="dot" style="background:var(--pace);"></span>EF</span>
+    <span><span class="dot" style="background:var(--longue);"></span>Sortie longue</span>
+    <span><span class="dot" style="background:var(--dim);"></span>Repos</span>
+  </div>
+</div>
+
+<script>
+  const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  let niveau = 'intermediaire';
+  let selectedDays = [1,3,5]; // Mar, Jeu, Sam par défaut
+  let renfoOn = false;
+
+  function renderNiveauRow(){
+    const row = document.getElementById('niveauRow');
+    row.innerHTML = '';
+    [['debutant','Débutant'],['intermediaire','Intermédiaire'],['confirme','Confirmé']].forEach(([key,label])=>{
+      const pill = document.createElement('div');
+      pill.className = 'pill' + (niveau===key ? ' selected' : '');
+      pill.textContent = label;
+      pill.onclick = () => { niveau = key; renderNiveauRow(); computeWeek(); };
+      row.appendChild(pill);
+    });
+  }
+
+  function renderDaysGrid(){
+    const grid = document.getElementById('daysGrid');
+    grid.innerHTML = '';
+    dayNames.forEach((d,i)=>{
+      const el = document.createElement('div');
+      el.className = 'day-toggle' + (selectedDays.includes(i) ? ' selected' : '');
+      el.textContent = d[0];
+      el.onclick = () => {
+        if(selectedDays.includes(i)){
+          selectedDays = selectedDays.filter(x=>x!==i);
+        } else {
+          selectedDays.push(i);
+        }
+        renderDaysGrid();
+        computeWeek();
+      };
+      grid.appendChild(el);
+    });
+  }
+
+  function toggleRenfo(){
+    renfoOn = !renfoOn;
+    document.getElementById('renfoSwitch').classList.toggle('on', renfoOn);
+    computeWeek();
+  }
+
+  function nbQualiteFor(nb, niveau){
+    if(nb <= 4) return nb >= 2 ? 1 : 0;
+    if(nb === 5) return (niveau === 'debutant') ? 1 : 2;
+    return 2; // 6+
+  }
+
+  function pickLongueDay(days){
+    if(days.includes(6)) return 6; // Dimanche
+    if(days.includes(5)) return 5; // Samedi
+    return Math.max(...days);
+  }
+
+  function computeWeek(){
+    const days = [...selectedDays].sort((a,b)=>a-b);
+    const nb = days.length;
+    const assignment = {}; // index -> {type, tag}
+    const warnings = [];
+
+    if(nb < 2){
+      renderWeek(assignment, warnings, "Sélectionne au moins 2 jours pour générer une semaine.");
+      return;
+    }
+
+    const longueDay = pickLongueDay(days);
+    assignment[longueDay] = { type:'longue' };
+
+    let pool = days.filter(d => d !== longueDay);
+    const nbQualite = Math.min(nbQualiteFor(nb, niveau), pool.length);
+    const qualiteDays = [];
+
+    // Règle stricte : pas de qualité la veille ni le lendemain de la longue,
+    // sauf si aucun autre jour disponible ne permet d'en placer assez.
+    const strictPool = pool.filter(d => Math.abs(d - longueDay) !== 1);
+    const candidatePool = (strictPool.length >= nbQualite) ? strictPool : pool;
+    const usedFallback = candidatePool === pool && strictPool.length < nbQualite;
+
+    let workingPool = [...candidatePool];
+    for(let q=0; q<nbQualite; q++){
+      let best = null, bestScore = -1;
+      workingPool.forEach(d=>{
+        const refs = [longueDay, ...qualiteDays];
+        const minDist = Math.min(...refs.map(r => Math.abs(d - r)));
+        if(minDist > bestScore){ bestScore = minDist; best = d; }
+      });
+      qualiteDays.push(best);
+      workingPool = workingPool.filter(d => d !== best);
+      pool = pool.filter(d => d !== best);
+    }
+
+    qualiteDays.forEach((d,i)=>{
+      assignment[d] = { type:'qualite' };
+    });
+
+    pool.forEach(d=>{ assignment[d] = { type:'ef' }; });
+
+    // Renforcement accolé à la 1re séance qualité
+    if(renfoOn && qualiteDays.length > 0){
+      assignment[qualiteDays[0]].renfo = true;
+    }
+
+    // Détection des écarts insuffisants (<2 jours) entre séances dures
+    const hardDays = [longueDay, ...qualiteDays].sort((a,b)=>a-b);
+    for(let i=1;i<hardDays.length;i++){
+      const gap = hardDays[i] - hardDays[i-1];
+      if(gap < 2){
+        warnings.push(`${dayNames[hardDays[i-1]]} → ${dayNames[hardDays[i]]} : moins de 48h entre deux séances dures.`);
+        assignment[hardDays[i]].warn = true;
+      }
+    }
+
+    let warningText = null;
+    if(usedFallback){
+      warningText = "Pas assez de jours disponibles pour éviter une qualité juste avant/après la sortie longue — placée quand même faute d'alternative.";
+    } else if(warnings.length){
+      warningText = "Jours trop rapprochés pour respecter la récupération : " + warnings.join(' ');
+    }
+
+    renderWeek(assignment, warnings, warningText);
+  }
+
+  function renderWeek(assignment, warnings, warningText){
+    const week = document.getElementById('week');
+    week.innerHTML = '';
+    dayNames.forEach((d,i)=>{
+      const row = document.createElement('div');
+      row.className = 'day-row';
+      const a = assignment[i];
+      let badgeHtml;
+      if(!a){
+        badgeHtml = `<div class="badge repos">Repos</div>`;
+      } else if(a.type === 'longue'){
+        badgeHtml = `<div class="badge longue">Sortie longue</div>`;
+      } else if(a.type === 'qualite'){
+        const renfoTag = a.renfo ? `<span class="tag">+ RENFO</span>` : '';
+        const warnTag = a.warn ? `<span class="warn-icon">⚠</span>` : '';
+        badgeHtml = `<div class="badge qualite"><span>Qualité${warnTag}</span>${renfoTag}</div>`;
+      } else if(a.type === 'ef'){
+        const warnTag = a.warn ? `<span class="warn-icon">⚠</span>` : '';
+        badgeHtml = `<div class="badge ef"><span>EF${warnTag}</span></div>`;
+      }
+      row.innerHTML = `<div class="dname">${d}</div>${badgeHtml}`;
+      week.appendChild(row);
+    });
+
+    const flag = document.getElementById('warningFlag');
+    if(warningText){
+      flag.style.display = 'flex';
+      flag.innerHTML = `<span>⚠️</span><span>${warningText}</span>`;
+    } else {
+      flag.style.display = 'none';
+    }
+  }
+
+  renderNiveauRow();
+  renderDaysGrid();
+  computeWeek();
+</script>
+</body>
+</html>
