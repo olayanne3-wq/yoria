@@ -349,6 +349,18 @@ La simplification notée en section 12 est résolue : EF et sortie longue ont ma
 
 Ces deux garde-fous s'ajoutent à la checklist de la section 10.
 
+## 14. Corrections trouvées par validation sur d'autres profils
+
+La validation sur 4 profils fictifs (marathon débutant 20 semaines, semi confirmé 9 semaines, 5K débutant 3 séances/sem, 10K confirmé avec contraintes cumulées) a révélé deux bugs sérieux dans le calcul du volume, invisibles sur le seul profil réel testé jusque-là :
+
+**Bug 1 — La décharge annulait quasiment toute progression.** La formule initiale (+10%/semaine, -25% toutes les 4 semaines) s'auto-annule presque mathématiquement : 1,1³ × 0,75 ≈ 0,998. Concrètement, le volume ne progressait quasiment jamais sur la durée du plan, peu importe le nombre de semaines disponibles. Corrigé : la décharge est maintenant un creux temporaire qui ne remet pas à zéro le niveau atteint — la progression reprend depuis le pic précédent, pas depuis la valeur réduite de la décharge.
+
+**Bug 2 — Le garde-fou de progression insuffisante comparait au mauvais repère.** Il comparait le plafond visé à la **dernière semaine du plan** (en plein Affûtage, donc délibérément réduite par le taper) plutôt qu'au **pic de volume** (fin de Spécifique, juste avant l'Affûtage). Résultat : le garde-fou se déclenchait en faux positif sur presque tous les profils. Corrigé, et un vrai taper d'Affûtage a été ajouté au passage (réduction progressive de 75% à 35% du pic selon le nombre de semaines d'Affûtage — jusque-là, l'Affûtage n'avait aucune réduction de volume réelle dans le calcul, contrairement à ce que section 1 et 2 décrivent).
+
+**Ajustement mineur** : le garde-fou "volume hebdo trop faible pour la répartition" (section 13) ne se déclenche plus pendant l'Affûtage — des séances courtes en fin de taper sont voulues, pas un défaut.
+
+Ces deux bugs auraient été très difficiles à détecter sur un seul profil dont l'objectif est modeste (ampleur "faible", qui désactive justement ce garde-fou) — la validation sur des profils aux objectifs plus ambitieux était donc nécessaire pour les révéler.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
