@@ -383,6 +383,14 @@ Dernière vague de validation (blessure active sur marathon, plan de 5 semaines,
 
 **Corrigé** : ajout d'un 2e sous-type pour chaque distance — **fartlek** pour le Semi (mentionné dans la section 2 comme alternative au tempo court, jamais implémenté jusqu'ici), **seuil-court** pour le Marathon (déjà existant, réutilisé). Les deux séances qualité alternent maintenant correctement, semaine après semaine.
 
+## 18. Affinage — ratio de la sortie longue calé sur une référence sourcée
+
+Le ratio de répartition longue/EF (section 13) était fixé à 40% du volume restant, sans justification particulière. Correction : **25-30% du volume hebdo total**, d'après Jack Daniels — cette règle est volontairement universelle (il précise explicitement "que ce soit pour un 5K ou un marathon"), donc pas de variation par distance ici, contrairement à une première tentative de complexification qui n'aurait pas été mieux sourcée. Vérifié sur le profil réel : la longue tombe maintenant à 28% du volume hebdo, pile dans la fourchette.
+
+## 19. Différenciation des séances EF
+
+Jusqu'ici, toutes les EF d'une même semaine recevaient un kilométrage identique. Corrigé : une EF qui suit directement (circulairement) une séance dure — qualité ou longue — devient une **EF de récupération** plus courte (poids 0,75 contre 1,0 pour une EF standard), le reste du budget EF se redistribuant sur les autres EF de la semaine. Le total reste toujours égal au budget calculé par `repartirVolumeSemaine` — pas de nouvelle incohérence avec le volume cible.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
