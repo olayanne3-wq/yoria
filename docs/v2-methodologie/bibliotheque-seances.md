@@ -543,24 +543,28 @@ Trouvé en usage réel : le bouton "Analyser et adapter" modifiait le plan **en 
 
 Corrigé : chaque analyse repart maintenant d'une **régénération propre** du plan à partir de `profilOrigine`/`paramsOrigine`, puis ré-applique les adaptations selon les statuts *actuels* — plutôt que d'empiler des modifications sur un état déjà modifié. Concrètement, si les statuts qui avaient déclenché une adaptation sont corrigés, la prochaine analyse "oublie" cette adaptation qui ne se justifie plus. Testé et confirmé sur le scénario exact (2 séances marquées ratées par erreur → adaptation appliquée → corrigées en réussies → nouvelle analyse → adaptation bien annulée).
 
-## 36. Séance test — ajoutée, placée vers la fin de Spécifique
+## 36. Séance de confirmation d'allure — ajoutée, placée vers la fin de Spécifique
 
-Trouvé en comparant avec v1 (qui a un vrai type `"TEST"` lié à un système de prédiction) : le moteur v2 ne recalibrait jamais les allures en cours de plan — calculées une fois à la génération, figées jusqu'à la fin. Ajouté : une séance test unique par plan.
+Trouvé en comparant avec v1 (qui a un vrai type `"TEST"` lié à un système de prédiction) : le moteur v2 ne recalibrait jamais les allures en cours de plan — calculées une fois à la génération, figées jusqu'à la fin. Ajouté : une séance unique par plan.
 
-**Sourcé via recherche ("tune-up race")** — placement vers la fin de Spécifique, avec un tampon de récupération avant l'Affûtage (trop proche, et la récupération du test empièterait sur le taper) :
+**Deux principes existent et sont tous deux sourcés — retenu celui qui correspond à la pratique réelle de l'utilisateur** :
+- Time trial (distance courte, effort maximal, "jauge" de forme extrapolée via Riegel) — première version implémentée, écartée ensuite
+- **Confirmation d'allure (retenu)** : courir une portion de la distance de course **à l'allure objectif** (pas à fond) — principe "goal pace confirmation workout" (McMillan, Hal Higdon), qui vérifie que l'allure visée est *tenable dans la durée*, pas la forme maximale. Correspond à la pratique réelle de l'utilisateur sur ses préparations précédentes (5-6km à allure course pour un 10K).
 
-| Distance | Distance du test | Tampon avant l'Affûtage |
+**% de la distance de course à l'allure objectif, par distance** :
+
+| Distance | % à l'allure course | Tampon avant l'Affûtage |
 |---|---|---|
-| 5K | 2km | 1 semaine |
-| 10K | 3km | 1 semaine |
-| Semi | 5km | 2 semaines |
-| Marathon | 10km | 2 semaines |
+| 5K | ~60% | 1 semaine |
+| 10K | ~55% (5,5km pour un 10K — correspond à la pratique réelle) | 1 semaine |
+| Semi | ~35% | 2 semaines |
+| Marathon | ~25% (cohérent avec le segment allure course déjà en fin de sortie longue) | 2 semaines |
 
-**Plancher** : si Spécifique est trop courte pour le tampon complet, le test bascule sur la première semaine de Spécifique plutôt que de produire un index invalide — testé et confirmé sur un cas limite (Semi, Spécifique à 2 semaines).
+**Découverte notable** : le moteur fait déjà ce genre de segment à l'allure course en fin de sortie longue pour Semi/Marathon (`avecSegmentCourse`, 25% de la longue) — la séance de confirmation d'allure réutilise le même principe, pas un nouveau mécanisme.
 
-**Implémentation** : `placerSeanceTest(plan, alluresSec)`, appelée en fin de `generatePlan`, remplace le contenu d'une séance qualité existante (pas un nouveau jour) et recalcule la répartition EF/longue de cette semaine-là (même mécanique que `appliquerAdaptations`, section 34). Distance du test volontairement plus courte que l'objectif et standardisée — permet d'utiliser `riegelPredict` (déjà dans le moteur) pour vérifier/recalibrer l'objectif, sans avoir à courir la distance de course elle-même.
+**Durée calculée, pas fixe** : la durée en minutes découle de la distance calculée × l'allure course réelle de la personne (comme le reste du moteur), pas un chiffre universel — un coureur plus rapide ou plus lent aura une durée différente pour la même distance.
 
-**Ce qui reste hors scope** : le résultat du test n'est pas encore automatiquement exploité pour suggérer un ajustement d'objectif — la séance est placée et son contenu généré, mais l'analyse du résultat reste manuelle pour l'instant (cohérent avec le principe déjà établi : les décisions sur l'objectif restent humaines).
+Placement (tampon avant Affûtage, plancher si Spécifique trop courte) et implémentation technique (recalcule EF/longue de la semaine, réutilise `repartirVolumeSemaine`/`differencierEF`) inchangés par rapport à la version time trial.
 
 ## Sources consultées
 
