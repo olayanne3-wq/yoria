@@ -391,6 +391,12 @@ Le ratio de répartition longue/EF (section 13) était fixé à 40% du volume re
 
 Jusqu'ici, toutes les EF d'une même semaine recevaient un kilométrage identique. Corrigé : une EF qui suit directement (circulairement) une séance dure — qualité ou longue — devient une **EF de récupération** plus courte (poids 0,75 contre 1,0 pour une EF standard), le reste du budget EF se redistribuant sur les autres EF de la semaine. Le total reste toujours égal au budget calculé par `repartirVolumeSemaine` — pas de nouvelle incohérence avec le volume cible.
 
+## 20. Correction — les séances qualité rétrécissent aussi pendant l'Affûtage
+
+Trouvé en testant l'affichage du plan complet (section précédente) : les séances qualité gardaient presque leur volume de Spécifique pendant l'Affûtage, alors que le volume hebdo total chutait (taper). Résultat, sur la dernière semaine avant course : des EF de 5-7 minutes, dérisoires.
+
+Corrigé : les répétitions/durée des séances qualité se réduisent maintenant proportionnellement à la même fraction que le volume hebdo (section 6/18), avec un plancher minimum par sous-type pour garder un vrai stimulus (ex. 2 répétitions minimum pour Seuil/allure course, pas de descente en dessous). Résultat sur la dernière semaine testée : EF à 9-11min plutôt que 5-7min — une "sortie découverte" courte à 2 jours de la course, ce qui est en fait une pratique normale, pas un signe de calcul cassé.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
