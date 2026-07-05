@@ -2127,6 +2127,20 @@ function generatePlan(profil, params) {
 
   function exporterPDF(){
     if (!dernierPlanGenere) { alert("Génère d'abord un plan."); return; }
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      alert("La librairie PDF (jsPDF) ne s'est pas chargée correctement — vérifie ta connexion internet, ou que rien ne bloque le chargement de scripts externes (bloqueur de pub, etc.), puis recharge la page.");
+      console.error('window.jspdf est introuvable :', window.jspdf);
+      return;
+    }
+    try {
+      genererEtTelechargerPDF();
+    } catch (err) {
+      alert("Erreur pendant la génération du PDF : " + err.message);
+      console.error(err);
+    }
+  }
+
+  function genererEtTelechargerPDF(){
     const plan = dernierPlanGenere;
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
