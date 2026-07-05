@@ -410,6 +410,16 @@ Retour terrain sur la section 20 : même après le plancher sur les répétition
 
 Sur le profil réel (10K), la dernière semaine passe de 35% à 60% du pic — des EF à 21-27min et une longue de 37min, bien plus proche de ce qu'on observerait en pratique qu'un quasi-arrêt.
 
+## 22. Échauffement et retour au calme pour les séances qualité
+
+Trouvé en usage réel : le moteur ne générait que le corps des séances qualité, sans échauffement ni retour au calme — contrairement à l'app v1.9.3 qui a une feuille dédiée. Corrigé :
+
+- **EF et sortie longue** n'ont pas besoin d'échauffement séparé (l'allure facile *est* déjà l'échauffement) — seules les **séances qualité** en reçoivent un, puisqu'elles démarrent directement sur un effort proche du seuil/VMA
+- Échauffement 15min + retour au calme 10min à allure EF, ajoutés au kilométrage de la séance qualité — comptés dans le volume hebdo, donc `repartirVolumeSemaine` (section 13) s'ajuste automatiquement pour compenser, sans logique supplémentaire nécessaire
+- **Réduction proportionnelle pendant décharge et Affûtage** (planchers 8min échauffement / 5min RAC) : sans ça, ce coût fixe prenait une part disproportionnée du budget sur les semaines déjà réduites, écrasant les EF (7-9min sur les décharges avant correction, 11-14min après)
+
+Le symbole "″" (secondes) utilisé pour le VMA 30-30 a aussi été remplacé par "s" — non supporté par les polices standards de jsPDF (export PDF), il s'affichait comme des caractères aléatoires. La récupération entre les séries (distincte de la récup intra-série) a été précisée dans le contenu généré.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
