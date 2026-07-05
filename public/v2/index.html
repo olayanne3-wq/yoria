@@ -1425,14 +1425,14 @@ function resoudreSousType(sousType, restrictionsAllure) {
  * Génère la structure concrète d'une séance qualité (texte affichable).
  * alluresSec : allures en secondes/km (sortie de computeAllures, avant formatage)
  */
-function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure, tauxAffutage = 1 }) {
+function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure, tauxAffutage = 1, estDechargeSemaine = false }) {
   const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
   if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)', kmEstime: 0 };
 
   const sousTypeBrut = rotation[(semaineDansPhase + indexQualiteSemaine) % rotation.length];
   const sousType = resoudreSousType(sousTypeBrut, restrictionsAllure);
 
-  const T = alluresSec.T, I = alluresSec.I, V = alluresSec.V, C = alluresSec.C;
+  const T = alluresSec.T, I = alluresSec.I, V = alluresSec.V, C = alluresSec.C, E = alluresSec.E;
   // km à partir d'une durée en minutes à une allure donnée (sec/km)
   const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
 
@@ -1444,65 +1444,95 @@ function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualite
   const ajuster = (valeur, floor) =>
     phase === 'Affutage' ? Math.max(floor, Math.round(valeur * tauxAffutage)) : valeur;
 
+  let contenuCorps, kmCorps;
+
   switch (sousType) {
     case 'seuil-court': {
       const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
-      const kmEstime = kmDepuisMinutes(reps * 6, T);
-      return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 6, T);
+      contenuCorps = `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`;
+      break;
     }
     case 'seuil': {
       const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
-      const kmEstime = kmDepuisMinutes(reps * 8, T);
-      return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 8, T);
+      contenuCorps = `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`;
+      break;
     }
     case 'i-30-30': {
       const series = ajuster(reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase), 1);
-      // 8×30s effort par série ; on ignore les 30s de récup (approximation assumée)
-      const kmEstime = kmDepuisMinutes(series * 8 * 0.5, I);
-      return { sousType, contenu: `${series}×8×30s-30s @ ${formatPace(I)} (VMA)`, kmEstime };
+      // 8×30s effort par série ; on ignore les 30s de récup intra-série dans
+      // l'estimation km (approximation assumée) ; récup inter-séries fixée à 3min
+      kmCorps = kmDepuisMinutes(series * 8 * 0.5, I);
+      contenuCorps = `${series} séries de 8×30s-30s @ ${formatPace(I)} (VMA), récup 3min entre les séries`;
+      break;
     }
     case 'i-3min': {
       const reps = ajuster(reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase), 2);
-      const kmEstime = kmDepuisMinutes(reps * 3, I);
-      return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 3, I);
+      contenuCorps = `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`;
+      break;
     }
     case 'vitesse': {
       const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
-      const kmEstime = reps * 0.3; // distance directement connue (300m)
-      return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`, kmEstime };
+      kmCorps = reps * 0.3; // distance directement connue (300m)
+      contenuCorps = `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`;
+      break;
     }
     case 'cotes': {
       const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
-      const kmEstime = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
-      return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
+      contenuCorps = `${reps}×30s en côte (effort soutenu), récupération trot`;
+      break;
     }
     case 'allure-course': {
       const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
-      const kmEstime = kmDepuisMinutes(reps * 5, C);
-      return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 5, C);
+      contenuCorps = `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`;
+      break;
     }
     case 'allure-course-court': {
       const reps = ajuster(reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase), 1);
-      const kmEstime = kmDepuisMinutes(reps * 3, C);
-      return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 3, C);
+      contenuCorps = `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`;
+      break;
     }
     case 'tempo-court': {
       const duree = ajuster(reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase), 10);
-      const kmEstime = kmDepuisMinutes(duree, T);
-      return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)`, kmEstime };
+      kmCorps = kmDepuisMinutes(duree, T);
+      contenuCorps = `${duree}min continu @ ${formatPace(T)} (Seuil léger)`;
+      break;
     }
     case 'fartlek': {
       const reps = ajuster(reduireSelonNiveauProgression(4, 1, 8, semaineDansPhase), 3);
       // Portions rapides comptées à l'allure T, portions faciles ignorées dans
       // l'estimation km (approximation assumée, comme pour i-30-30)
-      const kmEstime = kmDepuisMinutes(reps * 2, T);
-      return { sousType, contenu: `${reps}×2min rapide (${formatPace(T)}) / 2min facile, en continu (fartlek)`, kmEstime };
+      kmCorps = kmDepuisMinutes(reps * 2, T);
+      contenuCorps = `${reps}×2min rapide (${formatPace(T)}) / 2min facile, en continu (fartlek)`;
+      break;
     }
     default: {
-      const kmEstime = kmDepuisMinutes(24, T);
-      return { sousType: 'seuil', contenu: `3×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
+      kmCorps = kmDepuisMinutes(24, T);
+      contenuCorps = `3×8min @ ${formatPace(T)} (Seuil), récup 2min`;
     }
   }
+
+  // Échauffement et retour au calme : réels, comptent dans le volume du jour
+  // (donc dans le volume hebdo — repartirVolumeSemaine s'ajuste automatiquement
+  // en conséquence, aucune logique supplémentaire nécessaire ailleurs)
+  // Réduction proportionnelle pendant décharge/Affûtage, comme pour le corps
+  // de séance — sans ça, l'échauffement+RAC (coût fixe) prend une part
+  // disproportionnée du budget sur une semaine déjà réduite (trouvé en usage réel)
+  const facteurReduction = estDechargeSemaine ? 0.75 : (phase === 'Affutage' ? tauxAffutage : 1);
+  const DUREE_ECHAUFFEMENT_MIN = Math.max(8, Math.round(15 * facteurReduction));
+  const DUREE_RETOUR_CALME_MIN = Math.max(5, Math.round(10 * facteurReduction));
+  const kmEchauffement = kmDepuisMinutes(DUREE_ECHAUFFEMENT_MIN, E);
+  const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
+  const kmEstime = kmCorps + kmEchauffement + kmRetourCalme;
+
+  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${contenuCorps} + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
+
+  return { sousType, contenu, kmEstime };
 }
 
 // Durée max raisonnable par séance, au-delà de laquelle on plafonne plutôt que
@@ -1701,6 +1731,7 @@ function generatePlan(profil, params) {
       // 1ère passe : générer les séances qualité et cumuler leur km estimé
       let kmQualiteTotal = 0;
       const tauxAffutageSemaine = volumesParSemaine[semaineGlobale - 1]?.fractionPic ?? 1;
+      const dechargeSemaine = volumesParSemaine[semaineGlobale - 1]?.estDecharge ?? false;
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'qualite') {
           const { sousType, contenu, kmEstime } = genererContenuQualite({
@@ -1710,7 +1741,8 @@ function generatePlan(profil, params) {
             indexQualiteSemaine: seance.indexQualite ?? 0,
             alluresSec: allSeconds,
             restrictionsAllure: seance.restrictionsAllure,
-            tauxAffutage: tauxAffutageSemaine
+            tauxAffutage: tauxAffutageSemaine,
+            estDechargeSemaine: dechargeSemaine
           });
           seance.sousType = sousType;
           seance.contenu = contenu;
