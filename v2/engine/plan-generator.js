@@ -230,7 +230,8 @@ export function computeVolumeProgression({ volumeDepart, distance, niveau, total
         semaine: semainesProgression + j + 1,
         volumeKm: Math.round(picVolume * frac * 10) / 10,
         estDecharge: false,
-        estAffutage: true
+        estAffutage: true,
+        fractionPic: frac
       });
     });
   }
@@ -511,7 +512,7 @@ function resoudreSousType(sousType, restrictionsAllure) {
  * Génère la structure concrète d'une séance qualité (texte affichable).
  * alluresSec : allures en secondes/km (sortie de computeAllures, avant formatage)
  */
-export function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure }) {
+export function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure, tauxAffutage = 1 }) {
   const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
   if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)', kmEstime: 0 };
 
@@ -522,55 +523,63 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
   // km à partir d'une durée en minutes à une allure donnée (sec/km)
   const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
 
+  // Pendant l'Affûtage, les répétitions/durée se réduisent proportionnellement
+  // au taper (même fraction que le volume hebdo, section 6/18), avec un
+  // plancher minimum pour garder un vrai stimulus — sans ça, les séances
+  // qualité gardaient presque leur volume de Spécifique alors que le reste
+  // de la semaine se réduisait, écrasant les EF (trouvé en usage réel).
+  const ajuster = (valeur, floor) =>
+    phase === 'Affutage' ? Math.max(floor, Math.round(valeur * tauxAffutage)) : valeur;
+
   switch (sousType) {
     case 'seuil-court': {
-      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
       const kmEstime = kmDepuisMinutes(reps * 6, T);
       return { sousType, contenu: `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`, kmEstime };
     }
     case 'seuil': {
-      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
       const kmEstime = kmDepuisMinutes(reps * 8, T);
       return { sousType, contenu: `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`, kmEstime };
     }
     case 'i-30-30': {
-      const series = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      const series = ajuster(reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase), 1);
       // 8×30″ effort par série ; on ignore les 30″ de récup (approximation assumée)
       const kmEstime = kmDepuisMinutes(series * 8 * 0.5, I);
       return { sousType, contenu: `${series}×8×30″-30″ @ ${formatPace(I)} (VMA)`, kmEstime };
     }
     case 'i-3min': {
-      const reps = reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase), 2);
       const kmEstime = kmDepuisMinutes(reps * 3, I);
       return { sousType, contenu: `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`, kmEstime };
     }
     case 'vitesse': {
-      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
       const kmEstime = reps * 0.3; // distance directement connue (300m)
       return { sousType, contenu: `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`, kmEstime };
     }
     case 'cotes': {
-      const reps = reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
       const kmEstime = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
       return { sousType, contenu: `${reps}×30s en côte (effort soutenu), récupération trot`, kmEstime };
     }
     case 'allure-course': {
-      const reps = reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
       const kmEstime = kmDepuisMinutes(reps * 5, C);
       return { sousType, contenu: `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
     }
     case 'allure-course-court': {
-      const reps = reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase), 1);
       const kmEstime = kmDepuisMinutes(reps * 3, C);
       return { sousType, contenu: `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`, kmEstime };
     }
     case 'tempo-court': {
-      const duree = reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase);
+      const duree = ajuster(reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase), 10);
       const kmEstime = kmDepuisMinutes(duree, T);
       return { sousType, contenu: `${duree}min continu @ ${formatPace(T)} (Seuil léger)`, kmEstime };
     }
     case 'fartlek': {
-      const reps = reduireSelonNiveauProgression(4, 1, 8, semaineDansPhase);
+      const reps = ajuster(reduireSelonNiveauProgression(4, 1, 8, semaineDansPhase), 3);
       // Portions rapides comptées à l'allure T, portions faciles ignorées dans
       // l'estimation km (approximation assumée, comme pour i-30-30)
       const kmEstime = kmDepuisMinutes(reps * 2, T);
@@ -778,6 +787,7 @@ export function generatePlan(profil, params) {
       // Contenu concret de chaque séance (section 2 — bibliothèque)
       // 1ère passe : générer les séances qualité et cumuler leur km estimé
       let kmQualiteTotal = 0;
+      const tauxAffutageSemaine = volumesParSemaine[semaineGlobale - 1]?.fractionPic ?? 1;
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'qualite') {
           const { sousType, contenu, kmEstime } = genererContenuQualite({
@@ -786,7 +796,8 @@ export function generatePlan(profil, params) {
             semaineDansPhase: i,
             indexQualiteSemaine: seance.indexQualite ?? 0,
             alluresSec: allSeconds,
-            restrictionsAllure: seance.restrictionsAllure
+            restrictionsAllure: seance.restrictionsAllure,
+            tauxAffutage: tauxAffutageSemaine
           });
           seance.sousType = sousType;
           seance.contenu = contenu;
