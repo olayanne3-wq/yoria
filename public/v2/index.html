@@ -39,6 +39,12 @@
   .badge.longue{ background:var(--longue-soft); color:var(--longue); }
   .badge.repos{ background:transparent; color:rgba(238,240,234,0.35); font-weight:500; }
   .badge .tag{ font-family:'JetBrains Mono',monospace; font-size:10px; opacity:.8; }
+  .statut-tag{
+    cursor:pointer; font-size:15px; margin-left:8px;
+    padding:2px 4px; border-radius:6px;
+    transition:background .15s;
+  }
+  .statut-tag:active{ background:rgba(238,240,234,0.15); }
   .day-detail{
     font-size:11.5px; color:rgba(238,240,234,0.5);
     margin-top:4px; padding-left:2px; line-height:1.4;
@@ -2159,56 +2165,82 @@ function generatePlan(profil, params) {
       return `<div class="bib-row"><span class="k">${labelsZones[zone] ?? zone}</span><span><span class="v accent">${val}</span>${fcHtml}</span></div>`;
     }).join('');
 
-    const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-
-    // Jour de la semaine (0=Lun...6=Dim) où tombe la course, pour le marquer
-    // sur la toute dernière semaine du plan affiché
-    const jsDay = new Date(plan.dateCourse).getDay(); // 0=Dim...6=Sam (convention JS)
-    const jourCourseIndex = (jsDay + 6) % 7;
-    const derniereSemaineNum = plan.semaines.length ? plan.semaines[plan.semaines.length - 1].semaineNum : null;
-
-    function renderSemaineHtml(semaine) {
-      const estDerniereSemaine = semaine.semaineNum === derniereSemaineNum;
-      const rows = dayNames.map((d, i) => {
-        if (estDerniereSemaine && i === jourCourseIndex) {
-          return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge longue"><span>🏁 Jour J — Course !</span></div></div></div>`;
-        }
-        const a = semaine.assignment[i];
-        let badgeClass, label, detail = '';
-        if (!a) { badgeClass = 'repos'; label = 'Repos'; }
-        else if (a.type === 'longue') { badgeClass = 'longue'; label = 'Sortie longue'; detail = a.contenu; }
-        else if (a.type === 'qualite') {
-          badgeClass = 'qualite'; label = 'Qualité'; detail = a.contenu;
-          const r = a.restrictionsAllure;
-          if (r) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
-        }
-        else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; }
-        else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos' + (a.renfo ? ' <span class="tag">+ RENFO</span>' : ''); }
-        const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
-        return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span></div>${detailHtml}</div></div>`;
-      }).join('');
-
-      const dechargeTag = semaine.estDechargeSemaine ? '<span class="decharge-tag">décharge</span>' : '';
-      const header = `<div class="semaine-header"><span>Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km</span>${dechargeTag}</div>`;
-      return `${header}<div class="week">${rows}</div>`;
-    }
-
-    const planDiv = document.getElementById('resPlanComplet');
-    let html = '';
-    let dernierePhase = null;
-    plan.semaines.forEach(semaine => {
-      if (semaine.phase !== dernierePhase) {
-        html += `<div class="phase-header">${semaine.phase}</div>`;
-        dernierePhase = semaine.phase;
-      }
-      html += renderSemaineHtml(semaine);
-    });
-    planDiv.innerHTML = html;
+    rafraichirPlanComplet();
 
     const warnDiv = document.getElementById('resWarnings');
     warnDiv.innerHTML = plan.warnings.map(w =>
       `<div class="flag" style="margin-top:10px;"><span class="ico">⚠️</span><span>${w.message}</span></div>`
     ).join('') || '<div class="flag" style="margin-top:10px;"><span class="ico">✅</span><span>Aucun avertissement.</span></div>';
+  }
+
+  const DAY_NAMES_COURT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+
+  function renderSemaineHtml(semaine, jourCourseIndex, derniereSemaineNum) {
+    const estDerniereSemaine = semaine.semaineNum === derniereSemaineNum;
+    const rows = DAY_NAMES_COURT.map((d, i) => {
+      if (estDerniereSemaine && i === jourCourseIndex) {
+        return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge longue"><span>🏁 Jour J — Course !</span></div></div></div>`;
+      }
+      const a = semaine.assignment[i];
+      let badgeClass, label, detail = '';
+      let suivable = false;
+      if (!a) { badgeClass = 'repos'; label = 'Repos'; }
+      else if (a.type === 'longue') { badgeClass = 'longue'; label = 'Sortie longue'; detail = a.contenu; suivable = true; }
+      else if (a.type === 'qualite') {
+        badgeClass = 'qualite'; label = 'Qualité'; detail = a.contenu; suivable = true;
+        const r = a.restrictionsAllure;
+        if (r) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
+      }
+      else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; suivable = true; }
+      else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos' + (a.renfo ? ' <span class="tag">+ RENFO</span>' : ''); }
+      const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
+
+      const uid = `${semaine.semaineNum}-${i}`;
+      const statut = dernierPlanGenere?.statuses?.[uid];
+      const ICONES_STATUT = { reussie: '✅', adaptee: '⚠️', ratee: '❌' };
+      const statutHtml = suivable
+        ? `<span class="statut-tag" onclick="cycleStatutSeance('${uid}')" title="Cliquer pour marquer réussie/adaptée/ratée">${ICONES_STATUT[statut] ?? '⬜'}</span>`
+        : '';
+
+      return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span>${statutHtml}</div>${detailHtml}</div></div>`;
+    }).join('');
+
+    const dechargeTag = semaine.estDechargeSemaine ? '<span class="decharge-tag">décharge</span>' : '';
+    const header = `<div class="semaine-header"><span>Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km</span>${dechargeTag}</div>`;
+    return `${header}<div class="week">${rows}</div>`;
+  }
+
+  function rafraichirPlanComplet() {
+    if (!dernierPlanGenere) return;
+    const jsDay = new Date(dernierPlanGenere.dateCourse).getDay();
+    const jourCourseIndex = (jsDay + 6) % 7;
+    const derniereSemaineNum = dernierPlanGenere.semaines.length
+      ? dernierPlanGenere.semaines[dernierPlanGenere.semaines.length - 1].semaineNum
+      : null;
+
+    const planDiv = document.getElementById('resPlanComplet');
+    let html = '';
+    let dernierePhaseLoc = null;
+    dernierPlanGenere.semaines.forEach(semaine => {
+      if (semaine.phase !== dernierePhaseLoc) {
+        html += `<div class="phase-header">${semaine.phase}</div>`;
+        dernierePhaseLoc = semaine.phase;
+      }
+      html += renderSemaineHtml(semaine, jourCourseIndex, derniereSemaineNum);
+    });
+    planDiv.innerHTML = html;
+  }
+
+  function cycleStatutSeance(uid) {
+    if (!dernierPlanGenere) return;
+    dernierPlanGenere.statuses = dernierPlanGenere.statuses || {};
+    const ORDRE = [undefined, 'reussie', 'adaptee', 'ratee'];
+    const actuel = dernierPlanGenere.statuses[uid];
+    const indexActuel = ORDRE.indexOf(actuel);
+    const suivant = ORDRE[(indexActuel + 1) % ORDRE.length];
+    if (suivant === undefined) delete dernierPlanGenere.statuses[uid];
+    else dernierPlanGenere.statuses[uid] = suivant;
+    rafraichirPlanComplet();
   }
 
   let showingResults = false;
@@ -2264,7 +2296,12 @@ function generatePlan(profil, params) {
     }
     const plansExistants = await chargerPlans();
     const nouveauPlan = { ...plan, sauvegardeLe: new Date().toISOString() };
-    const plans = [...plansExistants, nouveauPlan];
+    // Remplace le plan existant (même id) plutôt que d'en créer un doublon —
+    // nécessaire pour que le suivi de complétion se mette à jour en place
+    const indexExistant = plansExistants.findIndex(p => p.id === plan.id);
+    const plans = indexExistant >= 0
+      ? plansExistants.map((p, i) => i === indexExistant ? nouveauPlan : p)
+      : [...plansExistants, nouveauPlan];
 
     const body = {
       description: 'Run by Léa v2 — plans sauvegardés',
@@ -2489,6 +2526,8 @@ function generatePlan(profil, params) {
       console.error(err);
       return;
     }
+    plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-' + Date.now());
+    plan.statuses = plan.statuses || {};
     dernierPlanGenere = plan;
     renderResults(plan);
     showingResults = true;
