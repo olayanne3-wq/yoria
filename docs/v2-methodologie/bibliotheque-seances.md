@@ -494,6 +494,16 @@ Troisième brique du chantier persistance/suivi. Au chargement de `/v2`, si un t
 
 Avec cette brique, les trois fondations du chantier "adaptation du plan" sont posées : persistance (27), suivi de complétion (28), rappel (29). **La partie la plus intéressante — les vraies règles d'adaptation selon les résultats — reste entièrement à faire.**
 
+## 30. Renommage et suppression des plans sauvegardés
+
+Complète la brique de rappel (section 29) : chaque plan peut maintenant être **nommé** (champ optionnel au moment de la sauvegarde, ou icône ✏️ pour renommer après coup) et **supprimé** (icône 🗑️, avec confirmation).
+
+Point important sur l'implémentation : les trois opérations (sauvegarder, renommer, supprimer) partagent désormais une seule fonction d'écriture (`ecrireListePlans`), qui fait toujours un **PATCH** sur le Gist existant — jamais un DELETE du Gist lui-même. Supprimer un plan retire seulement son entrée de la liste stockée dans le Gist ; le Gist continue d'exister avec les autres plans dedans. Les identifications se font par `id` (pas par index de tableau), pour rester correctes même après une suppression qui décale les positions.
+
+## 31. Correctif — migration automatique des plans sauvegardés sans id
+
+Un plan sauvegardé avant l'ajout de l'identifiant (section 28) n'en avait pas, rendant renommer/supprimer impossibles pour lui spécifiquement (rien à quoi les boutons puissent s'accrocher). Corrigé par une migration automatique : au chargement (`chargerPlans`), tout plan sans `id` en reçoit un immédiatement, et la liste complète est réécrite dans le Gist — transparent, pas d'action manuelle nécessaire.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
