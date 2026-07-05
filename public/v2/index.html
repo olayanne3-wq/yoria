@@ -886,6 +886,23 @@
         <div class="bib-row"><span class="k">Zone FC</span><span class="v" id="resFcMax">—</span></div>
       </div>
 
+      <div style="margin-top:14px;">
+        <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleModifierObjectif()">✏️ Modifier l'objectif de ce plan</span>
+        <div id="blocModifierObjectif" style="display:none; margin-top:10px;">
+          <div class="date-field">
+            <input type="text" id="nouvelObjectifInput" placeholder="Nouveau temps visé (ex. 47:30)">
+          </div>
+          <button class="btn-mini" style="margin-top:8px;" onclick="regenererAvecNouvelObjectif()">Régénérer avec ce nouvel objectif</button>
+          <div id="modifierObjectifMsg" style="margin-top:6px; font-size:13px;"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button class="btn-mini" style="border-color:var(--pace); color:var(--pace);" onclick="lancerAnalyseAdaptation()">🔄 Analyser les résultats et adapter le plan</button>
+        <p class="sub" style="margin-top:6px; font-size:12px;">Réduit automatiquement la semaine suivante quand plusieurs séances dures ont été ratées/adaptées — jamais sur une séance isolée, jamais un changement d'objectif.</p>
+        <div id="adaptationMsg" style="margin-top:6px; font-size:13px;"></div>
+      </div>
+
       <div class="block-label" style="margin-top:20px;">Allures et FC par zone</div>
       <div class="bib" id="resAllures"></div>
 
@@ -1880,6 +1897,190 @@ function generatePlan(profil, params) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Section 33 — Règles d'adaptation du plan selon les résultats réels
+// ---------------------------------------------------------------------------
+
+const POIDS_STATUT = { ratee: 1, adaptee: 0.5, reussie: 0 };
+
+/**
+ * Score d'une semaine à partir des statuts des séances dures (qualité +
+ * longue uniquement — les EF ne comptent pas, cohérent avec la priorité
+ * "rattraper les séances clés" trouvée dans la littérature). Retourne null
+ * si aucune séance dure de cette semaine n'a de statut enregistré (semaine
+ * pas encore vécue, ou pas suivie) — distingué de 0 (tout réussi).
+ */
+function calculerScoreSemaine(semaine, statuses) {
+  let score = 0;
+  let auMoinsUnStatut = false;
+  for (const [jour, seance] of Object.entries(semaine.assignment)) {
+    if (seance.type !== 'qualite' && seance.type !== 'longue') continue;
+    const uid = `${semaine.semaineNum}-${jour}`;
+    const statut = statuses?.[uid];
+    if (statut) {
+      auMoinsUnStatut = true;
+      score += POIDS_STATUT[statut] ?? 0;
+    }
+  }
+  return auMoinsUnStatut ? score : null;
+}
+
+/**
+ * Analyse le plan et détermine quelles semaines doivent être adaptées
+ * (décharge supplémentaire) suite aux résultats de la semaine précédente.
+ * Règle : score ≥ 2 sur les séances dures d'une semaine déclenche une
+ * adaptation pour la semaine SUIVANTE. Compte aussi les déclenchements
+ * consécutifs, pour le garde-fou "plan probablement trop ambitieux".
+ */
+function analyserAdaptations(plan) {
+  const semainesAAdapter = new Map(); // semaineNum -> { dejaDecharge }
+  let consecutives = 0;
+  let maxConsecutives = 0;
+
+  const semainesTriees = [...plan.semaines].sort((a, b) => a.semaineNum - b.semaineNum);
+
+  for (const semaine of semainesTriees) {
+    const score = calculerScoreSemaine(semaine, plan.statuses);
+    if (score === null) { consecutives = 0; continue; } // semaine pas suivie, rien à en déduire
+
+    const declenche = score >= 2;
+    if (declenche) {
+      const suivante = semainesTriees.find(s => s.semaineNum === semaine.semaineNum + 1);
+      if (suivante) semainesAAdapter.set(suivante.semaineNum, { dejaDecharge: suivante.estDechargeSemaine });
+      consecutives += 1;
+      maxConsecutives = Math.max(maxConsecutives, consecutives);
+    } else {
+      consecutives = 0;
+    }
+  }
+
+  return { semainesAAdapter, adaptationsConsecutivesMax: maxConsecutives };
+}
+
+/**
+ * Applique les adaptations déterminées par analyserAdaptations : régénère le
+ * contenu des semaines concernées (volume et séances qualité réduits, même
+ * mécanique que la décharge classique — sections 22/26), sans cumul si la
+ * semaine était déjà une décharge programmée (la décharge programmée absorbe
+ * l'adaptation, section 33). Mute le plan en place et retourne les
+ * avertissements générés (à fusionner avec plan.warnings par l'appelant).
+ */
+function appliquerAdaptations(plan) {
+  const { semainesAAdapter, adaptationsConsecutivesMax } = analyserAdaptations(plan);
+  const nouveauxWarnings = [];
+
+  if (semainesAAdapter.size === 0) return nouveauxWarnings;
+
+  // Les plans sauvegardés avant l'ajout de profilOrigine/paramsOrigine (section
+  // 32) n'ont pas ces données — impossible de régénérer du contenu sans elles.
+  if (!plan.paramsOrigine || !plan.profilOrigine) {
+    nouveauxWarnings.push({
+      code: 'ADAPTATION_IMPOSSIBLE',
+      message: "Ce plan a été sauvegardé avant l'ajout du suivi d'adaptation et ne peut pas être adapté automatiquement — regénère-le depuis le wizard pour bénéficier de cette fonctionnalité."
+    });
+    return nouveauxWarnings;
+  }
+
+  const alluresSec = computeAllures({
+    refTimeSeconds: parseTimeToSeconds(plan.paramsOrigine.tempsReference),
+    refDistanceKm: KM_BY_DISTANCE[plan.paramsOrigine.refDistance ?? plan.paramsOrigine.distance],
+    objectifTimeSeconds: parseTimeToSeconds(plan.paramsOrigine.objectif),
+    distanceCibleKm: KM_BY_DISTANCE[plan.paramsOrigine.distance]
+  });
+
+  // Bornes de chaque phase (en numéros de semaine), pour retrouver
+  // semaineDansPhase à partir du seul semaineNum
+  let curseur = 0;
+  const bornesPhases = plan.phases.map(p => {
+    const debut = curseur;
+    curseur += p.semaines;
+    return { nom: p.nom, debut, fin: curseur };
+  });
+
+  for (const [semaineNum, { dejaDecharge }] of semainesAAdapter.entries()) {
+    const semaine = plan.semaines.find(s => s.semaineNum === semaineNum);
+    if (!semaine) continue;
+
+    if (dejaDecharge) {
+      semaine.estAdaptee = true;
+      nouveauxWarnings.push({
+        code: 'ADAPTATION_ABSORBEE',
+        message: `S${semaineNum} : adaptation suite aux résultats de la semaine précédente, absorbée par la décharge déjà programmée (pas de réduction supplémentaire).`
+      });
+      continue;
+    }
+
+    const phaseInfo = bornesPhases.find(b => b.nom === semaine.phase && semaineNum > b.debut && semaineNum <= b.fin);
+    const semaineDansPhase = phaseInfo ? semaineNum - phaseInfo.debut - 1 : 0;
+
+    const nouveauVolume = Math.round(semaine.volumeCibleKm * 0.75 * 10) / 10;
+    let kmQualiteTotal = 0;
+
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'qualite') continue;
+      const { sousType, contenu, kmEstime } = genererContenuQualite({
+        distance: plan.paramsOrigine.distance,
+        phase: semaine.phase,
+        semaineDansPhase,
+        indexQualiteSemaine: seance.indexQualite ?? 0,
+        alluresSec,
+        restrictionsAllure: seance.restrictionsAllure,
+        tauxAffutage: 1,
+        estDechargeSemaine: true // réutilise le même levier de réduction (facteur 0.75, sections 22/26)
+      });
+      seance.sousType = sousType;
+      seance.contenu = contenu;
+      seance.kmEstime = kmEstime;
+      kmQualiteTotal += kmEstime;
+    }
+
+    const nbEF = Object.values(semaine.assignment).filter(s => s.type === 'ef').length;
+    const aLongue = Object.values(semaine.assignment).some(s => s.type === 'longue');
+    const { kmLongue, kmParEF } = repartirVolumeSemaine({
+      volumeCibleKm: nouveauVolume,
+      kmQualiteTotal,
+      nbEF,
+      aLongue
+    });
+
+    const roleParJourEF = differencierEF({ assignment: semaine.assignment, kmParEF });
+    for (const [jour, seance] of Object.entries(semaine.assignment)) {
+      if (seance.type === 'ef') {
+        const { role, kmCible } = roleParJourEF[jour] ?? { role: 'standard', kmCible: kmParEF };
+        const { contenu, kmEstime } = genererContenuEF({ alluresSec, kmCible, role });
+        seance.contenu = contenu;
+        seance.kmEstime = kmEstime;
+        seance.role = role;
+      } else if (seance.type === 'longue') {
+        const { contenu, kmEstime } = genererContenuLongue({
+          distance: plan.paramsOrigine.distance,
+          phase: semaine.phase,
+          alluresSec,
+          kmCible: kmLongue
+        });
+        seance.contenu = contenu;
+        seance.kmEstime = kmEstime;
+      }
+    }
+
+    semaine.volumeCibleKm = nouveauVolume;
+    semaine.estAdaptee = true;
+    nouveauxWarnings.push({
+      code: 'ADAPTATION_APPLIQUEE',
+      message: `S${semaineNum} : décharge d'adaptation (volume réduit à ${nouveauVolume}km) suite à plusieurs séances difficiles la semaine précédente.`
+    });
+  }
+
+  if (adaptationsConsecutivesMax >= 3) {
+    nouveauxWarnings.push({
+      code: 'ADAPTATIONS_REPETEES',
+      message: `${adaptationsConsecutivesMax} semaines d'affilée avec des séances difficiles — le plan actuel semble trop ambitieux compte tenu de ta disponibilité réelle. Envisage de revoir ton objectif ou la durée du plan plutôt que de continuer à enchaîner les adaptations.`
+    });
+  }
+
+  return nouveauxWarnings;
+}
+
   // === Fin moteur ===
 </script>
 
@@ -2211,7 +2412,8 @@ function generatePlan(profil, params) {
     }).join('');
 
     const dechargeTag = semaine.estDechargeSemaine ? '<span class="decharge-tag">décharge</span>' : '';
-    const header = `<div class="semaine-header"><span>Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km</span>${dechargeTag}</div>`;
+    const adapteeTag = semaine.estAdaptee ? '<span class="decharge-tag" style="color:var(--pace);">adaptée</span>' : '';
+    const header = `<div class="semaine-header"><span>Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km</span>${dechargeTag}${adapteeTag}</div>`;
     return `${header}<div class="week">${rows}</div>`;
   }
 
@@ -2442,6 +2644,107 @@ function generatePlan(profil, params) {
     window.__plansSauvegardes = plans;
   }
 
+  function toggleModifierObjectif() {
+    const bloc = document.getElementById('blocModifierObjectif');
+    if (!dernierPlanGenere) { alert("Génère ou charge d'abord un plan."); return; }
+    const visible = bloc.style.display !== 'none';
+    bloc.style.display = visible ? 'none' : 'block';
+    if (!visible) {
+      document.getElementById('nouvelObjectifInput').value = dernierPlanGenere.paramsOrigine?.objectif ?? dernierPlanGenere.objectif ?? '';
+      document.getElementById('modifierObjectifMsg').textContent = '';
+    }
+  }
+
+  async function lancerAnalyseAdaptation() {
+    const msgEl = document.getElementById('adaptationMsg');
+    if (!dernierPlanGenere) { msgEl.textContent = "Génère d'abord un plan."; msgEl.style.color = 'var(--signal)'; return; }
+
+    const nouveauxWarnings = appliquerAdaptations(dernierPlanGenere);
+    if (nouveauxWarnings.length === 0) {
+      msgEl.textContent = 'Rien à adapter pour l\'instant (pas assez de séances difficiles enregistrées).';
+      msgEl.style.color = 'rgba(238,240,234,0.5)';
+      return;
+    }
+
+    // Fusionner avec les avertissements existants (sans dupliquer si on relance l'analyse)
+    const codesExistants = new Set(dernierPlanGenere.warnings.map(w => w.code + w.message));
+    nouveauxWarnings.forEach(w => {
+      if (!codesExistants.has(w.code + w.message)) dernierPlanGenere.warnings.push(w);
+    });
+
+    renderResults(dernierPlanGenere);
+    msgEl.textContent = `✅ Analyse effectuée — ${nouveauxWarnings.length} changement(s), voir le détail dans les avertissements et le plan complet ci-dessous.`;
+    msgEl.style.color = 'var(--pace)';
+
+    if (getGithubToken()) {
+      try {
+        await sauvegarderPlan(dernierPlanGenere);
+        await afficherPlansSauvegardes();
+      } catch (e) {
+        console.warn('Re-sauvegarde après adaptation échouée :', e.message);
+      }
+    }
+  }
+
+  async function regenererAvecNouvelObjectif() {
+    const msgEl = document.getElementById('modifierObjectifMsg');
+    const plan = dernierPlanGenere;
+    if (!plan) return;
+
+    // Les plans sauvegardés avant l'ajout de profilOrigine/paramsOrigine n'ont
+    // pas ces données — impossible de régénérer, il faut le refaire depuis le wizard.
+    if (!plan.profilOrigine || !plan.paramsOrigine) {
+      msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être régénéré directement — repasse par le wizard pour en créer un nouveau avec le nouvel objectif.";
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouvelObjectif = document.getElementById('nouvelObjectifInput').value.trim();
+    if (!nouvelObjectif) {
+      msgEl.textContent = 'Renseigne un nouveau temps visé.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouveauxParams = { ...plan.paramsOrigine, objectif: nouvelObjectif };
+    let nouveauPlan;
+    try {
+      nouveauPlan = generatePlan(plan.profilOrigine, nouveauxParams);
+    } catch (e) {
+      msgEl.textContent = 'Erreur de génération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    // Garder le même id (mise à jour en place si sauvegardé, pas de doublon),
+    // le nom éventuel, et repartir d'un suivi de complétion vierge — les
+    // statuts de l'ancien objectif n'ont plus vraiment de sens sur un plan
+    // dont les séances ont pu changer.
+    nouveauPlan.id = plan.id;
+    nouveauPlan.nom = plan.nom;
+    nouveauPlan.statuses = {};
+    nouveauPlan.profilOrigine = plan.profilOrigine;
+    nouveauPlan.paramsOrigine = nouveauxParams;
+
+    dernierPlanGenere = nouveauPlan;
+    renderResults(nouveauPlan);
+    document.getElementById('blocModifierObjectif').style.display = 'none';
+    msgEl.textContent = '';
+
+    // Re-sauvegarder automatiquement si un token est déjà connu, pour éviter
+    // d'avoir l'ancien objectif qui traîne dans le Gist
+    if (getGithubToken()) {
+      try {
+        await sauvegarderPlan(nouveauPlan);
+        document.getElementById('sauvegardeMsg').textContent = '✅ Plan mis à jour et sauvegardé avec le nouvel objectif.';
+        document.getElementById('sauvegardeMsg').style.color = 'var(--pace)';
+        await afficherPlansSauvegardes();
+      } catch (e) {
+        console.warn('Re-sauvegarde automatique échouée :', e.message);
+      }
+    }
+  }
+
   function chargerPlanExistant(id) {
     const plan = window.__plansSauvegardes.find(p => p.id === id);
     if (!plan) return;
@@ -2649,6 +2952,11 @@ function generatePlan(profil, params) {
     }
     plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-' + Date.now());
     plan.statuses = plan.statuses || {};
+    // Conserver les paramètres d'origine (profil + params du wizard) — sans
+    // ça, impossible de régénérer plus tard avec juste l'objectif modifié,
+    // par exemple (trouvé en concevant la modification d'objectif).
+    plan.profilOrigine = profil;
+    plan.paramsOrigine = params;
     dernierPlanGenere = plan;
     renderResults(plan);
     showingResults = true;
