@@ -566,6 +566,33 @@ Trouvé en comparant avec v1 (qui a un vrai type `"TEST"` lié à un système de
 
 Placement (tampon avant Affûtage, plancher si Spécifique trop courte) et implémentation technique (recalcule EF/longue de la semaine, réutilise `repartirVolumeSemaine`/`differencierEF`) inchangés par rapport à la version time trial.
 
+## 37. Correction — même bug de rotation à un seul type, mais en Affûtage cette fois
+
+En repassant systématiquement la table de rotation à la recherche d'autres trous (même bug que la section 17, mais jamais vérifié pour l'Affûtage) : Semi et Marathon n'avaient qu'**un seul type de contenu qualité en Affûtage** (`allure-course-court` seul, `tempo-court` seul). Pour un profil à 2 séances qualité/semaine, les deux devenaient identiques — confirmé concrètement sur un profil confirmé 6j/semaine avant correction.
+
+Corrigé : ajout d'un 2e type par distance — `seuil-court` pour Semi (alterne avec `allure-course-court`), `allure-course-court` pour Marathon (alterne avec `tempo-court`) — réutilise des sous-types déjà implémentés, pas de nouveau contenu à créer.
+
+## 38. Deux nouveaux types de séance — pyramidale et seuil négatif
+
+Ajoutés en phase Spécifique (5K/10K/Semi pour la pyramidale, 10K/Semi/Marathon pour le seuil négatif) pour varier davantage les plans longs, tout en gardant les séances de base largement majoritaires :
+
+- **Pyramidale** : montée-descente 2-3-4-3-2min à allure VMA, récup égale au temps de l'effort — fréquence **1/12** des séances qualité
+- **Seuil négatif** : deux blocs de seuil enchaînés sans récup, le second nettement plus rapide (interpolation 30% vers l'allure VMA) — fréquence **2/12**
+
+Vérifié sur un plan long (10K confirmé, ~9 mois) : fréquences réelles observées ~7% (pyramidale) et ~15% (seuil négatif), cohérentes avec les cibles 1/12 (8,3%) et 2/12 (16,7%).
+
+**Corrigé au passage** : `pyramidale` utilise l'allure VMA (I) mais n'était pas reconnue par le mécanisme de repli existant (section 7, contraintes interdisant certaines allures) — ajoutée à la détection, sinon une contrainte "sans VMA" n'aurait pas déclenché de repli pour cette séance spécifiquement.
+
+Le Marathon n'a volontairement pas reçu la pyramidale (moins pertinente pour cette distance, phase Spécifique plus orientée seuil/allure course qu'intervalles VMA).
+
+## 39. Nettoyage — factorisation du recalcul EF/longue (dupliqué 3 fois)
+
+Le bloc "répartir le volume entre EF et longue puis régénérer leur contenu" était dupliqué à l'identique à trois endroits (génération initiale, `appliquerAdaptations`, `placerSeanceTest`) — même code copié-collé avec de petites variations. Factorisé en une seule fonction `recalculerRepartitionEFLongue`, appelée aux trois endroits.
+
+**Bug secondaire trouvé et corrigé au passage** : les avertissements de plafonnement (`SEANCE_EF_PLAFONNEE`, `SEANCE_LONGUE_PLAFONNEE`) n'étaient remontés que par la génération initiale — `appliquerAdaptations` et `placerSeanceTest` les calculaient bien en interne mais les jetaient silencieusement, sans jamais les ajouter aux avertissements du plan. La factorisation corrige ça naturellement : les trois appelants remontent maintenant les mêmes avertissements de la même façon.
+
+Testé et confirmé : les trois usages (génération, adaptation, séance test) produisent des résultats identiques à avant, et un vrai cas de plafonnement (3 jours/semaine, volume élevé) remonte bien 9 avertissements.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
