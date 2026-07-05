@@ -1110,13 +1110,24 @@ function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaine
   // pour juger si la progression a atteint le plafond, pas la dernière semaine du plan
   const picVolume = peak;
 
-  // Phase Affûtage : vraie réduction progressive (section 1 : -40 à -60% au total),
-  // pas une continuation de la formule de croissance
+  // Phase Affûtage : réduction progressive calibrée par distance (pas une
+  // continuation de la formule de croissance). Sources : réduction de 30-40%
+  // pour un 5K, 35-45% pour un 10K, plus marquée pour semi/marathon — même en
+  // semaine de course, un marathon ne descend que vers -40/-50%, pas -65%
+  // comme l'ancienne formule générique le faisait pour toutes les distances.
+  const FRACTIONS_AFFUTAGE = {
+    '5K':       { debut: 0.80, fin: 0.65 },
+    '10K':      { debut: 0.80, fin: 0.60 },
+    'Semi':     { debut: 0.75, fin: 0.55 },
+    'Marathon': { debut: 0.75, fin: 0.50 }
+  };
+
   if (semainesAffutage > 0) {
+    const { debut, fin } = FRACTIONS_AFFUTAGE[distance] ?? { debut: 0.75, fin: 0.55 };
     const fractions = semainesAffutage === 1
-      ? [0.55]
+      ? [fin]
       : Array.from({ length: semainesAffutage }, (_, j) =>
-          0.75 - (0.40 * j / (semainesAffutage - 1))
+          debut - ((debut - fin) * j / (semainesAffutage - 1))
         );
     fractions.forEach((frac, j) => {
       volumesParSemaine.push({
