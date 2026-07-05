@@ -717,29 +717,38 @@ export function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
 }
 
 // ---------------------------------------------------------------------------
-// Séance test — placement validé (recherche + retour terrain) : vers la fin
-// de Spécifique, avec un tampon de récupération avant le début de l'Affûtage
-// (sources : "tune-up race" 4-8 sem. avant marathon, 3-6 sem. avant semi,
-// 2-5 sem. avant 5K/10K — trop proche et la récupération empiète sur le taper)
+// Séance de confirmation d'allure — placement validé (recherche + retour
+// terrain) : vers la fin de Spécifique, avec un tampon de récupération avant
+// le début de l'Affûtage (sources : "tune-up race" 4-8 sem. avant marathon,
+// 3-6 sem. avant semi, 2-5 sem. avant 5K/10K — trop proche et la récupération
+// empiète sur le taper). Contenu : courir une portion de la distance de
+// course À L'ALLURE OBJECTIF (pas à fond) — principe "goal pace confirmation
+// workout" (McMillan, Hal Higdon) plutôt qu'un time trial à effort maximal :
+// sert à vérifier que l'allure visée est tenable dans la durée, pas à mesurer
+// la forme maximale. Réutilise le même principe que le segment allure course
+// déjà présent en fin de sortie longue pour Semi/Marathon (avecSegmentCourse).
 // ---------------------------------------------------------------------------
 
-// Distance du test (km) — plus courte et standardisée que l'objectif, permet
-// une estimation via Riegel sans avoir à courir la distance de course elle-même
-const TEST_DISTANCE_KM = { '5K': 2, '10K': 3, 'Semi': 5, 'Marathon': 10 };
+// % de la distance de course à courir à l'allure objectif
+const POURCENTAGE_CONFIRMATION_ALLURE = { '5K': 0.60, '10K': 0.55, 'Semi': 0.35, 'Marathon': 0.25 };
 
-// Tampon en semaines à laisser entre le test et le début de l'Affûtage
+// Tampon en semaines à laisser entre la séance et le début de l'Affûtage
 const TAMPON_TEST_SEMAINES = { '5K': 1, '10K': 1, 'Semi': 2, 'Marathon': 2 };
 
 export function genererContenuTest({ distance, alluresSec }) {
-  const distanceTestKm = TEST_DISTANCE_KM[distance] ?? 3;
-  const E = alluresSec.E;
+  const distanceCourseKm = KM_BY_DISTANCE[distance] ?? 10;
+  const pourcentage = POURCENTAGE_CONFIRMATION_ALLURE[distance] ?? 0.5;
+  const distanceTestKm = Math.round(distanceCourseKm * pourcentage * 10) / 10;
+
+  const C = alluresSec.C, E = alluresSec.E;
   const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
   const DUREE_ECHAUFFEMENT_MIN = 15;
   const DUREE_RETOUR_CALME_MIN = 10;
+  const dureeConfirmationMin = Math.round((distanceTestKm * C) / 60);
   const kmEchauffement = kmDepuisMinutes(DUREE_ECHAUFFEMENT_MIN, E);
   const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
   const kmEstime = distanceTestKm + kmEchauffement + kmRetourCalme;
-  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + Test chronométré ${distanceTestKm}km à effort maximal soutenu + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
+  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${dureeConfirmationMin}min à allure course (${formatPace(C)}) — ${distanceTestKm}km, sert à confirmer/recalibrer ton allure objectif + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
   return { sousType: 'test', contenu, kmEstime, distanceTestKm };
 }
 
