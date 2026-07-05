@@ -2943,6 +2943,36 @@ function appliquerAdaptations(plan) {
     const COULEUR_TEXTE = [30, 30, 30];
     let y = marge;
 
+    function formatDateFR(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    // Couleur par type/sous-type de séance, pour un repérage visuel rapide
+    const COULEURS_SEANCE = {
+      longue: [37, 99, 235],           // bleu
+      ef: [107, 114, 128],             // gris neutre
+      repos: [180, 180, 180],          // gris clair
+      seuil: [217, 119, 6],            // orange
+      'seuil-court': [217, 119, 6],
+      'tempo-court': [217, 119, 6],
+      'i-3min': [220, 38, 38],         // rouge (VMA)
+      'i-30-30': [220, 38, 38],
+      vitesse: [147, 51, 234],         // violet
+      'allure-course': [22, 163, 74],  // vert
+      'allure-course-court': [22, 163, 74],
+      test: [22, 163, 74],
+      cotes: [120, 80, 60],            // marron
+      fartlek: [13, 148, 136]          // teal
+    };
+    function couleurSeance(a) {
+      if (!a) return COULEURS_SEANCE.repos;
+      if (a.type === 'longue') return COULEURS_SEANCE.longue;
+      if (a.type === 'ef') return COULEURS_SEANCE.ef;
+      if (a.type === 'qualite') return COULEURS_SEANCE[a.sousType] ?? COULEUR_TEXTE;
+      return COULEURS_SEANCE.repos;
+    }
+
     function sautDeLigne(hauteur) {
       y += hauteur;
       if (y > 297 - marge) { doc.addPage(); y = marge; }
@@ -2974,8 +3004,27 @@ function appliquerAdaptations(plan) {
     doc.text('Run by Léa — Plan d\'entraînement', marge + 18, y + 9);
     y += 18;
     texte(`Distance : ${plan.distance}  |  Objectif : ${plan.objectif}  |  Durée : ${plan.dureeSemaines} semaines`, 10);
-    texte(`Du ${plan.dateDebut} au ${plan.dateCourse}`, 10);
+    texte(`Du ${formatDateFR(plan.dateDebut)} au ${formatDateFR(plan.dateCourse)}`, 10);
     sautDeLigne(3);
+
+    // Légende des couleurs
+    const legendeItems = [
+      ['Longue', COULEURS_SEANCE.longue], ['EF', COULEURS_SEANCE.ef],
+      ['Seuil', COULEURS_SEANCE.seuil], ['VMA', COULEURS_SEANCE['i-3min']],
+      ['Vitesse', COULEURS_SEANCE.vitesse], ['Allure course', COULEURS_SEANCE['allure-course']],
+      ['Côtes/Fartlek', COULEURS_SEANCE.cotes]
+    ];
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'normal');
+    let xLegende = marge;
+    legendeItems.forEach(([label, couleur]) => {
+      doc.setFillColor(couleur[0], couleur[1], couleur[2]);
+      doc.circle(xLegende + 1, y - 1, 1, 'F');
+      doc.setTextColor(60);
+      doc.text(label, xLegende + 3.5, y);
+      xLegende += doc.getTextWidth(label) + 9;
+    });
+    sautDeLigne(6);
 
     // Tableau fusionné allures + zones FC (mêmes zones des deux côtés)
     const labelsZones = { recup: 'Récup', E: 'EF', C: 'Allure course', T: 'Seuil', I: 'VMA', V: 'Vitesse' };
@@ -3028,19 +3077,22 @@ function appliquerAdaptations(plan) {
 
       const lignesJours = [];
       const estCourse = [];
+      const couleursJours = [];
       for (let i = 0; i < 7; i++) {
         if (semaine.semaineNum === derniereSemaineNum && i === jourCourseIndex) {
           lignesJours.push([dayNames[i], 'JOUR J', 'Course !']);
           estCourse.push(lignesJours.length - 1);
+          couleursJours.push(null);
           continue;
         }
         const a = semaine.assignment[i];
-        if (!a) { lignesJours.push([dayNames[i], 'Repos', '']); continue; }
+        if (!a) { lignesJours.push([dayNames[i], 'Repos', '']); couleursJours.push(COULEURS_SEANCE.repos); continue; }
         let label = a.type === 'longue' ? 'Sortie longue'
           : a.type === 'qualite' ? (a.estTest ? 'Test' : 'Qualité')
           : a.type === 'ef' ? 'EF'
           : 'Repos' + (a.renfo ? ' + renfo' : '');
         lignesJours.push([dayNames[i], label, a.contenu ?? '']);
+        couleursJours.push(couleurSeance(a));
       }
 
       doc.autoTable({
@@ -3058,6 +3110,9 @@ function appliquerAdaptations(plan) {
           if (estCourse.includes(data.row.index)) {
             data.cell.styles.fontStyle = 'bold';
             data.cell.styles.textColor = COULEUR_SIGNAL;
+          } else if (data.column.index === 1) {
+            const c = couleursJours[data.row.index];
+            if (c) { data.cell.styles.textColor = c; data.cell.styles.fontStyle = 'bold'; }
           }
         }
       });
