@@ -598,6 +598,7 @@
   .screen.active{ display:block; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <div class="phone">
@@ -2146,6 +2147,8 @@ function generatePlan(profil, params) {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const marge = 15;
     const largeurUtile = 210 - marge * 2;
+    const COULEUR_SIGNAL = [255, 90, 52];
+    const COULEUR_TEXTE = [30, 30, 30];
     let y = marge;
 
     function sautDeLigne(hauteur) {
@@ -2172,11 +2175,22 @@ function generatePlan(profil, params) {
     sautDeLigne(2);
     texte(`Distance : ${plan.distance}  |  Objectif : ${plan.objectif}  |  Durée : ${plan.dureeSemaines} semaines`, 10);
     texte(`Du ${plan.dateDebut} au ${plan.dateCourse}`, 10);
-    sautDeLigne(2);
-    texte('Allures calculées :', 11, true);
-    Object.entries(plan.allures).forEach(([zone, val]) => texte(`  ${zone} : ${val}`, 9.5));
-    if (plan.zoneFC) texte(`  Zone FC max (Tanaka) : ${plan.zoneFC.fcMax} bpm`, 9.5);
-    sautDeLigne(4);
+    sautDeLigne(3);
+
+    // Tableau des allures
+    const lignesAllures = Object.entries(plan.allures).map(([zone, val]) => [zone, val]);
+    if (plan.zoneFC) lignesAllures.push(['Zone FC max (Tanaka)', `${plan.zoneFC.fcMax} bpm`]);
+    doc.autoTable({
+      startY: y,
+      margin: { left: marge, right: marge },
+      head: [['Zone', 'Allure']],
+      body: lignesAllures,
+      theme: 'grid',
+      headStyles: { fillColor: COULEUR_SIGNAL, fontSize: 9 },
+      bodyStyles: { fontSize: 9, textColor: COULEUR_TEXTE },
+      styles: { cellPadding: 2 }
+    });
+    y = doc.lastAutoTable.finalY + 8;
 
     const dayNames = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
     const jsDay = new Date(plan.dateCourse).getDay();
@@ -2187,27 +2201,48 @@ function generatePlan(profil, params) {
     plan.semaines.forEach(semaine => {
       if (semaine.phase !== dernierePhase) {
         sautDeLigne(2);
-        texte(semaine.phase, 13, true, [255, 90, 52]);
+        texte(semaine.phase, 13, true, COULEUR_SIGNAL);
+        y = Math.max(y, marge);
         dernierePhase = semaine.phase;
       }
       const dechargeTxt = semaine.estDechargeSemaine ? ' (décharge)' : '';
       texte(`Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km${dechargeTxt}`, 11, true);
 
+      const lignesJours = [];
+      const estCourse = [];
       for (let i = 0; i < 7; i++) {
         if (semaine.semaineNum === derniereSemaineNum && i === jourCourseIndex) {
-          texte(`  ${dayNames[i]} : 🏁 JOUR J — COURSE !`, 9.5, true, [255, 90, 52]);
+          lignesJours.push([dayNames[i], '🏁 JOUR J', 'Course !']);
+          estCourse.push(lignesJours.length - 1);
           continue;
         }
         const a = semaine.assignment[i];
-        if (!a) { texte(`  ${dayNames[i]} : Repos`, 9.5); continue; }
+        if (!a) { lignesJours.push([dayNames[i], 'Repos', '']); continue; }
         let label = a.type === 'longue' ? 'Sortie longue'
           : a.type === 'qualite' ? 'Qualité'
           : a.type === 'ef' ? 'EF'
-          : 'Repos' + (a.renfo ? ' + renforcement musculaire' : '');
-        const detail = a.contenu ? ` — ${a.contenu}` : '';
-        texte(`  ${dayNames[i]} : ${label}${detail}`, 9.5);
+          : 'Repos' + (a.renfo ? ' + renfo' : '');
+        lignesJours.push([dayNames[i], label, a.contenu ?? '']);
       }
-      sautDeLigne(2);
+
+      doc.autoTable({
+        startY: y,
+        margin: { left: marge, right: marge },
+        head: [['Jour', 'Séance', 'Détail']],
+        body: lignesJours,
+        theme: 'striped',
+        headStyles: { fillColor: [42, 49, 56], fontSize: 8.5 },
+        bodyStyles: { fontSize: 8.5, textColor: COULEUR_TEXTE },
+        columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 30 } },
+        styles: { cellPadding: 1.8 },
+        didParseCell: (data) => {
+          if (estCourse.includes(data.row.index)) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = COULEUR_SIGNAL;
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
     });
 
     if (plan.warnings.length) {
