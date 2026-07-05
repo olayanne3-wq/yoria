@@ -562,13 +562,15 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
   // km à partir d'une durée en minutes à une allure donnée (sec/km)
   const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
 
-  // Pendant l'Affûtage, les répétitions/durée se réduisent proportionnellement
-  // au taper (même fraction que le volume hebdo, section 6/18), avec un
-  // plancher minimum pour garder un vrai stimulus — sans ça, les séances
-  // qualité gardaient presque leur volume de Spécifique alors que le reste
-  // de la semaine se réduisait, écrasant les EF (trouvé en usage réel).
+  // Pendant l'Affûtage OU une semaine de décharge, les répétitions/durée se
+  // réduisent proportionnellement (même fraction que le volume hebdo,
+  // section 6/18/22), avec un plancher minimum pour garder un vrai stimulus —
+  // sans ça, les séances qualité gardaient presque leur volume plein alors que
+  // le reste de la semaine se réduisait, écrasant les EF (trouvé en usage réel,
+  // d'abord sur l'Affûtage puis sur les décharges classiques).
+  const facteurReductionCorps = phase === 'Affutage' ? tauxAffutage : (estDechargeSemaine ? 0.75 : 1);
   const ajuster = (valeur, floor) =>
-    phase === 'Affutage' ? Math.max(floor, Math.round(valeur * tauxAffutage)) : valeur;
+    facteurReductionCorps < 1 ? Math.max(floor, Math.round(valeur * facteurReductionCorps)) : valeur;
 
   let contenuCorps, kmCorps;
 
@@ -741,7 +743,7 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
 
   let warning = null;
   const seanceMinKm = Math.min(aLongue ? kmLongue : Infinity, nbEF > 0 ? kmParEF : Infinity);
-  if (kmRestant > 0 && seanceMinKm < 3) {
+  if (kmRestant > 0 && seanceMinKm < 2) {
     warning = {
       code: 'VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION',
       message: `Volume hebdo restant (${Math.round(kmRestant * 10) / 10}km) trop faible pour des séances EF/longue substantielles.`
@@ -887,7 +889,7 @@ export function generatePlan(profil, params) {
         nbEF,
         aLongue
       });
-      if (warningRepartition && phase.nom !== 'Affutage') {
+      if (warningRepartition && phase.nom !== 'Affutage' && !dechargeSemaine) {
         warningsSemaines.push({ ...warningRepartition, message: `S${semaineGlobale} : ${warningRepartition.message}` });
       }
 
