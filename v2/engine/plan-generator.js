@@ -500,7 +500,7 @@ const ROTATION_SOUS_TYPE = {
   '10K': {
     Reacclimatation: [],
     Construction: ['seuil-court', 'i-30-30'],
-    Specifique: ['i-3min', 'seuil'],
+    Specifique: ['i-3min', 'seuil', 'allure-course'],
     Affutage: ['allure-course', 'seuil-court']
   },
   'Semi': {
@@ -714,6 +714,102 @@ export function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
 
   const dureeMin = Math.round((kmCiblePlafonne * alluresSec.E) / 60);
   return { contenu: `${dureeMin}min à allure EF (${formatPace(alluresSec.E)}) — ${Math.round(kmCiblePlafonne * 10) / 10}km`, kmEstime: kmCiblePlafonne, warning };
+}
+
+// ---------------------------------------------------------------------------
+// Séance test — placement validé (recherche + retour terrain) : vers la fin
+// de Spécifique, avec un tampon de récupération avant le début de l'Affûtage
+// (sources : "tune-up race" 4-8 sem. avant marathon, 3-6 sem. avant semi,
+// 2-5 sem. avant 5K/10K — trop proche et la récupération empiète sur le taper)
+// ---------------------------------------------------------------------------
+
+// Distance du test (km) — plus courte et standardisée que l'objectif, permet
+// une estimation via Riegel sans avoir à courir la distance de course elle-même
+const TEST_DISTANCE_KM = { '5K': 2, '10K': 3, 'Semi': 5, 'Marathon': 10 };
+
+// Tampon en semaines à laisser entre le test et le début de l'Affûtage
+const TAMPON_TEST_SEMAINES = { '5K': 1, '10K': 1, 'Semi': 2, 'Marathon': 2 };
+
+export function genererContenuTest({ distance, alluresSec }) {
+  const distanceTestKm = TEST_DISTANCE_KM[distance] ?? 3;
+  const E = alluresSec.E;
+  const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
+  const DUREE_ECHAUFFEMENT_MIN = 15;
+  const DUREE_RETOUR_CALME_MIN = 10;
+  const kmEchauffement = kmDepuisMinutes(DUREE_ECHAUFFEMENT_MIN, E);
+  const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
+  const kmEstime = distanceTestKm + kmEchauffement + kmRetourCalme;
+  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + Test chronométré ${distanceTestKm}km à effort maximal soutenu + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
+  return { sousType: 'test', contenu, kmEstime, distanceTestKm };
+}
+
+/**
+ * Place une séance test unique dans le plan déjà généré, vers la fin de la
+ * phase Spécifique (avec le tampon de récupération avant l'Affûtage). Mute
+ * le plan en place. Silencieux si Spécifique n'a aucune semaine (plan trop
+ * court pour en avoir une) — pas de garde-fou bloquant, juste pas de test.
+ */
+export function placerSeanceTest(plan, alluresSec) {
+  const phaseSpecifique = plan.phases.find(p => p.nom === 'Specifique');
+  if (!phaseSpecifique || phaseSpecifique.semaines <= 0) return;
+
+  // Numéro de semaine (global) où débute Spécifique, à partir des phases
+  let curseur = 0;
+  for (const p of plan.phases) {
+    if (p.nom === 'Specifique') break;
+    curseur += p.semaines;
+  }
+  const debutSpecifique = curseur + 1;
+
+  const tampon = TAMPON_TEST_SEMAINES[plan.distance] ?? 1;
+  // Semaine visée : tampon semaines avant la fin de Spécifique — avec
+  // plancher sur la première semaine de Spécifique si la phase est trop
+  // courte pour respecter le tampon complet (pas de blocage, juste un
+  // compromis raisonnable plutôt qu'un index hors limites)
+  const semaineViseeIndex = Math.max(0, phaseSpecifique.semaines - tampon - 1);
+  const semaineNumCible = debutSpecifique + semaineViseeIndex;
+
+  const semaine = plan.semaines.find(s => s.semaineNum === semaineNumCible);
+  if (!semaine) return;
+
+  const jourQualite = Object.entries(semaine.assignment).find(([, s]) => s.type === 'qualite');
+  if (!jourQualite) return; // semaine de réacclimatation sans qualité, par exemple
+  const [jour, seance] = jourQualite;
+
+  const { sousType, contenu, kmEstime, distanceTestKm } = genererContenuTest({ distance: plan.distance, alluresSec });
+  seance.sousType = sousType;
+  seance.contenu = contenu;
+  seance.kmEstime = kmEstime;
+  seance.estTest = true;
+  seance.distanceTestKm = distanceTestKm;
+
+  // Recalcule la répartition EF/longue de cette semaine, le kilométrage de
+  // la séance qualité ayant changé (même mécanique que appliquerAdaptations)
+  let kmQualiteTotal = 0;
+  for (const s of Object.values(semaine.assignment)) {
+    if (s.type === 'qualite') kmQualiteTotal += s.kmEstime;
+  }
+  const nbEF = Object.values(semaine.assignment).filter(s => s.type === 'ef').length;
+  const aLongue = Object.values(semaine.assignment).some(s => s.type === 'longue');
+  const { kmLongue, kmParEF } = repartirVolumeSemaine({
+    volumeCibleKm: semaine.volumeCibleKm,
+    kmQualiteTotal,
+    nbEF,
+    aLongue
+  });
+  const roleParJourEF = differencierEF({ assignment: semaine.assignment, kmParEF });
+  for (const [j, s] of Object.entries(semaine.assignment)) {
+    if (s.type === 'ef') {
+      const { role, kmCible } = roleParJourEF[j] ?? { role: 'standard', kmCible: kmParEF };
+      const { contenu: c, kmEstime: k } = genererContenuEF({ alluresSec, kmCible, role });
+      s.contenu = c; s.kmEstime = k; s.role = role;
+    } else if (s.type === 'longue') {
+      const { contenu: c, kmEstime: k } = genererContenuLongue({ distance: plan.distance, phase: semaine.phase, alluresSec, kmCible: kmLongue });
+      s.contenu = c; s.kmEstime = k;
+    }
+  }
+
+  semaine.aUneSeanceTest = true;
 }
 
 /**
@@ -933,7 +1029,7 @@ export function generatePlan(profil, params) {
     ...warningsSemaines
   ];
 
-  return {
+  const plan = {
     distance: params.distance,
     objectif: params.objectif,
     ampleurObjectif,
@@ -955,6 +1051,12 @@ export function generatePlan(profil, params) {
     semaines,
     warnings
   };
+
+  // Séance test, placée vers la fin de Spécifique (section 36) — silencieux
+  // si le plan est trop court pour en accueillir une
+  placerSeanceTest(plan, allSeconds);
+
+  return plan;
 }
 
 // ---------------------------------------------------------------------------
