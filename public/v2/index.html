@@ -2659,26 +2659,48 @@ function appliquerAdaptations(plan) {
     const msgEl = document.getElementById('adaptationMsg');
     if (!dernierPlanGenere) { msgEl.textContent = "Génère d'abord un plan."; msgEl.style.color = 'var(--signal)'; return; }
 
-    const nouveauxWarnings = appliquerAdaptations(dernierPlanGenere);
-    if (nouveauxWarnings.length === 0) {
-      msgEl.textContent = 'Rien à adapter pour l\'instant (pas assez de séances difficiles enregistrées).';
-      msgEl.style.color = 'rgba(238,240,234,0.5)';
+    const planActuel = dernierPlanGenere;
+    if (!planActuel.profilOrigine || !planActuel.paramsOrigine) {
+      msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être adapté automatiquement.";
+      msgEl.style.color = 'var(--signal)';
       return;
     }
 
-    // Fusionner avec les avertissements existants (sans dupliquer si on relance l'analyse)
-    const codesExistants = new Set(dernierPlanGenere.warnings.map(w => w.code + w.message));
-    nouveauxWarnings.forEach(w => {
-      if (!codesExistants.has(w.code + w.message)) dernierPlanGenere.warnings.push(w);
-    });
+    // Repart d'une régénération PROPRE (à partir des paramètres d'origine)
+    // plutôt que de modifier le plan en place cumulativement — sans ça, une
+    // adaptation appliquée une fois restait figée même si les statuts qui
+    // l'avaient déclenchée étaient corrigés ensuite (trouvé en usage réel).
+    let planPropre;
+    try {
+      planPropre = generatePlan(planActuel.profilOrigine, planActuel.paramsOrigine);
+    } catch (e) {
+      msgEl.textContent = 'Erreur de régénération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+    planPropre.id = planActuel.id;
+    planPropre.nom = planActuel.nom;
+    planPropre.statuses = planActuel.statuses;
+    planPropre.profilOrigine = planActuel.profilOrigine;
+    planPropre.paramsOrigine = planActuel.paramsOrigine;
 
-    renderResults(dernierPlanGenere);
-    msgEl.textContent = `✅ Analyse effectuée — ${nouveauxWarnings.length} changement(s), voir le détail dans les avertissements et le plan complet ci-dessous.`;
-    msgEl.style.color = 'var(--pace)';
+    const nouveauxWarnings = appliquerAdaptations(planPropre);
+    dernierPlanGenere = planPropre;
+
+    if (nouveauxWarnings.length === 0) {
+      renderResults(planPropre);
+      msgEl.textContent = 'Analyse effectuée — rien à adapter actuellement (aucune adaptation en cours non plus).';
+      msgEl.style.color = 'rgba(238,240,234,0.5)';
+    } else {
+      planPropre.warnings.push(...nouveauxWarnings);
+      renderResults(planPropre);
+      msgEl.textContent = `✅ Analyse effectuée — ${nouveauxWarnings.length} changement(s), voir le détail dans les avertissements et le plan complet ci-dessous.`;
+      msgEl.style.color = 'var(--pace)';
+    }
 
     if (getGithubToken()) {
       try {
-        await sauvegarderPlan(dernierPlanGenere);
+        await sauvegarderPlan(planPropre);
         await afficherPlansSauvegardes();
       } catch (e) {
         console.warn('Re-sauvegarde après adaptation échouée :', e.message);
