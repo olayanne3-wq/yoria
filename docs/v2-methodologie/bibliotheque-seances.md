@@ -504,6 +504,39 @@ Point important sur l'implémentation : les trois opérations (sauvegarder, reno
 
 Un plan sauvegardé avant l'ajout de l'identifiant (section 28) n'en avait pas, rendant renommer/supprimer impossibles pour lui spécifiquement (rien à quoi les boutons puissent s'accrocher). Corrigé par une migration automatique : au chargement (`chargerPlans`), tout plan sans `id` en reçoit un immédiatement, et la liste complète est réécrite dans le Gist — transparent, pas d'action manuelle nécessaire.
 
+## 32. Modification d'objectif sur un plan existant
+
+Ajouté : un plan chargé (généré, ou rappelé depuis la sauvegarde) peut maintenant voir son objectif modifié directement sur l'écran de résultats, sans repasser par tout le wizard. Régénère le plan avec le même id (mise à jour en place si sauvegardé), et repart d'un suivi de complétion vierge (les statuts de l'ancien objectif n'ont plus de sens si les séances ont changé).
+
+**Prérequis découvert en le construisant** : le plan sauvegardé ne conservait jusqu'ici que le résultat généré, pas les paramètres d'origine (profil, dates, contraintes) — impossible de régénérer sans ça. Corrigé en conservant `profilOrigine`/`paramsOrigine` dans chaque plan généré. Les plans sauvegardés avant ce correctif ne peuvent pas être régénérés directement (message clair à la place d'un crash) — il faut repasser par le wizard pour ceux-là.
+
+## 33. Règles d'adaptation du plan — définies mais pas encore implémentées
+
+Sourcé via une recherche combinant littérature sportive générale (ACWR — acute:chronic workload ratio, Gabbett 2016 et méta-analyses ultérieures) et retours de coachs de course à pied spécifiquement (Jason Koop/CTS Ultrarunning en particulier). Règles retenues :
+
+- **Seuil de déclenchement** : pas une séance isolée, mais un pattern — score cumulé ≥ 2 sur les séances dures (qualité + longue) de la semaine en cours, avec ratée = 1 point, adaptée = 0,5 point, réussie = 0. Les EF ne comptent pas dans ce score (cohérent avec la priorité "rattraper les séances clés" de la littérature).
+- **Action** : la semaine suivante est traitée comme une décharge supplémentaire — réutilise le mécanisme de décharge déjà construit et validé (sections 22/26 : réduction ~25% du volume et des répétitions qualité, mêmes planchers), plutôt qu'un nouveau système parallèle.
+- **Non-cumul** : si la semaine suivante était déjà une décharge programmée, une seule réduction s'applique (la décharge programmée absorbe l'adaptation) — pas de double réduction.
+- **Pas de décalage en cascade** : le calendrier des phases (Construction/Spécifique/Affûtage) et le cycle des décharges normales restent fixes, même après une décharge d'adaptation hors cycle — plus simple, et cohérent avec l'esprit "redémarrer prudemment" de la recherche.
+- **Garde-fou sur la répétition** : si l'adaptation se déclenche 3 semaines de suite, avertissement explicite à la personne (le plan semble trop ambitieux compte tenu de sa disponibilité réelle) — jamais d'action automatique sur l'objectif ou le plafond, cette décision reste humaine.
+
+**Toujours pas implémenté dans le code** — ce sont les règles convenues, la prochaine étape est de les traduire en logique dans le moteur (calcul du score par semaine à partir de `plan.statuses`, déclenchement de la décharge d'adaptation).
+
+## 34. Règles d'adaptation — implémentées
+
+Les règles définies en section 33 sont maintenant codées et testées (4 scénarios validés : rien à adapter, adaptation simple, non-cumul avec décharge programmée, garde-fou 3 adaptations consécutives).
+
+**Fonctions ajoutées au moteur** :
+- `calculerScoreSemaine(semaine, statuses)` — score d'une semaine à partir des statuts des séances dures (qualité + longue uniquement), retourne `null` si la semaine n'a aucun statut enregistré (pas encore vécue)
+- `analyserAdaptations(plan)` — détermine quelles semaines doivent être adaptées, et compte les déclenchements consécutifs
+- `appliquerAdaptations(plan)` — régénère le contenu des semaines concernées en réutilisant telles quelles les fonctions existantes (`genererContenuQualite` avec `estDechargeSemaine: true`, `repartirVolumeSemaine`, `differencierEF`, `genererContenuEF`, `genererContenuLongue`) — aucune nouvelle mécanique de réduction, juste la décharge classique appliquée hors cycle
+
+**Interface** : bouton "🔄 Analyser les résultats et adapter le plan" sur l'écran de résultats — mute le plan en mémoire, l'affiche immédiatement, et le re-sauvegarde automatiquement si un token est déjà connu.
+
+**Limite assumée** : comme pour la modification d'objectif (section 32), l'adaptation automatique nécessite `profilOrigine`/`paramsOrigine` — les plans sauvegardés avant cet ajout ne peuvent pas être adaptés (message clair plutôt qu'un crash).
+
+**Ce qui reste hors scope pour l'instant** (documenté comme piste future, pas commencé) : la comparaison allure/FC réelles (via Strava) contre les zones attendues, pour détecter qu'une séance était trop facile et suggérer — jamais imposer — une hausse du plafond de volume. Nécessiterait une vraie intégration Strava dans v2, qui n'existe pas aujourd'hui.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
