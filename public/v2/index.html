@@ -903,6 +903,9 @@
       <p class="sub" style="margin-top:8px; margin-bottom:12px; font-size:12px;">
         Un token GitHub personnel (scope "gist") suffit — <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--pace);">en générer un ici</a>. Reste stocké uniquement dans ton navigateur, jamais transmis ailleurs qu'à GitHub.
       </p>
+      <div class="date-field" style="margin-bottom:10px;">
+        <input type="text" id="nomPlanInput" placeholder="Nom du plan (optionnel, ex. « Plan Gem'Aubagne »)" style="font-size:14px; padding:14px;">
+      </div>
       <button class="btn-mini" onclick="sauvegarderPlanUI()">☁️ Sauvegarder ce plan dans le cloud</button>
       <div id="sauvegardeMsg" style="margin-top:8px; font-size:13px;"></div>
     </div>
@@ -2291,20 +2294,16 @@ function generatePlan(profil, params) {
     }
   }
 
-  async function sauvegarderPlan(plan) {
+  // Écrit la liste complète des plans dans le Gist v2 (toujours un PATCH sur
+  // le même Gist si il existe déjà — le Gist lui-même n'est jamais supprimé,
+  // seul son contenu est mis à jour). Utilisée par sauvegarde, suppression et
+  // renommage : ces trois opérations ne sont que des variations sur la même
+  // écriture "liste de plans -> Gist".
+  async function ecrireListePlans(plans) {
     const token = getGithubToken();
     if (!token) {
       throw new Error("Aucun token GitHub renseigné — impossible de sauvegarder.");
     }
-    const plansExistants = await chargerPlans();
-    const nouveauPlan = { ...plan, sauvegardeLe: new Date().toISOString() };
-    // Remplace le plan existant (même id) plutôt que d'en créer un doublon —
-    // nécessaire pour que le suivi de complétion se mette à jour en place
-    const indexExistant = plansExistants.findIndex(p => p.id === plan.id);
-    const plans = indexExistant >= 0
-      ? plansExistants.map((p, i) => i === indexExistant ? nouveauPlan : p)
-      : [...plansExistants, nouveauPlan];
-
     const body = {
       description: 'Run by Léa v2 — plans sauvegardés',
       public: false,
@@ -2325,6 +2324,32 @@ function generatePlan(profil, params) {
     return data.id;
   }
 
+  async function sauvegarderPlan(plan) {
+    const plansExistants = await chargerPlans();
+    const nouveauPlan = { ...plan, sauvegardeLe: new Date().toISOString() };
+    // Remplace le plan existant (même id) plutôt que d'en créer un doublon —
+    // nécessaire pour que le suivi de complétion se mette à jour en place
+    const indexExistant = plansExistants.findIndex(p => p.id === plan.id);
+    const plans = indexExistant >= 0
+      ? plansExistants.map((p, i) => i === indexExistant ? nouveauPlan : p)
+      : [...plansExistants, nouveauPlan];
+    return ecrireListePlans(plans);
+  }
+
+  // Retire un seul plan de la liste et réécrit le Gist — le Gist lui-même
+  // n'est jamais supprimé, seul son contenu (liste de plans) est mis à jour.
+  async function supprimerPlan(planId) {
+    const plansExistants = await chargerPlans();
+    const plans = plansExistants.filter(p => p.id !== planId);
+    return ecrireListePlans(plans);
+  }
+
+  async function renommerPlan(planId, nouveauNom) {
+    const plansExistants = await chargerPlans();
+    const plans = plansExistants.map(p => p.id === planId ? { ...p, nom: nouveauNom } : p);
+    return ecrireListePlans(plans);
+  }
+
   let dernierPlanGenere = null;
 
   async function sauvegarderPlanUI() {
@@ -2343,12 +2368,16 @@ function generatePlan(profil, params) {
       return;
     }
 
+    const nomSaisi = document.getElementById('nomPlanInput')?.value.trim();
+    if (nomSaisi) dernierPlanGenere.nom = nomSaisi;
+
     msgEl.textContent = 'Sauvegarde en cours…';
     msgEl.style.color = 'rgba(238,240,234,0.5)';
     try {
       await sauvegarderPlan(dernierPlanGenere);
       msgEl.textContent = '✅ Plan sauvegardé dans le cloud.';
       msgEl.style.color = 'var(--pace)';
+      await afficherPlansSauvegardes();
     } catch (e) {
       msgEl.textContent = '❌ Erreur : ' + e.message + ' (vérifie que le token a bien le scope "gist")';
       msgEl.style.color = 'var(--signal)';
@@ -2372,14 +2401,19 @@ function generatePlan(profil, params) {
     if (!plans.length) { conteneur.innerHTML = ''; return; }
 
     const lignes = plans
-      .map((p, i) => ({ p, i }))
-      .sort((a, b) => new Date(b.p.sauvegardeLe) - new Date(a.p.sauvegardeLe))
-      .map(({ p, i }) => {
+      .slice()
+      .sort((a, b) => new Date(b.sauvegardeLe) - new Date(a.sauvegardeLe))
+      .map(p => {
         const date = p.sauvegardeLe ? new Date(p.sauvegardeLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
         const nbFaites = Object.keys(p.statuses || {}).length;
-        return `<div class="bib-row" style="cursor:pointer;" onclick="chargerPlanExistant(${i})">
-          <span class="k">${p.distance} — ${p.objectif}</span>
-          <span class="v" style="text-align:right;">${date}${nbFaites ? ` · ${nbFaites} séance(s) marquée(s)` : ''}</span>
+        const titre = p.nom || `${p.distance} — ${p.objectif}`;
+        return `<div class="bib-row">
+          <span class="k" style="cursor:pointer;" onclick="chargerPlanExistant('${p.id}')">${titre}</span>
+          <span style="display:flex; align-items:center; gap:10px;">
+            <span class="v" style="text-align:right;">${date}${nbFaites ? ` · ${nbFaites} séance(s)` : ''}</span>
+            <span style="cursor:pointer;" onclick="renommerPlanUI('${p.id}')" title="Renommer">✏️</span>
+            <span style="cursor:pointer;" onclick="supprimerPlanUI('${p.id}')" title="Supprimer">🗑️</span>
+          </span>
         </div>`;
       }).join('');
 
@@ -2387,12 +2421,14 @@ function generatePlan(profil, params) {
       <div class="block-label">Plans sauvegardés</div>
       <div class="bib" style="margin-bottom:20px;">${lignes}</div>
     `;
-    // Garder la liste en mémoire pour chargerPlanExistant (indices d'origine)
+    // Garder la liste en mémoire pour chargerPlanExistant (par id, pas par index
+    // — l'ordre affiché diffère de l'ordre de stockage, et l'index changerait
+    // après une suppression)
     window.__plansSauvegardes = plans;
   }
 
-  function chargerPlanExistant(index) {
-    const plan = window.__plansSauvegardes[index];
+  function chargerPlanExistant(id) {
+    const plan = window.__plansSauvegardes.find(p => p.id === id);
     if (!plan) return;
     dernierPlanGenere = plan;
     renderResults(plan);
@@ -2400,6 +2436,35 @@ function generatePlan(profil, params) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
     document.getElementById('nextBtn').textContent = 'Terminer';
+  }
+
+  async function renommerPlanUI(id) {
+    const plan = window.__plansSauvegardes.find(p => p.id === id);
+    if (!plan) return;
+    const nomActuel = plan.nom || `${plan.distance} — ${plan.objectif}`;
+    const nouveauNom = prompt('Nouveau nom pour ce plan :', nomActuel);
+    if (!nouveauNom || nouveauNom.trim() === '') return;
+    try {
+      await renommerPlan(id, nouveauNom.trim());
+      // Si c'est le plan actuellement affiché, mettre à jour son nom en mémoire aussi
+      if (dernierPlanGenere?.id === id) dernierPlanGenere.nom = nouveauNom.trim();
+      await afficherPlansSauvegardes();
+    } catch (e) {
+      alert('Erreur lors du renommage : ' + e.message);
+    }
+  }
+
+  async function supprimerPlanUI(id) {
+    const plan = window.__plansSauvegardes.find(p => p.id === id);
+    if (!plan) return;
+    const titre = plan.nom || `${plan.distance} — ${plan.objectif}`;
+    if (!confirm(`Supprimer définitivement "${titre}" ? Cette action ne supprime que ce plan (le reste de tes sauvegardes est conservé).`)) return;
+    try {
+      await supprimerPlan(id);
+      await afficherPlansSauvegardes();
+    } catch (e) {
+      alert('Erreur lors de la suppression : ' + e.message);
+    }
   }
 
   function exporterPDF(){
