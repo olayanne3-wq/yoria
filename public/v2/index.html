@@ -2287,7 +2287,22 @@ function generatePlan(profil, params) {
       const raw = data.files['plan10k_v2_plans.json']?.content;
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return parsed.plans || [];
+      let plans = parsed.plans || [];
+
+      // Migration : les plans sauvegardés avant l'ajout de l'id (section 28)
+      // n'en ont pas, ce qui casse renommer/supprimer (rien à quoi s'accrocher).
+      // On leur en attribue un et on réécrit la liste immédiatement.
+      const sansId = plans.filter(p => !p.id);
+      if (sansId.length > 0) {
+        plans = plans.map(p => p.id ? p : { ...p, id: (window.crypto?.randomUUID ? crypto.randomUUID() : 'plan-' + Date.now() + '-' + Math.random()) });
+        try {
+          await ecrireListePlans(plans);
+        } catch (e) {
+          console.warn('Migration des ids a échoué (pas bloquant) :', e.message);
+        }
+      }
+
+      return plans;
     } catch (e) {
       console.warn('chargerPlans a échoué :', e.message);
       return [];
