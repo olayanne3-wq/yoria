@@ -597,6 +597,7 @@
   .screen{ display:none; }
   .screen.active{ display:block; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div class="phone">
@@ -878,6 +879,8 @@
       <div id="resPlanComplet"></div>
 
       <div id="resWarnings"></div>
+
+      <button class="btn-mini" style="margin-top:20px; border-color:var(--signal); color:var(--signal);" onclick="exporterPDF()">📄 Télécharger le plan en PDF</button>
     </div>
 
   </div>
@@ -2120,6 +2123,84 @@ function generatePlan(profil, params) {
 
   let showingResults = false;
 
+  let dernierPlanGenere = null;
+
+  function exporterPDF(){
+    if (!dernierPlanGenere) { alert("Génère d'abord un plan."); return; }
+    const plan = dernierPlanGenere;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const marge = 15;
+    const largeurUtile = 210 - marge * 2;
+    let y = marge;
+
+    function sautDeLigne(hauteur) {
+      y += hauteur;
+      if (y > 297 - marge) { doc.addPage(); y = marge; }
+    }
+    function texte(str, taille, gras, couleur) {
+      doc.setFontSize(taille);
+      doc.setFont(undefined, gras ? 'bold' : 'normal');
+      doc.setTextColor(couleur ?? 20);
+      const lignes = doc.splitTextToSize(str, largeurUtile);
+      lignes.forEach(l => {
+        doc.text(l, marge, y);
+        sautDeLigne(taille * 0.42);
+      });
+    }
+
+    // En-tête
+    texte('Run by Léa — Plan d\'entraînement', 16, true);
+    sautDeLigne(2);
+    texte(`Distance : ${plan.distance}  |  Objectif : ${plan.objectif}  |  Durée : ${plan.dureeSemaines} semaines`, 10);
+    texte(`Du ${plan.dateDebut} au ${plan.dateCourse}`, 10);
+    sautDeLigne(2);
+    texte('Allures calculées :', 11, true);
+    Object.entries(plan.allures).forEach(([zone, val]) => texte(`  ${zone} : ${val}`, 9.5));
+    if (plan.zoneFC) texte(`  Zone FC max (Tanaka) : ${plan.zoneFC.fcMax} bpm`, 9.5);
+    sautDeLigne(4);
+
+    const dayNames = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+    const jsDay = new Date(plan.dateCourse).getDay();
+    const jourCourseIndex = (jsDay + 6) % 7;
+    const derniereSemaineNum = plan.semaines.length ? plan.semaines[plan.semaines.length - 1].semaineNum : null;
+
+    let dernierePhase = null;
+    plan.semaines.forEach(semaine => {
+      if (semaine.phase !== dernierePhase) {
+        sautDeLigne(2);
+        texte(semaine.phase, 13, true, [255, 90, 52]);
+        dernierePhase = semaine.phase;
+      }
+      const dechargeTxt = semaine.estDechargeSemaine ? ' (décharge)' : '';
+      texte(`Semaine ${semaine.semaineNum} — ${semaine.volumeCibleKm ?? '—'}km${dechargeTxt}`, 11, true);
+
+      for (let i = 0; i < 7; i++) {
+        if (semaine.semaineNum === derniereSemaineNum && i === jourCourseIndex) {
+          texte(`  ${dayNames[i]} : 🏁 JOUR J — COURSE !`, 9.5, true, [255, 90, 52]);
+          continue;
+        }
+        const a = semaine.assignment[i];
+        if (!a) { texte(`  ${dayNames[i]} : Repos`, 9.5); continue; }
+        let label = a.type === 'longue' ? 'Sortie longue'
+          : a.type === 'qualite' ? 'Qualité'
+          : a.type === 'ef' ? 'EF'
+          : 'Repos' + (a.renfo ? ' + renforcement musculaire' : '');
+        const detail = a.contenu ? ` — ${a.contenu}` : '';
+        texte(`  ${dayNames[i]} : ${label}${detail}`, 9.5);
+      }
+      sautDeLigne(2);
+    });
+
+    if (plan.warnings.length) {
+      sautDeLigne(2);
+      texte('Avertissements', 12, true);
+      plan.warnings.forEach(w => texte(`  ⚠ ${w.message}`, 9));
+    }
+
+    doc.save(`plan-${plan.distance}-${plan.dateCourse}.pdf`);
+  }
+
   function generateAndShowResults(){
     const { profil, params } = collectParamsFromWizard();
     let plan;
@@ -2130,6 +2211,7 @@ function generatePlan(profil, params) {
       console.error(err);
       return;
     }
+    dernierPlanGenere = plan;
     renderResults(plan);
     showingResults = true;
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
