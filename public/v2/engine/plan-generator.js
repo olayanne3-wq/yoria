@@ -51,6 +51,93 @@ export const PACE_RATIOS = {
   V: 0.80
 };
 
+// ---------------------------------------------------------------------------
+// Jalons narratifs de transition (doc convergence-v1-v2.md, section 2.5) —
+// banque de variantes par jalon, tirée au sort à la génération du plan.
+// Fusionnées dans le champ `contenu` de la séance concernée, jamais un champ
+// séparé (cohérent avec la décision 2.1 : contenu unique plutôt que
+// warmup/session/cooldown/notes éclatés).
+// ---------------------------------------------------------------------------
+
+export const JALONS_TRANSITION = {
+  'derniere-longue-avant-affutage': [
+    "Dernière sortie longue avant l'affûtage — allonge un peu si la forme le permet.",
+    "C'est la dernière grosse sortie avant de lever le pied. Profites-en."
+  ],
+  'debut-affutage': [
+    "Entrée en affûtage : le volume baisse, l'intensité reste.",
+    "Le gros du travail est fait — place à la récupération active avant le jour J."
+  ],
+  'debut-specifique': [
+    "Début de la phase spécifique : place aux séances à allure course.",
+    "On rentre dans le dur — les séances vont maintenant coller à ton allure objectif."
+  ],
+  'derniere-semaine-avant-course': [
+    "Dernières séances avant le jour J — reste tranquille.",
+    "Presque prêt. Ces derniers jours ne servent qu'à arriver frais."
+  ]
+};
+
+/**
+ * Détecte les transitions de phase dans le plan déjà construit et injecte une
+ * note (piochée aléatoirement dans JALONS_TRANSITION) dans le contenu de la
+ * séance concernée. Mute `semaines` en place (ajoute la note au contenu
+ * existant), ne retourne rien.
+ *
+ * Règles de détection (génériques, aucune date/phase codée en dur) :
+ * - Début de phase : phase de la semaine différente de la semaine précédente
+ * - Fin de phase avant Affûtage : dernière semaine où phase !== 'Affutage'
+ * - Dernière longue avant Affûtage : dernière séance de type 'longue' de
+ *   cette même semaine de transition
+ * - Dernière semaine du plan entier : jalon "avant course"
+ */
+export function injecterJalonsTransition(semaines) {
+  const piocher = (cle) => {
+    const variantes = JALONS_TRANSITION[cle];
+    return variantes[Math.floor(Math.random() * variantes.length)];
+  };
+  const ajouterNote = (seance, note) => {
+    if (!seance || !seance.contenu) return;
+    seance.contenu = `${seance.contenu} ${note}`;
+  };
+
+  for (let idx = 0; idx < semaines.length; idx++) {
+    const semaine = semaines[idx];
+    const precedente = idx > 0 ? semaines[idx - 1] : null;
+    const suivante = idx < semaines.length - 1 ? semaines[idx + 1] : null;
+
+    // Début de phase (jamais sur la toute première semaine du plan : ce
+    // n'est pas une "transition", juste le départ)
+    if (precedente && semaine.phase !== precedente.phase) {
+      if (semaine.phase === 'Affutage') {
+        const premierJour = Object.values(semaine.assignment)[0];
+        ajouterNote(premierJour, piocher('debut-affutage'));
+      } else if (semaine.phase === 'Specifique') {
+        const premierJour = Object.values(semaine.assignment)[0];
+        ajouterNote(premierJour, piocher('debut-specifique'));
+      }
+    }
+
+    // Dernière semaine avant Affûtage : note sur la dernière séance longue
+    if (suivante && suivante.phase === 'Affutage' && semaine.phase !== 'Affutage') {
+      const jours = Object.values(semaine.assignment);
+      const derniereLongue = [...jours].reverse().find(j => j.type === 'longue');
+      ajouterNote(derniereLongue, piocher('derniere-longue-avant-affutage'));
+    }
+
+    // Dernière semaine du plan entier (semaine de course)
+    if (idx === semaines.length - 1) {
+      const jours = Object.values(semaine.assignment);
+      // Note sur toutes les séances EF de la semaine de course (hors la
+      // séance de course elle-même, traitée séparément — cf. 2.7, non
+      // implémenté à ce stade)
+      jours.forEach(j => {
+        if (j.type === 'ef') ajouterNote(j, piocher('derniere-semaine-avant-course'));
+      });
+    }
+  }
+}
+
 /**
  * Calcule les zones d'allure à partir d'une performance de référence
  * (n'importe quelle distance), normalisée en équivalent 10K via Riegel.
@@ -1072,6 +1159,11 @@ export function generatePlan(profil, params) {
     ...semaines.flatMap(s => s.warnings),
     ...warningsSemaines
   ];
+
+  // Jalons narratifs de transition (doc convergence-v1-v2.md, 2.5) — mute
+  // semaines en place, doit s'exécuter une fois toutes les semaines/phases
+  // connues (a besoin de regarder la semaine précédente/suivante)
+  injecterJalonsTransition(semaines);
 
   const plan = {
     distance: params.distance,
