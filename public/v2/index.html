@@ -689,6 +689,11 @@
       <h1>Combien tu cours actuellement&nbsp;?</h1>
       <p class="sub">Sert à calculer une progression du volume sûre, sans à-coups d'une semaine à l'autre.</p>
 
+      <div class="strava-card" id="stravaConnexionBloc" style="display:none;">
+        <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines), plutôt que de l'estimer toi-même.</p>
+        <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
+      </div>
+
       <div class="strava-card" id="stravaCard">
         <div class="strava-head">
           <span class="strava-badge">📡 Depuis Strava</span>
@@ -2445,6 +2450,131 @@ function appliquerAdaptations(plan) {
     manual.style.display = showManual ? 'block' : 'none';
   }
 
+  // ===========================================================================
+  // Intégration Strava — réutilise le point d'entrée serverless existant de
+  // v1 (api/strava.js, endpoints /auth /callback /refresh /activities), avec
+  // juste un paramètre "state=v2" ajouté pour que le callback redirige ici
+  // plutôt que vers v1. Tokens stockés sous des clés distinctes de v1
+  // (v2_strava_*) pour ne pas interférer avec sa propre session Strava.
+  // ===========================================================================
+
+  function getStravaTokens() {
+    return {
+      accessToken: localStorage.getItem('v2_strava_access_token'),
+      refreshToken: localStorage.getItem('v2_strava_refresh_token'),
+      expiresAt: parseInt(localStorage.getItem('v2_strava_expires_at') || '0', 10)
+    };
+  }
+  function setStravaTokens({ accessToken, refreshToken, expiresAt }) {
+    if (accessToken) localStorage.setItem('v2_strava_access_token', accessToken);
+    if (refreshToken) localStorage.setItem('v2_strava_refresh_token', refreshToken);
+    if (expiresAt) localStorage.setItem('v2_strava_expires_at', expiresAt);
+  }
+
+  function connecterStrava() {
+    window.location.href = '/api/strava/auth?state=v2';
+  }
+
+  // Capte le retour d'authentification (tokens dans l'URL après redirection
+  // Strava), les stocke, puis nettoie l'URL pour ne pas laisser les tokens
+  // visibles dans la barre d'adresse / l'historique du navigateur
+  function capterRetourStravaOAuth() {
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get('access_token');
+    if (!accessToken) return;
+    setStravaTokens({
+      accessToken,
+      refreshToken: params.get('refresh_token'),
+      expiresAt: params.get('expires_at')
+    });
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  // Rafraîchit le token si expiré (ou proche de l'être), sinon renvoie tel quel
+  async function assurerTokenStravaValide() {
+    let { accessToken, refreshToken, expiresAt } = getStravaTokens();
+    if (!accessToken) return null;
+    const maintenant = Math.floor(Date.now() / 1000);
+    if (expiresAt && expiresAt < maintenant + 60 && refreshToken) {
+      try {
+        const resp = await fetch('/api/strava/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        const data = await resp.json();
+        if (data.access_token) {
+          setStravaTokens({ accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at });
+          accessToken = data.access_token;
+        }
+      } catch (e) {
+        console.warn('Rafraîchissement token Strava échoué :', e.message);
+      }
+    }
+    return accessToken;
+  }
+
+  // Médiane (pas moyenne, cf. doc — moins sensible aux semaines atypiques) du
+  // volume hebdomadaire (km) sur les activités de type Run fournies
+  function calculerMedianeVolumeHebdo(activites) {
+    const semaineDe = (dateStr) => {
+      const d = new Date(dateStr + 'T00:00:00Z');
+      const jour = (d.getUTCDay() + 6) % 7; // 0 = Lundi
+      const lundi = new Date(d);
+      lundi.setUTCDate(d.getUTCDate() - jour);
+      return lundi.toISOString().slice(0, 10);
+    };
+    const totalParSemaine = {};
+    activites.forEach(a => {
+      if (a.type !== 'Run') return;
+      const dateLocal = (a.start_date_local || a.start_date || '').slice(0, 10);
+      if (!dateLocal) return;
+      const cle = semaineDe(dateLocal);
+      totalParSemaine[cle] = (totalParSemaine[cle] || 0) + (a.distance || 0) / 1000;
+    });
+    const valeurs = Object.values(totalParSemaine).sort((a, b) => a - b);
+    if (valeurs.length === 0) return null;
+    const milieu = Math.floor(valeurs.length / 2);
+    return Math.round(valeurs.length % 2 === 0 ? (valeurs[milieu - 1] + valeurs[milieu]) / 2 : valeurs[milieu]);
+  }
+
+  async function chargerVolumeStrava() {
+    const blocConnexion = document.getElementById('stravaConnexionBloc');
+    const blocValeur = document.getElementById('stravaCard');
+    const flag = document.getElementById('noStravaFlag');
+
+    const accessToken = await assurerTokenStravaValide();
+    if (!accessToken) {
+      blocValeur.style.display = 'none';
+      blocConnexion.style.display = 'block';
+      return;
+    }
+
+    blocConnexion.style.display = 'none';
+    blocValeur.style.display = 'block';
+
+    const huitSemaines = new Date();
+    huitSemaines.setDate(huitSemaines.getDate() - 8 * 7);
+    const planStart = huitSemaines.toISOString().slice(0, 10);
+
+    try {
+      const resp = await fetch(`/api/strava/activities?token=${accessToken}&plan_start=${planStart}`);
+      const activites = await resp.json();
+      if (!Array.isArray(activites)) throw new Error('Réponse Strava invalide');
+      const mediane = calculerMedianeVolumeHebdo(activites);
+      if (mediane === null) {
+        flag.style.display = 'flex';
+        toggleManualVolume();
+      } else {
+        document.getElementById('stravaKm').textContent = mediane;
+      }
+    } catch (e) {
+      console.warn('Chargement du volume Strava échoué :', e.message);
+      flag.style.display = 'flex';
+      toggleManualVolume();
+    }
+  }
+
   const NIVEAU_MAP = { "Je débute": "debutant", "Intermédiaire": "intermediaire", "Confirmé": "confirme" };
   const DISTANCE_MAP = { "5": "5K", "10": "10K", "21.1": "Semi", "42.2": "Marathon" };
 
@@ -2749,6 +2879,9 @@ function appliquerAdaptations(plan) {
     const champ = document.getElementById('githubTokenInput');
     if (existant && champ) champ.value = existant;
     if (existant) afficherPlansSauvegardes();
+
+    capterRetourStravaOAuth();
+    chargerVolumeStrava();
   });
 
   async function afficherPlansSauvegardes() {
