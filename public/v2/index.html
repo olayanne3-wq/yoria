@@ -959,6 +959,11 @@
   import * as Strava from '/v2/engine/strava.js';
   import * as GistSync from '/v2/engine/gist-sync.js';
   window.Engine = { ...PlanGenerator, ...Strava, ...GistSync };
+  // Signale explicitement que window.Engine est prêt : un <script type="module">
+  // s'exécute de façon asynchrone/différée par rapport à un <script> classique
+  // placé après lui dans le document, donc rien ne garantit que window.Engine
+  // existe déjà au moment où DOMContentLoaded se déclenche côté script classique.
+  document.dispatchEvent(new CustomEvent('engineReady'));
 </script>
 
 <script>
@@ -1394,16 +1399,20 @@
 
   // ===========================================================================
   // Persistence des plans — logique déplacée dans engine/gist-sync.js.
-  // Alias locaux vers Engine.xxx pour ne pas réécrire tous les appels
-  // ci-dessous (getGithubToken, chargerPlans, sauvegarderPlan, etc. sont
-  // utilisés telles quelles à de nombreux endroits du bloc UI).
+  // Wrappers vers Engine.xxx (pas de simple alias const : Engine n'est
+  // peuplé qu'après exécution asynchrone du <script type="module">
+  // précédent, alors que ce script classique s'exécute immédiatement —
+  // un alias `const chargerPlans = Engine.chargerPlans` capturerait donc
+  // `undefined`. Le wrapper fait le lookup au moment de l'appel, une fois
+  // Engine forcément défini puisque ces fonctions ne sont utilisées que
+  // sur interaction utilisateur, bien après le chargement de la page).
   // ===========================================================================
-  const getGithubToken = Engine.getGithubToken;
-  const setGithubToken = Engine.setGithubToken;
-  const chargerPlans = Engine.chargerPlans;
-  const sauvegarderPlan = Engine.sauvegarderPlan;
-  const supprimerPlan = Engine.supprimerPlan;
-  const renommerPlan = Engine.renommerPlan;
+  const getGithubToken = (...args) => Engine.getGithubToken(...args);
+  const setGithubToken = (...args) => Engine.setGithubToken(...args);
+  const chargerPlans = (...args) => Engine.chargerPlans(...args);
+  const sauvegarderPlan = (...args) => Engine.sauvegarderPlan(...args);
+  const supprimerPlan = (...args) => Engine.supprimerPlan(...args);
+  const renommerPlan = (...args) => Engine.renommerPlan(...args);
 
 
   let dernierPlanGenere = null;
@@ -1443,7 +1452,14 @@
 
   // Préremplir le champ token s'il est déjà connu (ex. déjà configuré ailleurs)
   // et proposer les plans déjà sauvegardés, s'il y en a
-  document.addEventListener('DOMContentLoaded', () => {
+  // Préremplir le champ token s'il est déjà connu (ex. déjà configuré ailleurs)
+  // et proposer les plans déjà sauvegardés, s'il y en a.
+  // Dépend de window.Engine (via getGithubToken/capterRetourStravaOAuth/
+  // chargerVolumeStrava) : on attend le signal explicite engineReady plutôt
+  // que de supposer que le <script type="module"> a fini avant ce point,
+  // avec un garde-fou (window.Engine déjà présent) au cas où l'événement
+  // serait déjà passé avant la pose de ce listener.
+  function initialiserApresChargementEngine() {
     const existant = getGithubToken();
     const champ = document.getElementById('githubTokenInput');
     if (existant && champ) champ.value = existant;
@@ -1451,6 +1467,14 @@
 
     capterRetourStravaOAuth();
     chargerVolumeStrava();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.Engine) {
+      initialiserApresChargementEngine();
+    } else {
+      document.addEventListener('engineReady', initialiserApresChargementEngine, { once: true });
+    }
   });
 
   async function afficherPlansSauvegardes() {
