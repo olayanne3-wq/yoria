@@ -84,7 +84,20 @@ En vérifiant les décharges/affûtage, un écart plus profond que le contenu te
   - **Stratégie de course fractionnée par segment** sur la séance du jour J elle-même : `"Km 1-3 prudent · Km 4-7 : 4:51/km · Km 8-10 : tout donner !"`, avec un type de séance dédié (`type: "RACE"`)
 - **v2** : **`dateCourse` n'est utilisée que pour calculer la durée des phases** (`computePhases`) — le moteur ne traite jamais le jour de la course comme un cas particulier. Vérifié concrètement : la dernière semaine générée produit un dimanche `"longue"` générique (37min EF, 6km), pas une séance de course avec stratégie de segments. Il n'existe aucun type de séance `race`/`course` dans le moteur actuel.
 - **Décision : À COMBLER — priorité haute.** Contrairement aux écarts précédents (notes d'accompagnement manquantes sur un contenu déjà correct), celui-ci est une vraie fonctionnalité manquante : le moteur ne sait pas produire de séance de course, ni de semaine d'approche structurée avec repères J-X. À traiter avant les autres points de ce document si l'ordre de traitement doit suivre un critère d'impact plutôt que d'ordre chronologique de découverte.
-- **Statut : non commencé.**
+
+**Stratégie de pacing par distance — décidée le 6 juillet 2026, à partir de la littérature (voir sources en fin de section), explicitement pour un public amateur/intermédiaire (l'app ne s'adresse pas à un public élite ; les données élite citées ci-dessous servent de contraste, pas de référence à appliquer telle quelle) :**
+
+| Distance | Structure recommandée | Rationnel |
+|---|---|---|
+| 5K | Quasi-plat, très légère progression. 1er km 3-5s/km plus lent que l'allure cible, accélération km 3-4, dernier km à fond. | Distance assez courte pour qu'un léger positive split n'ait pas d'impact catastrophique, mais fenêtre d'erreur étroite — pas de marge pour un départ trop prudent non plus. |
+| 10K | 2 segments nets (pas 3) : les 5 premiers km à 5-8s/km plus lent que l'allure moyenne visée, les 2 derniers km à l'allure maximale soutenable. | Les erreurs de pacing ont un effet cumulatif plus marqué que sur 5K. Simplifie le pattern à 3 segments de v1 (Km1-3/4-7/8-10) en 2 blocs, plus proche de ce que la littérature valide concrètement. |
+| Semi / Marathon | Allure cible stable avec marge de sécurité au départ (pas de paliers progressifs marqués comme le 10K) — départ prudent, ajustement au ressenti en fin de course plutôt que schéma de segments rigide. | Pour un coureur amateur/intermédiaire (contrairement à un profil élite, où les données montrent des splits pairs voire légèrement positifs sans risque, le taux de combustion glycogène étant déjà élevé à allure élite), démarrer 5-10% trop vite épuise les réserves de glycogène jusqu'à 30% plus tôt et déclenche une baisse de régime forcée — le "mur". La marge de sécurité au départ reste donc justifiée pour ce public, même si elle l'est moins pour un profil élite. |
+
+*Sources : revue "The physiology and psychology of negative splits" (Frontiers/PMC, 2025) ; Data Driven Athlete, "How to Run a Negative Split" ; RunnersConnect, "Marathon Pacing Strategy: The 10-10-10 Method".*
+
+**Implication pour le moteur** : le type de séance `race` (à créer, cf. ci-dessus) doit générer un contenu de segments différent selon `distance`, pas un pattern unique généralisé à toutes les distances — contrairement à ce qu'on envisageait au départ (généraliser aveuglément le schéma à 3 segments du 10K v1).
+
+- **Statut : non commencé** (implémentation du type `race` avec cette logique de segments par distance).
 
 ## 4. Statut de la comparaison
 
@@ -92,7 +105,7 @@ Premier passage de comparaison terminé le 6 juillet 2026 : séances EF, sortie 
 
 7 écarts documentés au total (2.1 à 2.7) : 2 tranchés en faveur de l'approche v2 (2.1), 5 à combler (2.2 à 2.7), plus l'écart structurel sur le découpage des phases (section 3, décision reportée). Prochaine étape suggérée si ce chantier reprend : prioriser 2.7 (traitement du jour de course), identifié comme le plus structurant.
 
-## 4. Étapes du chantier (rappel, une fois le contenu du moteur jugé suffisant)
+## 5. Étapes du chantier (rappel, une fois le contenu du moteur jugé suffisant)
 
 1. Faire générer par le moteur v2 un plan aussi proche que possible du plan v1 actuel (mêmes dates, zones d'allure cohérentes) — comparaison côte à côte pour validation
 2. Adapter l'affichage de v1 pour lire ce plan généré au lieu du tableau `PLAN` statique, en conservant le design/CSS actuel
