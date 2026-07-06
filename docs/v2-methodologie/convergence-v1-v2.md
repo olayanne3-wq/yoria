@@ -131,12 +131,38 @@ Cette réduction simplifie beaucoup l'ampleur de ce qui semblait être le plus c
 
 ## 3. Point sur la structure des phases (écart structurel, pas seulement de contenu)
 
-En vérifiant les décharges/affûtage, un écart plus profond que le contenu texte est apparu : **v1 et v2 ne découpent pas les phases de la même façon.**
+En vérifiant les décharges/affûtage, un écart plus profond que le contenu texte est apparu : **v1 et v2 ne découpent pas les phases de la même façon** — du moins en apparence, cf. décision ci-dessous.
 
 - **v1** : 3 phases seulement — `construction` (semaines 1-5, avec une semaine 4 de décharge implicite non étiquetée comme telle, organisée autour de la séance test), `affutage` (semaines 6-9, qui est en réalité une phase de maintien avec séances qualité complètes, pas une vraie réduction de volume), `pic` (semaines 10-11, la vraie réduction de volume avant course, avec jours de repos supplémentaires)
 - **v2** : phases `Construction` / `Specifique` / `Affutage`, avec des semaines de décharge explicitement marquées et régulières (tous les 3-4 semaines, cf. principe des 10% dans `bibliotheque-seances.md`), et un `Affutage` qui correspond à la vraie réduction de volume finale (ce que v1 appelle `pic`)
 - **Implication** : le nom `affutage` en v1 ne désigne pas la même chose que `Affutage` en v2 — la note de terminologie déjà présente dans `bibliotheque-seances.md` (section 0) sur ce point s'applique : *"Affûtage" désigne la réduction finale de volume avant course, pas la phase de développement du seuil qui la précède, nommée "Spécifique"*. v1 n'a pas cette distinction Spécifique/Affûtage, il fusionne les deux dans sa phase `affutage`.
-- **Décision : à trancher plus tard**, une fois qu'on comparera plus finement la progression de volume semaine par semaine entre les deux — pas grave en soi tant qu'on garde la terminologie v2 (déjà clarifiée) comme référence pour le produit final, mais ça confirme qu'une simple "traduction" phase par phase entre v1 et v2 ne sera pas directe.
+
+**Décision — tranchée le 6 juillet 2026, à partir d'une comparaison chiffrée du volume semaine par semaine :**
+
+Volume estimé de v1 (à partir du texte des séances, approximatif mais suffisant pour la tendance) comparé au volume calculé par v2 (mêmes paramètres : 10K, réf 50'21, objectif 48'30, départ 30km/semaine) :
+
+| Semaine | v1 (estimé) | Phase v1 | v2 (calculé) | Phase v2 |
+|---|---|---|---|---|
+| 1 | ~34 km | construction | 30 km | Construction |
+| 2 | ~37 km | construction | 33 km | Construction |
+| 3 | ~31 km | construction | 36 km | Construction |
+| 4 | ~31 km | construction | 27 km (décharge) | Construction |
+| 5 | ~37 km | construction | 36 km | Construction |
+| 6 | ~29 km | **affutage** | 36 km | **Specifique** |
+| 7 | ~31 km | **affutage** | 36 km | **Specifique** |
+| 8 | ~32 km | **affutage** | 27 km (décharge) | **Specifique** |
+| 9 | ~25 km | **affutage** | 36 km | **Specifique** |
+| 10 | ~10 km* | pic | 28.8 km | **Affutage** |
+| 11 | ~6 km* | pic | 21.6 km | **Affutage** |
+
+*\*Sous-estimé : l'extraction ne compte pas certaines séances qualité de fin de plan (formats non reconnus par le script d'extraction), le vrai volume v1 de ces 2 semaines est probablement plus proche de ce que produit v2.*
+
+**Conclusion : ce n'est qu'un problème de nom, pas de structure réelle.** Les semaines 6-9 de v1 (`affutage`) correspondent en volume aux semaines 6-9 de v2 (`Specifique`) — même ordre de grandeur, pas de vraie réduction dans les deux cas. Les semaines 10-11 de v1 (`pic`) correspondent en fonction (vraie chute de volume) à l'`Affutage` de v2. Correspondance retenue pour la suite du chantier :
+- v1 `construction` → v2 `Construction`
+- v1 `affutage` → v2 `Specifique`
+- v1 `pic` → v2 `Affutage`
+
+Pas de renommage à faire dans le moteur v2 lui-même (sa terminologie, déjà clarifiée dans `bibliotheque-seances.md`, reste la référence pour le produit final) — cette correspondance sert uniquement de repère pour la suite du chantier de convergence (étape 1 de la section 5 : générer par v2 un plan proche du plan v1 actuel).
 
 ### 2.7 Traitement du jour de course et de la semaine d'approche (écart majeur)
 
