@@ -30,6 +30,7 @@ export default async function handler(req, res) {
   // ── /callback ────────────────────────────────────────────────────────────
   if (path === "/callback") {
     const code = req.query?.code;
+    console.log(`[strava callback] code reçu: ${code?.slice(0,8)}... | state: ${req.query?.state || 'aucun'} | ${new Date().toISOString()}`);
     if (!code) return res.status(400).json({ error: "No code" });
 
     const resp = await fetch("https://www.strava.com/oauth/token", {
