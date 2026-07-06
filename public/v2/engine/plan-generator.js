@@ -205,6 +205,102 @@ export function injecterNotesPratiques(semaines) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Repères qualitatifs sur séances dures (doc convergence-v1-v2.md, section
+// 2.4) — deux natures distinctes :
+// - Ressenti : banque de variantes par famille (même mécanisme que 2.3/2.5)
+// - Progression relative : comparaison à l'occurrence antérieure la plus
+//   récente de même famille (cf. FAMILLE_SOUS_TYPE, décision actée dans le
+//   doc : comparer par famille plutôt que sousType exact, un sousType
+//   identique d'une occurrence à l'autre étant peu probable)
+// ---------------------------------------------------------------------------
+
+export const NOTES_RESSENTI = {
+  'seuil': [
+    "Effort contrôlé, 3-4 mots max si tu devais parler.",
+    "Ça doit rester soutenu mais pas explosif."
+  ],
+  'vma': [
+    "Effort proche du maximum sur chaque répétition, récup complète entre les deux.",
+    "L'intensité prime — mieux vaut une répétition de moins mais bien exécutée."
+  ]
+};
+
+/**
+ * Injecte un repère de ressenti (piochée aléatoirement) sur les séances de
+ * famille seuil/vma. Indépendant des notes pratiques (2.3) : peut se
+ * cumuler avec elles dans le même contenu.
+ */
+export function injecterRepereRessenti(semaines) {
+  const piocher = (cle) => {
+    const variantes = NOTES_RESSENTI[cle];
+    return variantes[Math.floor(Math.random() * variantes.length)];
+  };
+
+  for (const semaine of semaines) {
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'qualite') continue;
+      const famille = FAMILLE_SOUS_TYPE[seance.sousType];
+      if (famille && NOTES_RESSENTI[famille] && seance.contenu) {
+        seance.contenu = `${seance.contenu} ${piocher(famille)}`;
+      }
+    }
+  }
+}
+
+/**
+ * Injecte une note de progression relative en comparant chaque séance
+ * qualité à l'occurrence antérieure la plus récente de même famille
+ * (FAMILLE_SOUS_TYPE). Parcourt les semaines dans l'ordre chronologique en
+ * gardant trace, par famille, de la dernière semaine où elle a été vue.
+ * Ne compare jamais une séance à elle-même (première occurrence d'une
+ * famille : pas de note).
+ *
+ * Déclenchement volontairement strict pour rester un repère ponctuel et
+ * remarquable (comme dans v1, où la note n'apparaît qu'une fois sur
+ * l'ensemble du plan observé) plutôt qu'une routine hebdomadaire : sans ces
+ * deux garde-fous, la progression par petits paliers réguliers du moteur
+ * faisait déclencher la note presque à chaque semaine consécutive.
+ * - Écart minimum de 3 semaines (pas la semaine juste précédente)
+ * - Seuil de similarité resserré à 5% (pas 15%)
+ *
+ * À appeler après injecterNotesPratiques/injecterRepereRessenti si on veut
+ * cumuler les trois notes sur une même séance (l'ordre entre ces trois
+ * fonctions n'a pas d'importance fonctionnelle, seulement l'ordre
+ * d'affichage des notes accumulées dans le contenu).
+ */
+export function injecterProgressionRelative(semaines) {
+  const ECART_MIN_SEMAINES = 3;
+  const SEUIL_SIMILARITE = 0.10;
+  const historiqueParFamille = {}; // famille -> [{ semaineNum, kmEstime }, ...]
+
+  for (const semaine of semaines) {
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'qualite') continue;
+      const famille = FAMILLE_SOUS_TYPE[seance.sousType];
+      if (!famille) continue;
+
+      const historique = historiqueParFamille[famille] ?? [];
+      // Cherche, dans l'historique de cette famille, la comparaison la plus
+      // pertinente : la plus récente qui respecte l'écart minimum de
+      // semaines ET le seuil de similarité de volume.
+      const candidat = [...historique].reverse().find(h => {
+        const ecartSemaines = semaine.semaineNum - h.semaineNum;
+        const volumeSimilaire = h.kmEstime > 0 &&
+          Math.abs((seance.kmEstime ?? 0) - h.kmEstime) / h.kmEstime < SEUIL_SIMILARITE;
+        return ecartSemaines >= ECART_MIN_SEMAINES && volumeSimilaire;
+      });
+
+      if (candidat && seance.contenu) {
+        const ecartSemaines = semaine.semaineNum - candidat.semaineNum;
+        seance.contenu = `${seance.contenu} Volume similaire à S${candidat.semaineNum} (il y a ${ecartSemaines} semaines) — la fatigue accumulée depuis peut se faire sentir.`;
+      }
+
+      historiqueParFamille[famille] = [...historique, { semaineNum: semaine.semaineNum, kmEstime: seance.kmEstime ?? 0 }];
+    }
+  }
+}
+
 /**
  * Calcule les zones d'allure à partir d'une performance de référence
  * (n'importe quelle distance), normalisée en équivalent 10K via Riegel.
@@ -1236,6 +1332,13 @@ export function generatePlan(profil, params) {
   // indépendant des jalons de transition, peut s'exécuter à tout moment
   // après que les séances aient leur contenu/sousType
   injecterNotesPratiques(semaines);
+
+  // Repères qualitatifs sur séances dures (doc convergence-v1-v2.md, 2.4) —
+  // ressenti (banque de variantes) + progression relative (comparaison à
+  // l'historique du plan déjà généré, doit s'exécuter après que kmEstime
+  // soit connu sur toutes les séances qualité)
+  injecterRepereRessenti(semaines);
+  injecterProgressionRelative(semaines);
 
   const plan = {
     distance: params.distance,
