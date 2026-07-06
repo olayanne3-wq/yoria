@@ -21,7 +21,7 @@ const CACHE_KEY_PREFIX = 'v2_weather_cache_';
 // Note statique de repli si la prévision n'est pas disponible (ex. date
 // hors de la fenêtre J+7 d'Open-Meteo, ou géolocalisation refusée) — pas de
 // blocage, juste pas d'enrichissement météo pour cette séance.
-export const NOTE_CHALEUR = "Chaleur annoncée aujourd'hui — ralentis l'allure si besoin, l'important est de finir la séance, pas de tenir un chrono.";
+export const NOTE_CHALEUR = "Chaleur annoncée pour demain — ralentis l'allure si besoin, l'important est de finir la séance, pas de tenir un chrono.";
 
 /**
  * Récupère la prévision météo pour une date et des coordonnées données, en
