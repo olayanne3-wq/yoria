@@ -75,10 +75,19 @@ En vérifiant les décharges/affûtage, un écart plus profond que le contenu te
 - **Implication** : le nom `affutage` en v1 ne désigne pas la même chose que `Affutage` en v2 — la note de terminologie déjà présente dans `bibliotheque-seances.md` (section 0) sur ce point s'applique : *"Affûtage" désigne la réduction finale de volume avant course, pas la phase de développement du seuil qui la précède, nommée "Spécifique"*. v1 n'a pas cette distinction Spécifique/Affûtage, il fusionne les deux dans sa phase `affutage`.
 - **Décision : à trancher plus tard**, une fois qu'on comparera plus finement la progression de volume semaine par semaine entre les deux — pas grave en soi tant qu'on garde la terminologie v2 (déjà clarifiée) comme référence pour le produit final, mais ça confirme qu'une simple "traduction" phase par phase entre v1 et v2 ne sera pas directe.
 
+### 2.7 Traitement du jour de course et de la semaine d'approche (écart majeur)
+
+- **v1** : la dernière semaine (semaine 11) est extrêmement détaillée à trois niveaux :
+  - **Repères J-X explicites** par rapport à la course : `"J–3 : footing léger uniquement"` (jeudi)
+  - **Consignes logistiques/nutritionnelles jour par jour**, indépendantes du contenu d'entraînement : `"Hydratation, sommeil"` (J-2), `"Pâtes le soir, coucher tôt"` (veille)
+  - **Stratégie de course fractionnée par segment** sur la séance du jour J elle-même : `"Km 1-3 prudent · Km 4-7 : 4:51/km · Km 8-10 : tout donner !"`, avec un type de séance dédié (`type: "RACE"`)
+- **v2** : **`dateCourse` n'est utilisée que pour calculer la durée des phases** (`computePhases`) — le moteur ne traite jamais le jour de la course comme un cas particulier. Vérifié concrètement : la dernière semaine générée produit un dimanche `"longue"` générique (37min EF, 6km), pas une séance de course avec stratégie de segments. Il n'existe aucun type de séance `race`/`course` dans le moteur actuel.
+- **Décision : À COMBLER — priorité haute.** Contrairement aux écarts précédents (notes d'accompagnement manquantes sur un contenu déjà correct), celui-ci est une vraie fonctionnalité manquante : le moteur ne sait pas produire de séance de course, ni de semaine d'approche structurée avec repères J-X. À traiter avant les autres points de ce document si l'ordre de traitement doit suivre un critère d'impact plutôt que d'ordre chronologique de découverte.
+- **Statut : non commencé.**
+
 ## 4. Écarts restant à vérifier
 
-Cette liste sera complétée au fur et à mesure. Comparé au 6 juillet 2026 : séances EF, sortie longue (semaine 1), séances qualité Seuil/VMA (semaines 1, 5, 8 — plusieurs phases), semaine de décharge implicite/séance test (semaine 4), structure globale des phases. Reste à comparer :
-- Contenu de la semaine de course elle-même
+Cette liste sera complétée au fur et à mesure. Comparé au 6 juillet 2026 : séances EF, sortie longue (semaine 1), séances qualité Seuil/VMA (semaines 1, 5, 8 — plusieurs phases), semaine de décharge implicite/séance test (semaine 4), structure globale des phases, dernière semaine et jour de course. Reste à comparer :
 - Les autres notes de type "Repos" ou jours sans séance dure, si elles existent ailleurs dans v1
 
 ## 4. Étapes du chantier (rappel, une fois le contenu du moteur jugé suffisant)
