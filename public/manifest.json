@@ -3,6 +3,7 @@
   "short_name": "Run by Léa",
   "description": "Ton coach running personnel pour préparer ta course",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#f97316",
