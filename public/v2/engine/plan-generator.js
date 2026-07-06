@@ -36,14 +36,14 @@ export function riegelPredict(t1Seconds, d1Km, d2Km) {
   return t1Seconds * Math.pow(d2Km / d1Km, 1.06);
 }
 
-const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
+export const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
 
 // ---------------------------------------------------------------------------
 // Section 6 (zones d'allure) — ratios calibrés sur le plan réel validé
 // (Laurent V., 10K réf 50'21" -> allures observées EF/Seuil/VMA)
 // ---------------------------------------------------------------------------
 
-const PACE_RATIOS = {
+export const PACE_RATIOS = {
   recup: 1.33,
   E: 1.225,   // milieu de la fourchette observée 1.19-1.26
   T: 0.99,
