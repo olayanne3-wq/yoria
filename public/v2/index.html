@@ -1360,9 +1360,14 @@
   async function verifierMeteoSeanceDemain(plan) {
     if (!plan.dateDebut) return;
     const debut = new Date(plan.dateDebut + 'T00:00:00Z');
-    const demain = new Date();
-    demain.setDate(demain.getDate() + 1);
+    // Calcul de "demain" en UTC, cohérent avec le calcul de dateSeance
+    // ci-dessous — mélanger un Date en fuseau local (new Date() puis
+    // toISOString()) avec un calcul en UTC pur créait un décalage possible
+    // d'un jour selon l'heure et le fuseau de l'utilisateur.
+    const aujourdhui = new Date();
+    const demain = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + 1));
     const demainStr = demain.toISOString().slice(0, 10);
+    console.log('[météo] Recherche d\'une séance le', demainStr, '(dateDebut du plan:', plan.dateDebut, ')');
 
     for (const semaine of plan.semaines) {
       for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
@@ -1371,7 +1376,9 @@
         const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
 
         if (dateSeanceStr === demainStr && seance.contenu) {
+          console.log('[météo] Séance trouvée pour demain, appel de verifierMeteoPourSeance...');
           await Engine.verifierMeteoPourSeance(seance, demainStr);
+          console.log('[météo] Contenu après vérification :', seance.contenu);
           // Rafraîchit l'affichage pour que la note météo (si ajoutée)
           // soit visible immédiatement, sans attendre une navigation
           rafraichirPlanComplet();
@@ -1380,6 +1387,7 @@
         }
       }
     }
+    console.log('[météo] Aucune séance ne tombe demain dans ce plan.');
   }
 
   const DAY_NAMES_COURT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
