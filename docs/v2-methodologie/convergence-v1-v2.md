@@ -36,12 +36,31 @@ Le moteur reste générique : rien de ce qui est ajouté ne doit être spécifiq
 - **Décision : À COMBLER.** Rejoint le point 2.2 (notes statiques par type), à traiter dans le même chantier.
 - **Statut : non commencé.**
 
+### 2.4 Repères qualitatifs sur séances dures (ressenti, progression relative)
+
+- **v1** : notes variables sur les séances Seuil/VMA, jamais génériques — deux natures observées :
+  - Repère de ressenti/allure d'effort (test de la parole), ex. Seuil semaine 1 → `"Effort contrôlé, 3–4 mots max"`
+  - Repère de progression relative (comparaison à une séance antérieure similaire), ex. VMA semaine 5 → `"Volume VMA identique S1, fatigue cumulée"`
+- **v2** : le contenu technique (allures, répétitions, structure) est déjà solide et progresse correctement d'une semaine à l'autre (vérifié : 3×6' semaine 1 → 4×6' semaine 5 sur le Seuil, structure cohérente), mais **aucune note d'accompagnement** de ce type n'est produite
+- **Décision : À COMBLER.** Distinct du point 2.2/2.3 (météo/pratique) : celui-ci concerne spécifiquement le repère qualitatif sur l'effort lui-même et sa place dans la progression. Pour la note de progression relative en particulier, le moteur devrait pouvoir comparer une séance à son équivalent d'une semaine antérieure (même sous-type de séance qualité) — nécessite un mécanisme de lookup dans l'historique du plan déjà généré, pas juste un calcul local à la semaine courante.
+- **Statut : non commencé.**
+
+### 2.5 Jalons narratifs aux moments de transition du plan
+
+- **v1** : notes signalant un moment charnière du plan plutôt qu'un conseil de contenu, toutes concentrées autour de la bascule vers l'affûtage :
+  - `"Dernière longue avant affûtage · Allonge selon la forme"` (dernière sortie longue avant la coupure de volume)
+  - `"Début affûtage"` (première séance de la phase)
+  - `"Fin affûtage ✨ · Très tranquille"` (dernières séances avant course)
+- **v2** : aucun mécanisme de ce type — les phases existent dans la donnée (`plan.semaines[].phase`) mais rien n'accompagne le passage d'une phase à l'autre pour l'utilisateur
+- **Décision : À COMBLER.** Contrairement aux points précédents (conseils techniques), celui-ci relève de l'accompagnement de l'expérience utilisateur aux moments clés — vaut le coup indépendamment du reste, relativement simple à détecter techniquement (première/dernière semaine d'une phase, ou changement de phase par rapport à la semaine précédente).
+- **Statut : non commencé.**
+
 ## 3. Écarts restant à vérifier
 
-Cette liste sera complétée au fur et à mesure — seules les séances EF et sortie longue de la semaine 1 ont été comparées en détail au 6 juillet 2026. Reste à comparer :
-- Séances qualité (Seuil, VMA) — premier aperçu favorable à v2 (déjà proche du niveau de détail v1), à confirmer sur plusieurs semaines/phases
-- Semaines de décharge et d'affûtage — contenu et notes spécifiques à ces semaines particulières
+Cette liste sera complétée au fur et à mesure. Comparé au 6 juillet 2026 : séances EF, sortie longue (semaine 1), séances qualité Seuil/VMA (semaines 1, 5, 8 — plusieurs phases). Reste à comparer :
+- Contenu détaillé des semaines de décharge classiques (hors affûtage) — v1 en a-t-il un traitement de contenu différent, ou seulement un volume réduit ?
 - Contenu de la semaine de course elle-même
+- Les autres notes de type "Repos" ou jours sans séance dure, si elles existent ailleurs dans v1
 
 ## 4. Étapes du chantier (rappel, une fois le contenu du moteur jugé suffisant)
 
