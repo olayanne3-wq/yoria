@@ -138,6 +138,73 @@ export function injecterJalonsTransition(semaines) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Notes pratiques par famille de séance (doc convergence-v1-v2.md, section
+// 2.3) — même mécanisme que JALONS_TRANSITION (banque de variantes tirée au
+// sort, fusionnée dans `contenu`), déclenché par le type/sous-type de séance
+// plutôt qu'une transition de phase.
+// ---------------------------------------------------------------------------
+
+// Regroupe un sousType de séance qualité (cf. ROTATION_SOUS_TYPE) en famille
+// pour le choix de la banque de notes. 'test' n'a pas de note pratique ici :
+// traité à part (2.6, cohérence narrative de la semaine test).
+const FAMILLE_SOUS_TYPE = {
+  'seuil-court': 'seuil', 'seuil': 'seuil', 'seuil-negatif': 'seuil',
+  'tempo-court': 'seuil', 'fartlek': 'seuil',
+  'i-30-30': 'vma', 'i-3min': 'vma', 'vitesse': 'vma', 'pyramidale': 'vma', 'cotes': 'vma',
+  'allure-course': 'allure-course', 'allure-course-court': 'allure-course'
+};
+
+export const NOTES_PRATIQUES = {
+  'longue': [
+    "Hydrate-toi bien avant et pendant si besoin.",
+    "Emporte de quoi boire si tu pars plus d'1h."
+  ],
+  'seuil': [
+    "Effort contrôlé — tu dois pouvoir tenir une phrase courte, pas plus.",
+    "Vise la régularité plutôt que la vitesse sur cette séance."
+  ],
+  'vma': [
+    "Récupération complète entre les répétitions — pas de course contre la montre sur la récup.",
+    "La qualité de l'effort compte plus que le nombre de répétitions."
+  ],
+  'allure-course': [
+    "Reste concentré sur ton allure cible, pas sur ce que tu pourrais tenir aujourd'hui.",
+    "C'est l'occasion de sentir ton allure objectif dans les jambes."
+  ]
+};
+
+/**
+ * Injecte une note pratique (piochée aléatoirement) selon le type/sous-type
+ * de chaque séance du plan. Mute `semaines` en place, ne retourne rien.
+ * Indépendant de injecterJalonsTransition (peut s'appliquer à la même
+ * séance qu'un jalon de transition — les deux notes se cumulent alors dans
+ * le contenu).
+ */
+export function injecterNotesPratiques(semaines) {
+  const piocher = (cle) => {
+    const variantes = NOTES_PRATIQUES[cle];
+    return variantes[Math.floor(Math.random() * variantes.length)];
+  };
+  const ajouterNote = (seance, note) => {
+    if (!seance || !seance.contenu) return;
+    seance.contenu = `${seance.contenu} ${note}`;
+  };
+
+  for (const semaine of semaines) {
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type === 'longue') {
+        ajouterNote(seance, piocher('longue'));
+      } else if (seance.type === 'qualite') {
+        const famille = FAMILLE_SOUS_TYPE[seance.sousType];
+        if (famille && NOTES_PRATIQUES[famille]) {
+          ajouterNote(seance, piocher(famille));
+        }
+      }
+    }
+  }
+}
+
 /**
  * Calcule les zones d'allure à partir d'une performance de référence
  * (n'importe quelle distance), normalisée en équivalent 10K via Riegel.
@@ -1164,6 +1231,11 @@ export function generatePlan(profil, params) {
   // semaines en place, doit s'exécuter une fois toutes les semaines/phases
   // connues (a besoin de regarder la semaine précédente/suivante)
   injecterJalonsTransition(semaines);
+
+  // Notes pratiques par famille de séance (doc convergence-v1-v2.md, 2.3) —
+  // indépendant des jalons de transition, peut s'exécuter à tout moment
+  // après que les séances aient leur contenu/sousType
+  injecterNotesPratiques(semaines);
 
   const plan = {
     distance: params.distance,
