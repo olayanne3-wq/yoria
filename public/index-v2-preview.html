@@ -555,27 +555,52 @@ function extractTargetSpeed(sessionStr) {
 
 function getEffortLaps(activity) {
   if (!activity.laps || activity.laps.length < 4) return [];
-  // Trouver la seance dans le plan pour connaitre l allure cible
-  const date = activity.start_date_local ? activity.start_date_local.slice(0,10) : null;
-  const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
-  const targetSpeed = planSess ? extractTargetSpeed(planSess.session) : null;
 
   // Supprimer 1er lap (echauffement) et 2 derniers (retour au calme)
   const middle = activity.laps.slice(1, -2);
   if (!middle.length) return [];
 
-  // Vitesse cible : depuis le libelle de seance, ou depuis SESSION_TARGETS
-  let effSpeed = targetSpeed;
-  if (!effSpeed && planSess && SESSION_TARGETS[planSess.type]) {
-    effSpeed = 1000 / SESSION_TARGETS[planSess.type].targetMin;
-  }
+  // Vitesse cible : d'abord depuis le libellé de la séance si elle
+  // correspond à une séance du plan à cette date (affinage, quand
+  // disponible), sinon on essaie chaque cible générique de SESSION_TARGETS
+  // (VMA/SEUIL/SPEC/TEST) indépendamment du plan — la reconnaissance du
+  // type d'effort réel ne doit plus dépendre d'une correspondance stricte
+  // de date avec ce qui était prévu (cf. docs/v2-methodologie/
+  // convergence-v1-v2.md : la prédiction de performance doit rester fiable
+  // même si le plan affiché à cette date-là ne correspond pas exactement à
+  // l'effort réellement fourni, ce qui peut arriver dès qu'un plan diffère
+  // du déroulé réel — pas seulement dans le contexte du chantier v2).
+  //
+  // NOTE IMPORTANTE : ceci ne concerne QUE la détection du type d'effort
+  // pour la prédiction de performance. Le suivi de respect du plan
+  // (statuts ✅/⚠️/❌ par séance prévue) reste entièrement basé sur la
+  // correspondance stricte par date avec ALL_SESSIONS, inchangé.
+  const date = activity.start_date_local ? activity.start_date_local.slice(0,10) : null;
+  const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+  const targetSpeedDuPlan = planSess ? extractTargetSpeed(planSess.session) : null;
 
-  // Filtrer par vitesse ±15%
-  if (effSpeed) {
-    const bySpeed = middle.filter(l => l.average_speed > 0 &&
+  const essayerCible = (effSpeed) => {
+    if (!effSpeed) return [];
+    return middle.filter(l => l.average_speed > 0 &&
       Math.abs(l.average_speed - effSpeed) <= effSpeed * 0.15);
+  };
+
+  // 1. Affinage par le plan prévu à cette date, si disponible
+  if (targetSpeedDuPlan) {
+    const bySpeed = essayerCible(targetSpeedDuPlan);
     if (bySpeed.length > 0) return bySpeed;
   }
+
+  // 2. Sinon, essaie chaque cible générique (VMA, SEUIL, SPEC, TEST) et
+  // retient celle qui capture le plus de laps — reconnaît le type
+  // d'effort réel sans dépendre de ce qui était prévu ce jour-là
+  let meilleurResultat = [];
+  for (const cible of Object.values(SESSION_TARGETS)) {
+    const effSpeed = 1000 / cible.targetMin;
+    const bySpeed = essayerCible(effSpeed);
+    if (bySpeed.length > meilleurResultat.length) meilleurResultat = bySpeed;
+  }
+  if (meilleurResultat.length > 0) return meilleurResultat;
 
   // Fallback : moitie la plus rapide
   const withSpeed = middle.filter(l => l.average_speed > 0);
@@ -735,10 +760,20 @@ function predict10K() {
   // Pour un type de séance, calcule la vitesse moyenne pondérée par la durée
   // totale d\'effort de chaque séance (séances plus longues = plus de poids)
   function weightedAvgByEffortDuration(sessionType, factor) {
-    const sessionRuns = runs.filter(r => {
-      const dateLocal = r.start_date_local?.slice(0,10);
-      return ALL_SESSIONS.find(s => s.date===dateLocal && s.type===sessionType);
-    });
+    // Une activité "appartient" au type sessionType si elle contient des
+    // laps dont l'allure correspond à la cible générique de ce type précis
+    // — indépendant de ce que le plan prévoyait ce jour-là (cf. commentaire
+    // dans getEffortLaps). Le plan reste utilisé comme affinage à
+    // l'intérieur de getEffortLaps quand une correspondance de date existe,
+    // mais ne conditionne plus la sélection des activités analysées ici.
+    const cible = SESSION_TARGETS[sessionType];
+    const sessionRuns = cible ? runs.filter(r => {
+      const effSpeedCible = 1000 / cible.targetMin;
+      const laps = getEffortLaps(r);
+      if (!laps.length) return false;
+      const avgSpeed = laps.reduce((s,l) => s + l.average_speed, 0) / laps.length;
+      return Math.abs(avgSpeed - effSpeedCible) <= effSpeedCible * 0.15;
+    }) : [];
     if (!sessionRuns.length) return null;
 
     let totalWeight = 0;
