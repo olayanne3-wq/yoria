@@ -2045,7 +2045,7 @@
       // scope explicite : ce service worker ne doit contrôler que /v2,
       // jamais v1 (racine) — cache et cycle de vie indépendants entre
       // les deux versions.
-      navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2' }).catch(() => {});
+      navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2/' }).catch(() => {});
     });
   }
 </script>

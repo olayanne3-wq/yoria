@@ -99,7 +99,18 @@ export async function verifierMeteoPourSeance(seance, date, storage = localStora
         console.log('[météo] Échec géolocalisation:', err.message, '(code', err.code, ')');
         resolve(seance);
       },
-      { timeout: 5000 }
+      {
+        timeout: 15000, // 5s était trop court : un GPS qui doit se fixer
+        // (intérieur, signal faible) peut facilement dépasser ce délai —
+        // constaté en pratique (timeout systématique chez Laurent)
+        maximumAge: 10 * 60 * 1000, // accepte une position vieille de 10min
+        // max : la météo n'a pas besoin d'une précision GPS instantanée,
+        // une position en cache récente suffit et évite d'attendre un
+        // nouveau fix si le navigateur en a déjà une sous la main
+        enableHighAccuracy: false // la précision fine (GPS pur) est plus
+        // lente que la position approximative (réseau/wifi) ; largement
+        // suffisant pour une prévision météo à l'échelle d'une ville
+      }
     );
   });
 }
