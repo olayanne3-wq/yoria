@@ -251,6 +251,16 @@ const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || win
   ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine?.objectif || window.__PLAN_BRUT__.objectif)
   : 2910;
 
+// Distance de la course en mètres, lue depuis le plan (KM_BY_DISTANCE,
+// déjà défini dans le moteur classic chargé en premier) plutôt que 10000
+// (10km) codé en dur — bug trouvé le 7 juillet 2026 : sur un plan Semi
+// (21.1km), tous les calculs d'allure divisaient raceGoalTime par 10km au
+// lieu de 21.1km, donnant une allure bien trop rapide (mécaniquement fausse
+// dans le mauvais sens : un temps de Semi divisé par une distance de 10K
+// sous-estime le temps réel par km). Repli sur 10000 (10km, distance
+// historique de Laurent) si absente.
+const DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
+
 let raceGoalTime = load(clePourPlan("lk_race_goal"), OBJECTIF_REFERENCE);
 let runnerWeight = load("lk_weight", null);
 let runnerHeight = load("lk_height", null);
@@ -564,7 +574,7 @@ async function fetchCoachMsg() {
     return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
-  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le 6 septembre 2026 à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
+  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
@@ -1261,7 +1271,7 @@ function renderDashboard() {
       el("div",{style:{textAlign:"center"}},
         el("div",{class:"label",style:{marginBottom:"4px"}},"Objectif"),
         el("div",{style:{color:"#f97316",fontSize:"32px",fontWeight:"900",letterSpacing:"-1px",lineHeight:"1"}},fmtTime(raceGoalTime)),
-        el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},fmtPace(10000/raceGoalTime)+"/km")
+        el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km")
       ),
       el("div",{style:{background:"#2e3347"}}),
       (()=>{
@@ -2636,7 +2646,7 @@ function renderStats() {
     const hasVerdict = daySpan >= 21;
 
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au 6 septembre"),
+      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
           el("div",{},
@@ -2667,7 +2677,7 @@ function renderStats() {
     const availDate = new Date(new Date(projOldest).getTime() + 21*86400000);
     const availStr = availDate.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au 6 septembre"),
+      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px",textAlign:"center"}},
         el("div",{style:{fontSize:"24px",marginBottom:"8px"}},"📊"),
         el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"600",marginBottom:"4px"}},"Données insuffisantes"),
@@ -2683,7 +2693,7 @@ function renderStats() {
       ...[
         ["Course",RACE_NAME,"#f97316"],
         ["Date",new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION,"#f1f5f9"],
-        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(10000/raceGoalTime)+"/km","#f97316"],
+        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km","#f97316"],
         ["Référence",fmtTime(BASE_TIME_REFERENCE),"#f1f5f9"],
         ["Allure EF","6:20/km · 6:40/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
@@ -2734,7 +2744,7 @@ function renderCourse() {
         el("div",{class:"muted",style:{fontSize:"12px"}},"Avant la course")
       ),
       el("div",{style:{flex:"1",background:"#232738",borderRadius:"8px",padding:"8px 10px",textAlign:"center"}},
-        el("div",{style:{color:"#f97316",fontSize:"15px",fontWeight:"700"}},fmtPace(10000/raceGoalTime)+"/km"),
+        el("div",{style:{color:"#f97316",fontSize:"15px",fontWeight:"700"}},fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km"),
         el("div",{class:"muted",style:{fontSize:"12px"}},"Allure cible")
       )
     )
@@ -2841,33 +2851,58 @@ function renderCourse() {
   if (daysToRace <= 16) {
     // La météo sera fetchée et affichée
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
         el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible dans les 16 jours avant la course")
       )
     );
   } else {
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
-        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du 21 août · J–"+daysToRace+" actuellement")
+        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du "+fmtDate(new Date(new Date(DATE_COURSE_REFERENCE+"T00:00:00").getTime()-16*86400000).toISOString().slice(0,10))+" · J–"+daysToRace+" actuellement")
       )
     );
   }
 
   // ── Allures de passage aux km clés ───────────────────────────────────────
-  const paceSecKm = raceGoalTime / 10; // secondes par km
-  // Calculer l\'allure compensée sur les 3 derniers km pour arriver exactement à l\'objectif
-  const cumulKm7 = 1*(paceSecKm+10) + 2*(paceSecKm+5) + 2*paceSecKm + 2*paceSecKm;
-  const paceFinal = (raceGoalTime - cumulKm7) / 3;
-  // Segments : de→à, allure sur ce segment, note
-  const splits = [
-    { from:0,  to:1,  note:"Départ prudent",  pace: paceSecKm + 10 },
-    { from:1,  to:3,  note:"S\'installer",    pace: paceSecKm + 5  },
-    { from:3,  to:5,  note:"Mi-course",       pace: paceSecKm      },
-    { from:5,  to:7,  note:"Allure cible",    pace: paceSecKm      },
-    { from:7,  to:10, note:"Finir fort",      pace: paceFinal      },
-  ];
+  // Segments par distance — même logique/mêmes décalages de pace que
+  // genererContenuRace() dans plan-generator.js (section 2.7 du doc de
+  // convergence), réécrite ici en données structurées (segments avec bornes
+  // km + allure + temps de passage cumulé) plutôt qu'un texte narratif tout
+  // fait, pour que cette carte visuelle puisse les afficher dans son propre
+  // format tableau. Bug trouvé le 7 juillet 2026 : cette carte était
+  // entièrement câblée pour un 10K (5 segments de 0 à 10km, conseil coach
+  // mentionnant "le km 7 et 10") — un plan Semi/Marathon/5K affichait des
+  // allures et un conseil complètement hors sujet.
+  const distanceKmCourse = DISTANCE_M_REFERENCE / 1000;
+  const paceSecKm = raceGoalTime / distanceKmCourse; // secondes par km, allure cible moyenne
+
+  let splits;
+  if (distanceKmCourse <= 5.5) {
+    // 5K : quasi-plat, progression légère (même principe que genererContenuRace)
+    splits = [
+      { from:0, to:1, note:"Départ prudent", pace: paceSecKm + 4 },
+      { from:1, to:2, note:"Allure cible", pace: paceSecKm },
+      { from:2, to:4, note:"Accélération progressive", pace: paceSecKm - 3 },
+      { from:4, to:Math.round(distanceKmCourse), note:"Tout donner", pace: paceSecKm - 6 },
+    ];
+  } else if (distanceKmCourse <= 12) {
+    // 10K : 2 segments nets
+    const kmSegment1 = Math.round(distanceKmCourse * 0.5);
+    splits = [
+      { from:0, to:kmSegment1, note:"Prudent, 1ère moitié", pace: paceSecKm + 6.5 },
+      { from:kmSegment1, to:Math.round(distanceKmCourse), note:"Allure maximale soutenable", pace: paceSecKm },
+    ];
+  } else {
+    // Semi / Marathon : allure stable, marge de sécurité au départ, pas de
+    // paliers progressifs marqués
+    const kmDepart = Math.round(distanceKmCourse * 0.15); // ~15% de la distance pour la marge de sécurité initiale
+    splits = [
+      { from:0, to:kmDepart, note:"Marge de sécurité, ne pars pas trop vite", pace: paceSecKm + 5 },
+      { from:kmDepart, to:Math.round(distanceKmCourse), note:"Allure cible, ajuste au ressenti en fin de course", pace: paceSecKm },
+    ];
+  }
 
   // Calculer les temps de passage cumulés
   const passageTimes = [];
@@ -2891,7 +2926,8 @@ function renderCourse() {
         const paceStr = Math.floor(s.pace/60)+":"+(Math.round(s.pace%60)).toString().padStart(2,"0")+"/km";
         const passageStr = fmtTime(passageTimes[i]) || "--";
         const segLabel = s.from+"→"+s.to+" km";
-        const color = i===0||i===1?"#60a5fa":i===2||i===3?"#f97316":"#22c55e";
+        const posRelative = i / (splits.length - 1 || 1); // 0 = premier segment, 1 = dernier
+        const color = posRelative < 0.4 ? "#60a5fa" : posRelative < 0.7 ? "#f97316" : "#22c55e";
         return el("div",{style:{display:"grid",gridTemplateColumns:"60px 1fr 70px 70px",gap:"0",padding:"10px 12px",borderBottom:i<splits.length-1?"1px solid #2e3347":"none",alignItems:"center"}},
           el("span",{style:{color,fontSize:"13px",fontWeight:"700"}},segLabel),
           el("span",{class:"muted",style:{fontSize:"13px"}},s.note),
@@ -2941,13 +2977,18 @@ function renderCourse() {
   );
 
   // ── Conseil Coach spécifique course ───────────────────────────────────────
+  // Généré depuis les vrais splits (pas un texte figé pour 10K) — même bug
+  // que la carte "Allures de passage" ci-dessus (cf. commentaire associé).
+  const premierSplit = splits[0];
+  const dernierSplit = splits[splits.length - 1];
+  const premierSplitStr = Math.floor(premierSplit.pace/60)+":"+(Math.round(premierSplit.pace%60)).toString().padStart(2,"0");
   const coachRaceEl = el("div",{style:{marginBottom:"12px"}},
     el("div",{class:"label"},"🤖 Conseil de Léa pour la course"),
     el("div",{style:{background:"#232738",borderRadius:"10px",padding:"14px",display:"flex",gap:"10px"}},
       el("span",{style:{fontSize:"20px",flexShrink:"0"}},"🤖"),
       el("div",{style:{color:"#e2e8f0",fontSize:"14px",lineHeight:"1.6"}},
-        "Pars prudemment sur le 1er km — vise "+Math.floor((raceGoalTime/10+10)/60)+":"+(Math.round((raceGoalTime/10+10)%60)).toString().padStart(2,"0")+"/km. "+
-        "Installe ton allure cible à partir du km 2. La course se joue entre le km 7 et 10 — garde une réserve pour finir fort. "+
+        premierSplit.note+" jusqu'au km "+premierSplit.to+" — vise "+premierSplitStr+"/km. "+
+        dernierSplit.note+" à partir du km "+dernierSplit.from+". "+
         "Objectif mi-course : "+fmtTime(Math.round(raceGoalTime/2))+"."
       )
     )
@@ -3456,7 +3497,7 @@ function renderSettings() {
         {label:"Taille", id:"inp-taille", type:"number", unit:"cm", val:runnerHeight||""},
         {label:"FC max", id:"inp-fcmax", type:"number", unit:"bpm", val:runnerFcMax||181},
         {label:"separator"},
-        {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(10000/raceGoalTime)+"/km", val:Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"), color:"#f97316"},
+        {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km", val:Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"), color:"#f97316"},
         {label:"PPS", id:"pps-input", type:"text", unit:"", val:runnerPps||"", width:"160px"},
       ];
       rows.forEach((r,i)=>{
