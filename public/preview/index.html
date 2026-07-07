@@ -119,29 +119,34 @@ const RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
 // ── Phases ──────────────────────────────────────────────────────────────
 // Reconstruites depuis plan.phases (nombre de semaines par phase) plutôt
 // que des plages codées en dur — sinon incohérent avec un plan de durée
-// différente de 11 semaines. Correspondance de terminologie v2 -> v1
-// (déjà tranchée dans docs/v2-methodologie/convergence-v1-v2.md, section 3) :
-// Construction -> construction, Specifique -> affutage, Affutage -> pic.
-const NOM_PHASE_V1 = { 'Construction': 'construction', 'Specifique': 'affutage', 'Affutage': 'pic' };
-const LABEL_PHASE_V1 = { 'construction': 'Construction', 'affutage': 'Affûtage', 'pic': 'Pic de forme' };
-const COULEUR_PHASE_V1 = { 'construction': '#60a5fa', 'affutage': '#eab308', 'pic': '#f97316' };
+// différente de 11 semaines. Utilise directement les vrais noms de phase
+// du moteur v2 (Construction/Specifique/Affutage), pas le mapping v1
+// historique (construction/affutage/pic) tranché en section 3 du doc de
+// convergence — abandonné le 7 juillet 2026 : Laurent signale que l'écran
+// "Semaines" affichait "Construction, Affûtage, Pic de forme" alors que le
+// wizard v2 (source de vérité) affiche "Construction, Specifique, Affutage"
+// pour ce même plan — deux affichages incohérents entre eux pour les mêmes
+// données, plus confus qu'utile.
+const LABEL_PHASE_V2 = { 'Construction': 'Construction', 'Specifique': 'Spécifique', 'Affutage': 'Affûtage' };
+const COULEUR_PHASE_V2 = { 'Construction': '#60a5fa', 'Specifique': '#a855f7', 'Affutage': '#eab308' };
 
 const PHASES = (() => {
   const phasesBrutes = window.__PLAN_BRUT__?.phases;
   if (!phasesBrutes) {
-    // Repli : plages historiques du plan de Laurent (11 semaines)
+    // Repli : plages historiques du plan de Laurent (11 semaines), avec les
+    // vrais noms v2 (le plan historique de Laurent a bien 3 phases
+    // Construction/Specifique/Affutage, cf. section 3 du doc de convergence)
     return [
-      { id:"construction", label:"Construction", weeks:[1,2,3,4,5], color:"#60a5fa" },
-      { id:"affutage",     label:"Affûtage",     weeks:[6,7,8,9],   color:"#eab308" },
-      { id:"pic",          label:"Pic de forme", weeks:[10,11],      color:"#f97316" },
+      { id:"Construction", label:"Construction", weeks:[1,2,3,4,5], color:"#60a5fa" },
+      { id:"Specifique",   label:"Spécifique",    weeks:[6,7,8,9],   color:"#a855f7" },
+      { id:"Affutage",     label:"Affûtage",      weeks:[10,11],     color:"#eab308" },
     ];
   }
   let semaineCourante = 1;
   return phasesBrutes.map(p => {
-    const id = NOM_PHASE_V1[p.nom] || p.nom.toLowerCase();
     const weeks = Array.from({ length: p.semaines }, (_, i) => semaineCourante + i);
     semaineCourante += p.semaines;
-    return { id, label: LABEL_PHASE_V1[id] || p.nom, weeks, color: COULEUR_PHASE_V1[id] || '#60a5fa' };
+    return { id: p.nom, label: LABEL_PHASE_V2[p.nom] || p.nom, weeks, color: COULEUR_PHASE_V2[p.nom] || '#60a5fa' };
   });
 })();
 
