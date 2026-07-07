@@ -56,7 +56,7 @@ Contrainte de fond actée d'emblée : une prévision météo n'a de sens que pro
 
 **Choix de l'API météo — tranché le 6 juillet 2026 :** [Open-Meteo](https://open-meteo.com/), retenu pour l'absence totale de friction (pas de clé API, pas d'inscription, endpoint HTTP GET simple, JSON) et un volume gratuit large (10 000 appels/jour en usage non commercial) — largement suffisant pour l'usage prévu ici (un appel par utilisateur actif la veille de sa séance). Limite explicitement actée : la gratuité d'Open-Meteo est conditionnée à un usage non commercial ; **choix assumé de migrer plus tard si besoin** une fois la v2.5 (commercialisation) engagée, plutôt que de sur-anticiper maintenant un fournisseur payant (ex. OpenWeatherMap) pour un besoin qui n'existe pas encore.
 
-- **Statut : non commencé** (mécanisme de déclenchement quotidien reste à faire — le choix d'API est tranché).
+- **Statut : implémenté et validé en conditions réelles.** Documentation détaillée (architecture, incidents de déploiement, décisions) dans un document dédié : [`notes-meteo.md`](./notes-meteo.md).
 
 ### 2.3 Notes pratiques par type de séance (hors météo)
 
@@ -72,7 +72,7 @@ Contrainte de fond actée d'emblée : une prévision météo n'a de sens que pro
 | Seuil | "Effort contrôlé — tu dois pouvoir tenir une phrase courte, pas plus." |
 | VMA / Vitesse | "Récupération complète entre les répétitions — pas de course contre la montre sur la récup." |
 
-- **Statut : non commencé** (implémentation de la banque de variantes dans le moteur).
+- **Statut : implémenté et testé (commit `bf96c60`).** Documentation détaillée (règles de détection, banque complète, hypothèses non tranchées) dans un document dédié : [`notes-pratiques.md`](./notes-pratiques.md).
 
 ### 2.4 Repères qualitatifs sur séances dures (ressenti, progression relative)
 
@@ -91,7 +91,7 @@ Les deux natures de note se traitent différemment :
 
 *Format d'intégration* : fusionné dans le champ `contenu`, comme les autres notes de ce document (2.1, 2.3, 2.5).
 
-- **Statut : non commencé** (banque de variantes ressenti + mécanisme de comparaison par famille à implémenter).
+- **Statut : implémenté et testé (commit `bcc013e`).** Documentation détaillée (deux bugs réels trouvés en implémentant, ajustement empirique des seuils) dans un document dédié : [`reperes-qualitatifs.md`](./reperes-qualitatifs.md).
 
 ### 2.5 Jalons narratifs aux moments de transition du plan
 
@@ -147,7 +147,7 @@ Réduit à deux mécanismes, dont un seul vraiment nouveau par rapport aux autre
 
 Cette réduction simplifie beaucoup l'ampleur de ce qui semblait être le plus complexe des écarts : seule la détection du contexte veille/lendemain (point 1) est réellement nouvelle, le reste réutilise des mécanismes déjà actés dans ce document.
 
-- **Statut : non commencé** (détection du contexte veille/lendemain-test + banques de variantes associées).
+- **Statut : implémenté et testé (commit `d098f1a`).** Documentation détaillée (contrainte d'ordonnancement, banque dupliquée avec les jalons de transition) dans un document dédié : [`coherence-semaine-test.md`](./coherence-semaine-test.md).
 
 ### 2.7 Traitement du jour de course et de la semaine d'approche (écart majeur)
 
@@ -170,7 +170,7 @@ Cette réduction simplifie beaucoup l'ampleur de ce qui semblait être le plus c
 
 **Implication pour le moteur** : le type de séance `race` (à créer, cf. ci-dessus) doit générer un contenu de segments différent selon `distance`, pas un pattern unique généralisé à toutes les distances — contrairement à ce qu'on envisageait au départ (généraliser aveuglément le schéma à 3 segments du 10K v1).
 
-- **Statut : non commencé** (implémentation du type `race` avec cette logique de segments par distance).
+- **Statut : implémenté et testé (commit `f56f1a9`).** Documentation détaillée (stratégie de pacing par distance, garde-fou sportif, 2 bugs réels trouvés) dans un document dédié : [`jour-de-course.md`](./jour-de-course.md).
 
 ## 3. Point sur la structure des phases (écart structurel, pas seulement de contenu)
 
@@ -357,6 +357,12 @@ Repère pour reprendre le travail sans avoir à fouiller l'historique git.
 **Documentation** :
 - `docs/v2-methodologie/convergence-v1-v2.md` — ce document
 - `docs/v2-methodologie/bibliotheque-seances.md` — référence méthodologique antérieure, toujours valide (terminologie Spécifique/Affûtage, principe des décharges)
+- `docs/v2-methodologie/notes-meteo.md` — document dédié à la section 2.2 (le seul des 6 chantiers de contenu avec une dépendance API externe, et le seul ayant nécessité un vrai débogage en production — 5 incidents documentés)
+- `docs/v2-methodologie/notes-pratiques.md` — document dédié à la section 2.3
+- `docs/v2-methodologie/reperes-qualitatifs.md` — document dédié à la section 2.4 (2 bugs réels trouvés en implémentant, documentés en détail)
+- `docs/v2-methodologie/jalons-narratifs.md` — document dédié à la section 2.5
+- `docs/v2-methodologie/coherence-semaine-test.md` — document dédié à la section 2.6
+- `docs/v2-methodologie/jour-de-course.md` — document dédié à la section 2.7 (le plus dense des 6, garde-fou sportif découvert en cours d'implémentation)
 
 ## 9. Décisions techniques clés à ne pas re-questionner sans relire le contexte
 
