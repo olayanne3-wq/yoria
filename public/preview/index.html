@@ -1100,20 +1100,6 @@ function renderSelecteurPlan() {
     borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
     width:"100%",cursor:"pointer"
   }, onChange: (e) => {
-    if (e.target.value === '__nouveau_plan__') {
-      // Ouvre le wizard v2 dans un nouvel onglet plutôt que de naviguer dans
-      // la même fenêtre (demandé par Laurent le 6 juillet 2026,
-      // docs/v2-methodologie/convergence-v1-v2.md, section 7). Nécessaire
-      // car cette page peut être installée en PWA (manifest racine, scope
-      // "/") : un location.href vers /v2 depuis ce contexte reproduirait le
-      // bug de relance/flash déjà diagnostiqué en tout début de session sur
-      // /v2 lui-même (sortie de scope PWA vers un domaine externe/une autre
-      // route). window.open() ouvre un contexte de navigation séparé, hors
-      // du scope PWA de cette page, donc pas concerné par ce risque.
-      window.open('/v2', '_blank');
-      e.target.value = idActuel || ''; // remet le select sur le plan affiché
-      return;
-    }
     localStorage.setItem('v2_preview_plan_id', e.target.value);
     location.reload();
   }});
@@ -1125,12 +1111,26 @@ function renderSelecteurPlan() {
     select.appendChild(option);
   });
 
-  // Option spéciale toujours présente, en dernier — même si aucun plan
-  // n'est encore sauvegardé (le menu ne serait alors composé que de cette
-  // seule option, ce qui reste utile et cohérent)
-  select.appendChild(el("option",{value:"__nouveau_plan__"},"➕ Créer un nouveau plan"));
+  // Repli explicite si aucun plan sauvegardé — évite un <select> visuellement
+  // vide, plus cohérent qu'un menu sans aucune option affichée
+  if (plans.length === 0) {
+    select.appendChild(el("option",{value:"",disabled:"",selected:""},"Aucun plan sauvegardé (plan par défaut affiché)"));
+  }
 
-  return el("div",{style:{padding:"8px 0"}}, select);
+  // Lien vers le wizard v2 pour créer un nouveau plan (demandé par Laurent
+  // le 6 juillet 2026, docs/v2-methodologie/convergence-v1-v2.md, section
+  // 7) — un vrai <a target="_blank">, pas une option de <select> avec
+  // window.open() en JS : Laurent a signalé que window.open() ne
+  // fonctionnait pas du tout depuis la PWA installée (probablement bloqué
+  // silencieusement par le navigateur en contexte standalone, les popups
+  // JS étant traités différemment d'une vraie navigation déclenchée par un
+  // clic direct sur un élément <a>).
+  const lienNouveauPlan = el("a",{href:"/v2",target:"_blank",style:{
+    display:"block",marginTop:"6px",color:"#f97316",fontSize:"13px",
+    fontWeight:"600",textDecoration:"none"
+  }},"➕ Créer un nouveau plan");
+
+  return el("div",{style:{padding:"8px 0"}}, select, lienNouveauPlan);
 }
 
 function renderDashboard() {
