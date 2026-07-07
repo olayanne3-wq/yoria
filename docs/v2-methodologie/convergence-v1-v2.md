@@ -17,7 +17,7 @@ Document de suivi du chantier : faire produire par le moteur générique v2 (`pl
 | Étape 3 (migrer les statuts existants) | ⬜ Non commencée | `lk_statuses`/`hiddenSessions`/`swappedSessions` → `plan.statuses` |
 | Étape 4 (brancher l'adaptation) | ⬜ Non commencée | `analyserAdaptations`/`appliquerAdaptations` dans l'interface v1 |
 | Sélection/génération de plan depuis v1 (section 7) | ⬜ Réflexion posée, rien codé | Réutiliser le wizard + le mécanisme multi-plans déjà existants en v2 (Gist), plutôt que dupliquer |
-| Variables non indexées sur le plan (section 7bis) | ⚠️ Écart critique identifié | `RACE_NAME`, `PHASES`, `FC_MAX`, `BASE_TIME` codés en dur — bug silencieux dès qu'on charge un plan vraiment différent, pas juste un affichage à corriger |
+| Variables non indexées sur le plan (section 7bis) | ✅ Implémenté | `RACE_NAME`, `PHASES`, `FC_MAX`, `BASE_TIME` lues depuis le plan chargé, avec repli sur les valeurs historiques |
 | Non-chevauchement des dates entre plans (section 7ter) | ⬜ Règle posée, rien codé | Vérification à faire dans `gist-sync.js` au moment de sauvegarder un plan, pas seulement côté UI |
 | Limite VMA très fractionnées | ⬜ Contournée (garde-fou), pas résolue | Vraie solution = chantier v2.0 streams (jamais commencé) |
 
@@ -278,7 +278,7 @@ Question posée par Laurent en réfléchissant à la section 7 : est-ce que tout
 
 **Non tranché à ce stade** : si ces informations (course, FC max, référence de performance) doivent être stockées **dans** chaque plan sauvegardé (probable, le plus cohérent avec l'esprit multi-profil du produit final), ou si l'app doit rester mono-profil pour l'instant (un seul FC max, une seule course active à la fois) et seulement le contenu du plan change. Cette question rejoint la réflexion plus large sur l'authentification/les comptes utilisateurs (v2.5) — un vrai système multi-utilisateur suppose de toute façon que ces données deviennent des attributs du profil, pas des constantes de fichier.
 
-**Statut : écart identifié, aucune décision prise, à traiter avant ou en même temps que la section 7 (sélection de plan) — la sélection de plan sans résoudre ceci produirait un affichage incohérent.**
+**Statut : implémenté le 6 juillet 2026 (commit 76dfeb7).** RACE_NAME/RACE_URL/RACE_LOCATION lues depuis `paramsOrigine` (3 nouveaux champs ajoutés au wizard v2, étape date) ; FC_MAX depuis `zoneFC.fcMax` (FC_ZONES reconstruite dynamiquement en pourcentages, plus des bornes bpm codées en dur) ; BASE_TIME_REFERENCE depuis `paramsOrigine.tempsReference` ; PHASES reconstruite depuis `plan.phases`. `ALL_SESSIONS` passée de `const` à `let` + fonction `recalculerAllSessions()`, préparatoire pour la section 7 (pas encore rappelée dynamiquement, la sélection de plan n'étant pas encore implémentée). Toutes les reconstructions vérifiées identiques à l'ancien codage en dur sur le plan actuel (11 semaines, FC_MAX=181).
 
 ## 7ter. Contrainte : empêcher le chevauchement de dates entre plans d'un même utilisateur (règle posée le 6 juillet 2026)
 
