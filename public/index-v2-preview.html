@@ -845,14 +845,52 @@ function predict10K() {
     details.push({ label:`VMA · ${vmaData.runs.length} séance${vmaData.runs.length>1?"s":""} · dernier ${lastVmaDate||"?"}`, value:fmtPace(vmaData.speed)+"/km → "+fmtTime(Math.round(estimate10k)) });
   }
 
+  // ── Garde-fou : exclure une source manifestement aberrante ────────────────
+  // Limite structurelle connue et non résolue à ce stade (cf.
+  // docs/v2-methodologie/convergence-v1-v2.md, section 6) : les séances VMA
+  // très fractionnées (ex. 2×8×30″-30″) ne se segmentent pas correctement en
+  // laps Strava classiques quand la montre ne crée pas un vrai lap par
+  // répétition — une activité avec moins de laps que de répétitions
+  // attendues mélange phases rapides et lentes dans un même lap, donnant une
+  // vitesse moyenne diluée sans rapport avec l'effort réel (observé : VMA à
+  // 5'33/km, donnant une projection PIRE que SPEC/SEUIL alors qu'une vraie
+  // VMA, plus rapide, devrait donner une MEILLEURE projection).
+  //
+  // Comparaison à BASE_TIME (référence connue), pas à la médiane des autres
+  // estimations : avec seulement 2 sources (le cas réel rencontré), chaque
+  // valeur est mécaniquement à égale distance de leur propre moyenne, donc
+  // aucune n'est jamais détectée comme aberrante par une comparaison
+  // mutuelle — bug trouvé en testant ce garde-fou avant de le déployer.
+  // BASE_TIME est une référence stable, indépendante du nombre de sources
+  // disponibles.
+  //
+  // Écart >20% par rapport à BASE_TIME est un signal fort d'erreur de
+  // détection plutôt qu'une vraie variance de performance — à résoudre
+  // proprement par le chantier v2.0 streams (analyse seconde par seconde),
+  // ce garde-fou n'est qu'un filet de sécurité en attendant.
+  for (let i = estimates.length - 1; i >= 0; i--) {
+    const ecartRelatif = Math.abs(estimates[i].value - BASE_TIME) / BASE_TIME;
+    if (ecartRelatif > 0.20) {
+      details.push({ label: "⚠️ Source écartée (résultat incohérent)", value: fmtTime(Math.round(estimates[i].value)) + " — écart trop important vs référence connue" });
+      // Marque la source correspondante comme écartée (vmaData/specData/
+      // seuilData ne sont pas directement liés à estimates[i], donc on
+      // retrouve la source par son poids caractéristique : VMA=0.35,
+      // SPEC=0.45, SEUIL=0.10 — cf. les 3 estimates.push() ci-dessus).
+      if (Math.abs(estimates[i].weight - 0.35) < 0.01) vmaData._exclu = true;
+      else if (Math.abs(estimates[i].weight - 0.45) < 0.01) specData._exclu = true;
+      else if (Math.abs(estimates[i].weight - 0.10) < 0.01) seuilData._exclu = true;
+      estimates.splice(i, 1);
+    }
+  }
+
   // ── Pondération Lavandou selon qualité des données ────────────────────────
-  const hasVma   = vmaData !== null;
-  const hasSpec  = specData !== null;
-  const hasSeuil = seuilData !== null && seuilData.laps.length > 0;
+  const hasVma   = vmaData !== null && !vmaData._exclu;
+  const hasSpec  = specData !== null && !specData._exclu;
+  const hasSeuil = seuilData !== null && seuilData.laps.length > 0 && !seuilData._exclu;
 
   // Compter le total de séances intensives disponibles
-  const nVmaSessions = vmaData ? vmaData.runs.length : 0;
-  const nSpecSessions = specData ? specData.runs.length : 0;
+  const nVmaSessions = hasVma ? vmaData.runs.length : 0;
+  const nSpecSessions = hasSpec ? specData.runs.length : 0;
   const nIntensive = nVmaSessions + nSpecSessions;
 
   let lavendouWeight;
