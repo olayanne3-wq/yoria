@@ -1041,6 +1041,45 @@ function predict10K() {
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
+// Sélecteur de plan (docs/v2-methodologie/convergence-v1-v2.md, section 7)
+// — menu déroulant listant tous les plans sauvegardés dans le Gist
+// (window.__PLANS_DISPONIBLES__, peuplé par l'infrastructure async du
+// premier script). Au changement, écrit l'id choisi dans localStorage
+// puis recharge la page entière : un simple changement de PLAN ne suffit
+// pas, toutes les variables dérivées (RACE_NAME, PHASES, FC_MAX,
+// BASE_TIME_REFERENCE, ALL_SESSIONS...) sont des const/let calculées une
+// fois au chargement, cf. section 7bis — plus sûr de repartir d'un
+// chargement propre que d'essayer de tout resynchroniser en mémoire.
+function renderSelecteurPlan() {
+  const plans = window.__PLANS_DISPONIBLES__ || [];
+  if (plans.length === 0) {
+    // Aucun plan sauvegardé dans le Gist : le plan affiché est celui
+    // généré par défaut (repli), rien à sélectionner
+    return el("div",{style:{padding:"8px 0",color:"#6b7280",fontSize:"13px"}},
+      "Plan par défaut (aucun plan sauvegardé — crée-en un depuis le wizard v2)"
+    );
+  }
+
+  const idActuel = window.__PLAN_BRUT__?.id;
+  const select = el("select",{style:{
+    background:"#232738",color:"#f1f5f9",border:"1px solid #2e3347",
+    borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
+    width:"100%",cursor:"pointer"
+  }, onChange: (e) => {
+    localStorage.setItem('v2_preview_plan_id', e.target.value);
+    location.reload();
+  }});
+
+  plans.forEach(p => {
+    const label = p.nom || `${p.distance || '?'} — ${p.objectif || '?'}`;
+    const option = el("option",{value:p.id},label);
+    if (p.id === idActuel) option.selected = true;
+    select.appendChild(option);
+  });
+
+  return el("div",{style:{padding:"8px 0"}}, select);
+}
+
 function renderDashboard() {
   const cw=currentWeek(), cd=countdown(), gp=globalPct();
   const done=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
@@ -1740,7 +1779,12 @@ function renderDashboard() {
     helpBtn
   );
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,heroPred,todayEl||"",phaseEl,stravaSection);
+  // Sélecteur de plan (docs/v2-methodologie/convergence-v1-v2.md, section 7)
+  // — toujours visible en haut du dashboard, juste après l'en-tête
+  // principal (décision d'emplacement tranchée le 6 juillet 2026).
+  const selecteurPlanEl = renderSelecteurPlan();
+
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPred,todayEl||"",phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
