@@ -806,9 +806,19 @@ function renderLapRow(lap, i, sessionType) {
 
 
 function predict10KAtDate(dateStr) {
-  // Calcule l\'estimation 10K en ne prenant que les activités antérieures à dateStr
+  // Calcule l\'estimation 10K en ne prenant que les activités du plan actuel
+  // (depuis dateDebutPlan) et antérieures à dateStr — même correctif que
+  // predict10K() (docs/v2-methodologie/convergence-v1-v2.md, section 7bis/
+  // 7quater), sinon cette fonction (utilisée par rebuildPredHistory pour
+  // reconstruire l'historique jour par jour) remonterait aussi des séances
+  // d'un plan antérieur.
   const BASE_TIME = BASE_TIME_REFERENCE;
-  const runs = stravaActivities.filter(a => a.type === "Run" && a.start_date_local?.slice(0,10) <= dateStr);
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const runs = stravaActivities.filter(a =>
+    a.type === "Run" &&
+    a.start_date_local?.slice(0,10) <= dateStr &&
+    (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
   const estimates = [];
 
   // SPEC → allure directe
@@ -868,7 +878,16 @@ if (stravaActivities.length > 0 && (predHistory.length <= 1 || (predHistory[0] &
 
 function predict10K() {
   const BASE_TIME = BASE_TIME_REFERENCE; // référence lue depuis le plan chargé
-  const runs = stravaActivities.filter(a => a.type === "Run");
+  // Ne prend en compte que les activités depuis le début du plan actuellement
+  // affiché — sans ce filtre, la prédiction mélangeait des séances
+  // antérieures à ce plan (ex. d'un plan de test précédent), remonté par
+  // Laurent le 6 juillet 2026 (docs/v2-methodologie/convergence-v1-v2.md,
+  // section 7bis/7quater — même famille de problème : donnée non indexée
+  // sur le plan affiché).
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const runs = stravaActivities.filter(a =>
+    a.type === "Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
   const estimates = [];
   const details = [];
 
