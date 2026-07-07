@@ -289,7 +289,12 @@ setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
 // UTILS
 // ══════════════════════════════════════════════════════════════════════════════
 function today() { return new Date().toISOString().slice(0,10); }
-function countdown() { return Math.ceil((new Date("2026-09-06") - new Date()) / 86400000); }
+// Date de course lue depuis le plan chargé (paramsOrigine.dateCourse ou
+// dateCourse directement sur l'objet plan, cf. section 7bis du doc de
+// convergence) plutôt que codée en dur — repli sur la date historique de
+// Laurent si absente.
+const DATE_COURSE_REFERENCE = window.__PLAN_BRUT__?.dateCourse || "2026-09-06";
+function countdown() { return Math.ceil((new Date(DATE_COURSE_REFERENCE) - new Date()) / 86400000); }
 function currentWeek() {
   const t = today();
   for (const w of PLAN) {
@@ -575,6 +580,13 @@ const FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
 const BASE_TIME_REFERENCE = window.__PLAN_BRUT__?.paramsOrigine?.tempsReference
   ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.tempsReference)
   : 3021;
+
+// Objectif chronométrique connu (paramsOrigine.objectif ou plan.objectif),
+// même principe que BASE_TIME_REFERENCE — repli sur 2910s (48'30", valeur
+// historique de Laurent) si absent.
+const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || window.__PLAN_BRUT__?.objectif)
+  ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine?.objectif || window.__PLAN_BRUT__.objectif)
+  : 2910;
 
 // ── Zones FC cible ──────────────────────────────────────────────────────
 // Reconstruites depuis FC_MAX (pourcentages fixes : 65-75% EF/LONGUE,
@@ -1117,14 +1129,14 @@ function renderDashboard() {
 
   // Banniere post-course
   const raceResult = load(clePourPlan("lk_race_result"), null);
-  if (today() >= "2026-09-06" && raceResult) {
+  if (today() >= DATE_COURSE_REFERENCE && raceResult) {
     const diff = raceResult - raceGoalTime;
     const achieved = diff <= 0;
     const close = diff > 0 && diff <= 60;
     const color = achieved ? "#22c55e" : close ? "#eab308" : "#a855f7";
     const emoji = achieved ? "🏅" : close ? "⚡" : "📈";
     const title = achieved ? "Objectif atteint !" : close ? "Tres belle course !" : "Belle progression !";
-    const diffVsStart = 3021 - raceResult;
+    const diffVsStart = BASE_TIME_REFERENCE - raceResult;
     const subtitle = achieved
       ? (Math.abs(diff) > 0 ? "-"+fmtTime(Math.abs(diff))+" sous objectif" : "Exactement dans les temps")
       : close ? "+"+fmtTime(Math.abs(diff))+" au-dessus objectif"
@@ -1241,22 +1253,22 @@ function renderDashboard() {
       el("span",{class:"muted"},pred.confidence+"% · "+pred.details.length+" source"+(pred.details.length>1?"s":"")+" ›")
     ),
     el("div",{style:{height:"5px",borderRadius:"3px",background:"linear-gradient(to right,#E24B4A,#EF9F27,#BA7517,#639922)",position:"relative",marginBottom:"4px"}},
-      pred.time <= 2910
+      pred.time <= OBJECTIF_REFERENCE
         ? null
         : el("div",{style:{
             position:"absolute",top:"50%",
             transform:"translate(-50%,-50%)",
-            left:Math.min(Math.max((3021-pred.time)/(3021-2910)*100,2),98)+"%",
+            left:Math.min(Math.max((BASE_TIME_REFERENCE-pred.time)/(BASE_TIME_REFERENCE-OBJECTIF_REFERENCE)*100,2),98)+"%",
             width:"11px",height:"11px",borderRadius:"50%",
-            background:pred.time<=2910?"#639922":pred.time<=2940?"#BA7517":pred.time<=2970?"#EF9F27":"#E24B4A",
+            background:pred.time<=OBJECTIF_REFERENCE?"#639922":pred.time<=OBJECTIF_REFERENCE+30?"#BA7517":pred.time<=OBJECTIF_REFERENCE+60?"#EF9F27":"#E24B4A",
             border:"2px solid #1a1d27",
-            boxShadow:"0 0 0 2px "+(pred.time<=2910?"#639922":pred.time<=2940?"#BA7517":pred.time<=2970?"#EF9F27":"#E24B4A")+"44"
+            boxShadow:"0 0 0 2px "+(pred.time<=OBJECTIF_REFERENCE?"#639922":pred.time<=OBJECTIF_REFERENCE+30?"#BA7517":pred.time<=OBJECTIF_REFERENCE+60?"#EF9F27":"#E24B4A")+"44"
           }})
     ),
     el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
-      el("span",{class:"muted",style:{fontSize:"10px"}},"50'21\""),
-      pred.time <= 2910 ? el("span",{style:{color:"#22c55e",fontSize:"11px",fontWeight:"700"}},"🎯 Objectif atteint !") : null,
-      el("span",{class:"muted",style:{fontSize:"10px"}},"48'30\"")
+      el("span",{class:"muted",style:{fontSize:"10px"}},fmtTime(BASE_TIME_REFERENCE)),
+      pred.time <= OBJECTIF_REFERENCE ? el("span",{style:{color:"#22c55e",fontSize:"11px",fontWeight:"700"}},"🎯 Objectif atteint !") : null,
+      el("span",{class:"muted",style:{fontSize:"10px"}},fmtTime(OBJECTIF_REFERENCE))
     ),
     // ── Stats séances ─────────────────────────────────────────────────────
     (()=>{
@@ -2123,7 +2135,7 @@ function renderStats() {
       el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"⏳ Recalcul de l\'historique...")
     );
   } else if (predHistory.length >= 2) {
-    const TARGET = 48.5*60, BASE = 3021;
+    const TARGET = OBJECTIF_REFERENCE, BASE = BASE_TIME_REFERENCE;
     const W = 340, H = 120, PAD = {t:16,r:40,b:28,l:44};
     const iW = W-PAD.l-PAD.r, iH = H-PAD.t-PAD.b;
     const times = predHistory.map(p=>p.time);
@@ -2888,7 +2900,7 @@ function renderCourse() {
     el("div",{style:{marginTop:"8px"}}),
     infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
     (()=>{
-      if (today() < "2026-09-06") return null;
+      if (today() < DATE_COURSE_REFERENCE) return null;
       const existingResult = load(clePourPlan("lk_race_result"), null);
       const inp2 = document.createElement("input");
       inp2.type="time"; inp2.step="1";
@@ -3276,8 +3288,8 @@ function exportPdfResultats() {
   doc.setFontSize(11); doc.setFont("helvetica","normal");
   doc.text("Objectif  : "+fmtTimeShort(raceGoalTime),M,y); y+=7;
   doc.text("Resultat  : "+fmtTimeShort(raceRes),M,y); y+=7;
-  const dvs=3021-raceRes;
-  doc.text("vs depart : "+(dvs>0?"-":"+")+fmtTimeShort(Math.abs(dvs))+" vs 50min21s",M,y); y+=7;
+  const dvs=BASE_TIME_REFERENCE-raceRes;
+  doc.text("vs depart : "+(dvs>0?"-":"+")+fmtTimeShort(Math.abs(dvs))+" vs "+fmtTimeShort(BASE_TIME_REFERENCE),M,y); y+=7;
   doc.text("vs objectif : "+(diff<=0?"-":"+")+fmtTimeShort(Math.abs(diff)),M,y); y+=14;
   doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.text("Preparation",M,y); y+=8;
   doc.setFontSize(10); doc.setFont("helvetica","normal");
