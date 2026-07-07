@@ -117,23 +117,32 @@ function traduirePlanVersFormatV1(plan) {
       const dateStr = date.toISOString().slice(0, 10);
 
       const type = seance ? typeV1DepuisSeanceV2(seance) : 'REPOS';
+      // kmEstime réel du moteur, propagé pour que v1 puisse afficher un
+      // volume prévu fiable sans avoir à le recalculer depuis le texte
+      // (bug trouvé le 7 juillet 2026 : weekStats() dans index.html
+      // reparsait le texte de chaque séance avec une regex qui ne gérait
+      // pas les formats "N×Xmin" — ex. "3×6min" comptait comme 6min, pas
+      // 18min — sous-comptant fortement les séances qualité, 27km affichés
+      // au lieu de 40km réels). kmEstime est la source de vérité du
+      // moteur, pas un texte à reparser.
+      const kmEstime = seance?.kmEstime ?? 0;
 
       if (!seance || type === 'REPOS') {
-        return { day: jourNom, date: dateStr, type: 'REPOS', warmup: '', session: seance?.contenu || 'Repos', cooldown: '', notes: '' };
+        return { day: jourNom, date: dateStr, type: 'REPOS', warmup: '', session: seance?.contenu || 'Repos', cooldown: '', notes: '', kmEstime: 0 };
       }
       if (type === 'RACE') {
-        return { day: jourNom, date: dateStr, type: 'RACE', warmup: '', session: seance.contenu, cooldown: '', notes: '' };
+        return { day: jourNom, date: dateStr, type: 'RACE', warmup: '', session: seance.contenu, cooldown: '', notes: '', kmEstime };
       }
       if (seance.type === 'qualite') {
         const { warmup, session, cooldown, notes } = parserContenuQualite(seance.contenu);
-        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes };
+        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime };
       }
       // ef ou longue
       const { session, notes } = parserContenuEfOuLongue(seance.contenu);
-      return { day: jourNom, date: dateStr, type, warmup: '', session, cooldown: '', notes };
+      return { day: jourNom, date: dateStr, type, warmup: '', session, cooldown: '', notes, kmEstime };
     });
 
-    return { week: semaine.semaineNum, phase: semaine.phase.toLowerCase(), sessions };
+    return { week: semaine.semaineNum, phase: semaine.phase.toLowerCase(), sessions, volumeCibleKm: semaine.volumeCibleKm };
   });
 }
 

@@ -1812,15 +1812,6 @@
       console.error(err);
       return;
     }
-    // DIAGNOSTIC TEMPORAIRE (7 juillet 2026) — Laurent signale un écart
-    // entre le volume saisi et le volume réellement utilisé par le moteur
-    // (40km saisi, 27km observé en semaine 1) ; aucune reproduction possible
-    // en testant le moteur isolément avec volumeActuel=40 (donne bien 40km).
-    // alert() plutôt que console.log car Laurent n'a pas accès à la console
-    // développeur sur son téléphone — affiche la valeur RÉELLEMENT transmise
-    // au moteur et le résultat, pour localiser si l'écart vient de la
-    // collecte du champ ou d'ailleurs. À retirer une fois la cause trouvée.
-    alert('DIAGNOSTIC — volumeActuel transmis : ' + params.volumeActuel + ' (type: ' + typeof params.volumeActuel + ')\nvolumeCibleKm semaine 1 calculé : ' + plan.semaines?.[0]?.volumeCibleKm);
     plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-' + Date.now());
     plan.statuses = plan.statuses || {};
     // Conserver les paramètres d'origine (profil + params du wizard) — sans

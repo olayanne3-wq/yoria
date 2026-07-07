@@ -375,21 +375,36 @@ function weekStats(weekNum) {
   const week = PLAN.find(w=>w.week===weekNum);
   if (!week) return null;
 
-  // Durée prévue
+  // Distance et durée prévues : utilisent kmEstime (par séance) et
+  // volumeCibleKm (par semaine), propagés depuis le moteur v2 via
+  // v1-bridge.js — plus la peine de reparser le texte des séances.
+  // Bug corrigé le 7 juillet 2026 : l'ancien parsing par regex
+  // (/(\d+)(?:[–\-](\d+))?\s*min/) ne gérait pas les formats "N×Xmin"
+  // (ex. "3×6min" comptait comme 6min réels, pas 18min), sous-comptant
+  // fortement les séances qualité — 27km affichés au lieu de 40km réels
+  // pour un volume saisi de 40km. kmEstime est calculé précisément par le
+  // moteur (y compris échauffement/retour au calme), pas à reconstruire
+  // depuis un texte libre destiné à l'affichage, pas au calcul.
   const sessions = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
-  let plannedMin = 0;
-  sessions.forEach(s => {
-    const m1 = s.session.match(/(\d+)(?:[–\-](\d+))?\s*min/);
-    if (m1) plannedMin += m1[2] ? (parseInt(m1[1])+parseInt(m1[2]))/2 : parseInt(m1[1]);
-    const m2 = s.warmup.match(/(\d+)'/);
-    if (m2) plannedMin += parseInt(m2[1]);
-    const m3 = s.cooldown.match(/(\d+)'/);
-    if (m3) plannedMin += parseInt(m3[1]);
-  });
-
-  // Distance prévue estimée (durée × allure EF ref)
-  const EF_PACE = 6.33; // min/km (6:20/km)
-  const plannedKm = Math.round(plannedMin / EF_PACE * 10) / 10;
+  const EF_PACE = 6.33; // min/km (6:20/km) — sert uniquement de repli si kmEstime est absent (ancien plan v1 sans cette donnée)
+  let plannedKm = week.volumeCibleKm;
+  if (plannedKm == null) {
+    // Repli pour compatibilité avec un plan qui n'aurait pas volumeCibleKm
+    // (ex. ancien plan v1 codé en dur, sans passer par v1-bridge.js) :
+    // ancien calcul par texte, conservé tel quel pour ce cas seulement
+    let plannedMin = 0;
+    sessions.forEach(s => {
+      const m1 = s.session.match(/(\d+)(?:[–\-](\d+))?\s*min/);
+      if (m1) plannedMin += m1[2] ? (parseInt(m1[1])+parseInt(m1[2]))/2 : parseInt(m1[1]);
+      const m2 = s.warmup.match(/(\d+)'/);
+      if (m2) plannedMin += parseInt(m2[1]);
+      const m3 = s.cooldown.match(/(\d+)'/);
+      if (m3) plannedMin += parseInt(m3[1]);
+    });
+    plannedKm = Math.round(plannedMin / EF_PACE * 10) / 10;
+  }
+  const plannedMinTotal = sessions.reduce((s,ses) => s + (ses.kmEstime || 0), 0) * EF_PACE;
+  const plannedMin = Math.round(week.volumeCibleKm != null ? plannedMinTotal : plannedKm * EF_PACE);
 
   // Réel depuis Strava
   const weekDates = week.sessions.map(s=>s.date);
