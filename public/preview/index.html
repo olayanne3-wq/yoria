@@ -383,11 +383,16 @@ function phaseOf(weekNum) { return PHASES.find(p=>p.weeks.includes(weekNum))||{c
 
 // ── Projections Riegel multi-distances ────────────────────────────────────
 function riegelProjections(time10k) {
+  // La distance mise en avant (target: true) doit correspondre à la vraie
+  // distance du plan actuellement affiché, pas toujours 10K — bug trouvé
+  // le 7 juillet 2026, même famille que les allures fausses sur un plan
+  // Semi (cf. DISTANCE_M_REFERENCE).
+  const distancePlanActuel = window.__PLAN_BRUT__?.distance;
   const DISTANCES = [
-    { label:"5K",    dist:5000,   target:false },
-    { label:"10K",   dist:10000,  target:true  },
-    { label:"Semi",  dist:21097,  target:false },
-    { label:"Marathon", dist:42195, target:false },
+    { label:"5K",    dist:5000,   target: distancePlanActuel === "5K" },
+    { label:"10K",   dist:10000,  target: !distancePlanActuel || distancePlanActuel === "10K" },
+    { label:"Semi",  dist:21097,  target: distancePlanActuel === "Semi" },
+    { label:"Marathon", dist:42195, target: distancePlanActuel === "Marathon" },
   ];
   return DISTANCES.map(d => {
     const t = time10k * Math.pow(d.dist / 10000, 1.06);
@@ -574,7 +579,7 @@ async function fetchCoachMsg() {
     return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
-  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
+  const prompt = `Tu es Léa, coach running qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
@@ -628,12 +633,35 @@ if (!coachMsg || coachDate !== today()) {
 }
 
 // ── Source de vérité unique — allures & seuils de validation ────────────────
-const SESSION_TARGETS = {
-  VMA:   { targetMin:250, targetMax:265, okPace:270,  warnPace:290,  repOk:0.80, repWarn:0.60, effort:"4:10–4:25/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
-  SPEC:  { targetMin:291, targetMax:298, okPace:298,  warnPace:310,  repOk:0.80, repWarn:0.60, effort:"4:51/km",      tolerance:"±7 sec",  recup:"≥ 6:00/km" },
-  SEUIL: { targetMin:295, targetMax:305, okPace:305,  warnPace:320,  repOk:null, repWarn:null,  effort:"4:55/km",      tolerance:"±10 sec", recup:"≥ 6:00/km" },
-  TEST:  { targetMin:291, targetMax:298, okPace:298,  warnPace:310,  repOk:0.80, repWarn:0.60, effort:"4:51/km",      tolerance:"±7 sec",  recup:"≥ 6:00/km" },
-};
+// Cibles dérivées des vraies allures du plan (plan.allures.T/I/C, calculées
+// par le moteur selon le profil et l'objectif réels) plutôt que codées en
+// dur pour l'objectif 10K de Laurent (bug trouvé le 7 juillet 2026, en
+// testant un plan Semi — un mécanisme sensible car SESSION_TARGETS pilote
+// aussi la détection VMA/SEUIL/SPEC pour la prédiction de performance,
+// section 6 du doc de convergence). Marges (targetMin/targetMax) et offsets
+// (okPace/warnPace) conservés identiques en valeur ABSOLUE à ceux du 10K
+// historique — pas recalculés en ratio, pour ne rien changer sur un plan
+// 10K existant et garder le même niveau de tolérance sportive peu importe
+// la distance. Repli sur les valeurs fixes historiques si allures absentes.
+function construireSessionTargets() {
+  const allures = window.__PLAN_BRUT__?.allures;
+  const parseAllure = (str, repliSec) => {
+    if (!str) return repliSec;
+    const [m, s] = str.replace("/km","").split(":").map(Number);
+    return m*60 + s;
+  };
+  const vmaSec = parseAllure(allures?.I, 258); // 258 = milieu de 250-265, valeur historique
+  const seuilSec = parseAllure(allures?.T, 300); // 300 = milieu de 295-305
+  const specSec = parseAllure(allures?.C, 294); // 294 = milieu de 291-298 (arrondi)
+
+  return {
+    VMA:   { targetMin:Math.round(vmaSec-8),  targetMax:Math.round(vmaSec+7),  okPace:Math.round(vmaSec+12), warnPace:Math.round(vmaSec+32), repOk:0.80, repWarn:0.60, effort:formatPace(vmaSec-8)+"–"+formatPace(vmaSec+7)+"/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
+    SPEC:  { targetMin:Math.round(specSec-3), targetMax:Math.round(specSec+4), okPace:Math.round(specSec+4),  warnPace:Math.round(specSec+16), repOk:0.80, repWarn:0.60, effort:formatPace(specSec)+"/km", tolerance:"±7 sec",  recup:"≥ 6:00/km" },
+    SEUIL: { targetMin:Math.round(seuilSec-5),targetMax:Math.round(seuilSec+5),okPace:Math.round(seuilSec+5), warnPace:Math.round(seuilSec+20),repOk:null, repWarn:null,  effort:formatPace(seuilSec)+"/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
+    TEST:  { targetMin:Math.round(specSec-3), targetMax:Math.round(specSec+4), okPace:Math.round(specSec+4),  warnPace:Math.round(specSec+16), repOk:0.80, repWarn:0.60, effort:formatPace(specSec)+"/km", tolerance:"±7 sec",  recup:"≥ 6:00/km" },
+  };
+}
+const SESSION_TARGETS = construireSessionTargets();
 // Alias pour compatibilité affichage
 const PACE_REFS = Object.fromEntries(
   Object.entries(SESSION_TARGETS).map(([k,v]) => [k, { effort:v.effort, tolerance:v.tolerance, recup:v.recup }])
@@ -1209,9 +1237,9 @@ function renderDashboard() {
       : close ? "+"+fmtTime(Math.abs(diff))+" au-dessus objectif"
       : "-"+fmtTime(Math.abs(diffVsStart))+" par rapport au depart";
     const coachMsg2 = achieved
-      ? "Bravo Laurent ! 11 semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
-      : close ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en 11 semaines."
-      : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en 11 semaines. On continue !";
+      ? "Bravo ! " + PLAN.length + " semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
+      : close ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en "+PLAN.length+" semaines."
+      : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en "+PLAN.length+" semaines. On continue !";
 
     const inp = document.createElement("input");
     inp.type="time"; inp.step="1";
@@ -2325,12 +2353,26 @@ function renderStats() {
   );
 
   // ── Référentiel allures ───────────────────────────────────────────────
+  // EF/LONGUE : allure lue depuis plan.allures.E (déjà calculée par le
+  // moteur selon le profil, formatPace() appliqué) — pas une valeur fixe
+  // "6:20" codée en dur (bug trouvé le 7 juillet 2026, même famille que
+  // les autres résidus de cette session). Repli "6:20" si absente
+  // (compatibilité avec un plan sans cette donnée).
+  const alluresEF = window.__PLAN_BRUT__?.allures?.E || "6:20";
+  const chaleurEF = (() => {
+    const allureStr = window.__PLAN_BRUT__?.allures?.E; // ex. "6:10/km"
+    if (!allureStr) return "6:40"; // repli historique
+    const [minStr, secStr] = allureStr.replace("/km","").split(":");
+    const efSec = parseInt(minStr)*60 + parseInt(secStr);
+    return formatPace(efSec + 20); // +20s/km si chaleur, même règle que le reste de l'app
+  })();
+  const labelSpecifique = "Spécifique " + (window.__PLAN_BRUT__?.distance || "10K");
   const paceRows = [
-    {type:"EF",      label:"Endurance fondamentale", pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#60a5fa"},
-    {type:"LONGUE",  label:"Sortie longue",           pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#06b6d4"},
-    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:"163–172", pct:"90–95%", color:"#22c55e"},
-    {type:"SPEC",    label:"Spécifique 10K",           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:"154–163", pct:"85–90%", color:"#a855f7"},
-    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:"163–181", pct:"90–100%", color:"#f97316"},
+    {type:"EF",      label:"Endurance fondamentale", pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.EF.min+"–"+FC_ZONES.EF.max, pct:FC_ZONES.EF.label, color:"#60a5fa"},
+    {type:"LONGUE",  label:"Sortie longue",           pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.LONGUE.min+"–"+FC_ZONES.LONGUE.max, pct:FC_ZONES.LONGUE.label, color:"#06b6d4"},
+    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:FC_ZONES.SEUIL.min+"–"+FC_ZONES.SEUIL.max, pct:FC_ZONES.SEUIL.label, color:"#22c55e"},
+    {type:"SPEC",    label:labelSpecifique,           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:FC_ZONES.SPEC.min+"–"+FC_ZONES.SPEC.max, pct:FC_ZONES.SPEC.label, color:"#a855f7"},
+    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:FC_ZONES.VMA.min+"–"+FC_ZONES.VMA.max, pct:FC_ZONES.VMA.label, color:"#f97316"},
   ];
   // ── Courbes IE + Cadence ─────────────────────────────────────────────────
   const intensiveTypes = ["VMA","SPEC","SEUIL"];
@@ -2729,7 +2771,7 @@ function renderCourse() {
       runByLeaIcon(52, 12),
       el("div",{},
         el("div",{style:{color:"#f97316",fontSize:"17px",fontWeight:"800",marginBottom:"2px"}},"🏁 "+RACE_NAME),
-        el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"2px"}},new Date("2026-09-06T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION),
+        el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"2px"}},new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION),
         el("div",{style:{color:"#475569",fontSize:"13px"}},"Run by Léa")
       )
     ),
@@ -3402,7 +3444,7 @@ function exportPdfResultats() {
   const n3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const km2=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
   doc.text(n1+" seances validees - "+n2+" adaptees - "+n3+" ratees",M,y); y+=6;
-  doc.text(km2+" km courus - 11 semaines",M,y);
+  doc.text(km2+" km courus - "+PLAN.length+" semaines",M,y);
   doc.save("RunByLea_Resultats.pdf");
 }
 
@@ -3863,7 +3905,7 @@ let gistSaveTimer = null;
 async function gistSave(silent=false) {
   if (!githubToken) return;
   try {
-    const body = {description:"Plan 10K Laurent — backup", public:false,
+    const body = {description:"Plan Run by Léa — backup", public:false,
       files:{"plan10k_backup.json":{content:getBackupData()}}};
     let url="https://api.github.com/gists", method="POST";
     if (gistId) { url+="/"+gistId; method="PATCH"; }
