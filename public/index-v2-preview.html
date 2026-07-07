@@ -1093,13 +1093,6 @@ function predict10K() {
 // chargement propre que d'essayer de tout resynchroniser en mémoire.
 function renderSelecteurPlan() {
   const plans = window.__PLANS_DISPONIBLES__ || [];
-  if (plans.length === 0) {
-    // Aucun plan sauvegardé dans le Gist : le plan affiché est celui
-    // généré par défaut (repli), rien à sélectionner
-    return el("div",{style:{padding:"8px 0",color:"#6b7280",fontSize:"13px"}},
-      "Plan par défaut (aucun plan sauvegardé — crée-en un depuis le wizard v2)"
-    );
-  }
 
   const idActuel = window.__PLAN_BRUT__?.id;
   const select = el("select",{style:{
@@ -1107,6 +1100,20 @@ function renderSelecteurPlan() {
     borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
     width:"100%",cursor:"pointer"
   }, onChange: (e) => {
+    if (e.target.value === '__nouveau_plan__') {
+      // Ouvre le wizard v2 dans un nouvel onglet plutôt que de naviguer dans
+      // la même fenêtre (demandé par Laurent le 6 juillet 2026,
+      // docs/v2-methodologie/convergence-v1-v2.md, section 7). Nécessaire
+      // car cette page peut être installée en PWA (manifest racine, scope
+      // "/") : un location.href vers /v2 depuis ce contexte reproduirait le
+      // bug de relance/flash déjà diagnostiqué en tout début de session sur
+      // /v2 lui-même (sortie de scope PWA vers un domaine externe/une autre
+      // route). window.open() ouvre un contexte de navigation séparé, hors
+      // du scope PWA de cette page, donc pas concerné par ce risque.
+      window.open('/v2', '_blank');
+      e.target.value = idActuel || ''; // remet le select sur le plan affiché
+      return;
+    }
     localStorage.setItem('v2_preview_plan_id', e.target.value);
     location.reload();
   }});
@@ -1117,6 +1124,11 @@ function renderSelecteurPlan() {
     if (p.id === idActuel) option.selected = true;
     select.appendChild(option);
   });
+
+  // Option spéciale toujours présente, en dernier — même si aucun plan
+  // n'est encore sauvegardé (le menu ne serait alors composé que de cette
+  // seule option, ce qui reste utile et cohérent)
+  select.appendChild(el("option",{value:"__nouveau_plan__"},"➕ Créer un nouveau plan"));
 
   return el("div",{style:{padding:"8px 0"}}, select);
 }
