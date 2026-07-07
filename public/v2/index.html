@@ -1969,8 +1969,33 @@
     sessionStorage.setItem('v2_wizard_step', n);
   }
 
-  function nextStep(){
-    if(showingResults){ return; } // "Terminer" ne fait rien de plus dans ce mockup
+  async function nextStep(){
+    if(showingResults){
+      // "Terminer" — sauvegarde automatiquement le plan actuel (pour que la
+      // preview retrouve bien CE plan précis, pas un repli sur "le premier
+      // disponible") puis redirige vers la preview v1. Demandé par Laurent
+      // le 6 juillet 2026, cf. docs/v2-methodologie/convergence-v1-v2.md,
+      // section 7. Sauvegarde silencieuse si un token GitHub est déjà
+      // configuré ; sinon redirige quand même (la preview retombera sur son
+      // repli habituel plutôt que de bloquer l'utilisateur ici).
+      if (dernierPlanGenere && getGithubToken()) {
+        try {
+          await sauvegarderPlan(dernierPlanGenere);
+        } catch (e) {
+          console.warn('Sauvegarde automatique avant redirection échouée :', e.message);
+          // Pas de blocage : si c'est un chevauchement de dates (section
+          // 7ter), le plan garde son id existant en mémoire côté preview
+          // via localStorage, mais ne sera pas retrouvé dans le Gist —
+          // la preview retombera sur son repli habituel, pas idéal mais
+          // pas bloquant non plus.
+        }
+      }
+      if (dernierPlanGenere?.id) {
+        localStorage.setItem('v2_preview_plan_id', dernierPlanGenere.id);
+      }
+      location.href = '/index-v2-preview.html';
+      return;
+    }
     if(current < totalSteps){ current++; showStep(current); }
     else { generateAndShowResults(); }
   }
