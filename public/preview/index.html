@@ -1067,7 +1067,7 @@ function predict10K() {
 
   let estimate = BASE_TIME;
   let confidence = 30;
-  let method = "Base Lavandou 50\'21\"";
+  let method = "Référence (" + fmtTime(BASE_TIME_REFERENCE) + ")";
 
   if (estimates.length > 0) {
     const totalWeight = estimates.reduce((s,e) => s+e.weight, 0);
@@ -1208,7 +1208,7 @@ function renderDashboard() {
     const banner=el("div",{style:{background:"#1a1d27",border:"1px solid "+color+"44",borderRadius:"16px",padding:"20px",marginBottom:"12px",marginTop:"8px",textAlign:"center"}},
       el("div",{style:{fontSize:"48px",marginBottom:"8px"}},emoji),
       el("div",{style:{color:color,fontSize:"22px",fontWeight:"900",marginBottom:"4px"}},title),
-      el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},"10 km Gem Aubagne - 6 septembre 2026"),
+      el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})),
       el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"12px"}},
         el("div",{style:{textAlign:"center"}},el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Objectif"),el("div",{style:{color:"#f97316",fontSize:"24px",fontWeight:"900"}},fmtTime(raceGoalTime))),
         el("div",{style:{background:"#2e3347"}}),
@@ -1237,7 +1237,7 @@ function renderDashboard() {
     // ── Header : course ──────────────────────────────────────────────────────
     el("div",{style:{marginBottom:"14px"}},
       el("a",{href:RACE_URL,target:"_blank",style:{color:"#f97316",fontSize:"15px",fontWeight:"700",textDecoration:"none",display:"block",marginBottom:"2px"}},"🏁 "+RACE_NAME+" ↗"),
-      el("div",{class:"muted",style:{fontSize:"13px"}},new Date("2026-09-06T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION)
+      el("div",{class:"muted",style:{fontSize:"13px"}},new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION)
     ),
     // ── Objectif vs Estimation ────────────────────────────────────────────
     el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"14px"}},
@@ -2192,7 +2192,7 @@ function renderStats() {
     const yTarget=yScale(TARGET);
     svg.appendChild(mk("line",{x1:PAD.l,y1:yTarget,x2:W-PAD.r,y2:yTarget,stroke:"#f9731644",strokeWidth:"1","stroke-dasharray":"4,3"}));
     const tl=document.createElementNS("http://www.w3.org/2000/svg","text");
-    tl.setAttribute("x",W-PAD.r+4);tl.setAttribute("y",yTarget+4);tl.setAttribute("fill","#f97316");tl.setAttribute("font-size","9");tl.textContent="48'30\"";svg.appendChild(tl);
+    tl.setAttribute("x",W-PAD.r+4);tl.setAttribute("y",yTarget+4);tl.setAttribute("fill","#f97316");tl.setAttribute("font-size","9");tl.textContent=fmtTime(TARGET);svg.appendChild(tl);
     const points=predHistory.map((p,i)=>`${xScale(i)},${yScale(p.time)}`).join(" ");
     const firstX=xScale(0),lastX=xScale(predHistory.length-1);
     svg.appendChild(mk("polygon",{points:`${firstX},${PAD.t+iH} ${points} ${lastX},${PAD.t+iH}`,fill:"#60a5fa11"}));
@@ -2665,9 +2665,9 @@ function renderStats() {
     el("div",{class:"card"},
       ...[
         ["Course",RACE_NAME,"#f97316"],
-        ["Date","6 septembre 2026 · "+RACE_LOCATION,"#f1f5f9"],
+        ["Date",new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION,"#f1f5f9"],
         ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(10000/raceGoalTime)+"/km","#f97316"],
-        ["Référence","50'21\" (Lavandou)","#f1f5f9"],
+        ["Référence",fmtTime(BASE_TIME_REFERENCE),"#f1f5f9"],
         ["Allure EF","6:20/km · 6:40/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
         ["Km courus",Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10+" km","#22c55e"],
@@ -3231,7 +3231,7 @@ function exportPdfRecap() {
   doc.setFontSize(20); doc.setFont("helvetica","bold");
   doc.text("Run by Lea - Recap de preparation",M,14);
   doc.setFontSize(11); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,23); y=40;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}),M,23); y=40;
   doc.setTextColor(30,30,30);
   doc.setFontSize(13); doc.setFont("helvetica","bold");
   doc.text("Bilan global",M,y); y+=7;
@@ -3289,7 +3289,7 @@ function exportPdfPlanVierge() {
   doc.setFontSize(18); doc.setFont("helvetica","bold");
   doc.text("Run by Lea - Plan d entrainement",M,13);
   doc.setFontSize(10); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 sept. 2026 - Objectif "+fmtTimeShort(raceGoalTime),M,22); y=36;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})+" - Objectif "+fmtTimeShort(raceGoalTime),M,22); y=36;
   PLAN.forEach(wk=>{
     if(y>255){doc.addPage();y=20;}
     const ph=phaseOf(wk.week);
@@ -3322,7 +3322,7 @@ function exportPdfResultats() {
   doc.setFontSize(22); doc.setFont("helvetica","bold");
   doc.text(achieved?"Objectif atteint !":close?"Tres belle course !":"Belle progression !",M,17);
   doc.setFontSize(12); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,27); doc.text("Run by Lea",M,35); y=55;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}),M,27); doc.text("Run by Lea",M,35); y=55;
   doc.setTextColor(30,30,30);
   doc.setFontSize(14); doc.setFont("helvetica","bold"); doc.text("Resultats",M,y); y+=8;
   doc.setFontSize(11); doc.setFont("helvetica","normal");
