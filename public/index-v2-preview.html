@@ -190,10 +190,10 @@ function clePourPlan(cle) {
 let view = "dashboard";
 let selectedWeek = 1;
 let statuses = load(clePourPlan("lk_statuses"), {});
-let hiddenSessions = load("lk_hidden_sessions", {}); // {uid: true}
-let swappedSessions = load("lk_swapped_sessions", {}); // {uid: swapUid} swap bidirectionnel
-let notesList = load("lk_notes", []);
-let sessionNotes = load("lk_session_notes", {}); // {uid: "texte"}
+let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
+let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+let notesList = load(clePourPlan("lk_notes"), []);
+let sessionNotes = load(clePourPlan("lk_session_notes"), {}); // {uid: "texte"}
 let stravaToken = load("lk_strava_token", null);
 let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
@@ -216,22 +216,22 @@ let gistMsg = "";
   if (urlGist) { gistId = urlGist; save("lk_gist_id", gistId); }
   if (urlToken || urlGist) { window.history.replaceState({}, "", window.location.pathname); }
 })();
-let predHistory = load("lk_pred_history", []); // [{date, time, confidence}]
-let raceGoalTime = load("lk_race_goal", 2910); // 48'30" en secondes
+let predHistory = load(clePourPlan("lk_pred_history"), []); // [{date, time, confidence}]
+let raceGoalTime = load(clePourPlan("lk_race_goal"), 2910); // 48'30" en secondes
 let runnerWeight = load("lk_weight", null);
 let runnerHeight = load("lk_height", null);
 let runnerFcMax = load("lk_fc_max", 181);
 let runnerPps = load("lk_pps", "");
-let raceHoraires = load("lk_race_horaires", { dossard: "", depart: "" });
-let raceParcoursUrl = load("lk_race_parcours", "");
-let checklistItems = load("lk_checklist", {
+let raceHoraires = load(clePourPlan("lk_race_horaires"), { dossard: "", depart: "" });
+let raceParcoursUrl = load(clePourPlan("lk_race_parcours"), "");
+let checklistItems = load(clePourPlan("lk_checklist"), {
   dossard: false, chaussures: false, montre: false,
   pps: false, ravitaillement: false, tenue: false
 });
 let changelogExpanded = false;
 let currentPred = null; // résultat de predict10K, calculé une fois par render
 let isRebuilding = false;
-let lastRebuildDate = load("lk_last_rebuild", null);
+let lastRebuildDate = load(clePourPlan("lk_last_rebuild"), null);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MÉTÉO — Open-Meteo (Toulon fixe)
@@ -445,8 +445,8 @@ function daysUntil(dateStr) {
 }
 
 // ── Message coach via Claude API ──────────────────────────────────────────
-let coachMsg = load("lk_coach_msg", null);
-let coachDate = load("lk_coach_date", "");
+let coachMsg = load(clePourPlan("lk_coach_msg"), null);
+let coachDate = load(clePourPlan("lk_coach_date"), "");
 if (coachDate !== today()) { coachMsg = null; } // forcer le fetch si nouveau jour
 
 async function fetchCoachMsg() {
@@ -533,8 +533,8 @@ Réponds uniquement avec le message, sans guillemets.`;
     if (msg) {
       coachMsg = msg;
       coachDate = t;
-      save("lk_coach_msg", coachMsg);
-      save("lk_coach_date", coachDate);
+      save(clePourPlan("lk_coach_msg"), coachMsg);
+      save(clePourPlan("lk_coach_date"), coachDate);
       render();
     }
   } catch(e) {
@@ -854,9 +854,9 @@ function rebuildPredHistory() {
     d.setDate(d.getDate()+1);
   }
   predHistory = newHistory;
-  save("lk_pred_history", predHistory);
+  save(clePourPlan("lk_pred_history"), predHistory);
   lastRebuildDate = today();
-  save("lk_last_rebuild", lastRebuildDate);
+  save(clePourPlan("lk_last_rebuild"), lastRebuildDate);
   isRebuilding = false;
   render();
 }
@@ -1027,11 +1027,11 @@ function predict10K() {
   if (!lastEntry || lastEntry.date !== todayStr) {
     predHistory.push({ date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION });
     if (predHistory.length > 80) predHistory.shift();
-    save("lk_pred_history", predHistory);
+    save(clePourPlan("lk_pred_history"), predHistory);
   } else if (lastEntry.date === todayStr && lastEntry.time !== Math.round(estimate)) {
     // Mettre à jour l'entrée du jour si l'estimation a changé
     predHistory[predHistory.length-1] = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION };
-    save("lk_pred_history", predHistory);
+    save(clePourPlan("lk_pred_history"), predHistory);
   }
 
   // Fourchette selon la confiance
@@ -1097,7 +1097,7 @@ function renderDashboard() {
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
 
   // Banniere post-course
-  const raceResult = load("lk_race_result", null);
+  const raceResult = load(clePourPlan("lk_race_result"), null);
   if (today() >= "2026-09-06" && raceResult) {
     const diff = raceResult - raceGoalTime;
     const achieved = diff <= 0;
@@ -1125,7 +1125,7 @@ function renderDashboard() {
     saveBtn2.style.cssText="background:"+color+";border:none;border-radius:8px;padding:8px 16px;color:"+(close?"#1a1d27":"#fff")+";font-size:14px;font-weight:700;cursor:pointer;";
     saveBtn2.addEventListener("click",()=>{
       const parts=inp.value.split(":");
-      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
+      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
     });
     const inputRow=document.createElement("div");
     inputRow.style.cssText="display:flex;gap:8px;";
@@ -1295,7 +1295,7 @@ function renderDashboard() {
   const coachBorderColor = todayStatus4Coach==="✅"?"#22c55e33":todayStatus4Coach==="⚠️"?"#eab30833":todayStatus4Coach==="❌"?"#ef444433":"#2e3347";
   const coachLabel = todayStatus4Coach&&["✅","⚠️","❌"].includes(todayStatus4Coach) ? "🤖 Coach · Analyse" : "🤖 Coach";
   const refreshCoachBtn = el("button",{style:{background:"none",border:"none",color:"#475569",fontSize:"15px",cursor:"pointer",padding:"0",lineHeight:"1"},
-    onClick:()=>{ coachMsg=null; coachDate=""; save("lk_coach_msg",null); save("lk_coach_date",""); fetchCoachMsg(); }
+    onClick:()=>{ coachMsg=null; coachDate=""; save(clePourPlan("lk_coach_msg"),null); save(clePourPlan("lk_coach_date"),""); fetchCoachMsg(); }
   },"🔄");
   // Coach intégré dans la carte séance — bloc discret
   const coachEl = el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",alignItems:"flex-start"}},
@@ -2020,7 +2020,7 @@ function renderWeekDetail(weekNum) {
       noteInput.addEventListener("change",()=>{
         if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
         else{delete sessionNotes[uid];}
-        save("lk_session_notes",sessionNotes); scheduleSave();
+        save(clePourPlan("lk_session_notes"),sessionNotes); scheduleSave();
       });
       if(sessionNotes[uid]){card.appendChild(el("div",{style:{color:"#e2e8f0",fontSize:"14px",fontStyle:"italic",marginTop:"4px"}},"💬 "+sessionNotes[uid]));}
       card.appendChild(noteInput);
@@ -2662,7 +2662,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-dossard-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.dossard || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
           return inp;
         })()
       ),
@@ -2673,7 +2673,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-depart-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.depart || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
           return inp;
         })()
       )
@@ -2705,7 +2705,7 @@ function renderCourse() {
         );
         row.addEventListener("click",()=>{
           checklistItems[item.key]=!checked;
-          save("lk_checklist",checklistItems);
+          save(clePourPlan("lk_checklist"),checklistItems);
           render();
         });
         return row;
@@ -2739,7 +2739,7 @@ function renderCourse() {
         inp.type = "text"; inp.placeholder = "Lien GPX ou carte du parcours...";
         inp.style.cssText = "width:100%;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:8px 12px;color:#f1f5f9;font-size:13px;box-sizing:border-box;";
         inp.value = raceParcoursUrl || "";
-        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save("lk_race_parcours",raceParcoursUrl); scheduleSave(); });
+        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); scheduleSave(); });
         return inp;
       })(),
       raceParcoursUrl?el("a",{href:raceParcoursUrl,target:"_blank",style:{display:"block",marginTop:"8px",color:"#60a5fa",fontSize:"14px"}},"→ Voir le parcours"):null
@@ -2870,7 +2870,7 @@ function renderCourse() {
     infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
     (()=>{
       if (today() < "2026-09-06") return null;
-      const existingResult = load("lk_race_result", null);
+      const existingResult = load(clePourPlan("lk_race_result"), null);
       const inp2 = document.createElement("input");
       inp2.type="time"; inp2.step="1";
       inp2.style.cssText="flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
@@ -2883,7 +2883,7 @@ function renderCourse() {
       btn2.style.cssText="background:#f97316;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
       btn2.addEventListener("click",()=>{
         const parts=inp2.value.split(":");
-        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
+        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
       });
       const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
       row2.appendChild(inp2); row2.appendChild(btn2);
@@ -2968,7 +2968,7 @@ function showSessionMenu(week, slotIdx) {
         const swapUid = swappedSessions[uid];
         delete swappedSessions[uid];
         delete swappedSessions[swapUid];
-        save("lk_swapped_sessions", swappedSessions);
+        save(clePourPlan("lk_swapped_sessions"), swappedSessions);
         gistSave(true);
         overlay.remove();
         render();
@@ -2991,7 +2991,7 @@ function showSessionMenu(week, slotIdx) {
       hideBtn.textContent = "Supprimer cette seance";
       hideBtn.addEventListener("click", () => {
         hiddenSessions[uid] = true;
-        save("lk_hidden_sessions", hiddenSessions);
+        save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
         gistSave(true);
         overlay.remove();
         render();
@@ -3008,7 +3008,7 @@ function showSessionMenu(week, slotIdx) {
       const conflict = !hiddenSessions[uid] && getEffectiveSession(week, slotIdx).type !== "REPOS";
       if (!conflict) {
         delete hiddenSessions[uid];
-        save("lk_hidden_sessions", hiddenSessions);
+        save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
         gistSave(true);
         render();
       } else {
@@ -3070,7 +3070,7 @@ function showMoveMenu(week, slotIdx) {
         swappedSessions[uidA] = uidB;
         swappedSessions[uidB] = uidA;
       }
-      save("lk_swapped_sessions", swappedSessions);
+      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3122,8 +3122,8 @@ function showRestoreMenu(week, slotIdx) {
       delete hiddenSessions[uidA];
       swappedSessions[uidA] = uidB;
       swappedSessions[uidB] = uidA;
-      save("lk_hidden_sessions", hiddenSessions);
-      save("lk_swapped_sessions", swappedSessions);
+      save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
+      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3238,7 +3238,7 @@ function exportPdfPlanVierge() {
 }
 
 function exportPdfResultats() {
-  const raceRes=load("lk_race_result",null);
+  const raceRes=load(clePourPlan("lk_race_result"),null);
   if(!raceRes){alert("Saisis ton resultat dans onglet Course !");return;}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
@@ -3417,7 +3417,7 @@ function renderSettings() {
               onClick:()=>{ localStorage.removeItem("lk_strava_activities"); localStorage.removeItem("lk_last_sync"); stravaActivities=[]; lastSyncTime=0; syncStrava(); }
             },"🗑️ Vider cache & forcer synchro complète"),
             el("button",{style:{background:"#a855f711",border:"1px solid #a855f733",borderRadius:"8px",padding:"8px",color:"#a855f7",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
-              onClick:()=>{ localStorage.removeItem("lk_pred_history"); predHistory=[]; rebuildPredHistory(); render(); }
+              onClick:()=>{ localStorage.removeItem(clePourPlan("lk_pred_history")); predHistory=[]; rebuildPredHistory(); render(); }
             },"🔄 Forcer recalcul de l\'historique"+(lastRebuildDate?" · dernier : "+lastRebuildDate:"")),
             el("button",{style:{background:"none",border:"none",color:"#e2e8f0",fontSize:"14px",cursor:"pointer",padding:"0"},
               onClick:()=>{ stravaToken=null;stravaRefresh=null;stravaExpires=0;stravaActivities=[];save("lk_strava_token",null);save("lk_strava_refresh",null);save("lk_strava_expires",0);save("lk_strava_activities",[]);render(); }
@@ -3647,7 +3647,7 @@ function renderSettings() {
     const fcmax = document.getElementById("inp-fcmax"); if(fcmax) { runnerFcMax=parseInt(fcmax.value)||181; save("lk_fc_max",runnerFcMax); }
     const pps = document.getElementById("pps-input"); if(pps) { runnerPps=pps.value.trim(); save("lk_pps",runnerPps); }
     const goal = document.getElementById("inp-goal"); if(goal) {
-      const parts=goal.value.split(":"); if(parts.length===2){const s=parseInt(parts[0])*60+parseInt(parts[1]); if(!isNaN(s)&&s>0){raceGoalTime=s;save("lk_race_goal",raceGoalTime);}}
+      const parts=goal.value.split(":"); if(parts.length===2){const s=parseInt(parts[0])*60+parseInt(parts[1]); if(!isNaN(s)&&s>0){raceGoalTime=s;save(clePourPlan("lk_race_goal"),raceGoalTime);}}
     }
     gistSave(true);
     saveBtn.textContent = "✅ Paramètres enregistrés !";
@@ -3655,7 +3655,7 @@ function renderSettings() {
     render();
   });
 
-  const hasRes=!!load("lk_race_result",null);
+  const hasRes=!!load(clePourPlan("lk_race_result"),null);
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"8px"}},
@@ -3760,9 +3760,9 @@ async function gistLoad() {
     if (Object.keys(statuses).length===0&&notesList.length===0) {
       statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
       if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
-      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
-      save(clePourPlan("lk_statuses"),statuses); save("lk_notes",notesList);
+      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
+      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
+      save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
       gistMsg="☁️ Données restaurées"; render(); setTimeout(()=>{gistMsg="";render();},4000);
     }
   } catch(e) {
@@ -3781,17 +3781,17 @@ async function gistForceRestore() {
     const parsed = JSON.parse(raw);
     statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
     if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
-    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
-    if (parsed.raceGoalTime) { raceGoalTime=parsed.raceGoalTime; save("lk_race_goal",raceGoalTime); }
+    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
+    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
+    if (parsed.raceGoalTime) { raceGoalTime=parsed.raceGoalTime; save(clePourPlan("lk_race_goal"),raceGoalTime); }
     if (parsed.runnerWeight) { runnerWeight=parsed.runnerWeight; save("lk_weight",runnerWeight); }
     if (parsed.runnerHeight) { runnerHeight=parsed.runnerHeight; save("lk_height",runnerHeight); }
     if (parsed.runnerFcMax) { runnerFcMax=parsed.runnerFcMax; save("lk_fc_max",runnerFcMax); }
     if (parsed.runnerPps) { runnerPps=parsed.runnerPps; save("lk_pps",runnerPps); }
-    if (parsed.raceHoraires) { raceHoraires=parsed.raceHoraires; save("lk_race_horaires",raceHoraires); }
-    if (parsed.raceParcoursUrl) { raceParcoursUrl=parsed.raceParcoursUrl; save("lk_race_parcours",raceParcoursUrl); }
-    if (parsed.checklistItems) { checklistItems=parsed.checklistItems; save("lk_checklist",checklistItems); }
-    save(clePourPlan("lk_statuses"),statuses); save("lk_notes",notesList);
+    if (parsed.raceHoraires) { raceHoraires=parsed.raceHoraires; save(clePourPlan("lk_race_horaires"),raceHoraires); }
+    if (parsed.raceParcoursUrl) { raceParcoursUrl=parsed.raceParcoursUrl; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); }
+    if (parsed.checklistItems) { checklistItems=parsed.checklistItems; save(clePourPlan("lk_checklist"),checklistItems); }
+    save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
     gistMsg="✅ Restauré · "+(parsed.savedAt?new Date(parsed.savedAt).toLocaleDateString("fr-FR"):"");
     render(); setTimeout(()=>{gistMsg="";render();},4000);
   } catch(e) { gistMsg="❌ Erreur restauration"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
