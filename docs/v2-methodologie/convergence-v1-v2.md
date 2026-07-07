@@ -18,6 +18,7 @@ Document de suivi du chantier : faire produire par le moteur générique v2 (`pl
 | Étape 4 (brancher l'adaptation) | ⬜ Non commencée | `analyserAdaptations`/`appliquerAdaptations` dans l'interface v1 |
 | Sélection/génération de plan depuis v1 (section 7) | ⬜ Réflexion posée, rien codé | Réutiliser le wizard + le mécanisme multi-plans déjà existants en v2 (Gist), plutôt que dupliquer |
 | Variables non indexées sur le plan (section 7bis) | ⚠️ Écart critique identifié | `RACE_NAME`, `PHASES`, `FC_MAX`, `BASE_TIME` codés en dur — bug silencieux dès qu'on charge un plan vraiment différent, pas juste un affichage à corriger |
+| Non-chevauchement des dates entre plans (section 7ter) | ⬜ Règle posée, rien codé | Vérification à faire dans `gist-sync.js` au moment de sauvegarder un plan, pas seulement côté UI |
 | Limite VMA très fractionnées | ⬜ Contournée (garde-fou), pas résolue | Vraie solution = chantier v2.0 streams (jamais commencé) |
 
 ---
@@ -278,6 +279,21 @@ Question posée par Laurent en réfléchissant à la section 7 : est-ce que tout
 **Non tranché à ce stade** : si ces informations (course, FC max, référence de performance) doivent être stockées **dans** chaque plan sauvegardé (probable, le plus cohérent avec l'esprit multi-profil du produit final), ou si l'app doit rester mono-profil pour l'instant (un seul FC max, une seule course active à la fois) et seulement le contenu du plan change. Cette question rejoint la réflexion plus large sur l'authentification/les comptes utilisateurs (v2.5) — un vrai système multi-utilisateur suppose de toute façon que ces données deviennent des attributs du profil, pas des constantes de fichier.
 
 **Statut : écart identifié, aucune décision prise, à traiter avant ou en même temps que la section 7 (sélection de plan) — la sélection de plan sans résoudre ceci produirait un affichage incohérent.**
+
+## 7ter. Contrainte : empêcher le chevauchement de dates entre plans d'un même utilisateur (règle posée le 6 juillet 2026)
+
+Demande de Laurent : pour un même utilisateur, deux plans sauvegardés ne doivent pas pouvoir avoir des dates qui se chevauchent (ex: un 10K du 22/06 au 06/09 et un Semi du 01/08 au 15/10 se chevaucheraient sur août-septembre).
+
+**Pourquoi c'est nécessaire, pas juste une préférence** : sans cette contrainte, dès qu'on aura une sélection multi-plans (section 7), rien n'empêcherait un utilisateur d'avoir deux plans actifs sur une même période — et le dashboard ("séance du jour", `currentWeek()`, etc.) ne saurait pas lequel des deux plans utiliser pour une date donnée qui existerait dans les deux. Un problème d'intégrité des données, pas seulement d'expérience utilisateur.
+
+**Ce que ça implique techniquement** :
+- Une vérification devrait exister au moment de **sauvegarder** un plan (que ce soit un nouveau plan généré depuis le wizard, ou un plan renommé/modifié) : comparer sa plage de dates (`dateDebut` → `dateCourse`) à celle de tous les autres plans déjà sauvegardés pour ce même utilisateur, et refuser/avertir en cas de chevauchement
+- Cette vérification devrait vivre dans `gist-sync.js` (à côté de `sauvegarderPlan`), pas seulement côté UI — pour que la contrainte soit appliquée peu importe l'interface qui déclenche la sauvegarde (wizard v2, ou éventuellement une future v1 si elle sauvegarde aussi des plans)
+- Cas limite à trancher : que faire si l'utilisateur veut légitimement remplacer un plan par un autre sur la même période (ex: abandonner un objectif 10K pour un objectif Semi à la même date) ? Probablement autoriser le remplacement explicite d'un plan existant (déjà couvert par `renommerPlanUI`/`sauvegarderPlan` qui met à jour par `id`), mais refuser la création d'un **nouveau** plan distinct qui chevaucherait un plan déjà actif
+
+**Non tranché à ce stade** : la définition exacte de "chevauchement" (dates strictement inclusives, ou une marge de tolérance ?), le message d'erreur/avertissement à afficher à l'utilisateur, et si cette contrainte doit bloquer complètement la sauvegarde ou seulement avertir (l'utilisateur pourrait avoir une bonne raison de vouloir deux plans qui se chevauchent, ex: un plan de fond et un plan de course ponctuelle en parallèle — à valider si ce cas d'usage existe réellement avant de bloquer trop strictement).
+
+**Statut : règle métier posée, aucune implémentation commencée.**
 
 ## 8. Fichiers du chantier
 
