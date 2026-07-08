@@ -40,6 +40,20 @@ console.log('\n--- Test 4 : séance sans contenu ne plante pas ---');
   }
 }
 
+console.log('\n--- Test 4bis : idempotence — appels multiples ne dupliquent pas la note ---');
+console.log('(bug trouvé le 7 juillet 2026, capture d\'écran de Laurent : la note apparaissait');
+console.log(' 3 fois d\'affilée dans le contenu d\'une séance, car verifierMeteoSeanceDemain() est');
+console.log(' appelée à chaque renderResults() du wizard — 3 régénérations = 3 notes empilées)');
+{
+  const seance = { contenu: 'Séance EF' };
+  const prevision = { disponible: true, alerteChaleur: true, temperatureMaxC: 32 };
+  enrichirSeanceAvecMeteo(seance, prevision);
+  enrichirSeanceAvecMeteo(seance, prevision);
+  enrichirSeanceAvecMeteo(seance, prevision);
+  const occurrences = seance.contenu.split(NOTE_CHALEUR).length - 1;
+  console.log('Nombre d\'occurrences de la note après 3 appels :', occurrences, occurrences === 1 ? '(OK)' : '(ÉCHEC)');
+}
+
 console.log('\n--- Test 5 : recupererPrevisionMeteo utilise le cache si présent ---');
 {
   const storage = creerStorageMock();

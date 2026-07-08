@@ -67,6 +67,13 @@ export async function recupererPrevisionMeteo({ latitude, longitude, date }, sto
 export function enrichirSeanceAvecMeteo(seance, prevision) {
   if (!seance || !seance.contenu) return seance;
   if (!prevision?.disponible || !prevision.alerteChaleur) return seance;
+  // Idempotence : ne pas ré-ajouter la note si elle est déjà présente dans
+  // le contenu — bug trouvé le 7 juillet 2026 (capture d'écran de Laurent) :
+  // verifierMeteoSeanceDemain() est appelée à chaque fin de renderResults(),
+  // donc à chaque régénération/rechargement du plan dans le wizard. Sans ce
+  // garde-fou, la note se répétait autant de fois que le plan avait été
+  // affiché, produisant un contenu avec la même phrase collée 3 fois.
+  if (seance.contenu.includes(NOTE_CHALEUR)) return seance;
   seance.contenu = `${seance.contenu} ${NOTE_CHALEUR}`;
   return seance;
 }
