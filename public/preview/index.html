@@ -338,6 +338,21 @@ setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
 // UTILS
 // ══════════════════════════════════════════════════════════════════════════════
 function today() { return new Date().toISOString().slice(0,10); }
+
+// Filtre stravaActivities pour ne garder que les activités depuis le début
+// du plan actuellement affiché — fonction utilitaire centralisée, créée le
+// 7 juillet 2026 après avoir trouvé le même défaut (aucun filtre de date)
+// répété à 6 endroits différents du fichier (totaux de km/temps courus dans
+// le dashboard, la carte paramètres de course, l'onglet Course, 2 exports
+// PDF) : sur un plan Semi démarrant le 14 septembre, une activité de la
+// veille du début du plan se retrouvait comptée dans "km courus" — même
+// famille de bug que celui déjà corrigé pour predict10K()/
+// matchActivitiesToPlan() (section 7bis/7quater du doc de convergence),
+// mais jamais centralisé, donc oublié à plusieurs endroits distincts.
+function activitesDuPlan() {
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  return stravaActivities.filter(a => !dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan);
+}
 // Date de course lue depuis le plan chargé (paramsOrigine.dateCourse ou
 // dateCourse directement sur l'objet plan, cf. section 7bis du doc de
 // convergence) plutôt que codée en dur — repli sur la date historique de
@@ -1435,7 +1450,7 @@ function renderDashboard() {
     ),
     // ── Stats séances ─────────────────────────────────────────────────────
     (()=>{
-      const totalKmRun = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
+      const totalKmRun = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
       return el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",paddingTop:"10px",borderTop:"1px solid #2e334733",marginTop:"10px"}},
         el("span",{style:{color:"#22c55e",fontWeight:"700"}},"✅ "+done),
         el("span",{class:"muted"},"·"),
@@ -1807,8 +1822,8 @@ function renderDashboard() {
   }
 
     // ── Barres de progression km + temps ─────────────────────────────────────
-  const totalKm = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
-  const totalMin = Math.round(stravaActivities.reduce((s,a)=>s+a.moving_time,0)/60);
+  const totalKm = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
+  const totalMin = Math.round(activitesDuPlan().reduce((s,a)=>s+a.moving_time,0)/60);
   const totalH = Math.floor(totalMin/60);
   const totalMmin = totalMin%60;
 
@@ -2805,9 +2820,21 @@ function renderStats() {
         ["Date",new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION,"#f1f5f9"],
         ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km","#f97316"],
         ["Référence",fmtTime(BASE_TIME_REFERENCE),"#f1f5f9"],
-        ["Allure EF","6:20/km · 6:40/km si chaud","#60a5fa"],
+        ["Allure EF",(window.__PLAN_BRUT__?.allures?.E||"6:20")+"/km · "+(() => {
+          const allureStr = window.__PLAN_BRUT__?.allures?.E;
+          if (!allureStr) return "6:40";
+          const [m,s] = allureStr.replace("/km","").split(":").map(Number);
+          return formatPace(m*60+s+20);
+        })()+"/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
-        ["Km courus",Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10+" km","#22c55e"],
+        // Km courus DEPUIS LE DÉBUT DU PLAN ACTUEL, pas toutes les activités
+        // Strava jamais bornées — bug trouvé le 7 juillet 2026 : Laurent, sur
+        // un plan Semi démarrant le 14 septembre, voyait les km d'une séance
+        // de la veille du démarrage du plan comptés dans ce total. Même
+        // famille de correctif déjà appliqué à predict10K()/
+        // matchActivitiesToPlan() (section 7bis/7quater du doc de
+        // convergence), oublié ici.
+        ["Km courus",Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10+" km","#22c55e"],
       ].map(([label,val,color])=>el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"6px"}},
         el("span",{class:"muted",style:{fontSize:"14px"}},label),
         el("span",{style:{color,fontSize:"14px",fontWeight:color==="#f1f5f9"?"400":"700"}},val)
@@ -3055,7 +3082,7 @@ function renderCourse() {
   const totalAdapted = pastSess.filter(s=>statuses[s.uid]==="⚠️").length;
   const totalMissed = pastSess.filter(s=>statuses[s.uid]==="❌").length;
   const totalSess = pastSess.length;
-  const totalKmRace = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
+  const totalKmRace = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
   const completionRate = totalSess > 0 ? Math.round((totalDone+totalAdapted)/totalSess*100) : 0;
   const verdictRaceColor = completionRate >= 80 ? "#22c55e" : completionRate >= 60 ? "#eab308" : "#ef4444";
 
@@ -3413,7 +3440,7 @@ function exportPdfRecap() {
   const nb1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const nb2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
   const nb3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const km1=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  const km1=Math.round(activitesDuPlan().reduce((acc,a)=>acc+a.distance,0)/100)/10;
   const pr=currentPred||predict10K();
   doc.text("Objectif : "+fmtTimeShort(raceGoalTime),M,y); y+=6;
   doc.text("Estimation : "+(pr.time?fmtTimeShort(pr.time):"N/A"),M,y); y+=6;
@@ -3510,7 +3537,7 @@ function exportPdfResultats() {
   const n1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const n2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
   const n3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const km2=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  const km2=Math.round(activitesDuPlan().reduce((acc,a)=>acc+a.distance,0)/100)/10;
   doc.text(n1+" seances validees - "+n2+" adaptees - "+n3+" ratees",M,y); y+=6;
   doc.text(km2+" km courus - "+PLAN.length+" semaines",M,y);
   doc.save("RunByLea_Resultats.pdf");
