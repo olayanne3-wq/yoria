@@ -63,3 +63,28 @@ console.log('\n--- trouverPlanEnConflit (section 7ter) ---');
   console.log('Pas de conflit avec soi-même (mise à jour) :', pasDeConflitAvecSoiMeme === null ? 'OK' : 'ÉCHEC');
 }
 
+console.log('\n--- getGithubToken lit correctement le format JSON.stringify de save() (v1) ---');
+console.log('(bug trouvé le 7 juillet 2026 : Laurent saisit son token via le champ de');
+console.log(' Paramètres dans index.html, qui utilise save() -> JSON.stringify(val),');
+console.log(' ajoutant des guillemets autour du token ("ghp_..." au lieu de ghp_...).');
+console.log(' getGithubToken() lisait la valeur brute sans JSON.parse(), donc le token');
+console.log(' réellement transmis à GitHub contenait 2 guillemets en trop -> 401 systématique,');
+console.log(' confirmé "never used" côté GitHub malgré un token par ailleurs valide)');
+{
+  const storage = creerStorageMock();
+  // Simule exactement ce qu'écrit save() de index.html : JSON.stringify(val)
+  storage.setItem('lk_github_token', JSON.stringify('ghp_exempleFictifPourLeTest0000000000'));
+  const token = getGithubToken(storage);
+  console.log('Token lu (doit être sans guillemets) :', token);
+  console.log('Aucun guillemet dans le résultat :', !token.includes('"') ? 'OK' : 'ÉCHEC');
+  console.log('Token exact attendu :', token === 'ghp_exempleFictifPourLeTest0000000000' ? 'OK' : 'ÉCHEC');
+}
+
+console.log('\n--- getGithubToken lit toujours correctement le format brut (setGithubToken, v2) ---');
+{
+  const storage = creerStorageMock();
+  setGithubToken('ghp_AutreTokenBrutSansGuillemets123456', storage);
+  const token = getGithubToken(storage);
+  console.log('Token lu (format brut, non-régression) :', token === 'ghp_AutreTokenBrutSansGuillemets123456' ? 'OK' : 'ÉCHEC');
+}
+

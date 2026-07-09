@@ -15,7 +15,23 @@
 const GIST_FILENAME = 'plan10k_v2_plans.json';
 
 function getGithubToken(storage = localStorage) {
-  return storage.getItem('lk_github_token') || '';
+  const raw = storage.getItem('lk_github_token');
+  if (!raw) return '';
+  // Le token peut avoir été écrit par save() de index.html (v1), qui fait
+  // systématiquement JSON.stringify(val) — pour une chaîne simple, ça ajoute
+  // des guillemets autour ("ghp_..." plutôt que ghp_...). Bug trouvé le
+  // 7 juillet 2026 : Laurent avait saisi son token via le champ de v1
+  // (Paramètres), donc stocké avec guillemets, mais getGithubToken() (ce
+  // module) le lisait brut sans JSON.parse() — 401 systématique sur GitHub,
+  // le token transmis contenait littéralement 2 guillemets en trop.
+  // JSON.parse() gère les deux cas : si raw est déjà une chaîne brute (sans
+  // guillemets), JSON.parse() échoue et le catch retombe sur raw tel quel.
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'string' ? parsed : raw;
+  } catch {
+    return raw;
+  }
 }
 function setGithubToken(token, storage = localStorage) {
   storage.setItem('lk_github_token', token);
@@ -31,15 +47,6 @@ async function chargerPlans(storage = localStorage) {
   const token = getGithubToken(storage);
   const gistId = getV2GistId(storage);
   if (!token || !gistId) return [];
-  // DIAGNOSTIC TEMPORAIRE (7 juillet 2026) — Laurent signale un 401
-  // persistant malgré un token vérifié valide (classic, scope gist, non
-  // expiré, "never used" sur GitHub). alert() plutôt que console.log car
-  // le diagnostic par console s'est avéré difficile à naviguer sur mobile.
-  // Affiche les 8 premiers caractères du token réellement utilisé pour
-  // cet appel précis — à retirer une fois la cause trouvée.
-  if (typeof window !== 'undefined' && window.alert) {
-    window.alert('DIAGNOSTIC — token utilisé (8 premiers caractères) : "' + token.slice(0, 8) + '" (longueur totale : ' + token.length + ')\nGist ID : ' + gistId);
-  }
   try {
     const resp = await fetch('https://api.github.com/gists/' + gistId, {
       headers: { Authorization: 'token ' + token }
