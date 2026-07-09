@@ -1,4 +1,4 @@
-const CACHE = "plan10k-v19";
+const CACHE = "plan10k-v20";
 const ASSETS = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", e => {
@@ -18,10 +18,13 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // Ne pas intercepter les appels API Strava et Open-Meteo
+  // Ne pas intercepter les appels API Strava, GitHub Gist et Open-Meteo :
+  // ces requêtes doivent toujours atteindre le réseau, jamais servies
+  // depuis le cache.
   if (e.request.url.includes("/api/") || e.request.url.includes("open-meteo") || e.request.url.includes("strava.com") || e.request.url.includes("github.com")) return;
 
-  // Stratégie network-first : toujours essayer le réseau en premier
+  // Stratégie network-first : toujours essayer le réseau en premier, cache
+  // en secours hors-ligne uniquement.
   e.respondWith(
     fetch(e.request)
       .then(resp => {

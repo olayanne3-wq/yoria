@@ -1,7 +1,7 @@
 {
   "name": "Run by Léa",
   "short_name": "Run by Léa",
-  "description": "Ton coach running personnel pour préparer ta course",
+  "description": "Ton coach running personnel — plan généré par le moteur v2",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -935,7 +935,7 @@
         <div id="sauvegardeMsg" style="margin-top:8px; font-size:13px;"></div>
 
         <!-- Synchronisation entre appareils via QR code — même principe que
-             le mécanisme déjà existant dans preview/index.html (section
+             le mécanisme déjà existant dans index.html (section
              "Configurer sur un autre appareil"), plutôt que le système à 2
              champs (token + code à copier-coller manuellement) tenté en
              premier lieu le 7 juillet 2026. Laurent l'a trouvé trop
@@ -1566,9 +1566,9 @@
   }
 
   // Synchronisation entre appareils via QR code (même principe que le
-  // mécanisme déjà existant dans preview/index.html) — encode token +
+  // mécanisme déjà existant dans index.html) — encode token +
   // gistId dans un lien unique, à scanner ou ouvrir directement. Paramètre
-  // gistV2 (pas gist, déjà utilisé par preview/index.html pour un Gist de
+  // gistV2 (pas gist, déjà utilisé par index.html pour un Gist de
   // backup général différent, cf. docs/v2-methodologie/convergence-v1-v2.md).
   function genererQrSyncV2() {
     const token = getGithubToken();
@@ -1608,7 +1608,7 @@
 
   // Récupère token + gistV2 depuis l'URL si présents (lien ouvert depuis un
   // QR code scanné sur un autre appareil) — même principe que le mécanisme
-  // équivalent dans preview/index.html. Doit attendre que window.Engine soit
+  // équivalent dans index.html. Doit attendre que window.Engine soit
   // chargé (événement engineReady) avant d'appeler setGithubToken/
   // setV2GistId : ces wrappers font le lookup Engine.xxx au moment de
   // l'appel, donc une exécution immédiate (avant que le <script
@@ -2091,7 +2091,7 @@
       if (dernierPlanGenere?.id) {
         localStorage.setItem('v2_preview_plan_id', dernierPlanGenere.id);
       }
-      location.href = '/preview/index.html';
+      location.href = '/';
       return;
     }
     if(current < totalSteps){ current++; showStep(current); }

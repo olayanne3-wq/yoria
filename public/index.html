@@ -32,19 +32,123 @@ input[type=text], input[type=number], input[type=password] {
 </head>
 <body>
 <div id="app"></div>
+<!-- Moteur v2 chargé en script classique (pas de modules ES) pour garantir
+     un ordre d'exécution strictement séquentiel avec le reste de ce fichier,
+     qui lit PLAN dès son chargement (pas seulement sur interaction).
+     Copies dérivées de public/v2/engine/plan-generator.js et v1-bridge.js
+     avec les `export` retirés — PAS une nouvelle source de vérité, à
+     régénérer depuis les fichiers sources si le moteur évolue (cf.
+     docs/v2-methodologie/convergence-v1-v2.md, section 5). -->
+<script src="/v2-preview-scripts/plan-generator.classic.js"></script>
+<script src="/v2-preview-scripts/v1-bridge.classic.js"></script>
+<script src="/v2-preview-scripts/gist-sync.classic.js"></script>
 <script>
+  // Charge (ou génère par défaut) le plan à afficher — chantier convergence
+  // v1/v2, section 7 (sélection de plan depuis v1). Async car chargerPlans()
+  // fait un appel réseau (fetch vers l'API GitHub Gist). Ce script ne fait
+  // que PRÉPARER les données dans window.__PLAN_BRUT__/__PLAN_GENERE__ ; le
+  // script principal (plus bas, qui définit render()/PLAN/ALL_SESSIONS)
+  // attend la promesse window.__PLAN_PRET__ avant de s'initialiser — cf. le
+  // bloc juste avant l'appel final à render() en fin de fichier.
+  //
+  // Le plan BRUT (avant traduction v1) est conservé sous __PLAN_BRUT__ :
+  // contient les métadonnées (paramsOrigine.raceName/raceLocation/raceUrl,
+  // zoneFC.fcMax, paramsOrigine.tempsReference) qui n'existent pas dans le
+  // format traduit PLAN/ALL_SESSIONS — nécessaires pour ne plus coder ces
+  // valeurs en dur (docs/v2-methodologie/convergence-v1-v2.md, section 7bis).
+  window.__PLAN_PRET__ = (async () => {
+    const idPlanChoisi = localStorage.getItem('v2_preview_plan_id');
+    let planBrut = null;
+    let plansDisponibles = [];
+
+    try {
+      plansDisponibles = await chargerPlans();
+      if (plansDisponibles.length > 0) {
+        planBrut = idPlanChoisi ? plansDisponibles.find(p => p.id === idPlanChoisi) : null;
+        if (!planBrut) planBrut = plansDisponibles[0]; // repli sur le premier plan disponible
+      }
+    } catch (e) {
+      console.warn('Chargement des plans depuis le Gist échoué, génération par défaut :', e.message);
+    }
+
+    if (!planBrut) {
+      // Repli : aucun plan trouvé dans le Gist (première utilisation, pas
+      // de token configuré, ou erreur réseau) — génère un plan par défaut
+      // avec les paramètres historiques de Laurent, pour ne jamais laisser
+      // un écran vide.
+      planBrut = generatePlan(
+        { niveau: 'intermediaire', joursDisponiblesHabituels: [1,2,3,4,5,6], renforcementMusculaire: true, fcMaxConnue: 181 },
+        { distance: '10K', refDistance: '10K', tempsReference: '50:21', objectif: '48:30', dateDebut: '2026-06-22', dateCourse: '2026-09-06', volumeActuel: 30, contraintesPonctuelles: [], raceName: "10 km Gem'Aubagne", raceLocation: 'Aubagne', raceUrl: 'https://new.sportsnconnect.com/client/events/4qa4QCJ1DtZYPSzSCbjJJK-5-and-10-km-gemaubagne' }
+      );
+      // Bug trouvé le 7 juillet 2026 : generatePlan() (le moteur pur)
+      // n'assigne jamais d'id — seul le wizard v2 le fait
+      // (crypto.randomUUID()) après génération. Sans id ici, clePourPlan()
+      // retombe sur la clé lk_statuses NON préfixée (ancien résidu global,
+      // cf. section 7quater), invisible tant qu'un vrai plan avec id est
+      // utilisé mais qui refait surface dès qu'on retombe sur ce repli
+      // (ex: sauvegarde échouée silencieusement à cause d'un chevauchement
+      // de dates, section 7ter — le plan n'atteint jamais le Gist, l'id
+      // écrit dans localStorage devient introuvable, repli sur ce plan par
+      // défaut SANS id). Un id stable et déterministe (pas aléatoire, pour
+      // que ce plan de repli garde toujours la même clé d'une session à
+      // l'autre) évite ce retour silencieux vers l'ancienne clé globale.
+      planBrut.id = 'plan-repli-defaut';
+    }
+
+    window.__PLAN_BRUT__ = planBrut;
+    window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
+    window.__PLANS_DISPONIBLES__ = plansDisponibles;
+  })();
+</script>
+
+<script>
+(async () => {
+await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
+
 const STRAVA_CLIENT_ID = "260339";
 
 // ── Infos course ──────────────────────────────────────────────────────────
-const RACE_NAME = "10 km Gem\'Aubagne";
-const RACE_URL = "https://new.sportsnconnect.com/client/events/4qa4QCJ1DtZYPSzSCbjJJK-5-and-10-km-gemaubagne";
-const RACE_LOCATION = "Aubagne";
+// Lues depuis le plan chargé (paramsOrigine, cf. section 7bis du doc de
+// convergence) plutôt que codées en dur — repli sur une chaîne vide si le
+// plan n'a pas ces métadonnées (ex. ancien plan sauvegardé avant leur ajout
+// au wizard).
+const RACE_NAME = window.__PLAN_BRUT__?.paramsOrigine?.raceName || '';
+const RACE_URL = window.__PLAN_BRUT__?.paramsOrigine?.raceUrl || '';
+const RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
 
-const PHASES = [
-  { id:"construction", label:"Construction", weeks:[1,2,3,4,5], color:"#60a5fa" },
-  { id:"affutage",     label:"Affûtage",     weeks:[6,7,8,9],   color:"#eab308" },
-  { id:"pic",          label:"Pic de forme", weeks:[10,11],      color:"#f97316" },
-];
+// ── Phases ──────────────────────────────────────────────────────────────
+// Reconstruites depuis plan.phases (nombre de semaines par phase) plutôt
+// que des plages codées en dur — sinon incohérent avec un plan de durée
+// différente de 11 semaines. Utilise directement les vrais noms de phase
+// du moteur v2 (Construction/Specifique/Affutage), pas le mapping v1
+// historique (construction/affutage/pic) tranché en section 3 du doc de
+// convergence — abandonné le 7 juillet 2026 : Laurent signale que l'écran
+// "Semaines" affichait "Construction, Affûtage, Pic de forme" alors que le
+// wizard v2 (source de vérité) affiche "Construction, Specifique, Affutage"
+// pour ce même plan — deux affichages incohérents entre eux pour les mêmes
+// données, plus confus qu'utile.
+const LABEL_PHASE_V2 = { 'Construction': 'Construction', 'Specifique': 'Spécifique', 'Affutage': 'Affûtage' };
+const COULEUR_PHASE_V2 = { 'Construction': '#60a5fa', 'Specifique': '#a855f7', 'Affutage': '#eab308' };
+
+const PHASES = (() => {
+  const phasesBrutes = window.__PLAN_BRUT__?.phases;
+  if (!phasesBrutes) {
+    // Repli : plages historiques du plan de Laurent (11 semaines), avec les
+    // vrais noms v2 (le plan historique de Laurent a bien 3 phases
+    // Construction/Specifique/Affutage, cf. section 3 du doc de convergence)
+    return [
+      { id:"Construction", label:"Construction", weeks:[1,2,3,4,5], color:"#60a5fa" },
+      { id:"Specifique",   label:"Spécifique",    weeks:[6,7,8,9],   color:"#a855f7" },
+      { id:"Affutage",     label:"Affûtage",      weeks:[10,11],     color:"#eab308" },
+    ];
+  }
+  let semaineCourante = 1;
+  return phasesBrutes.map(p => {
+    const weeks = Array.from({ length: p.semaines }, (_, i) => semaineCourante + i);
+    semaineCourante += p.semaines;
+    return { id: p.nom, label: LABEL_PHASE_V2[p.nom] || p.nom, weeks, color: COULEUR_PHASE_V2[p.nom] || '#60a5fa' };
+  });
+})();
 
 const STYPES = {
   EF:    { label:"Endurance fondamentale", color:"#60a5fa",  short:"EF"    },
@@ -62,484 +166,21 @@ const STYPES = {
 // Longue : 6:20/km = 380 s/km
 // Chaleur (+28°C) : 6:40/km = 400 s/km
 
-const PLAN = [
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 1 — Construction
-  // Vol. estimé avec échauff/RAC : ~50 min EF × 3 + VMA + Seuil + Longue
-  // ════════════════════════════════════════════════════════════
-  { week:1, phase:"construction", sessions:[
-    { day:"Lun", date:"2026-06-22", type:"REPOS",
-      warmup:"", session:"Repos / Muscu", cooldown:"",
-      notes:"Récupération active" },
-
-    { day:"Mar", date:"2026-06-23", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"38 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"Chaleur > 28°C → 6:40/km" },
-
-    { day:"Mer", date:"2026-06-24", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"2×8×30\"–30\" — récup inter-séries 3'",
-      cooldown:"15' EF",
-      notes:"VMA ~14,4 km/h · 2 séries de 8 répétitions" },
-
-    { day:"Jeu", date:"2026-06-25", type:"EF",
-      warmup:"5' marche",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"Récupération active" },
-
-    { day:"Ven", date:"2026-06-26", type:"SEUIL",
-      warmup:"15' échauff. standard",
-      session:"4×6' @ 4:55/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Effort contrôlé, 3–4 mots max" },
-
-    { day:"Sam", date:"2026-06-27", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"30 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"Récupération avant la longue · Chaleur > 28°C → 6:40/km" },
-
-    { day:"Dim", date:"2026-06-28", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"75–90 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Hydratation++ · Allonge selon la forme" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 2 — Construction
-  // ════════════════════════════════════════════════════════════
-  { week:2, phase:"construction", sessions:[
-    { day:"Lun", date:"2026-06-29", type:"REPOS",
-      warmup:"", session:"Repos / Muscu", cooldown:"", notes:"" },
-
-    { day:"Mar", date:"2026-06-30", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"38 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-07-01", type:"SPEC",
-      warmup:"15' échauff. intensif",
-      session:"3×3' @ 4:51/km — récup 1'30\"",
-      cooldown:"15' EF + étirements",
-      notes:"Première séance allure cible 10K !" },
-
-    { day:"Jeu", date:"2026-07-02", type:"EF",
-      warmup:"5' marche",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-07-03", type:"SEUIL",
-      warmup:"15' échauff. standard",
-      session:"5×5' @ 5:00/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"" },
-
-    { day:"Sam", date:"2026-07-04", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"30 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-07-05", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"80–95 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Allonge selon la forme" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 3 — Construction
-  // ════════════════════════════════════════════════════════════
-  { week:3, phase:"construction", sessions:[
-    { day:"Lun", date:"2026-07-06", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"Récupération" },
-
-    { day:"Mar", date:"2026-07-07", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"38 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-07-08", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"10×1'45\" — récup 1'30\"",
-      cooldown:"15' EF + étirements",
-      notes:"allure ~4:10–4:25/km sur chaque répétition" },
-
-    { day:"Jeu", date:"2026-07-09", type:"EF",
-      warmup:"5' marche",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-07-10", type:"SPEC",
-      warmup:"15' échauff. intensif",
-      session:"4×3' @ 4:51/km — récup 1'30\"",
-      cooldown:"15' EF + étirements",
-      notes:"" },
-
-    { day:"Sam", date:"2026-07-11", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"30 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-07-12", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"75–90 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Semaine légèrement réduite avant la semaine test" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 4 — Construction · Semaine test
-  // ════════════════════════════════════════════════════════════
-  { week:4, phase:"construction", sessions:[
-    { day:"Lun", date:"2026-07-13", type:"REPOS",
-      warmup:"", session:"Repos / Muscu", cooldown:"", notes:"Semaine test" },
-
-    { day:"Mar", date:"2026-07-14", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"38 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-07-15", type:"SEUIL",
-      warmup:"15' échauff. standard",
-      session:"5×6' @ 5:00/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"" },
-
-    { day:"Jeu", date:"2026-07-16", type:"EF",
-      warmup:"5' marche",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-07-17", type:"EF",
-      warmup:"5' marche",
-      session:"25 min @ 6:40/km",
-      cooldown:"10' marche",
-      notes:"Jambes fraîches pour le test demain — très facile" },
-
-    { day:"Sam", date:"2026-07-18", type:"TEST",
-      warmup:"20' échauff. intensif",
-      session:"3×10' @ 4:51/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"🎯 SÉANCE TEST CLEF ! Si ça passe → viser sub-48'" },
-
-    { day:"Dim", date:"2026-07-19", type:"EF",
-      warmup:"5' marche",
-      session:"25 min @ > 6:40/km",
-      cooldown:"10' marche",
-      notes:"Très facile · Récupération après le test" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 5 — Construction · Dernière semaine charge
-  // ════════════════════════════════════════════════════════════
-  { week:5, phase:"construction", sessions:[
-    { day:"Lun", date:"2026-07-20", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"" },
-
-    { day:"Mar", date:"2026-07-21", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"38 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-07-22", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"2×8×30\"–30\" — récup inter-séries 3'",
-      cooldown:"15' EF + étirements",
-      notes:"Volume VMA identique S1, fatigue cumulée" },
-
-    { day:"Jeu", date:"2026-07-23", type:"EF",
-      warmup:"5' marche",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-07-24", type:"SPEC",
-      warmup:"15' échauff. intensif",
-      session:"3×10' @ 4:51/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Volume spécifique en hausse" },
-
-    { day:"Sam", date:"2026-07-25", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"30 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-07-26", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"85–100 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Dernière longue avant affûtage · Allonge selon la forme" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 6 — Affûtage · Volume -20%
-  // ════════════════════════════════════════════════════════════
-  { week:6, phase:"affutage", sessions:[
-    { day:"Lun", date:"2026-07-27", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"Début affûtage" },
-
-    { day:"Mar", date:"2026-07-28", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"32 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"Volume réduit" },
-
-    { day:"Mer", date:"2026-07-29", type:"SEUIL",
-      warmup:"15' échauff. standard",
-      session:"4×5' @ 4:55/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Allure seuil légèrement plus rapide" },
-
-    { day:"Jeu", date:"2026-07-30", type:"EF",
-      warmup:"5' marche",
-      session:"25 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-07-31", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"8×30\"–30\"",
-      cooldown:"15' EF + étirements",
-      notes:"Intensité maintenue, volume réduit" },
-
-    { day:"Sam", date:"2026-08-01", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"25 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-08-02", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"65–80 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Allonge si bonnes sensations" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 7 — Affûtage · Volume -30%
-  // ════════════════════════════════════════════════════════════
-  { week:7, phase:"affutage", sessions:[
-    { day:"Lun", date:"2026-08-03", type:"REPOS",
-      warmup:"", session:"Repos / Muscu", cooldown:"", notes:"" },
-
-    { day:"Mar", date:"2026-08-04", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"30 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-08-05", type:"SPEC",
-      warmup:"20' échauff. intensif",
-      session:"4×10' @ 4:51/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Bloc spécifique prolongé" },
-
-    { day:"Jeu", date:"2026-08-06", type:"EF",
-      warmup:"5' marche",
-      session:"20 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-08-07", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"6×1'45\" — récup 1'30\"",
-      cooldown:"15' EF + étirements",
-      notes:"" },
-
-    { day:"Sam", date:"2026-08-08", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"25 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-08-09", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"60–75 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Allonge si bonnes sensations" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 8 — Affûtage · Volume -40%
-  // ════════════════════════════════════════════════════════════
-  { week:8, phase:"affutage", sessions:[
-    { day:"Lun", date:"2026-08-10", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"" },
-
-    { day:"Mar", date:"2026-08-11", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"28 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-08-12", type:"SEUIL",
-      warmup:"15' échauff. standard",
-      session:"3×8' @ 4:55/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Seuil intensifié" },
-
-    { day:"Jeu", date:"2026-08-13", type:"EF",
-      warmup:"5' marche",
-      session:"20 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-08-14", type:"SPEC",
-      warmup:"20' échauff. intensif",
-      session:"3×10' @ 4:51/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"" },
-
-    { day:"Sam", date:"2026-08-15", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"20 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-08-16", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"55–70 min @ 6:20/km",
-      cooldown:"15' marche + étirements",
-      notes:"Allonge si bonnes sensations" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 9 — Affûtage · Volume -50%
-  // ════════════════════════════════════════════════════════════
-  { week:9, phase:"affutage", sessions:[
-    { day:"Lun", date:"2026-08-17", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"" },
-
-    { day:"Mar", date:"2026-08-18", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"25 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Mer", date:"2026-08-19", type:"SPEC",
-      warmup:"20' échauff. intensif",
-      session:"2×15' @ 4:51/km — récup 2'",
-      cooldown:"15' EF + étirements",
-      notes:"Dernière séance spécifique lourde" },
-
-    { day:"Jeu", date:"2026-08-20", type:"EF",
-      warmup:"5' marche",
-      session:"20 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Ven", date:"2026-08-21", type:"VMA",
-      warmup:"20' échauff. intensif",
-      session:"6×30\"–30\"",
-      cooldown:"15' EF + étirements",
-      notes:"Volume réduit, intensité top" },
-
-    { day:"Sam", date:"2026-08-22", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"20 min @ 6:20/km",
-      cooldown:"10' marche + étirements",
-      notes:"" },
-
-    { day:"Dim", date:"2026-08-23", type:"LONGUE",
-      warmup:"10' footing + éducatifs",
-      session:"45–60 min @ > 6:30/km",
-      cooldown:"10' marche + étirements",
-      notes:"Fin affûtage ✨ · Très tranquille" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 10 — Pic de forme
-  // ════════════════════════════════════════════════════════════
-  { week:10, phase:"pic", sessions:[
-    { day:"Lun", date:"2026-08-24", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"Début pic de forme" },
-
-    { day:"Mar", date:"2026-08-25", type:"EF",
-      warmup:"10' footing + éducatifs",
-      session:"20 min @ 6:30/km",
-      cooldown:"10' marche",
-      notes:"Volume très réduit" },
-
-    { day:"Mer", date:"2026-08-26", type:"SPEC",
-      warmup:"20' échauff. intensif",
-      session:"2×5' @ 4:51/km + 20' EF",
-      cooldown:"15' EF + étirements",
-      notes:"Rappel allure course" },
-
-    { day:"Jeu", date:"2026-08-27", type:"EF",
-      warmup:"5' marche",
-      session:"15 min @ > 6:30/km",
-      cooldown:"10' marche",
-      notes:"Très facile" },
-
-    { day:"Ven", date:"2026-08-28", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"" },
-
-    { day:"Sam", date:"2026-08-29", type:"SPEC",
-      warmup:"20' échauff. intensif",
-      session:"20' EF + 2×5' @ 4:51/km + retour calme",
-      cooldown:"15' EF + étirements",
-      notes:"🎽 Dernière séance spécifique" },
-
-    { day:"Dim", date:"2026-08-30", type:"REPOS",
-      warmup:"", session:"Repos total", cooldown:"",
-      notes:"Préparer dossard & équipement" },
-  ]},
-
-  // ════════════════════════════════════════════════════════════
-  // SEMAINE 11 — Pic de forme · Semaine de course
-  // ════════════════════════════════════════════════════════════
-  { week:11, phase:"pic", sessions:[
-    { day:"Lun", date:"2026-08-31", type:"EF",
-      warmup:"10' footing",
-      session:"20–25 min @ > 6:30/km",
-      cooldown:"10' marche",
-      notes:"" },
-
-    { day:"Mar", date:"2026-09-01", type:"EF",
-      warmup:"10' footing",
-      session:"20 min EF + 4×10\" accélérations",
-      cooldown:"10' marche",
-      notes:"" },
-
-    { day:"Mer", date:"2026-09-02", type:"REPOS",
-      warmup:"", session:"Repos", cooldown:"", notes:"" },
-
-    { day:"Jeu", date:"2026-09-03", type:"EF",
-      warmup:"10' footing",
-      session:"15–20 min @ > 6:30/km",
-      cooldown:"10' marche",
-      notes:"J–3 : footing léger uniquement" },
-
-    { day:"Ven", date:"2026-09-04", type:"REPOS",
-      warmup:"", session:"Repos total", cooldown:"",
-      notes:"Hydratation, sommeil" },
-
-    { day:"Sam", date:"2026-09-05", type:"REPOS",
-      warmup:"", session:"Repos total", cooldown:"",
-      notes:"Pâtes le soir, coucher tôt" },
-
-    { day:"Dim", date:"2026-09-06", type:"RACE",
-      warmup:"", session:"🏁 COURSE 10K — Objectif 48'30\"", cooldown:"",
-      notes:"Km 1-3 prudent · Km 4-7 : 4:51/km · Km 8-10 : tout donner !" },
-  ]},
-];
-
-const ALL_SESSIONS = PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
+// PLAN généré dynamiquement par le moteur v2 (plan-generator.js), traduit
+// vers ce format via v1-bridge.js — cf. docs/v2-methodologie/convergence-v1-v2.md
+// section 5. Paramètres repris du profil réel de Laurent (10K, réf 50'21,
+// objectif 48'30, départ 2026-06-22, course 2026-09-06, 30km/semaine).
+let PLAN = window.__PLAN_GENERE__;
+
+// Recalculable via recalculerAllSessions() plutôt que figée en const :
+// nécessaire pour la future sélection de plan (docs/v2-methodologie/
+// convergence-v1-v2.md, section 7) — si un autre plan est chargé après le
+// démarrage, ALL_SESSIONS doit être reconstruite depuis le nouveau PLAN,
+// pas rester sur l'ancien.
+function recalculerAllSessions() {
+  return PLAN.flatMap(w => w.sessions.map((s,i) => ({...s, week:w.week, phase:w.phase, uid:`${w.week}-${i}`})));
+}
+let ALL_SESSIONS = recalculerAllSessions();
 
 const INTERVAL_SESSION_DATES = new Set(
   ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
@@ -554,13 +195,23 @@ function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); 
 // ══════════════════════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════════════════════
+// Préfixe une clé localStorage par l'id du plan actif (docs/v2-methodologie/
+// convergence-v1-v2.md, section 7quater) — nécessaire pour que les données
+// liées à un plan précis (statuts, notes, etc.) ne se mélangent pas entre
+// plans différents. Repli sur la clé non préfixée si aucun plan n'a d'id
+// (compatibilité avec le tout premier chargement, avant migration complète).
+function clePourPlan(cle) {
+  const idPlan = window.__PLAN_BRUT__?.id;
+  return idPlan ? `${cle}_${idPlan}` : cle;
+}
+
 let view = "dashboard";
 let selectedWeek = 1;
-let statuses = load("lk_statuses", {});
-let hiddenSessions = load("lk_hidden_sessions", {}); // {uid: true}
-let swappedSessions = load("lk_swapped_sessions", {}); // {uid: swapUid} swap bidirectionnel
-let notesList = load("lk_notes", []);
-let sessionNotes = load("lk_session_notes", {}); // {uid: "texte"}
+let statuses = load(clePourPlan("lk_statuses"), {});
+let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
+let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+let notesList = load(clePourPlan("lk_notes"), []);
+let sessionNotes = load(clePourPlan("lk_session_notes"), {}); // {uid: "texte"}
 let stravaToken = load("lk_strava_token", null);
 let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
@@ -583,22 +234,53 @@ let gistMsg = "";
   if (urlGist) { gistId = urlGist; save("lk_gist_id", gistId); }
   if (urlToken || urlGist) { window.history.replaceState({}, "", window.location.pathname); }
 })();
-let predHistory = load("lk_pred_history", []); // [{date, time, confidence}]
-let raceGoalTime = load("lk_race_goal", 2910); // 48'30" en secondes
+let predHistory = load(clePourPlan("lk_pred_history"), []); // [{date, time, confidence}]
+
+// Référence de performance connue (paramsOrigine.tempsReference du plan
+// chargé, cf. section 7bis du doc de convergence) plutôt que codée en dur.
+// Repli sur 3021s (50'21", valeur historique de Laurent) si absente.
+// Déclarées ICI (avant raceGoalTime) plutôt que plus bas dans le fichier
+// comme précédemment : bug trouvé le 7 juillet 2026 — un plan Semi créé
+// par Laurent affichait toujours l'objectif du 10K (48'30") car
+// raceGoalTime utilise OBJECTIF_REFERENCE comme repli, mais cette dernière
+// était déclarée APRÈS (une const référencée avant sa déclaration lève une
+// ReferenceError en JS, "temporal dead zone" — pas juste undefined).
+const BASE_TIME_REFERENCE = window.__PLAN_BRUT__?.paramsOrigine?.tempsReference
+  ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.tempsReference)
+  : 3021;
+
+// Objectif chronométrique connu (paramsOrigine.objectif ou plan.objectif),
+// même principe que BASE_TIME_REFERENCE — repli sur 2910s (48'30", valeur
+// historique de Laurent) si absent.
+const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || window.__PLAN_BRUT__?.objectif)
+  ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine?.objectif || window.__PLAN_BRUT__.objectif)
+  : 2910;
+
+// Distance de la course en mètres, lue depuis le plan (KM_BY_DISTANCE,
+// déjà défini dans le moteur classic chargé en premier) plutôt que 10000
+// (10km) codé en dur — bug trouvé le 7 juillet 2026 : sur un plan Semi
+// (21.1km), tous les calculs d'allure divisaient raceGoalTime par 10km au
+// lieu de 21.1km, donnant une allure bien trop rapide (mécaniquement fausse
+// dans le mauvais sens : un temps de Semi divisé par une distance de 10K
+// sous-estime le temps réel par km). Repli sur 10000 (10km, distance
+// historique de Laurent) si absente.
+const DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
+
+let raceGoalTime = load(clePourPlan("lk_race_goal"), OBJECTIF_REFERENCE);
 let runnerWeight = load("lk_weight", null);
 let runnerHeight = load("lk_height", null);
 let runnerFcMax = load("lk_fc_max", 181);
 let runnerPps = load("lk_pps", "");
-let raceHoraires = load("lk_race_horaires", { dossard: "", depart: "" });
-let raceParcoursUrl = load("lk_race_parcours", "");
-let checklistItems = load("lk_checklist", {
+let raceHoraires = load(clePourPlan("lk_race_horaires"), { dossard: "", depart: "" });
+let raceParcoursUrl = load(clePourPlan("lk_race_parcours"), "");
+let checklistItems = load(clePourPlan("lk_checklist"), {
   dossard: false, chaussures: false, montre: false,
   pps: false, ravitaillement: false, tenue: false
 });
 let changelogExpanded = false;
 let currentPred = null; // résultat de predict10K, calculé une fois par render
 let isRebuilding = false;
-let lastRebuildDate = load("lk_last_rebuild", null);
+let lastRebuildDate = load(clePourPlan("lk_last_rebuild"), null);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MÉTÉO — Open-Meteo (Toulon fixe)
@@ -656,7 +338,27 @@ setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
 // UTILS
 // ══════════════════════════════════════════════════════════════════════════════
 function today() { return new Date().toISOString().slice(0,10); }
-function countdown() { return Math.ceil((new Date("2026-09-06") - new Date()) / 86400000); }
+
+// Filtre stravaActivities pour ne garder que les activités depuis le début
+// du plan actuellement affiché — fonction utilitaire centralisée, créée le
+// 7 juillet 2026 après avoir trouvé le même défaut (aucun filtre de date)
+// répété à 6 endroits différents du fichier (totaux de km/temps courus dans
+// le dashboard, la carte paramètres de course, l'onglet Course, 2 exports
+// PDF) : sur un plan Semi démarrant le 14 septembre, une activité de la
+// veille du début du plan se retrouvait comptée dans "km courus" — même
+// famille de bug que celui déjà corrigé pour predict10K()/
+// matchActivitiesToPlan() (section 7bis/7quater du doc de convergence),
+// mais jamais centralisé, donc oublié à plusieurs endroits distincts.
+function activitesDuPlan() {
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  return stravaActivities.filter(a => !dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan);
+}
+// Date de course lue depuis le plan chargé (paramsOrigine.dateCourse ou
+// dateCourse directement sur l'objet plan, cf. section 7bis du doc de
+// convergence) plutôt que codée en dur — repli sur la date historique de
+// Laurent si absente.
+const DATE_COURSE_REFERENCE = window.__PLAN_BRUT__?.dateCourse || "2026-09-06";
+function countdown() { return Math.ceil((new Date(DATE_COURSE_REFERENCE) - new Date()) / 86400000); }
 function currentWeek() {
   const t = today();
   for (const w of PLAN) {
@@ -674,9 +376,10 @@ function fmtPace(speedMs) {
 }
 function fmtTime(seconds) {
   // Format heures/minutes/secondes au-delà de 60 minutes (pertinent pour un
-  // Semi/Marathon) — même correction que preview/index.html, appliquée ici
-  // par cohérence même si le PLAN codé en dur de ce fichier reste un 10K
-  // pour l'instant (cf. docs/v2-methodologie/convergence-v1-v2.md).
+  // Semi/Marathon, où l'objectif dépasse facilement l'heure — avant cette
+  // correction, un temps de 117min s'affichait "117'XX"" plutôt que
+  // "1h57'XX"", remonté par Laurent le 7 juillet 2026 en testant un plan
+  // Semi). Format court (m'ss") conservé sous 60 minutes, comme avant.
   const totalMin = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60).toString().padStart(2,"0");
   if (totalMin >= 60) {
@@ -699,15 +402,30 @@ function globalPct() {
 function phaseOf(weekNum) { return PHASES.find(p=>p.weeks.includes(weekNum))||{color:"#e2e8f0",label:""}; }
 
 // ── Projections Riegel multi-distances ────────────────────────────────────
-function riegelProjections(time10k) {
+function riegelProjections(timeSurDistanceActuelle) {
+  // La distance mise en avant (target: true) doit correspondre à la vraie
+  // distance du plan actuellement affiché, pas toujours 10K — bug trouvé
+  // le 7 juillet 2026, même famille que les allures fausses sur un plan
+  // Semi (cf. DISTANCE_M_REFERENCE).
+  const distancePlanActuel = window.__PLAN_BRUT__?.distance;
   const DISTANCES = [
-    { label:"5K",    dist:5000,   target:false },
-    { label:"10K",   dist:10000,  target:true  },
-    { label:"Semi",  dist:21097,  target:false },
-    { label:"Marathon", dist:42195, target:false },
+    { label:"5K",    dist:5000,   target: distancePlanActuel === "5K" },
+    { label:"10K",   dist:10000,  target: !distancePlanActuel || distancePlanActuel === "10K" },
+    { label:"Semi",  dist:21097,  target: distancePlanActuel === "Semi" },
+    { label:"Marathon", dist:42195, target: distancePlanActuel === "Marathon" },
   ];
+
+  // predict10K() calcule maintenant une estimation sur DISTANCE_M_REFERENCE
+  // (la vraie distance du plan actuel), pas toujours 10000m fixe — corrigé
+  // le 7 juillet 2026 en même temps que ce fichier, pour rester cohérent
+  // avec SESSION_TARGETS (rendu dynamique le même jour, basé sur les
+  // allures du plan actuel). Le paramètre reçu ici est donc bien un temps
+  // sur DISTANCE_M_REFERENCE, pas toujours 10K — la formule Riegel doit
+  // projeter DEPUIS cette distance de référence, pas depuis 10000m fixe
+  // (sinon toutes les projections sont décalées dans le même sens sur un
+  // plan non-10K, symptôme remonté par Laurent).
   return DISTANCES.map(d => {
-    const t = time10k * Math.pow(d.dist / 10000, 1.06);
+    const t = timeSurDistanceActuelle * Math.pow(d.dist / DISTANCE_M_REFERENCE, 1.06);
     const pace = t / (d.dist / 1000);
     const h = Math.floor(t / 3600);
     const m = Math.floor((t % 3600) / 60);
@@ -836,8 +554,8 @@ function daysUntil(dateStr) {
 }
 
 // ── Message coach via Claude API ──────────────────────────────────────────
-let coachMsg = load("lk_coach_msg", null);
-let coachDate = load("lk_coach_date", "");
+let coachMsg = load(clePourPlan("lk_coach_msg"), null);
+let coachDate = load(clePourPlan("lk_coach_date"), "");
 if (coachDate !== today()) { coachMsg = null; } // forcer le fetch si nouveau jour
 
 async function fetchCoachMsg() {
@@ -891,7 +609,7 @@ async function fetchCoachMsg() {
     return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
-  const prompt = `Tu es Léa, coach running pour Laurent qui prépare le ${RACE_NAME} le 6 septembre 2026 à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
+  const prompt = `Tu es Léa, coach running qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
@@ -924,8 +642,8 @@ Réponds uniquement avec le message, sans guillemets.`;
     if (msg) {
       coachMsg = msg;
       coachDate = t;
-      save("lk_coach_msg", coachMsg);
-      save("lk_coach_date", coachDate);
+      save(clePourPlan("lk_coach_msg"), coachMsg);
+      save(clePourPlan("lk_coach_date"), coachDate);
       render();
     }
   } catch(e) {
@@ -945,26 +663,57 @@ if (!coachMsg || coachDate !== today()) {
 }
 
 // ── Source de vérité unique — allures & seuils de validation ────────────────
-const SESSION_TARGETS = {
-  VMA:   { targetMin:250, targetMax:265, okPace:270,  warnPace:290,  repOk:0.80, repWarn:0.60, effort:"4:10–4:25/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
-  SPEC:  { targetMin:291, targetMax:298, okPace:298,  warnPace:310,  repOk:0.80, repWarn:0.60, effort:"4:51/km",      tolerance:"±7 sec",  recup:"≥ 6:00/km" },
-  SEUIL: { targetMin:295, targetMax:305, okPace:305,  warnPace:320,  repOk:null, repWarn:null,  effort:"4:55/km",      tolerance:"±10 sec", recup:"≥ 6:00/km" },
-  TEST:  { targetMin:291, targetMax:298, okPace:298,  warnPace:310,  repOk:0.80, repWarn:0.60, effort:"4:51/km",      tolerance:"±7 sec",  recup:"≥ 6:00/km" },
-};
+// Cibles dérivées des vraies allures du plan (plan.allures.T/I/C, calculées
+// par le moteur selon le profil et l'objectif réels) plutôt que codées en
+// dur pour l'objectif 10K de Laurent (bug trouvé le 7 juillet 2026, en
+// testant un plan Semi — un mécanisme sensible car SESSION_TARGETS pilote
+// aussi la détection VMA/SEUIL/SPEC pour la prédiction de performance,
+// section 6 du doc de convergence). Marges (targetMin/targetMax) et offsets
+// (okPace/warnPace) conservés identiques en valeur ABSOLUE à ceux du 10K
+// historique — pas recalculés en ratio, pour ne rien changer sur un plan
+// 10K existant et garder le même niveau de tolérance sportive peu importe
+// la distance. Repli sur les valeurs fixes historiques si allures absentes.
+function construireSessionTargets() {
+  const allures = window.__PLAN_BRUT__?.allures;
+  const parseAllure = (str, repliSec) => {
+    if (!str) return repliSec;
+    const [m, s] = str.replace("/km","").split(":").map(Number);
+    return m*60 + s;
+  };
+  const vmaSec = parseAllure(allures?.I, 258); // 258 = milieu de 250-265, valeur historique
+  const seuilSec = parseAllure(allures?.T, 300); // 300 = milieu de 295-305
+  const specSec = parseAllure(allures?.C, 294); // 294 = milieu de 291-298 (arrondi)
+
+  return {
+    VMA:   { targetMin:Math.round(vmaSec-8),  targetMax:Math.round(vmaSec+7),  okPace:Math.round(vmaSec+12), warnPace:Math.round(vmaSec+32), repOk:0.80, repWarn:0.60, effort:formatPace(vmaSec-8)+"–"+formatPace(vmaSec+7)+"/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
+    SPEC:  { targetMin:Math.round(specSec-3), targetMax:Math.round(specSec+4), okPace:Math.round(specSec+4),  warnPace:Math.round(specSec+16), repOk:0.80, repWarn:0.60, effort:formatPace(specSec)+"/km", tolerance:"±7 sec",  recup:"≥ 6:00/km" },
+    SEUIL: { targetMin:Math.round(seuilSec-5),targetMax:Math.round(seuilSec+5),okPace:Math.round(seuilSec+5), warnPace:Math.round(seuilSec+20),repOk:null, repWarn:null,  effort:formatPace(seuilSec)+"/km", tolerance:"±10 sec", recup:"≥ 6:00/km" },
+    TEST:  { targetMin:Math.round(specSec-3), targetMax:Math.round(specSec+4), okPace:Math.round(specSec+4),  warnPace:Math.round(specSec+16), repOk:0.80, repWarn:0.60, effort:formatPace(specSec)+"/km", tolerance:"±7 sec",  recup:"≥ 6:00/km" },
+  };
+}
+const SESSION_TARGETS = construireSessionTargets();
 // Alias pour compatibilité affichage
 const PACE_REFS = Object.fromEntries(
   Object.entries(SESSION_TARGETS).map(([k,v]) => [k, { effort:v.effort, tolerance:v.tolerance, recup:v.recup }])
 );
-// ── Zones FC cible (FC max 181 bpm Laurent) ──────────────────────────────
+// FC max lue depuis le plan chargé (zoneFC.fcMax, cf. section 7bis du doc de
+// convergence) plutôt que codée en dur — repli sur 181 (valeur historique
+// de Laurent) si le plan n'a pas cette donnée (profil sans fcMaxConnue).
+const FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
+
+// ── Zones FC cible ──────────────────────────────────────────────────────
+// Reconstruites depuis FC_MAX (pourcentages fixes : 65-75% EF/LONGUE,
+// 85-90% SPEC/TEST bas, 90-95% SEUIL/TEST haut, 90-100% VMA) plutôt que des
+// bornes bpm codées en dur — sinon ces bornes resteraient figées sur
+// l'ancien FC_MAX (181) même si un plan avec un profil différent est chargé.
 const FC_ZONES = {
-  EF:    { min:118, max:136, label:"65–75%", color:"#60a5fa" },
-  LONGUE:{ min:118, max:136, label:"65–75%", color:"#06b6d4" },
-  SPEC:  { min:154, max:163, label:"85–90%", color:"#a855f7" },
-  SEUIL: { min:163, max:172, label:"90–95%", color:"#eab308" },
-  VMA:   { min:163, max:181, label:"90–100%",color:"#f97316" },
-  TEST:  { min:154, max:172, label:"85–95%", color:"#f97316" },
+  EF:    { min: Math.round(FC_MAX*0.65), max: Math.round(FC_MAX*0.75), label:"65–75%", color:"#60a5fa" },
+  LONGUE:{ min: Math.round(FC_MAX*0.65), max: Math.round(FC_MAX*0.75), label:"65–75%", color:"#06b6d4" },
+  SPEC:  { min: Math.round(FC_MAX*0.85), max: Math.round(FC_MAX*0.90), label:"85–90%", color:"#a855f7" },
+  SEUIL: { min: Math.round(FC_MAX*0.90), max: Math.round(FC_MAX*0.95), label:"90–95%", color:"#eab308" },
+  VMA:   { min: Math.round(FC_MAX*0.90), max: FC_MAX,                  label:"90–100%",color:"#f97316" },
+  TEST:  { min: Math.round(FC_MAX*0.85), max: Math.round(FC_MAX*0.95), label:"85–95%", color:"#f97316" },
 };
-const FC_MAX = 181;
 
 function fcStatus(type, avgHr) {
   const zone = FC_ZONES[type];
@@ -1027,29 +776,72 @@ function extractTargetSpeed(sessionStr) {
   return null;
 }
 
+/**
+ * Détecte, parmi les laps "milieu" d'une activité (hors échauffement/retour
+ * au calme), quelle cible générique de SESSION_TARGETS correspond le mieux
+ * — en choisissant celle dont la vitesse moyenne réelle est la PLUS PROCHE
+ * de la cible, pas juste celle qui capture le plus de laps (bug trouvé le
+ * 6 juillet 2026 : les plages ±15% de VMA/SEUIL/SPEC se chevauchent, une
+ * allure "seulement" 4'49/km reste dans la tolérance ±15% de VMA qui vise
+ * 4'10/km, la marge en valeur absolue étant large sur une cible rapide).
+ * Retourne { type, laps } ou null si aucune cible ne correspond.
+ */
+function detecterTypeEffort(middle) {
+  let meilleurType = null;
+  let meilleurResultat = [];
+  let meilleurEcart = Infinity;
+  for (const [type, cible] of Object.entries(SESSION_TARGETS)) {
+    const effSpeed = 1000 / cible.targetMin;
+    const bySpeed = middle.filter(l => l.average_speed > 0 &&
+      Math.abs(l.average_speed - effSpeed) <= effSpeed * 0.15);
+    if (bySpeed.length === 0) continue;
+    const vitesseMoyReelle = bySpeed.reduce((s,l) => s + l.average_speed, 0) / bySpeed.length;
+    const ecart = Math.abs(vitesseMoyReelle - effSpeed);
+    if (ecart < meilleurEcart) {
+      meilleurEcart = ecart;
+      meilleurResultat = bySpeed;
+      meilleurType = type;
+    }
+  }
+  return meilleurType ? { type: meilleurType, laps: meilleurResultat } : null;
+}
+
 function getEffortLaps(activity) {
   if (!activity.laps || activity.laps.length < 4) return [];
-  // Trouver la seance dans le plan pour connaitre l allure cible
-  const date = activity.start_date_local ? activity.start_date_local.slice(0,10) : null;
-  const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
-  const targetSpeed = planSess ? extractTargetSpeed(planSess.session) : null;
 
   // Supprimer 1er lap (echauffement) et 2 derniers (retour au calme)
   const middle = activity.laps.slice(1, -2);
   if (!middle.length) return [];
 
-  // Vitesse cible : depuis le libelle de seance, ou depuis SESSION_TARGETS
-  let effSpeed = targetSpeed;
-  if (!effSpeed && planSess && SESSION_TARGETS[planSess.type]) {
-    effSpeed = 1000 / SESSION_TARGETS[planSess.type].targetMin;
-  }
+  // Vitesse cible : d'abord depuis le libellé de la séance si elle
+  // correspond à une séance du plan à cette date (affinage, quand
+  // disponible), sinon on essaie chaque cible générique de SESSION_TARGETS
+  // (VMA/SEUIL/SPEC/TEST) indépendamment du plan — la reconnaissance du
+  // type d'effort réel ne doit plus dépendre d'une correspondance stricte
+  // de date avec ce qui était prévu (cf. docs/v2-methodologie/
+  // convergence-v1-v2.md : la prédiction de performance doit rester fiable
+  // même si le plan affiché à cette date-là ne correspond pas exactement à
+  // l'effort réellement fourni, ce qui peut arriver dès qu'un plan diffère
+  // du déroulé réel — pas seulement dans le contexte du chantier v2).
+  //
+  // NOTE IMPORTANTE : ceci ne concerne QUE la détection du type d'effort
+  // pour la prédiction de performance. Le suivi de respect du plan
+  // (statuts ✅/⚠️/❌ par séance prévue) reste entièrement basé sur la
+  // correspondance stricte par date avec ALL_SESSIONS, inchangé.
+  const date = activity.start_date_local ? activity.start_date_local.slice(0,10) : null;
+  const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+  const targetSpeedDuPlan = planSess ? extractTargetSpeed(planSess.session) : null;
 
-  // Filtrer par vitesse ±15%
-  if (effSpeed) {
+  // 1. Affinage par le plan prévu à cette date, si disponible
+  if (targetSpeedDuPlan) {
     const bySpeed = middle.filter(l => l.average_speed > 0 &&
-      Math.abs(l.average_speed - effSpeed) <= effSpeed * 0.15);
+      Math.abs(l.average_speed - targetSpeedDuPlan) <= targetSpeedDuPlan * 0.15);
     if (bySpeed.length > 0) return bySpeed;
   }
+
+  // 2. Sinon, détection générique par cible la plus proche
+  const detection = detecterTypeEffort(middle);
+  if (detection) return detection.laps;
 
   // Fallback : moitie la plus rapide
   const withSpeed = middle.filter(l => l.average_speed > 0);
@@ -1139,9 +931,19 @@ function renderLapRow(lap, i, sessionType) {
 
 
 function predict10KAtDate(dateStr) {
-  // Calcule l\'estimation 10K en ne prenant que les activités antérieures à dateStr
-  const BASE_TIME = 3021;
-  const runs = stravaActivities.filter(a => a.type === "Run" && a.start_date_local?.slice(0,10) <= dateStr);
+  // Calcule l\'estimation 10K en ne prenant que les activités du plan actuel
+  // (depuis dateDebutPlan) et antérieures à dateStr — même correctif que
+  // predict10K() (docs/v2-methodologie/convergence-v1-v2.md, section 7bis/
+  // 7quater), sinon cette fonction (utilisée par rebuildPredHistory pour
+  // reconstruire l'historique jour par jour) remonterait aussi des séances
+  // d'un plan antérieur.
+  const BASE_TIME = BASE_TIME_REFERENCE;
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const runs = stravaActivities.filter(a =>
+    a.type === "Run" &&
+    a.start_date_local?.slice(0,10) <= dateStr &&
+    (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
   const estimates = [];
 
   // SPEC → allure directe
@@ -1170,6 +972,59 @@ function predict10KAtDate(dateStr) {
   return Math.round(BASE_TIME * lavWeight + weighted * (1 - lavWeight));
 }
 
+// Nettoyage des notes météo dupliquées (bug corrigé le 7 juillet 2026,
+// commit 1776ac7 — enrichirSeanceAvecMeteo() n'était pas idempotente,
+// verifierMeteoSeanceDemain() appelée à chaque régénération/rechargement du
+// plan dans le wizard pouvait empiler la même note plusieurs fois). Action
+// ponctuelle de rattrapage pour les plans déjà affectés, pas un mécanisme
+// permanent — le vrai correctif vit dans weather.js, ceci ne fait que
+// nettoyer ce qui est déjà écrit dans un plan existant.
+//
+// NOTE_CHALEUR recopiée en dur ici plutôt qu'importée de weather.js (non
+// chargé côté preview) — action de rattrapage ponctuelle, pas une
+// dépendance à maintenir en synchronisation permanente avec le module.
+const NOTE_CHALEUR_A_NETTOYER = "Chaleur annoncée pour demain — ralentis l'allure si besoin, l'important est de finir la séance, pas de tenir un chrono.";
+
+async function nettoyerNotesMeteoDupliquees() {
+  const msgEl = document.getElementById('syncMsg');
+  if (!window.__PLAN_BRUT__?.semaines) return;
+
+  let nbCorrigees = 0;
+  window.__PLAN_BRUT__.semaines.forEach(semaine => {
+    Object.values(semaine.assignment).forEach(seance => {
+      if (!seance.contenu || !seance.contenu.includes(NOTE_CHALEUR_A_NETTOYER)) return;
+      // Compte les occurrences avant nettoyage
+      const occurrences = seance.contenu.split(NOTE_CHALEUR_A_NETTOYER).length - 1;
+      if (occurrences <= 1) return; // rien à nettoyer, une seule occurrence est normale
+      // Retire toutes les occurrences puis en réinjecte une seule, à la fin
+      const contenuSansNote = seance.contenu.split(NOTE_CHALEUR_A_NETTOYER).join('').trim();
+      seance.contenu = `${contenuSansNote} ${NOTE_CHALEUR_A_NETTOYER}`;
+      nbCorrigees++;
+    });
+  });
+
+  if (nbCorrigees === 0) {
+    if (msgEl) { msgEl.textContent = 'Aucune note dupliquée trouvée.'; msgEl.style.color = 'rgba(238,240,234,0.5)'; }
+    return;
+  }
+
+  // Re-traduit le plan brut corrigé vers le format v1 affiché, et sauvegarde
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+
+  try {
+    if (getGithubToken && getGithubToken() && sauvegarderPlan) {
+      await sauvegarderPlan(window.__PLAN_BRUT__);
+    }
+  } catch (e) {
+    console.warn('Nettoyage effectué localement, sauvegarde échouée :', e.message);
+  }
+
+  if (msgEl) { msgEl.textContent = '✅ ' + nbCorrigees + ' séance(s) nettoyée(s).'; msgEl.style.color = '#22c55e'; }
+  render();
+}
+
 function rebuildPredHistory() {
   if (!stravaActivities.length || isRebuilding) return;
   isRebuilding = true; render();
@@ -1187,9 +1042,9 @@ function rebuildPredHistory() {
     d.setDate(d.getDate()+1);
   }
   predHistory = newHistory;
-  save("lk_pred_history", predHistory);
+  save(clePourPlan("lk_pred_history"), predHistory);
   lastRebuildDate = today();
-  save("lk_last_rebuild", lastRebuildDate);
+  save(clePourPlan("lk_last_rebuild"), lastRebuildDate);
   isRebuilding = false;
   render();
 }
@@ -1200,8 +1055,17 @@ if (stravaActivities.length > 0 && (predHistory.length <= 1 || (predHistory[0] &
 }
 
 function predict10K() {
-  const BASE_TIME = 3021; // 50'21" Lavandou
-  const runs = stravaActivities.filter(a => a.type === "Run");
+  const BASE_TIME = BASE_TIME_REFERENCE; // référence lue depuis le plan chargé
+  // Ne prend en compte que les activités depuis le début du plan actuellement
+  // affiché — sans ce filtre, la prédiction mélangeait des séances
+  // antérieures à ce plan (ex. d'un plan de test précédent), remonté par
+  // Laurent le 6 juillet 2026 (docs/v2-methodologie/convergence-v1-v2.md,
+  // section 7bis/7quater — même famille de problème : donnée non indexée
+  // sur le plan affiché).
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const runs = stravaActivities.filter(a =>
+    a.type === "Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
   const estimates = [];
   const details = [];
 
@@ -1209,10 +1073,25 @@ function predict10K() {
   // Pour un type de séance, calcule la vitesse moyenne pondérée par la durée
   // totale d\'effort de chaque séance (séances plus longues = plus de poids)
   function weightedAvgByEffortDuration(sessionType, factor) {
-    const sessionRuns = runs.filter(r => {
-      const dateLocal = r.start_date_local?.slice(0,10);
-      return ALL_SESSIONS.find(s => s.date===dateLocal && s.type===sessionType);
-    });
+    // Une activité "appartient" au type sessionType si elle contient des
+    // laps dont l'allure correspond à la cible générique de ce type précis
+    // — indépendant de ce que le plan prévoyait ce jour-là (cf. commentaire
+    // dans getEffortLaps). Le plan reste utilisé comme affinage à
+    // l'intérieur de getEffortLaps quand une correspondance de date existe,
+    // mais ne conditionne plus la sélection des activités analysées ici.
+    // Une activité "appartient" au type sessionType si detecterTypeEffort
+    // (même logique que dans getEffortLaps, cf. plus haut) retient
+    // précisément ce type comme la cible la plus proche — pas seulement
+    // "dans la tolérance ±15%", qui se chevauche entre types voisins (bug
+    // trouvé le 6 juillet 2026 : une séance SPEC à 4'49/km pouvait passer le
+    // test de tolérance VMA, qui vise 4'10/km, et être comptée deux fois).
+    const sessionRuns = SESSION_TARGETS[sessionType] ? runs.filter(r => {
+      if (!r.laps || r.laps.length < 4) return false;
+      const middle = r.laps.slice(1, -2);
+      if (!middle.length) return false;
+      const detection = detecterTypeEffort(middle);
+      return detection && detection.type === sessionType;
+    }) : [];
     if (!sessionRuns.length) return null;
 
     let totalWeight = 0;
@@ -1236,7 +1115,7 @@ function predict10K() {
   // ── 1. SPEC → allure directe ──────────────────────────────────────────────
   const specData = weightedAvgByEffortDuration("SPEC", 1);
   if (specData) {
-    const estimate10k = 10000 / specData.speed;
+    const estimate10k = DISTANCE_M_REFERENCE / specData.speed;
     estimates.push({ value: estimate10k, weight: 0.45 });
     const lastSpecDate = specData.runs.map(r=>r.start_date_local?.slice(0,10)).filter(Boolean).sort().pop();
     details.push({ label:`SPEC · ${specData.runs.length} séance${specData.runs.length>1?"s":""} · dernier ${lastSpecDate||"?"}`, value:fmtPace(specData.speed)+"/km → "+fmtTime(Math.round(estimate10k)) });
@@ -1247,7 +1126,7 @@ function predict10K() {
   if (seuilData && seuilData.runs.length >= 3) {
     const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
     const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
-    const riegelSeuil = totalEffortTime * Math.pow(10000/totalEffortDist, 1.06);
+    const riegelSeuil = totalEffortTime * Math.pow(DISTANCE_M_REFERENCE/totalEffortDist, 1.06);
     estimates.push({ value: riegelSeuil, weight: 0.10 });
     details.push({ label:`SEUIL · ${seuilData.runs.length} séances · ${Math.round(totalEffortDist)}m effort`, value:fmtPace(seuilData.speed)+"/km → "+fmtTime(Math.round(riegelSeuil)) });
   }
@@ -1255,20 +1134,58 @@ function predict10K() {
   // ── 3. VMA → vitesse × 0.87 ──────────────────────────────────────────────
   const vmaData = weightedAvgByEffortDuration("VMA", 1);
   if (vmaData) {
-    const estimate10k = 10000 / (vmaData.speed * 0.87);
+    const estimate10k = DISTANCE_M_REFERENCE / (vmaData.speed * 0.87);
     estimates.push({ value: estimate10k, weight: 0.35 });
     const lastVmaDate = vmaData.runs.map(r=>r.start_date_local?.slice(0,10)).filter(Boolean).sort().pop();
     details.push({ label:`VMA · ${vmaData.runs.length} séance${vmaData.runs.length>1?"s":""} · dernier ${lastVmaDate||"?"}`, value:fmtPace(vmaData.speed)+"/km → "+fmtTime(Math.round(estimate10k)) });
   }
 
+  // ── Garde-fou : exclure une source manifestement aberrante ────────────────
+  // Limite structurelle connue et non résolue à ce stade (cf.
+  // docs/v2-methodologie/convergence-v1-v2.md, section 6) : les séances VMA
+  // très fractionnées (ex. 2×8×30″-30″) ne se segmentent pas correctement en
+  // laps Strava classiques quand la montre ne crée pas un vrai lap par
+  // répétition — une activité avec moins de laps que de répétitions
+  // attendues mélange phases rapides et lentes dans un même lap, donnant une
+  // vitesse moyenne diluée sans rapport avec l'effort réel (observé : VMA à
+  // 5'33/km, donnant une projection PIRE que SPEC/SEUIL alors qu'une vraie
+  // VMA, plus rapide, devrait donner une MEILLEURE projection).
+  //
+  // Comparaison à BASE_TIME (référence connue), pas à la médiane des autres
+  // estimations : avec seulement 2 sources (le cas réel rencontré), chaque
+  // valeur est mécaniquement à égale distance de leur propre moyenne, donc
+  // aucune n'est jamais détectée comme aberrante par une comparaison
+  // mutuelle — bug trouvé en testant ce garde-fou avant de le déployer.
+  // BASE_TIME est une référence stable, indépendante du nombre de sources
+  // disponibles.
+  //
+  // Écart >20% par rapport à BASE_TIME est un signal fort d'erreur de
+  // détection plutôt qu'une vraie variance de performance — à résoudre
+  // proprement par le chantier v2.0 streams (analyse seconde par seconde),
+  // ce garde-fou n'est qu'un filet de sécurité en attendant.
+  for (let i = estimates.length - 1; i >= 0; i--) {
+    const ecartRelatif = Math.abs(estimates[i].value - BASE_TIME) / BASE_TIME;
+    if (ecartRelatif > 0.20) {
+      details.push({ label: "⚠️ Source écartée (résultat incohérent)", value: fmtTime(Math.round(estimates[i].value)) + " — écart trop important vs référence connue" });
+      // Marque la source correspondante comme écartée (vmaData/specData/
+      // seuilData ne sont pas directement liés à estimates[i], donc on
+      // retrouve la source par son poids caractéristique : VMA=0.35,
+      // SPEC=0.45, SEUIL=0.10 — cf. les 3 estimates.push() ci-dessus).
+      if (Math.abs(estimates[i].weight - 0.35) < 0.01) vmaData._exclu = true;
+      else if (Math.abs(estimates[i].weight - 0.45) < 0.01) specData._exclu = true;
+      else if (Math.abs(estimates[i].weight - 0.10) < 0.01) seuilData._exclu = true;
+      estimates.splice(i, 1);
+    }
+  }
+
   // ── Pondération Lavandou selon qualité des données ────────────────────────
-  const hasVma   = vmaData !== null;
-  const hasSpec  = specData !== null;
-  const hasSeuil = seuilData !== null && seuilData.laps.length > 0;
+  const hasVma   = vmaData !== null && !vmaData._exclu;
+  const hasSpec  = specData !== null && !specData._exclu;
+  const hasSeuil = seuilData !== null && seuilData.laps.length > 0 && !seuilData._exclu;
 
   // Compter le total de séances intensives disponibles
-  const nVmaSessions = vmaData ? vmaData.runs.length : 0;
-  const nSpecSessions = specData ? specData.runs.length : 0;
+  const nVmaSessions = hasVma ? vmaData.runs.length : 0;
+  const nSpecSessions = hasSpec ? specData.runs.length : 0;
   const nIntensive = nVmaSessions + nSpecSessions;
 
   let lavendouWeight;
@@ -1288,7 +1205,7 @@ function predict10K() {
 
   let estimate = BASE_TIME;
   let confidence = 30;
-  let method = "Base Lavandou 50\'21\"";
+  let method = "Référence (" + fmtTime(BASE_TIME_REFERENCE) + ")";
 
   if (estimates.length > 0) {
     const totalWeight = estimates.reduce((s,e) => s+e.weight, 0);
@@ -1307,11 +1224,11 @@ function predict10K() {
   if (!lastEntry || lastEntry.date !== todayStr) {
     predHistory.push({ date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION });
     if (predHistory.length > 80) predHistory.shift();
-    save("lk_pred_history", predHistory);
+    save(clePourPlan("lk_pred_history"), predHistory);
   } else if (lastEntry.date === todayStr && lastEntry.time !== Math.round(estimate)) {
     // Mettre à jour l'entrée du jour si l'estimation a changé
     predHistory[predHistory.length-1] = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION };
-    save("lk_pred_history", predHistory);
+    save(clePourPlan("lk_pred_history"), predHistory);
   }
 
   // Fourchette selon la confiance
@@ -1331,6 +1248,57 @@ function predict10K() {
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
+// Sélecteur de plan (docs/v2-methodologie/convergence-v1-v2.md, section 7)
+// — menu déroulant listant tous les plans sauvegardés dans le Gist
+// (window.__PLANS_DISPONIBLES__, peuplé par l'infrastructure async du
+// premier script). Au changement, écrit l'id choisi dans localStorage
+// puis recharge la page entière : un simple changement de PLAN ne suffit
+// pas, toutes les variables dérivées (RACE_NAME, PHASES, FC_MAX,
+// BASE_TIME_REFERENCE, ALL_SESSIONS...) sont des const/let calculées une
+// fois au chargement, cf. section 7bis — plus sûr de repartir d'un
+// chargement propre que d'essayer de tout resynchroniser en mémoire.
+function renderSelecteurPlan() {
+  const plans = window.__PLANS_DISPONIBLES__ || [];
+
+  const idActuel = window.__PLAN_BRUT__?.id;
+  const select = el("select",{style:{
+    background:"#232738",color:"#f1f5f9",border:"1px solid #2e3347",
+    borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
+    width:"100%",cursor:"pointer"
+  }, onChange: (e) => {
+    localStorage.setItem('v2_preview_plan_id', e.target.value);
+    location.reload();
+  }});
+
+  plans.forEach(p => {
+    const label = p.nom || `${p.distance || '?'} — ${p.objectif || '?'}`;
+    const option = el("option",{value:p.id},label);
+    if (p.id === idActuel) option.selected = true;
+    select.appendChild(option);
+  });
+
+  // Repli explicite si aucun plan sauvegardé — évite un <select> visuellement
+  // vide, plus cohérent qu'un menu sans aucune option affichée
+  if (plans.length === 0) {
+    select.appendChild(el("option",{value:"",disabled:"",selected:""},"Aucun plan sauvegardé (plan par défaut affiché)"));
+  }
+
+  // Lien vers le wizard v2 pour créer un nouveau plan (demandé par Laurent
+  // le 6 juillet 2026, docs/v2-methodologie/convergence-v1-v2.md, section
+  // 7) — un vrai <a target="_blank">, pas une option de <select> avec
+  // window.open() en JS : Laurent a signalé que window.open() ne
+  // fonctionnait pas du tout depuis la PWA installée (probablement bloqué
+  // silencieusement par le navigateur en contexte standalone, les popups
+  // JS étant traités différemment d'une vraie navigation déclenchée par un
+  // clic direct sur un élément <a>).
+  const lienNouveauPlan = el("a",{href:"/v2",target:"_blank",style:{
+    display:"block",marginTop:"6px",color:"#f97316",fontSize:"13px",
+    fontWeight:"600",textDecoration:"none"
+  }},"➕ Créer un nouveau plan");
+
+  return el("div",{style:{padding:"8px 0"}}, select, lienNouveauPlan);
+}
+
 function renderDashboard() {
   const cw=currentWeek(), cd=countdown(), gp=globalPct();
   const done=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
@@ -1338,23 +1306,23 @@ function renderDashboard() {
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
 
   // Banniere post-course
-  const raceResult = load("lk_race_result", null);
-  if (today() >= "2026-09-06" && raceResult) {
+  const raceResult = load(clePourPlan("lk_race_result"), null);
+  if (today() >= DATE_COURSE_REFERENCE && raceResult) {
     const diff = raceResult - raceGoalTime;
     const achieved = diff <= 0;
     const close = diff > 0 && diff <= 60;
     const color = achieved ? "#22c55e" : close ? "#eab308" : "#a855f7";
     const emoji = achieved ? "🏅" : close ? "⚡" : "📈";
     const title = achieved ? "Objectif atteint !" : close ? "Tres belle course !" : "Belle progression !";
-    const diffVsStart = 3021 - raceResult;
+    const diffVsStart = BASE_TIME_REFERENCE - raceResult;
     const subtitle = achieved
       ? (Math.abs(diff) > 0 ? "-"+fmtTime(Math.abs(diff))+" sous objectif" : "Exactement dans les temps")
       : close ? "+"+fmtTime(Math.abs(diff))+" au-dessus objectif"
       : "-"+fmtTime(Math.abs(diffVsStart))+" par rapport au depart";
     const coachMsg2 = achieved
-      ? "Bravo Laurent ! 11 semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
-      : close ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en 11 semaines."
-      : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en 11 semaines. On continue !";
+      ? "Bravo ! " + PLAN.length + " semaines de travail, tu as merite ce resultat. Lea est fiere de toi !"
+      : close ? fmtTime(Math.abs(diff))+" ! Si proche. Belle progression en "+PLAN.length+" semaines."
+      : "Belle progression de "+fmtTime(Math.abs(diffVsStart))+" en "+PLAN.length+" semaines. On continue !";
 
     const inp = document.createElement("input");
     inp.type="time"; inp.step="1";
@@ -1366,7 +1334,7 @@ function renderDashboard() {
     saveBtn2.style.cssText="background:"+color+";border:none;border-radius:8px;padding:8px 16px;color:"+(close?"#1a1d27":"#fff")+";font-size:14px;font-weight:700;cursor:pointer;";
     saveBtn2.addEventListener("click",()=>{
       const parts=inp.value.split(":");
-      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
+      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
     });
     const inputRow=document.createElement("div");
     inputRow.style.cssText="display:flex;gap:8px;";
@@ -1378,7 +1346,7 @@ function renderDashboard() {
     const banner=el("div",{style:{background:"#1a1d27",border:"1px solid "+color+"44",borderRadius:"16px",padding:"20px",marginBottom:"12px",marginTop:"8px",textAlign:"center"}},
       el("div",{style:{fontSize:"48px",marginBottom:"8px"}},emoji),
       el("div",{style:{color:color,fontSize:"22px",fontWeight:"900",marginBottom:"4px"}},title),
-      el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},"10 km Gem Aubagne - 6 septembre 2026"),
+      el("div",{style:{color:"#f1f5f9",fontSize:"15px",marginBottom:"16px"}},RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})),
       el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"12px"}},
         el("div",{style:{textAlign:"center"}},el("div",{style:{color:"#94a3b8",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"Objectif"),el("div",{style:{color:"#f97316",fontSize:"24px",fontWeight:"900"}},fmtTime(raceGoalTime))),
         el("div",{style:{background:"#2e3347"}}),
@@ -1407,14 +1375,14 @@ function renderDashboard() {
     // ── Header : course ──────────────────────────────────────────────────────
     el("div",{style:{marginBottom:"14px"}},
       el("a",{href:RACE_URL,target:"_blank",style:{color:"#f97316",fontSize:"15px",fontWeight:"700",textDecoration:"none",display:"block",marginBottom:"2px"}},"🏁 "+RACE_NAME+" ↗"),
-      el("div",{class:"muted",style:{fontSize:"13px"}},new Date("2026-09-06T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION)
+      el("div",{class:"muted",style:{fontSize:"13px"}},new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION)
     ),
     // ── Objectif vs Estimation ────────────────────────────────────────────
     el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1px 1fr",gap:"12px",marginBottom:"14px"}},
       el("div",{style:{textAlign:"center"}},
         el("div",{class:"label",style:{marginBottom:"4px"}},"Objectif"),
         el("div",{style:{color:"#f97316",fontSize:"32px",fontWeight:"900",letterSpacing:"-1px",lineHeight:"1"}},fmtTime(raceGoalTime)),
-        el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},fmtPace(10000/raceGoalTime)+"/km")
+        el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km")
       ),
       el("div",{style:{background:"#2e3347"}}),
       (()=>{
@@ -1463,26 +1431,26 @@ function renderDashboard() {
       el("span",{class:"muted"},pred.confidence+"% · "+pred.details.length+" source"+(pred.details.length>1?"s":"")+" ›")
     ),
     el("div",{style:{height:"5px",borderRadius:"3px",background:"linear-gradient(to right,#E24B4A,#EF9F27,#BA7517,#639922)",position:"relative",marginBottom:"4px"}},
-      pred.time <= 2910
+      pred.time <= OBJECTIF_REFERENCE
         ? null
         : el("div",{style:{
             position:"absolute",top:"50%",
             transform:"translate(-50%,-50%)",
-            left:Math.min(Math.max((3021-pred.time)/(3021-2910)*100,2),98)+"%",
+            left:Math.min(Math.max((BASE_TIME_REFERENCE-pred.time)/(BASE_TIME_REFERENCE-OBJECTIF_REFERENCE)*100,2),98)+"%",
             width:"11px",height:"11px",borderRadius:"50%",
-            background:pred.time<=2910?"#639922":pred.time<=2940?"#BA7517":pred.time<=2970?"#EF9F27":"#E24B4A",
+            background:pred.time<=OBJECTIF_REFERENCE?"#639922":pred.time<=OBJECTIF_REFERENCE+30?"#BA7517":pred.time<=OBJECTIF_REFERENCE+60?"#EF9F27":"#E24B4A",
             border:"2px solid #1a1d27",
-            boxShadow:"0 0 0 2px "+(pred.time<=2910?"#639922":pred.time<=2940?"#BA7517":pred.time<=2970?"#EF9F27":"#E24B4A")+"44"
+            boxShadow:"0 0 0 2px "+(pred.time<=OBJECTIF_REFERENCE?"#639922":pred.time<=OBJECTIF_REFERENCE+30?"#BA7517":pred.time<=OBJECTIF_REFERENCE+60?"#EF9F27":"#E24B4A")+"44"
           }})
     ),
     el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
-      el("span",{class:"muted",style:{fontSize:"10px"}},"50'21\""),
-      pred.time <= 2910 ? el("span",{style:{color:"#22c55e",fontSize:"11px",fontWeight:"700"}},"🎯 Objectif atteint !") : null,
-      el("span",{class:"muted",style:{fontSize:"10px"}},"48'30\"")
+      el("span",{class:"muted",style:{fontSize:"10px"}},fmtTime(BASE_TIME_REFERENCE)),
+      pred.time <= OBJECTIF_REFERENCE ? el("span",{style:{color:"#22c55e",fontSize:"11px",fontWeight:"700"}},"🎯 Objectif atteint !") : null,
+      el("span",{class:"muted",style:{fontSize:"10px"}},fmtTime(OBJECTIF_REFERENCE))
     ),
     // ── Stats séances ─────────────────────────────────────────────────────
     (()=>{
-      const totalKmRun = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
+      const totalKmRun = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
       return el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",paddingTop:"10px",borderTop:"1px solid #2e334733",marginTop:"10px"}},
         el("span",{style:{color:"#22c55e",fontWeight:"700"}},"✅ "+done),
         el("span",{class:"muted"},"·"),
@@ -1536,7 +1504,7 @@ function renderDashboard() {
   const coachBorderColor = todayStatus4Coach==="✅"?"#22c55e33":todayStatus4Coach==="⚠️"?"#eab30833":todayStatus4Coach==="❌"?"#ef444433":"#2e3347";
   const coachLabel = todayStatus4Coach&&["✅","⚠️","❌"].includes(todayStatus4Coach) ? "🤖 Coach · Analyse" : "🤖 Coach";
   const refreshCoachBtn = el("button",{style:{background:"none",border:"none",color:"#475569",fontSize:"15px",cursor:"pointer",padding:"0",lineHeight:"1"},
-    onClick:()=>{ coachMsg=null; coachDate=""; save("lk_coach_msg",null); save("lk_coach_date",""); fetchCoachMsg(); }
+    onClick:()=>{ coachMsg=null; coachDate=""; save(clePourPlan("lk_coach_msg"),null); save(clePourPlan("lk_coach_date"),""); fetchCoachMsg(); }
   },"🔄");
   // Coach intégré dans la carte séance — bloc discret
   const coachEl = el("div",{style:{background:"#232738",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",alignItems:"flex-start"}},
@@ -1854,8 +1822,8 @@ function renderDashboard() {
   }
 
     // ── Barres de progression km + temps ─────────────────────────────────────
-  const totalKm = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
-  const totalMin = Math.round(stravaActivities.reduce((s,a)=>s+a.moving_time,0)/60);
+  const totalKm = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
+  const totalMin = Math.round(activitesDuPlan().reduce((s,a)=>s+a.moving_time,0)/60);
   const totalH = Math.floor(totalMin/60);
   const totalMmin = totalMin%60;
 
@@ -2030,7 +1998,12 @@ function renderDashboard() {
     helpBtn
   );
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,heroPred,todayEl||"",phaseEl,stravaSection);
+  // Sélecteur de plan (docs/v2-methodologie/convergence-v1-v2.md, section 7)
+  // — toujours visible en haut du dashboard, juste après l'en-tête
+  // principal (décision d'emplacement tranchée le 6 juillet 2026).
+  const selecteurPlanEl = renderSelecteurPlan();
+
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPred,todayEl||"",phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2247,7 +2220,7 @@ function renderWeekDetail(weekNum) {
       SOPTS.forEach(opt=>{
         const cur=statuses[uid]||"—";
         const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
-        b.addEventListener("click",()=>{ statuses[uid]=opt; save("lk_statuses",statuses); gistSave(true); render(); });
+        b.addEventListener("click",()=>{ statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true); render(); });
         statusRow.appendChild(b);
       });
       card.appendChild(statusRow);
@@ -2256,7 +2229,7 @@ function renderWeekDetail(weekNum) {
       noteInput.addEventListener("change",()=>{
         if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
         else{delete sessionNotes[uid];}
-        save("lk_session_notes",sessionNotes); scheduleSave();
+        save(clePourPlan("lk_session_notes"),sessionNotes); scheduleSave();
       });
       if(sessionNotes[uid]){card.appendChild(el("div",{style:{color:"#e2e8f0",fontSize:"14px",fontStyle:"italic",marginTop:"4px"}},"💬 "+sessionNotes[uid]));}
       card.appendChild(noteInput);
@@ -2340,7 +2313,7 @@ function renderStats() {
       el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"⏳ Recalcul de l\'historique...")
     );
   } else if (predHistory.length >= 2) {
-    const TARGET = 48.5*60, BASE = 3021;
+    const TARGET = OBJECTIF_REFERENCE, BASE = BASE_TIME_REFERENCE;
     const W = 340, H = 120, PAD = {t:16,r:40,b:28,l:44};
     const iW = W-PAD.l-PAD.r, iH = H-PAD.t-PAD.b;
     const times = predHistory.map(p=>p.time);
@@ -2357,7 +2330,7 @@ function renderStats() {
     const yTarget=yScale(TARGET);
     svg.appendChild(mk("line",{x1:PAD.l,y1:yTarget,x2:W-PAD.r,y2:yTarget,stroke:"#f9731644",strokeWidth:"1","stroke-dasharray":"4,3"}));
     const tl=document.createElementNS("http://www.w3.org/2000/svg","text");
-    tl.setAttribute("x",W-PAD.r+4);tl.setAttribute("y",yTarget+4);tl.setAttribute("fill","#f97316");tl.setAttribute("font-size","9");tl.textContent="48'30\"";svg.appendChild(tl);
+    tl.setAttribute("x",W-PAD.r+4);tl.setAttribute("y",yTarget+4);tl.setAttribute("fill","#f97316");tl.setAttribute("font-size","9");tl.textContent=fmtTime(TARGET);svg.appendChild(tl);
     const points=predHistory.map((p,i)=>`${xScale(i)},${yScale(p.time)}`).join(" ");
     const firstX=xScale(0),lastX=xScale(predHistory.length-1);
     svg.appendChild(mk("polygon",{points:`${firstX},${PAD.t+iH} ${points} ${lastX},${PAD.t+iH}`,fill:"#60a5fa11"}));
@@ -2463,12 +2436,26 @@ function renderStats() {
   );
 
   // ── Référentiel allures ───────────────────────────────────────────────
+  // EF/LONGUE : allure lue depuis plan.allures.E (déjà calculée par le
+  // moteur selon le profil, formatPace() appliqué) — pas une valeur fixe
+  // "6:20" codée en dur (bug trouvé le 7 juillet 2026, même famille que
+  // les autres résidus de cette session). Repli "6:20" si absente
+  // (compatibilité avec un plan sans cette donnée).
+  const alluresEF = window.__PLAN_BRUT__?.allures?.E || "6:20";
+  const chaleurEF = (() => {
+    const allureStr = window.__PLAN_BRUT__?.allures?.E; // ex. "6:10/km"
+    if (!allureStr) return "6:40"; // repli historique
+    const [minStr, secStr] = allureStr.replace("/km","").split(":");
+    const efSec = parseInt(minStr)*60 + parseInt(secStr);
+    return formatPace(efSec + 20); // +20s/km si chaleur, même règle que le reste de l'app
+  })();
+  const labelSpecifique = "Spécifique " + (window.__PLAN_BRUT__?.distance || "10K");
   const paceRows = [
-    {type:"EF",      label:"Endurance fondamentale", pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#60a5fa"},
-    {type:"LONGUE",  label:"Sortie longue",           pace:"6:20", heat:"6:40", fc:"118–136", pct:"65–75%", color:"#06b6d4"},
-    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:"163–172", pct:"90–95%", color:"#22c55e"},
-    {type:"SPEC",    label:"Spécifique 10K",           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:"154–163", pct:"85–90%", color:"#a855f7"},
-    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:"163–181", pct:"90–100%", color:"#f97316"},
+    {type:"EF",      label:"Endurance fondamentale", pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.EF.min+"–"+FC_ZONES.EF.max, pct:FC_ZONES.EF.label, color:"#60a5fa"},
+    {type:"LONGUE",  label:"Sortie longue",           pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.LONGUE.min+"–"+FC_ZONES.LONGUE.max, pct:FC_ZONES.LONGUE.label, color:"#06b6d4"},
+    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:FC_ZONES.SEUIL.min+"–"+FC_ZONES.SEUIL.max, pct:FC_ZONES.SEUIL.label, color:"#22c55e"},
+    {type:"SPEC",    label:labelSpecifique,           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:FC_ZONES.SPEC.min+"–"+FC_ZONES.SPEC.max, pct:FC_ZONES.SPEC.label, color:"#a855f7"},
+    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:FC_ZONES.VMA.min+"–"+FC_ZONES.VMA.max, pct:FC_ZONES.VMA.label, color:"#f97316"},
   ];
   // ── Courbes IE + Cadence ─────────────────────────────────────────────────
   const intensiveTypes = ["VMA","SPEC","SEUIL"];
@@ -2760,7 +2747,7 @@ function renderStats() {
 
   if (predHistory.length >= 3 && projDaySpan >= 21) {
     const currentTime = pred.time;
-    const BASE_TIME_START = 3021; // 50'21" Lavandou
+    const BASE_TIME_START = BASE_TIME_REFERENCE; // référence lue depuis le plan chargé
     const gainMax = BASE_TIME_START - raceGoalTime; // gain théorique max
     const gainRealist = Math.round(gainMax * 0.85); // 85% du gain max
     const gainSoFar = BASE_TIME_START - currentTime;
@@ -2784,7 +2771,7 @@ function renderStats() {
     const hasVerdict = daySpan >= 21;
 
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au 6 septembre"),
+      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
           el("div",{},
@@ -2815,7 +2802,7 @@ function renderStats() {
     const availDate = new Date(new Date(projOldest).getTime() + 21*86400000);
     const availStr = availDate.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au 6 septembre"),
+      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px",textAlign:"center"}},
         el("div",{style:{fontSize:"24px",marginBottom:"8px"}},"📊"),
         el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"600",marginBottom:"4px"}},"Données insuffisantes"),
@@ -2830,12 +2817,24 @@ function renderStats() {
     el("div",{class:"card"},
       ...[
         ["Course",RACE_NAME,"#f97316"],
-        ["Date","6 septembre 2026 · "+RACE_LOCATION,"#f1f5f9"],
-        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(10000/raceGoalTime)+"/km","#f97316"],
-        ["Référence","50'21\" (Lavandou)","#f1f5f9"],
-        ["Allure EF","6:20/km · 6:40/km si chaud","#60a5fa"],
+        ["Date",new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION,"#f1f5f9"],
+        ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km","#f97316"],
+        ["Référence",fmtTime(BASE_TIME_REFERENCE),"#f1f5f9"],
+        ["Allure EF",(window.__PLAN_BRUT__?.allures?.E||"6:20")+"/km · "+(() => {
+          const allureStr = window.__PLAN_BRUT__?.allures?.E;
+          if (!allureStr) return "6:40";
+          const [m,s] = allureStr.replace("/km","").split(":").map(Number);
+          return formatPace(m*60+s+20);
+        })()+"/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
-        ["Km courus",Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10+" km","#22c55e"],
+        // Km courus DEPUIS LE DÉBUT DU PLAN ACTUEL, pas toutes les activités
+        // Strava jamais bornées — bug trouvé le 7 juillet 2026 : Laurent, sur
+        // un plan Semi démarrant le 14 septembre, voyait les km d'une séance
+        // de la veille du démarrage du plan comptés dans ce total. Même
+        // famille de correctif déjà appliqué à predict10K()/
+        // matchActivitiesToPlan() (section 7bis/7quater du doc de
+        // convergence), oublié ici.
+        ["Km courus",Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10+" km","#22c55e"],
       ].map(([label,val,color])=>el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"6px"}},
         el("span",{class:"muted",style:{fontSize:"14px"}},label),
         el("span",{style:{color,fontSize:"14px",fontWeight:color==="#f1f5f9"?"400":"700"}},val)
@@ -2867,7 +2866,7 @@ function renderCourse() {
       runByLeaIcon(52, 12),
       el("div",{},
         el("div",{style:{color:"#f97316",fontSize:"17px",fontWeight:"800",marginBottom:"2px"}},"🏁 "+RACE_NAME),
-        el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"2px"}},new Date("2026-09-06T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION),
+        el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"2px"}},new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION),
         el("div",{style:{color:"#475569",fontSize:"13px"}},"Run by Léa")
       )
     ),
@@ -2882,7 +2881,7 @@ function renderCourse() {
         el("div",{class:"muted",style:{fontSize:"12px"}},"Avant la course")
       ),
       el("div",{style:{flex:"1",background:"#232738",borderRadius:"8px",padding:"8px 10px",textAlign:"center"}},
-        el("div",{style:{color:"#f97316",fontSize:"15px",fontWeight:"700"}},fmtPace(10000/raceGoalTime)+"/km"),
+        el("div",{style:{color:"#f97316",fontSize:"15px",fontWeight:"700"}},fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km"),
         el("div",{class:"muted",style:{fontSize:"12px"}},"Allure cible")
       )
     )
@@ -2898,7 +2897,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-dossard-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.dossard || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
           return inp;
         })()
       ),
@@ -2909,7 +2908,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-depart-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.depart || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save("lk_race_horaires",raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
           return inp;
         })()
       )
@@ -2941,7 +2940,7 @@ function renderCourse() {
         );
         row.addEventListener("click",()=>{
           checklistItems[item.key]=!checked;
-          save("lk_checklist",checklistItems);
+          save(clePourPlan("lk_checklist"),checklistItems);
           render();
         });
         return row;
@@ -2975,7 +2974,7 @@ function renderCourse() {
         inp.type = "text"; inp.placeholder = "Lien GPX ou carte du parcours...";
         inp.style.cssText = "width:100%;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:8px 12px;color:#f1f5f9;font-size:13px;box-sizing:border-box;";
         inp.value = raceParcoursUrl || "";
-        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save("lk_race_parcours",raceParcoursUrl); scheduleSave(); });
+        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); scheduleSave(); });
         return inp;
       })(),
       raceParcoursUrl?el("a",{href:raceParcoursUrl,target:"_blank",style:{display:"block",marginTop:"8px",color:"#60a5fa",fontSize:"14px"}},"→ Voir le parcours"):null
@@ -2989,33 +2988,58 @@ function renderCourse() {
   if (daysToRace <= 16) {
     // La météo sera fetchée et affichée
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
         el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible dans les 16 jours avant la course")
       )
     );
   } else {
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🌡️ Météo prévue le 6 septembre"),
+      el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",textAlign:"center"}},
-        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du 21 août · J–"+daysToRace+" actuellement")
+        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du "+fmtDate(new Date(new Date(DATE_COURSE_REFERENCE+"T00:00:00").getTime()-16*86400000).toISOString().slice(0,10))+" · J–"+daysToRace+" actuellement")
       )
     );
   }
 
   // ── Allures de passage aux km clés ───────────────────────────────────────
-  const paceSecKm = raceGoalTime / 10; // secondes par km
-  // Calculer l\'allure compensée sur les 3 derniers km pour arriver exactement à l\'objectif
-  const cumulKm7 = 1*(paceSecKm+10) + 2*(paceSecKm+5) + 2*paceSecKm + 2*paceSecKm;
-  const paceFinal = (raceGoalTime - cumulKm7) / 3;
-  // Segments : de→à, allure sur ce segment, note
-  const splits = [
-    { from:0,  to:1,  note:"Départ prudent",  pace: paceSecKm + 10 },
-    { from:1,  to:3,  note:"S\'installer",    pace: paceSecKm + 5  },
-    { from:3,  to:5,  note:"Mi-course",       pace: paceSecKm      },
-    { from:5,  to:7,  note:"Allure cible",    pace: paceSecKm      },
-    { from:7,  to:10, note:"Finir fort",      pace: paceFinal      },
-  ];
+  // Segments par distance — même logique/mêmes décalages de pace que
+  // genererContenuRace() dans plan-generator.js (section 2.7 du doc de
+  // convergence), réécrite ici en données structurées (segments avec bornes
+  // km + allure + temps de passage cumulé) plutôt qu'un texte narratif tout
+  // fait, pour que cette carte visuelle puisse les afficher dans son propre
+  // format tableau. Bug trouvé le 7 juillet 2026 : cette carte était
+  // entièrement câblée pour un 10K (5 segments de 0 à 10km, conseil coach
+  // mentionnant "le km 7 et 10") — un plan Semi/Marathon/5K affichait des
+  // allures et un conseil complètement hors sujet.
+  const distanceKmCourse = DISTANCE_M_REFERENCE / 1000;
+  const paceSecKm = raceGoalTime / distanceKmCourse; // secondes par km, allure cible moyenne
+
+  let splits;
+  if (distanceKmCourse <= 5.5) {
+    // 5K : quasi-plat, progression légère (même principe que genererContenuRace)
+    splits = [
+      { from:0, to:1, note:"Départ prudent", pace: paceSecKm + 4 },
+      { from:1, to:2, note:"Allure cible", pace: paceSecKm },
+      { from:2, to:4, note:"Accélération progressive", pace: paceSecKm - 3 },
+      { from:4, to:Math.round(distanceKmCourse), note:"Tout donner", pace: paceSecKm - 6 },
+    ];
+  } else if (distanceKmCourse <= 12) {
+    // 10K : 2 segments nets
+    const kmSegment1 = Math.round(distanceKmCourse * 0.5);
+    splits = [
+      { from:0, to:kmSegment1, note:"Prudent, 1ère moitié", pace: paceSecKm + 6.5 },
+      { from:kmSegment1, to:Math.round(distanceKmCourse), note:"Allure maximale soutenable", pace: paceSecKm },
+    ];
+  } else {
+    // Semi / Marathon : allure stable, marge de sécurité au départ, pas de
+    // paliers progressifs marqués
+    const kmDepart = Math.round(distanceKmCourse * 0.15); // ~15% de la distance pour la marge de sécurité initiale
+    splits = [
+      { from:0, to:kmDepart, note:"Marge de sécurité, ne pars pas trop vite", pace: paceSecKm + 5 },
+      { from:kmDepart, to:Math.round(distanceKmCourse), note:"Allure cible, ajuste au ressenti en fin de course", pace: paceSecKm },
+    ];
+  }
 
   // Calculer les temps de passage cumulés
   const passageTimes = [];
@@ -3039,7 +3063,8 @@ function renderCourse() {
         const paceStr = Math.floor(s.pace/60)+":"+(Math.round(s.pace%60)).toString().padStart(2,"0")+"/km";
         const passageStr = fmtTime(passageTimes[i]) || "--";
         const segLabel = s.from+"→"+s.to+" km";
-        const color = i===0||i===1?"#60a5fa":i===2||i===3?"#f97316":"#22c55e";
+        const posRelative = i / (splits.length - 1 || 1); // 0 = premier segment, 1 = dernier
+        const color = posRelative < 0.4 ? "#60a5fa" : posRelative < 0.7 ? "#f97316" : "#22c55e";
         return el("div",{style:{display:"grid",gridTemplateColumns:"60px 1fr 70px 70px",gap:"0",padding:"10px 12px",borderBottom:i<splits.length-1?"1px solid #2e3347":"none",alignItems:"center"}},
           el("span",{style:{color,fontSize:"13px",fontWeight:"700"}},segLabel),
           el("span",{class:"muted",style:{fontSize:"13px"}},s.note),
@@ -3057,7 +3082,7 @@ function renderCourse() {
   const totalAdapted = pastSess.filter(s=>statuses[s.uid]==="⚠️").length;
   const totalMissed = pastSess.filter(s=>statuses[s.uid]==="❌").length;
   const totalSess = pastSess.length;
-  const totalKmRace = Math.round(stravaActivities.reduce((s,a)=>s+a.distance,0)/100)/10;
+  const totalKmRace = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
   const completionRate = totalSess > 0 ? Math.round((totalDone+totalAdapted)/totalSess*100) : 0;
   const verdictRaceColor = completionRate >= 80 ? "#22c55e" : completionRate >= 60 ? "#eab308" : "#ef4444";
 
@@ -3089,13 +3114,18 @@ function renderCourse() {
   );
 
   // ── Conseil Coach spécifique course ───────────────────────────────────────
+  // Généré depuis les vrais splits (pas un texte figé pour 10K) — même bug
+  // que la carte "Allures de passage" ci-dessus (cf. commentaire associé).
+  const premierSplit = splits[0];
+  const dernierSplit = splits[splits.length - 1];
+  const premierSplitStr = Math.floor(premierSplit.pace/60)+":"+(Math.round(premierSplit.pace%60)).toString().padStart(2,"0");
   const coachRaceEl = el("div",{style:{marginBottom:"12px"}},
     el("div",{class:"label"},"🤖 Conseil de Léa pour la course"),
     el("div",{style:{background:"#232738",borderRadius:"10px",padding:"14px",display:"flex",gap:"10px"}},
       el("span",{style:{fontSize:"20px",flexShrink:"0"}},"🤖"),
       el("div",{style:{color:"#e2e8f0",fontSize:"14px",lineHeight:"1.6"}},
-        "Pars prudemment sur le 1er km — vise "+Math.floor((raceGoalTime/10+10)/60)+":"+(Math.round((raceGoalTime/10+10)%60)).toString().padStart(2,"0")+"/km. "+
-        "Installe ton allure cible à partir du km 2. La course se joue entre le km 7 et 10 — garde une réserve pour finir fort. "+
+        premierSplit.note+" jusqu'au km "+premierSplit.to+" — vise "+premierSplitStr+"/km. "+
+        dernierSplit.note+" à partir du km "+dernierSplit.from+". "+
         "Objectif mi-course : "+fmtTime(Math.round(raceGoalTime/2))+"."
       )
     )
@@ -3105,8 +3135,8 @@ function renderCourse() {
     el("div",{style:{marginTop:"8px"}}),
     infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
     (()=>{
-      if (today() < "2026-09-06") return null;
-      const existingResult = load("lk_race_result", null);
+      if (today() < DATE_COURSE_REFERENCE) return null;
+      const existingResult = load(clePourPlan("lk_race_result"), null);
       const inp2 = document.createElement("input");
       inp2.type="time"; inp2.step="1";
       inp2.style.cssText="flex:1;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:8px 12px;color:#f1f5f9;font-size:16px;";
@@ -3119,7 +3149,7 @@ function renderCourse() {
       btn2.style.cssText="background:#f97316;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
       btn2.addEventListener("click",()=>{
         const parts=inp2.value.split(":");
-        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save("lk_race_result",secs);render();}}
+        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
       });
       const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
       row2.appendChild(inp2); row2.appendChild(btn2);
@@ -3204,7 +3234,7 @@ function showSessionMenu(week, slotIdx) {
         const swapUid = swappedSessions[uid];
         delete swappedSessions[uid];
         delete swappedSessions[swapUid];
-        save("lk_swapped_sessions", swappedSessions);
+        save(clePourPlan("lk_swapped_sessions"), swappedSessions);
         gistSave(true);
         overlay.remove();
         render();
@@ -3227,7 +3257,7 @@ function showSessionMenu(week, slotIdx) {
       hideBtn.textContent = "Supprimer cette seance";
       hideBtn.addEventListener("click", () => {
         hiddenSessions[uid] = true;
-        save("lk_hidden_sessions", hiddenSessions);
+        save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
         gistSave(true);
         overlay.remove();
         render();
@@ -3244,7 +3274,7 @@ function showSessionMenu(week, slotIdx) {
       const conflict = !hiddenSessions[uid] && getEffectiveSession(week, slotIdx).type !== "REPOS";
       if (!conflict) {
         delete hiddenSessions[uid];
-        save("lk_hidden_sessions", hiddenSessions);
+        save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
         gistSave(true);
         render();
       } else {
@@ -3306,7 +3336,7 @@ function showMoveMenu(week, slotIdx) {
         swappedSessions[uidA] = uidB;
         swappedSessions[uidB] = uidA;
       }
-      save("lk_swapped_sessions", swappedSessions);
+      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3358,8 +3388,8 @@ function showRestoreMenu(week, slotIdx) {
       delete hiddenSessions[uidA];
       swappedSessions[uidA] = uidB;
       swappedSessions[uidB] = uidA;
-      save("lk_hidden_sessions", hiddenSessions);
-      save("lk_swapped_sessions", swappedSessions);
+      save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
+      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       gistSave(true);
       overlay.remove();
       render();
@@ -3402,7 +3432,7 @@ function exportPdfRecap() {
   doc.setFontSize(20); doc.setFont("helvetica","bold");
   doc.text("Run by Lea - Recap de preparation",M,14);
   doc.setFontSize(11); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,23); y=40;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}),M,23); y=40;
   doc.setTextColor(30,30,30);
   doc.setFontSize(13); doc.setFont("helvetica","bold");
   doc.text("Bilan global",M,y); y+=7;
@@ -3410,7 +3440,7 @@ function exportPdfRecap() {
   const nb1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const nb2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
   const nb3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const km1=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  const km1=Math.round(activitesDuPlan().reduce((acc,a)=>acc+a.distance,0)/100)/10;
   const pr=currentPred||predict10K();
   doc.text("Objectif : "+fmtTimeShort(raceGoalTime),M,y); y+=6;
   doc.text("Estimation : "+(pr.time?fmtTimeShort(pr.time):"N/A"),M,y); y+=6;
@@ -3460,7 +3490,7 @@ function exportPdfPlanVierge() {
   doc.setFontSize(18); doc.setFont("helvetica","bold");
   doc.text("Run by Lea - Plan d entrainement",M,13);
   doc.setFontSize(10); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 sept. 2026 - Objectif "+fmtTimeShort(raceGoalTime),M,22); y=36;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})+" - Objectif "+fmtTimeShort(raceGoalTime),M,22); y=36;
   PLAN.forEach(wk=>{
     if(y>255){doc.addPage();y=20;}
     const ph=phaseOf(wk.week);
@@ -3480,7 +3510,7 @@ function exportPdfPlanVierge() {
 }
 
 function exportPdfResultats() {
-  const raceRes=load("lk_race_result",null);
+  const raceRes=load(clePourPlan("lk_race_result"),null);
   if(!raceRes){alert("Saisis ton resultat dans onglet Course !");return;}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
@@ -3493,23 +3523,23 @@ function exportPdfResultats() {
   doc.setFontSize(22); doc.setFont("helvetica","bold");
   doc.text(achieved?"Objectif atteint !":close?"Tres belle course !":"Belle progression !",M,17);
   doc.setFontSize(12); doc.setFont("helvetica","normal");
-  doc.text("10 km Gem Aubagne - 6 septembre 2026",M,27); doc.text("Run by Lea",M,35); y=55;
+  doc.text(RACE_NAME+" - "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}),M,27); doc.text("Run by Lea",M,35); y=55;
   doc.setTextColor(30,30,30);
   doc.setFontSize(14); doc.setFont("helvetica","bold"); doc.text("Resultats",M,y); y+=8;
   doc.setFontSize(11); doc.setFont("helvetica","normal");
   doc.text("Objectif  : "+fmtTimeShort(raceGoalTime),M,y); y+=7;
   doc.text("Resultat  : "+fmtTimeShort(raceRes),M,y); y+=7;
-  const dvs=3021-raceRes;
-  doc.text("vs depart : "+(dvs>0?"-":"+")+fmtTimeShort(Math.abs(dvs))+" vs 50min21s",M,y); y+=7;
+  const dvs=BASE_TIME_REFERENCE-raceRes;
+  doc.text("vs depart : "+(dvs>0?"-":"+")+fmtTimeShort(Math.abs(dvs))+" vs "+fmtTimeShort(BASE_TIME_REFERENCE),M,y); y+=7;
   doc.text("vs objectif : "+(diff<=0?"-":"+")+fmtTimeShort(Math.abs(diff)),M,y); y+=14;
   doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.text("Preparation",M,y); y+=8;
   doc.setFontSize(10); doc.setFont("helvetica","normal");
   const n1=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const n2=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
   const n3=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
-  const km2=Math.round(stravaActivities.reduce((acc,a)=>acc+a.distance,0)/100)/10;
+  const km2=Math.round(activitesDuPlan().reduce((acc,a)=>acc+a.distance,0)/100)/10;
   doc.text(n1+" seances validees - "+n2+" adaptees - "+n3+" ratees",M,y); y+=6;
-  doc.text(km2+" km courus - 11 semaines",M,y);
+  doc.text(km2+" km courus - "+PLAN.length+" semaines",M,y);
   doc.save("RunByLea_Resultats.pdf");
 }
 
@@ -3604,7 +3634,9 @@ function renderSettings() {
         {label:"Taille", id:"inp-taille", type:"number", unit:"cm", val:runnerHeight||""},
         {label:"FC max", id:"inp-fcmax", type:"number", unit:"bpm", val:runnerFcMax||181},
         {label:"separator"},
-        {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(10000/raceGoalTime)+"/km", val:Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"), color:"#f97316"},
+        {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km", val: raceGoalTime >= 3600
+          ? Math.floor(raceGoalTime/3600)+":"+Math.floor((raceGoalTime%3600)/60).toString().padStart(2,"0")+":"+(raceGoalTime%60).toString().padStart(2,"0")
+          : Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"), color:"#f97316"},
         {label:"PPS", id:"pps-input", type:"text", unit:"", val:runnerPps||"", width:"160px"},
       ];
       rows.forEach((r,i)=>{
@@ -3659,8 +3691,11 @@ function renderSettings() {
               onClick:()=>{ localStorage.removeItem("lk_strava_activities"); localStorage.removeItem("lk_last_sync"); stravaActivities=[]; lastSyncTime=0; syncStrava(); }
             },"🗑️ Vider cache & forcer synchro complète"),
             el("button",{style:{background:"#a855f711",border:"1px solid #a855f733",borderRadius:"8px",padding:"8px",color:"#a855f7",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
-              onClick:()=>{ localStorage.removeItem("lk_pred_history"); predHistory=[]; rebuildPredHistory(); render(); }
+              onClick:()=>{ localStorage.removeItem(clePourPlan("lk_pred_history")); predHistory=[]; rebuildPredHistory(); render(); }
             },"🔄 Forcer recalcul de l\'historique"+(lastRebuildDate?" · dernier : "+lastRebuildDate:"")),
+            el("button",{style:{background:"#eab30811",border:"1px solid #eab30833",borderRadius:"8px",padding:"8px",color:"#eab308",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              onClick:()=>nettoyerNotesMeteoDupliquees()
+            },"🧹 Nettoyer les notes météo dupliquées"),
             el("button",{style:{background:"none",border:"none",color:"#e2e8f0",fontSize:"14px",cursor:"pointer",padding:"0"},
               onClick:()=>{ stravaToken=null;stravaRefresh=null;stravaExpires=0;stravaActivities=[];save("lk_strava_token",null);save("lk_strava_refresh",null);save("lk_strava_expires",0);save("lk_strava_activities",[]);render(); }
             },"🔓 Déconnecter Strava")
@@ -3889,7 +3924,14 @@ function renderSettings() {
     const fcmax = document.getElementById("inp-fcmax"); if(fcmax) { runnerFcMax=parseInt(fcmax.value)||181; save("lk_fc_max",runnerFcMax); }
     const pps = document.getElementById("pps-input"); if(pps) { runnerPps=pps.value.trim(); save("lk_pps",runnerPps); }
     const goal = document.getElementById("inp-goal"); if(goal) {
-      const parts=goal.value.split(":"); if(parts.length===2){const s=parseInt(parts[0])*60+parseInt(parts[1]); if(!isNaN(s)&&s>0){raceGoalTime=s;save("lk_race_goal",raceGoalTime);}}
+      // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
+      // correction que fmtTime/fmtTimeShort (cf. commentaire associé),
+      // pertinent pour un objectif Semi/Marathon qui dépasse l'heure.
+      const parts=goal.value.split(":").map(Number);
+      let s = null;
+      if (parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) s = parts[0]*60+parts[1];
+      else if (parts.length===3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) s = parts[0]*3600+parts[1]*60+parts[2];
+      if (s!==null && s>0) { raceGoalTime=s; save(clePourPlan("lk_race_goal"),raceGoalTime); }
     }
     gistSave(true);
     saveBtn.textContent = "✅ Paramètres enregistrés !";
@@ -3897,7 +3939,7 @@ function renderSettings() {
     render();
   });
 
-  const hasRes=!!load("lk_race_result",null);
+  const hasRes=!!load(clePourPlan("lk_race_result"),null);
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
     el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"8px"}},
@@ -3970,7 +4012,7 @@ let gistSaveTimer = null;
 async function gistSave(silent=false) {
   if (!githubToken) return;
   try {
-    const body = {description:"Plan 10K Laurent — backup", public:false,
+    const body = {description:"Plan Run by Léa — backup", public:false,
       files:{"plan10k_backup.json":{content:getBackupData()}}};
     let url="https://api.github.com/gists", method="POST";
     if (gistId) { url+="/"+gistId; method="PATCH"; }
@@ -4002,9 +4044,9 @@ async function gistLoad() {
     if (Object.keys(statuses).length===0&&notesList.length===0) {
       statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
       if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
-      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
-      save("lk_statuses",statuses); save("lk_notes",notesList);
+      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
+      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
+      save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
       gistMsg="☁️ Données restaurées"; render(); setTimeout(()=>{gistMsg="";render();},4000);
     }
   } catch(e) {
@@ -4023,17 +4065,17 @@ async function gistForceRestore() {
     const parsed = JSON.parse(raw);
     statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
     if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save("lk_pred_history",predHistory); }
-    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save("lk_session_notes",sessionNotes); }
-    if (parsed.raceGoalTime) { raceGoalTime=parsed.raceGoalTime; save("lk_race_goal",raceGoalTime); }
+    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
+    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
+    if (parsed.raceGoalTime) { raceGoalTime=parsed.raceGoalTime; save(clePourPlan("lk_race_goal"),raceGoalTime); }
     if (parsed.runnerWeight) { runnerWeight=parsed.runnerWeight; save("lk_weight",runnerWeight); }
     if (parsed.runnerHeight) { runnerHeight=parsed.runnerHeight; save("lk_height",runnerHeight); }
     if (parsed.runnerFcMax) { runnerFcMax=parsed.runnerFcMax; save("lk_fc_max",runnerFcMax); }
     if (parsed.runnerPps) { runnerPps=parsed.runnerPps; save("lk_pps",runnerPps); }
-    if (parsed.raceHoraires) { raceHoraires=parsed.raceHoraires; save("lk_race_horaires",raceHoraires); }
-    if (parsed.raceParcoursUrl) { raceParcoursUrl=parsed.raceParcoursUrl; save("lk_race_parcours",raceParcoursUrl); }
-    if (parsed.checklistItems) { checklistItems=parsed.checklistItems; save("lk_checklist",checklistItems); }
-    save("lk_statuses",statuses); save("lk_notes",notesList);
+    if (parsed.raceHoraires) { raceHoraires=parsed.raceHoraires; save(clePourPlan("lk_race_horaires"),raceHoraires); }
+    if (parsed.raceParcoursUrl) { raceParcoursUrl=parsed.raceParcoursUrl; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); }
+    if (parsed.checklistItems) { checklistItems=parsed.checklistItems; save(clePourPlan("lk_checklist"),checklistItems); }
+    save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
     gistMsg="✅ Restauré · "+(parsed.savedAt?new Date(parsed.savedAt).toLocaleDateString("fr-FR"):"");
     render(); setTimeout(()=>{gistMsg="";render();},4000);
   } catch(e) { gistMsg="❌ Erreur restauration"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
@@ -4192,7 +4234,18 @@ function validateReason(session, stravaRun) {
 }
 
 function matchActivitiesToPlan(activities) {
-  const runs = activities.filter(a=>a.type==="Run");
+  // Ne compare qu'aux activités depuis le début du plan actuellement affiché
+  // — même principe que le filtre déjà appliqué à predict10K()/
+  // predict10KAtDate (docs/v2-methodologie/convergence-v1-v2.md, section
+  // 7bis/7quater) : le cache stravaActivities est partagé entre tous les
+  // plans (volontairement, pour éviter de re-synchroniser Strava à chaque
+  // nouveau plan), donc sans ce filtre une activité liée à un plan
+  // précédent peut se retrouver comparée à tort à une séance du plan
+  // actuel qui tombe sur la même date calendaire.
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const runs = activities.filter(a =>
+    a.type==="Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
   ALL_SESSIONS.forEach(s => {
     if (s.type==="REPOS"||s.type==="RACE") return;
     const match = runs.find(r=>r.start_date_local?.slice(0,10)===s.date);
@@ -4203,7 +4256,7 @@ function matchActivitiesToPlan(activities) {
       }
     }
   });
-  save("lk_statuses",statuses);
+  save(clePourPlan("lk_statuses"),statuses);
 }
 
 // Auto-synchro Strava si token valide et dernière synchro > 1h
@@ -4368,8 +4421,14 @@ function render() {
 }
 
 // ── Vérification des fonctions critiques ────────────────────────────────────
+// Depuis l'encapsulation en IIFE async (section 7, sélection de plan), ces
+// fonctions ne sont plus sur window mais dans la portée locale de l'IIFE —
+// le check se fait donc directement par nom (eval prudent, seulement sur une
+// liste fixe de noms connus, jamais une entrée utilisateur).
 const CRITICAL_FNS = ['syncStrava','gistSave','gistLoad','predict10K','getEffortLaps','rebuildPredHistory','renderDashboard','renderWeeks','renderWeekDetail','el','badge'];
-const missingFns = CRITICAL_FNS.filter(fn => typeof window[fn] === 'undefined');
+const missingFns = CRITICAL_FNS.filter(fn => {
+  try { return typeof eval(fn) === 'undefined'; } catch { return true; }
+});
 if (missingFns.length > 0) {
   console.warn('⚠️ Fonctions manquantes:', missingFns.join(', '));
 }
@@ -4377,8 +4436,10 @@ if (missingFns.length > 0) {
 render();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load',()=>{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); });
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(()=>{}); });
 }
+
+})(); // fin de l'IIFE async qui attendait window.__PLAN_PRET__
 </script>
 </body>
 </html>
