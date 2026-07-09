@@ -2,7 +2,7 @@
 
 Document de suivi du chantier : faire produire par le moteur générique v2 (`plan-generator.js`) un plan aussi riche que le plan v1 actuel de Laurent (`const PLAN` codé en dur dans `public/index.html`), affiché via l'interface v1 (design conservé).
 
-**Contexte et décision de calendrier** (posée le 6 juillet 2026) : ce chantier est un investissement produit pour l'app finale commercialisée — le moteur v2 doit devenir l'unique source de vérité, quel que soit le profil/objectif de l'utilisateur, pas seulement celui de Laurent. **v1 reste l'outil de suivi quotidien réel jusqu'à Gem'Aubagne (6 septembre 2026)** ; ce chantier se construit en parallèle, sans urgence, et ne remplace v1 qu'après validation post-course.
+**Contexte et décision de calendrier** (posée le 6 juillet 2026, mise à jour le 7 juillet 2026) : ce chantier est un investissement produit pour l'app finale commercialisée — le moteur v2 doit devenir l'unique source de vérité, quel que soit le profil/objectif de l'utilisateur, pas seulement celui de Laurent. **Bascule effectuée le 7 juillet 2026 (commit `b4f16f1`)** : Laurent confirme préférer le nouveau plan v2 à son ancien plan 10K codé en dur, et ne pas vouloir garder l'historique de statuts de l'ancien plan — `public/index.html` sert maintenant directement le plan v2 (branché sur le moteur générique), l'ancien contenu (10K Gem'Aubagne codé en dur) n'est plus servi mais reste récupérable via l'historique git si besoin.
 
 ---
 
@@ -13,8 +13,8 @@ Document de suivi du chantier : faire produire par le moteur générique v2 (`pl
 | Écarts de contenu (2.1 à 2.7) | ✅ Tous implémentés et testés | Jalons de transition, notes pratiques, repères qualitatifs, cohérence semaine test, jour de course, météo — voir section 2 |
 | Désalignement des phases (section 3) | ✅ Tranché | v1 `affutage`→v2 `Specifique`, v1 `pic`→v2 `Affutage` ; pas de renommage du moteur, juste un repère de correspondance |
 | Étape 1 (générer un plan proche) | ✅ Validée sur les grandes masses | Pas de fidélité littérale jour par jour — décision assumée |
-| Étape 2 (adapter l'affichage v1) | 🔶 Bien avancée, sur copie de travail | `index-v2-preview.html` + `v1-bridge.js` fonctionnels ; prédiction de performance corrigée en plusieurs itérations (voir section 6) ; `index.html` réel non touché |
-| Étape 3 (migrer les statuts existants) | ⬜ Non commencée | `lk_statuses`/`hiddenSessions`/`swappedSessions` → `plan.statuses` |
+| Étape 2 (adapter l'affichage v1) | ✅ Basculé (commit `b4f16f1`) | `index.html` sert directement le plan v2 — plus de copie de travail séparée |
+| Étape 3 (migrer les statuts existants) | ❌ Sans objet | Laurent a choisi de ne pas garder l'historique de l'ancien plan lors de la bascule |
 | Étape 4 (brancher l'adaptation) | ⬜ Non commencée | `analyserAdaptations`/`appliquerAdaptations` dans l'interface v1 |
 | Sélection/génération de plan depuis v1 (section 7) | ⬜ Réflexion posée, rien codé | Réutiliser le wizard + le mécanisme multi-plans déjà existants en v2 (Gist), plutôt que dupliquer |
 | Variables non indexées sur le plan (section 7bis) | ✅ Implémenté | `RACE_NAME`, `PHASES`, `FC_MAX`, `BASE_TIME` lues depuis le plan chargé, avec repli sur les valeurs historiques |
@@ -388,6 +388,25 @@ Tous doivent passer sans "ÉCHEC" dans la sortie. Si un test échoue après une 
 
 **Test visuel du wizard/génération v2** : `https://plan-10k-alpha.vercel.app/v2`
 
-**Test visuel de la preview v1 branchée sur v2** : `https://plan-10k-alpha.vercel.app/preview/index.html` — vérifier notamment que la section "Sources" de la prédiction affiche des projections cohérentes entre elles (une allure plus rapide doit donner une meilleure projection, jamais l'inverse — sinon, symptôme du bug de détection VMA documenté en section 6).
+**Test visuel de l'application principale (v2, depuis la bascule du 7 juillet 2026)** : `https://plan-10k-alpha.vercel.app/` — vérifier notamment que la section "Sources" de la prédiction affiche des projections cohérentes entre elles (une allure plus rapide doit donner une meilleure projection, jamais l'inverse — sinon, symptôme du bug de détection VMA documenté en section 6).
 
-**Ne jamais tester sur** `https://plan-10k-alpha.vercel.app/` (= `index.html`, l'outil réel de Laurent, non concerné par ce chantier tant qu'il n'est pas explicitement validé et basculé).
+## 11. Bascule officielle du 7 juillet 2026 (commit `b4f16f1`)
+
+**Décision de Laurent** : après une journée de tests approfondis sur `index-v2-preview.html`/`preview/index.html` (nombreux bugs trouvés et corrigés, cf. sections 6/7bis), Laurent confirme préférer le nouveau plan v2 (Semi notamment) à son ancien plan 10K codé en dur, et **ne souhaite pas conserver l'historique de statuts** de l'ancien plan v1. Ce choix élimine le besoin de l'étape 3 (migration des statuts), qui devient sans objet.
+
+**Ce qui a changé concrètement** :
+- `public/index.html` remplacé par l'ancien contenu de `preview/index.html` (déplacement `git mv`, historique git préservé) — sert maintenant directement un plan généré par le moteur v2, avec le sélecteur multi-plans, le filtrage par date, toutes les corrections de la section 7bis
+- `public/manifest.json`/`public/sw.js` mis à jour (nom "Run by Léa" sans "preview", `start_url`/`scope` sur `/`, cache incrémenté pour forcer le rafraîchissement)
+- `public/preview/` (dossier entier) supprimé — n'existe plus
+- Tous les liens internes (bouton "Terminer" du wizard, enregistrement du service worker) mis à jour pour pointer vers `/` au lieu de `/preview/index.html`
+
+**Ce qui n'a pas changé** : le moteur (`plan-generator.js`), le wizard v2 (`v2/index.html`), les modules (`v1-bridge.js`, `gist-sync.js`, `strava.js`, `weather.js`) — seule l'interface principale a changé de source.
+
+**Récupération possible de l'ancien plan v1** : le contenu original de `index.html` (plan 10K Gem'Aubagne codé en dur) reste consultable via `git show c72602b:public/index.html` (dernier commit avant la bascule) ou tout commit antérieur — pas supprimé de l'historique, juste plus servi en production.
+
+**Ce qui reste ouvert après la bascule** :
+- Étape 4 (brancher `analyserAdaptations`/`appliquerAdaptations` dans l'interface) — toujours non commencée
+- v2.0 streams (limite VMA très fractionnées) — toujours non commencé
+- Nettoyage des logs de debug dans `weather.js` (jamais retirés malgré un commentaire de commit le prévoyant)
+- **Découverte non résolue** : la preview avait en fait son propre mécanisme météo historique (coordonnées Toulon codées en dur, appel Open-Meteo séparé), distinct de `weather.js`/`verifierMeteoPourSeance` (celui documenté en section 2.2, qui ne vit que dans le wizard v2). Les deux systèmes coexistent sans lien entre eux dans `index.html` maintenant — à réconcilier dans une prochaine session
+- Recherche exhaustive de valeurs codées en dur : plus de 40 résidus trouvés et corrigés le 7 juillet 2026 sur plusieurs passes successives (section 7bis) — aucune garantie qu'il n'en reste aucun, chaque nouveau test en révèle parfois de nouveaux
