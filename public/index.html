@@ -1491,6 +1491,58 @@ function renderDashboard() {
   const missed=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
 
+  // ── Proposition d'adaptation dynamique (étape 4, doc convergence) ────────
+  // Décidé avec Laurent le 8 juillet 2026 : détection AUTOMATIQUE (comme le
+  // statut lui-même), mais application seulement sur confirmation explicite
+  // — pas d'automatisme silencieux sur une vraie modification du plan.
+  // "Ignorer" ne mémorise le refus que pour CETTE semaine précise (pas
+  // définitif pour tout le plan) — si une nouvelle semaine tombe plus tard
+  // dans la même situation, une nouvelle proposition apparaît normalement.
+  const adaptationEl = (() => {
+    if (!window.__PLAN_BRUT__) return null;
+    // synchronise les statuts (variable séparée côté index.html, préfixée
+    // par plan) sur l'objet plan brut avant d'appeler analyserAdaptations,
+    // qui lit plan.statuses directement
+    window.__PLAN_BRUT__.statuses = statuses;
+    const { semainesAAdapter } = analyserAdaptations(window.__PLAN_BRUT__);
+    const semainesIgnorees = load(clePourPlan("lk_adaptations_ignorees"), []);
+    const semaineNumsAProposer = [...semainesAAdapter.keys()].filter(n => !semainesIgnorees.includes(n));
+    if (semaineNumsAProposer.length === 0) return null;
+    const semaineNum = semaineNumsAProposer[0]; // une seule proposition à la fois, la plus proche
+
+    return el("div",{style:{background:"#a855f711",border:"1px solid #a855f733",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
+      el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}},
+        el("span",{style:{fontSize:"20px"}},"🔄"),
+        el("span",{style:{color:"#a855f7",fontSize:"15px",fontWeight:"700"}},"Adaptation suggérée")
+      ),
+      el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"12px",lineHeight:"1.5"}},
+        "Plusieurs séances difficiles récemment — la semaine "+semaineNum+" pourrait être allégée pour mieux récupérer."),
+      el("div",{style:{display:"flex",gap:"8px"}},
+        el("button",{style:{flex:"1",background:"#a855f7",border:"none",borderRadius:"8px",padding:"9px",color:"#fff",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
+          feedback:true,
+          onClick:()=>{
+            appliquerAdaptations(window.__PLAN_BRUT__);
+            window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
+            PLAN = window.__PLAN_GENERE__;
+            ALL_SESSIONS = recalculerAllSessions();
+            if (getGithubToken && getGithubToken() && sauvegarderPlan) {
+              sauvegarderPlan(window.__PLAN_BRUT__).catch(e => console.warn("Adaptation appliquée localement, sauvegarde échouée :", e.message));
+            }
+            render();
+          }
+        },"Appliquer"),
+        el("button",{style:{flex:"1",background:"none",border:"1px solid #2e3347",borderRadius:"8px",padding:"9px",color:"#94a3b8",fontSize:"14px",fontWeight:"600",cursor:"pointer"},
+          feedback:true,
+          onClick:()=>{
+            const ignorees = load(clePourPlan("lk_adaptations_ignorees"), []);
+            save(clePourPlan("lk_adaptations_ignorees"), [...ignorees, semaineNum]);
+            render();
+          }
+        },"Ignorer")
+      )
+    );
+  })();
+
   // Banniere post-course
   const raceResult = load(clePourPlan("lk_race_result"), null);
   if (today() >= DATE_COURSE_REFERENCE && raceResult) {
@@ -2192,7 +2244,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPred,todayEl||"",phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,adaptationEl,heroPred,todayEl||"",phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
