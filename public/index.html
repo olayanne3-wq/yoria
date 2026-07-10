@@ -2329,7 +2329,7 @@ function renderWeekDetail(weekNum) {
       SOPTS.forEach(opt=>{
         const cur=statuses[uid]||"—";
         const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
-        b.addEventListener("click",()=>{ statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true); render(); });
+        b.addEventListener("click",avecRetourTactile(()=>{ statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true); render(); }));
         statusRow.appendChild(b);
       });
       card.appendChild(statusRow);
@@ -3793,19 +3793,24 @@ function renderSettings() {
           syncMsg?el("div",{style:{fontSize:"14px",color:syncMsg.startsWith("✅")?"#22c55e":"#e2e8f0",marginBottom:"10px",padding:"8px 10px",background:"#232738",borderRadius:"8px"}},syncMsg):null,
           el("button",{
             style:{width:"100%",background:syncing?"#1a1d27":"#fc4c0222",border:"1px solid #fc4c0255",borderRadius:"10px",padding:"11px",cursor:"pointer",color:"#fc4c02",fontWeight:"700",fontSize:"15px",marginBottom:"8px"},
+            feedback:true,
             onClick:()=>{ if(!syncing) syncStrava(); }
           },syncing?"⏳ "+syncMsg:"🔄 Synchroniser avec Strava"),
           el("div",{style:{marginTop:"12px",paddingTop:"12px",borderTop:"1px solid #2e3347",display:"flex",flexDirection:"column",gap:"8px"}},
             el("button",{style:{background:"#60a5fa11",border:"1px solid #60a5fa33",borderRadius:"8px",padding:"8px",color:"#60a5fa",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              feedback:true,
               onClick:()=>{ localStorage.removeItem("lk_strava_activities"); localStorage.removeItem("lk_last_sync"); stravaActivities=[]; lastSyncTime=0; syncStrava(); }
             },"🗑️ Vider cache & forcer synchro complète"),
             el("button",{style:{background:"#a855f711",border:"1px solid #a855f733",borderRadius:"8px",padding:"8px",color:"#a855f7",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              feedback:true,
               onClick:()=>{ localStorage.removeItem(clePourPlan("lk_pred_history")); predHistory=[]; rebuildPredHistory(); render(); }
             },"🔄 Forcer recalcul de l\'historique"+(lastRebuildDate?" · dernier : "+lastRebuildDate:"")),
             el("button",{style:{background:"#eab30811",border:"1px solid #eab30833",borderRadius:"8px",padding:"8px",color:"#eab308",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              feedback:true,
               onClick:()=>nettoyerNotesMeteoDupliquees()
             },"🧹 Nettoyer les notes météo dupliquées"),
             el("button",{style:{background:"#60a5fa11",border:"1px solid #60a5fa33",borderRadius:"8px",padding:"8px",color:"#60a5fa",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              feedback:true,
               onClick:()=>regenererStructuresIntervallesUI()
             },"📱 Ajouter les structures à programmer (rétroactif)"),
             el("button",{style:{background:"none",border:"none",color:"#e2e8f0",fontSize:"14px",cursor:"pointer",padding:"0"},
@@ -4029,7 +4034,7 @@ function renderSettings() {
   const saveBtn = document.createElement("button");
   saveBtn.style.cssText = "width:100%;background:linear-gradient(135deg,#f97316,#ea6b0e);border:none;border-radius:12px;padding:14px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:24px;";
   saveBtn.textContent = "💾 Enregistrer les paramètres";
-  saveBtn.addEventListener("click", ()=>{
+  saveBtn.addEventListener("click", avecRetourTactile(()=>{
     // Lire toutes les valeurs des inputs
     const poids = document.getElementById("inp-poids"); if(poids) { runnerWeight=parseInt(poids.value)||null; save("lk_weight",runnerWeight); }
     const taille = document.getElementById("inp-taille"); if(taille) { runnerHeight=parseInt(taille.value)||null; save("lk_height",runnerHeight); }
@@ -4049,7 +4054,7 @@ function renderSettings() {
     saveBtn.textContent = "✅ Paramètres enregistrés !";
     setTimeout(()=>{ saveBtn.textContent = "💾 Enregistrer les paramètres"; }, 2000);
     render();
-  });
+  }));
 
   const hasRes=!!load(clePourPlan("lk_race_result"),null);
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
@@ -4392,13 +4397,14 @@ function el(tag, attrs, ...children) {
   if (attrs) Object.entries(attrs).forEach(([k,v]) => {
     if (k==="style" && typeof v==="object") Object.assign(e.style, v);
     else if (k==="class") e.className = v;
-    else if (k==="onClick") e.addEventListener("click", v);
+    else if (k==="onClick") e.addEventListener("click", attrs.feedback ? avecRetourTactile(v) : v);
     else if (k==="onChange") e.addEventListener("change", v);
     else if (k==="type") e.type = v;
     else if (k==="placeholder") e.placeholder = v;
     else if (k==="value") e.value = v;
     else if (k==="href") e.href = v;
     else if (k==="target") e.target = v;
+    else if (k==="feedback") return; // consommé plus haut, pas un vrai attribut DOM
     else e.setAttribute(k, v);
   });
   children.flat().forEach(c => {
@@ -4406,6 +4412,27 @@ function el(tag, attrs, ...children) {
     e.appendChild(typeof c==="string" ? document.createTextNode(c) : c);
   });
   return e;
+}
+
+// Retour tactile/visuel au clic (demandé par Laurent le 8 juillet 2026) —
+// pour les boutons d'action importants (statuts, sauvegarde, boutons de
+// rattrapage) : une brève vibration (navigator.vibrate, non supportée sur
+// iOS Safari mais l'appel échoue silencieusement dans ce cas, pas de risque
+// à l'essayer) + un effet visuel (échelle réduite brièvement) avant
+// d'exécuter le vrai handler. Opt-in via l'attribut feedback: true de el(),
+// pas systématique sur tous les boutons (décision explicite de Laurent :
+// seulement les actions importantes, pas toute l'app).
+function avecRetourTactile(handler) {
+  return function(e) {
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+    const cible = e.currentTarget;
+    if (cible?.style) {
+      cible.style.transform = "scale(0.96)";
+      cible.style.transition = "transform 0.1s ease";
+      setTimeout(() => { cible.style.transform = ""; }, 120);
+    }
+    return handler(e);
+  };
 }
 
 function svgCircle(pct, size, strokeW, color, inner) {
