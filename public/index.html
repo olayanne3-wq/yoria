@@ -932,17 +932,11 @@ function getLapsAffichage(activity, structureIntervalles) {
         curseur++;
         const derniereRepDeLaSerie = rep === repsParSerie - 1;
         const derniereSerie = serie === nbSeries - 1;
-        // Après le dernier effort d'une série (sauf la toute dernière
-        // série du plan), un seul lap de récup suit — la récup LONGUE
-        // inter-séries, qui remplace la récup courte normale (pas les
-        // deux à la suite). Après un effort "normal" (pas le dernier de
-        // sa série), la récup courte suit, un seul lap aussi. Dans les
-        // deux cas, un seul lap de récup à sauter — sauf après la toute
-        // dernière répétition du plan entier, où il n'y a plus de récup
-        // du tout à sauter (le prochain lap est déjà le retour au calme,
-        // déjà exclu par slice(1,-2)).
         const dernierEffortDuPlan = derniereRepDeLaSerie && derniereSerie;
-        if (!dernierEffortDuPlan) curseur++; // saute le lap de récup (courte ou longue, un seul dans les deux cas)
+        if (!dernierEffortDuPlan) {
+          curseur++; // saute la récup courte normale (toujours présente après chaque répétition, y compris la dernière de la série)
+          if (derniereRepDeLaSerie) curseur++; // fin de série (pas la dernière du plan) : un lap de récup LONGUE s'ajoute EN PLUS de la récup courte, pas à sa place
+        }
       }
     }
     return efforts;
