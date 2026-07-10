@@ -2100,17 +2100,35 @@
       // avec un message d'erreur visible (même mécanisme que le vrai
       // bouton "Sauvegarder").
       if (dernierPlanGenere && getGithubToken()) {
+        // Indicateur visuel pendant la sauvegarde (appel réseau, latence
+        // perceptible signalée par Laurent le 8 juillet 2026) — le bouton
+        // change temporairement de texte pour rassurer que le clic a bien
+        // été pris en compte, plutôt qu'une attente silencieuse.
+        const btnTerminer = document.getElementById('nextBtn');
+        const texteOriginal = btnTerminer?.textContent;
+        if (btnTerminer) btnTerminer.textContent = 'Sauvegarde…';
         try {
           await sauvegarderPlan(dernierPlanGenere);
         } catch (e) {
+          // Bug trouvé le 8 juillet 2026 : le message d'erreur s'écrivait
+          // bien dans sauvegardeMsg, mais ce bloc (blocSauvegarde) reste
+          // masqué (display:none) tant que l'utilisateur n'a pas cliqué sur
+          // "☁️ Sauvegarder" — jamais le cas en cliquant directement sur
+          // "Terminer". Le message existait dans le DOM sans être visible
+          // à l'écran. Corrigé : le bloc est maintenant explicitement
+          // déplié en même temps que le message est écrit.
+          const blocSauvegarde = document.getElementById('blocSauvegarde');
+          if (blocSauvegarde) blocSauvegarde.style.display = 'block';
           const msgEl = document.getElementById('sauvegardeMsg');
           if (msgEl) {
             msgEl.textContent = '❌ ' + e.message;
             msgEl.style.color = 'var(--signal)';
+            msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           } else {
             alert('Impossible de sauvegarder le plan avant de continuer :\n\n' + e.message);
           }
           console.error('Sauvegarde automatique avant redirection échouée :', e.message);
+          if (btnTerminer) btnTerminer.textContent = texteOriginal;
           return; // ne redirige pas : rester sur le wizard pour que Laurent voie l'erreur et puisse agir
         }
       }
