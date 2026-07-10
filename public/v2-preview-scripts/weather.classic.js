@@ -21,7 +21,7 @@ const CACHE_KEY_PREFIX = 'v2_weather_cache_';
 // Note statique de repli si la prévision n'est pas disponible (ex. date
 // hors de la fenêtre J+7 d'Open-Meteo, ou géolocalisation refusée) — pas de
 // blocage, juste pas d'enrichissement météo pour cette séance.
-export const NOTE_CHALEUR = "Chaleur annoncée pour demain — ralentis l'allure si besoin, l'important est de finir la séance, pas de tenir un chrono.";
+const NOTE_CHALEUR = "Chaleur annoncée pour demain — ralentis l'allure si besoin, l'important est de finir la séance, pas de tenir un chrono.";
 
 /**
  * Récupère la prévision météo pour une date et des coordonnées données, en
@@ -30,7 +30,7 @@ export const NOTE_CHALEUR = "Chaleur annoncée pour demain — ralentis l'allure
  * storage fourni pour éviter des appels répétés si la fonction est appelée
  * plusieurs fois pour la même date (ex. plusieurs séances le même jour).
  */
-export async function recupererPrevisionMeteo({ latitude, longitude, date }, storage = localStorage) {
+async function recupererPrevisionMeteo({ latitude, longitude, date }, storage = localStorage) {
   const cleCache = `${CACHE_KEY_PREFIX}${date}`;
   const cache = storage.getItem(cleCache);
   if (cache) {
@@ -60,7 +60,7 @@ export async function recupererPrevisionMeteo({ latitude, longitude, date }, sto
  * pour rester cohérent avec les autres fonctions injecterXxx du moteur qui
  * mutent en place).
  */
-export function enrichirSeanceAvecMeteo(seance, prevision) {
+function enrichirSeanceAvecMeteo(seance, prevision) {
   if (!seance || !seance.contenu) return seance;
   if (!prevision?.disponible || !prevision.alerteChaleur) return seance;
   // Idempotence : ne pas ré-ajouter la note si elle est déjà présente dans
@@ -82,7 +82,7 @@ export function enrichirSeanceAvecMeteo(seance, prevision) {
  * au chargement de l'app, qui compare la date du jour à celle des séances à
  * venir).
  */
-export async function verifierMeteoPourSeance(seance, date, storage = localStorage) {
+async function verifierMeteoPourSeance(seance, date, storage = localStorage) {
   if (!('geolocation' in navigator)) return seance;
 
   return new Promise((resolve) => {

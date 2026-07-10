@@ -1406,47 +1406,14 @@
     warnDiv.innerHTML = plan.warnings.map(w =>
       `<div class="flag" style="margin-top:10px;"><span class="ico">⚠️</span><span>${w.message}</span></div>`
     ).join('') || '<div class="flag" style="margin-top:10px;"><span class="ico">✅</span><span>Aucun avertissement.</span></div>';
-
-    verifierMeteoSeanceDemain(plan);
   }
 
-  // Notes météo dynamiques (doc convergence-v1-v2.md, 2.2) — vérifie si une
-  // séance est prévue demain, et si oui déclenche la prévision météo pour
-  // l'enrichir. Appelé à chaque affichage d'un plan (renderResults), pas
-  // seulement au chargement de la page, pour couvrir aussi la génération/
-  // régénération/chargement d'un plan existant.
-  async function verifierMeteoSeanceDemain(plan) {
-    if (!plan.dateDebut) return;
-    const debut = new Date(plan.dateDebut + 'T00:00:00Z');
-    // Calcul de "demain" en UTC, cohérent avec le calcul de dateSeance
-    // ci-dessous — mélanger un Date en fuseau local (new Date() puis
-    // toISOString()) avec un calcul en UTC pur créait un décalage possible
-    // d'un jour selon l'heure et le fuseau de l'utilisateur.
-    const aujourdhui = new Date();
-    const demain = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + 1));
-    const demainStr = demain.toISOString().slice(0, 10);
-    console.log('[météo] Recherche d\'une séance le', demainStr, '(dateDebut du plan:', plan.dateDebut, ')');
-
-    for (const semaine of plan.semaines) {
-      for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
-        const dateSeance = new Date(debut);
-        dateSeance.setUTCDate(debut.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
-        const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
-
-        if (dateSeanceStr === demainStr && seance.contenu) {
-          console.log('[météo] Séance trouvée pour demain, appel de verifierMeteoPourSeance...');
-          await Engine.verifierMeteoPourSeance(seance, demainStr);
-          console.log('[météo] Contenu après vérification :', seance.contenu);
-          // Rafraîchit l'affichage pour que la note météo (si ajoutée)
-          // soit visible immédiatement, sans attendre une navigation
-          rafraichirPlanComplet();
-          return; // une seule séance concernée par jour dans l'immense
-          // majorité des cas — pas la peine de continuer à parcourir
-        }
-      }
-    }
-    console.log('[météo] Aucune séance ne tombe demain dans ce plan.');
-  }
+  // Notes météo dynamiques (doc convergence-v1-v2.md, section 2.2) —
+  // mécanisme déplacé vers index.html le 8 juillet 2026 (l'app principale
+  // utilisée au quotidien par Laurent, pas le wizard consulté seulement
+  // occasionnellement). Le module Engine.verifierMeteoPourSeance() (weather.js)
+  // reste disponible ici si besoin futur, juste plus appelé automatiquement
+  // depuis ce fichier.
 
   const DAY_NAMES_COURT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 

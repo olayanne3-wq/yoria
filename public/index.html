@@ -42,6 +42,7 @@ input[type=text], input[type=number], input[type=password] {
 <script src="/v2-preview-scripts/plan-generator.classic.js"></script>
 <script src="/v2-preview-scripts/v1-bridge.classic.js"></script>
 <script src="/v2-preview-scripts/gist-sync.classic.js"></script>
+<script src="/v2-preview-scripts/weather.classic.js"></script>
 <script>
   // Charge (ou génère par défaut) le plan à afficher — chantier convergence
   // v1/v2, section 7 (sélection de plan depuis v1). Async car chargerPlans()
@@ -318,6 +319,52 @@ async function fetchWeather() {
     console.warn("Météo indisponible:", e.message);
   }
 }
+
+// Notes météo dynamiques pour demain (doc convergence-v1-v2.md, section 2.2)
+// — déplacée depuis le wizard v2 le 8 juillet 2026 : elle n'y était appelée
+// qu'à chaque affichage du récap DANS LE WIZARD (renderResults()), jamais
+// depuis l'app principale que Laurent utilise vraiment au quotidien — la
+// note de chaleur "pour demain" ne se mettait donc à jour que si Laurent
+// retournait dans le wizard, jamais en usage normal. Système distinct de
+// fetchWeather()/fetchHistoricalWeather() ci-dessus (météo ACTUELLE/PASSÉE,
+// coordonnées fixes ou GPS des activités Strava) : celui-ci porte sur une
+// PRÉVISION FUTURE (demain), avec géolocalisation dynamique du navigateur —
+// vérifie si une séance est prévue demain, et si oui déclenche la
+// prévision météo pour l'enrichir d'une note de chaleur si besoin.
+async function verifierMeteoSeanceDemain() {
+  const plan = window.__PLAN_BRUT__;
+  if (!plan?.dateDebut) return;
+  const debut = new Date(plan.dateDebut + 'T00:00:00Z');
+  // Calcul de "demain" en UTC, cohérent avec le calcul de dateSeance
+  // ci-dessous — mélanger un Date en fuseau local avec un calcul en UTC pur
+  // créait un décalage possible d'un jour selon l'heure et le fuseau de
+  // l'utilisateur (bug déjà trouvé et corrigé côté wizard, cf. commit
+  // cc03fc4, reproduit ici pour la même raison).
+  const aujourdhui = new Date();
+  const demain = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + 1));
+  const demainStr = demain.toISOString().slice(0, 10);
+
+  for (const semaine of plan.semaines) {
+    for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
+      const dateSeance = new Date(debut);
+      dateSeance.setUTCDate(debut.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
+      const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
+
+      if (dateSeanceStr === demainStr && seance.contenu) {
+        await verifierMeteoPourSeance(seance, demainStr);
+        // Re-traduit le plan brut (potentiellement enrichi d'une note) vers
+        // le format v1 affiché, et rafraîchit l'affichage immédiatement
+        window.__PLAN_GENERE__ = traduirePlanVersFormatV1(plan);
+        PLAN = window.__PLAN_GENERE__;
+        ALL_SESSIONS = recalculerAllSessions();
+        render();
+        return; // une seule séance concernée par jour dans l'immense
+        // majorité des cas — pas la peine de continuer à parcourir
+      }
+    }
+  }
+}
+verifierMeteoSeanceDemain();
 fetchWeather();
 setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
 
