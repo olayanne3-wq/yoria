@@ -1217,20 +1217,30 @@ function predict10K() {
   // Pour un type de séance, calcule la vitesse moyenne pondérée par la durée
   // totale d\'effort de chaque séance (séances plus longues = plus de poids)
   function weightedAvgByEffortDuration(sessionType, factor) {
-    // Une activité "appartient" au type sessionType si elle contient des
-    // laps dont l'allure correspond à la cible générique de ce type précis
-    // — indépendant de ce que le plan prévoyait ce jour-là (cf. commentaire
-    // dans getEffortLaps). Le plan reste utilisé comme affinage à
-    // l'intérieur de getEffortLaps quand une correspondance de date existe,
-    // mais ne conditionne plus la sélection des activités analysées ici.
-    // Une activité "appartient" au type sessionType si detecterTypeEffort
-    // (même logique que dans getEffortLaps, cf. plus haut) retient
-    // précisément ce type comme la cible la plus proche — pas seulement
-    // "dans la tolérance ±15%", qui se chevauche entre types voisins (bug
-    // trouvé le 6 juillet 2026 : une séance SPEC à 4'49/km pouvait passer le
-    // test de tolérance VMA, qui vise 4'10/km, et être comptée deux fois).
+    // Une activité "appartient" au type sessionType selon deux méthodes,
+    // par ordre de priorité :
+    // 1. Si une séance du plan existe à cette date avec structureIntervalles
+    //    (structure programmée fidèlement sur la montre, section 2.8 du doc
+    //    de convergence) ET que son type correspond à sessionType : source
+    //    de vérité fiable, pas besoin de deviner par tolérance de vitesse.
+    //    Ajouté le 8 juillet 2026 : Laurent signale qu'une séance VMA ne se
+    //    reflétait plus du tout dans l'estimation — la détection par
+    //    detecterTypeEffort() recevait les laps de récup mélangés aux
+    //    efforts (même défaut que celui déjà corrigé pour l'affichage,
+    //    getLapsAffichage), faisant échouer la reconnaissance du type.
+    // 2. Sinon (pas de structure pour cette date, ancien plan), repli sur
+    //    l'ancienne détection par tolérance de vitesse (detecterTypeEffort),
+    //    indépendante de ce que le plan prévoyait ce jour-là — cf.
+    //    commentaire dans getEffortLaps. Bug trouvé le 6 juillet 2026 : une
+    //    séance SPEC à 4'49/km pouvait passer le test de tolérance VMA, qui
+    //    vise 4'10/km, et être comptée deux fois — corrigé en retenant
+    //    uniquement le type le plus proche, pas "dans la tolérance".
     const sessionRuns = SESSION_TARGETS[sessionType] ? runs.filter(r => {
       if (!r.laps || r.laps.length < 4) return false;
+      const date = r.start_date_local?.slice(0,10);
+      const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+      if (planSess?.structureIntervalles && planSess.type === sessionType) return true;
+      if (planSess?.structureIntervalles) return false; // structure connue mais pour un AUTRE type : pas de repli sur la détection par tolérance, qui pourrait se tromper
       const middle = r.laps.slice(1, -2);
       if (!middle.length) return false;
       const detection = detecterTypeEffort(middle);
@@ -1243,7 +1253,9 @@ function predict10K() {
     let allLaps = [];
 
     sessionRuns.forEach(r => {
-      const laps = getEffortLaps(r);
+      const date = r.start_date_local?.slice(0,10);
+      const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+      const laps = getLapsAffichage(r, planSess?.structureIntervalles);
       if (!laps.length) return;
       const effortDuration = laps.reduce((s,l) => s + l.distance / l.average_speed, 0);
       const avgSpeed = laps.reduce((s,l) => s + l.average_speed, 0) / laps.length;
