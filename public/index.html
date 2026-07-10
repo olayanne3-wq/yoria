@@ -1692,6 +1692,7 @@ function renderDashboard() {
           ) : null,
           s.notes ? el("div",{style:{color:"#60a5facc",fontSize:"14px",fontStyle:"italic",marginBottom:"8px"}},"💡 "+s.notes) : null,
           s.structureIntervalles?renderBoutonStructureAProgrammer(s.structureIntervalles):null,
+          !isRest?renderStatusRow(uid2):null,
           !isRest ? coachEl : null,
           // Bloc détail repliable après le coach
           (()=>{
@@ -2174,6 +2175,31 @@ function renderBoutonStructureAProgrammer(structure) {
   return progWrapper;
 }
 
+// Rangée de boutons de statut (✅/❌/⚠️/😴), réutilisable — extraite le
+// 8 juillet 2026 pour aussi l'utiliser sur la carte "Aujourd'hui" du
+// dashboard (Laurent signale qu'il fallait aller dans le détail de semaine
+// juste pour valider la séance du jour, pourtant déjà affichée).
+function renderStatusRow(uid) {
+  const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap",marginTop:"4px"}});
+  SOPTS.forEach(opt=>{
+    const cur=statuses[uid]||"—";
+    const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
+    b.addEventListener("click",avecRetourTactile(()=>{
+      statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true);
+      // Délai avant de refermer la carte (isDoneSession replie
+      // automatiquement les détails) quand on vient de marquer ✅/⚠️ —
+      // laisse le temps de voir le retour tactile/visuel du clic avant
+      // que la carte ne se réduise (demandé par Laurent le 8 juillet
+      // 2026 : la fermeture immédiate donnait l'impression que le clic
+      // n'avait pas été pris en compte).
+      if (opt==="✅"||opt==="⚠️") { setTimeout(render, 2500); }
+      else { render(); }
+    }));
+    statusRow.appendChild(b);
+  });
+  return statusRow;
+}
+
 function renderWeekDetail(weekNum) {
   const week=PLAN.find(w=>w.week===weekNum);
   if (!week) return el("div",{},"—");
@@ -2325,13 +2351,7 @@ function renderWeekDetail(weekNum) {
           fontSize:"13px"
         }}, (statuses[uid]==="❌"?"❌ ":"⚠️ ")+reason));
       }
-      const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap",marginTop:"4px"}});
-      SOPTS.forEach(opt=>{
-        const cur=statuses[uid]||"—";
-        const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
-        b.addEventListener("click",avecRetourTactile(()=>{ statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true); render(); }));
-        statusRow.appendChild(b);
-      });
+      const statusRow=renderStatusRow(uid);
       card.appendChild(statusRow);
       const noteInput=el("input",{type:"text",placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"#0f1117",border:"1px solid #2e3347",borderRadius:"8px",padding:"7px 10px",color:"#f1f5f9",fontSize:"14px",outline:"none",width:"100%"}});
       noteInput.value=sessionNotes[uid]||"";
@@ -4424,7 +4444,7 @@ function el(tag, attrs, ...children) {
 // seulement les actions importantes, pas toute l'app).
 function avecRetourTactile(handler) {
   return function(e) {
-    if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+    if (navigator.vibrate) { try { navigator.vibrate(50); } catch {} }
     const cible = e.currentTarget;
     if (cible?.style) {
       cible.style.transform = "scale(0.96)";
