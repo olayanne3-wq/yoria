@@ -898,6 +898,30 @@ function getEffortLaps(activity) {
   return withSpeed.filter(l => effortSet.has(l.lap_index || l.id));
 }
 
+// Laps à utiliser pour L'AFFICHAGE de suivi (pas la prédiction de
+// performance) — distinct de getEffortLaps() ci-dessus. Bug trouvé le
+// 8 juillet 2026 : Laurent programme fidèlement ses séances sur sa montre
+// (structureIntervalles reflète exactement ce qui a été programmé), donc
+// TOUS les laps entre échauffement et retour au calme sont de vraies
+// répétitions — il n'y a plus besoin de deviner lesquelles sont "de
+// l'effort" par une tolérance de vitesse (±15%, cf. getEffortLaps).
+// Ce filtrage, pensé pour la prédiction (où on veut exclure les valeurs
+// aberrantes), EXCLUAIT à tort une répétition ratée de l'affichage —
+// décalant la numérotation de toutes les répétitions suivantes et cachant
+// justement l'info la plus utile (une répétition ratée).
+//
+// Quand structureIntervalles existe pour la séance du jour, retourne TOUS
+// les laps du milieu (hors échauffement/RAC), dans l'ordre, sans filtrage.
+// Sinon (ancien plan sans structureIntervalles), retombe sur
+// getEffortLaps() pour compatibilité.
+function getLapsAffichage(activity, structureIntervalles) {
+  if (!activity.laps || activity.laps.length < 4) return [];
+  if (structureIntervalles?.blocs) {
+    return activity.laps.slice(1, -2);
+  }
+  return getEffortLaps(activity);
+}
+
 
 // ── Calcul dérive FC sur les répétitions ─────────────────────────────────
 function computeFcDrift(laps) {
@@ -1701,7 +1725,7 @@ function renderDashboard() {
         const status2=statuses[uid2];
         const isDone = status2==="✅"||status2==="⚠️"||status2==="❌";
         const stravaRun2 = stravaActivities.find(r=>r.start_date_local?.slice(0,10)===s.date);
-        const effortLaps2 = stravaRun2 ? getEffortLaps(stravaRun2) : [];
+        const effortLaps2 = stravaRun2 ? getLapsAffichage(stravaRun2, s.structureIntervalles) : [];
         const statusColor = status2==="✅"?"#22c55e":status2==="⚠️"?"#eab308":status2==="❌"?"#ef4444":st.color;
 
         const card=el("div",{style:{
@@ -2305,7 +2329,7 @@ function renderWeekDetail(weekNum) {
     const isToday=s.date===today(), isPast=s.date<today();
     const st=STYPES[effSess.type]||STYPES.REPOS;
     const stravaRun=weekRuns.find(r=>r.start_date_local?.slice(0,10)===s.date);
-    const effortLaps=stravaRun?getEffortLaps(stravaRun):[];
+    const effortLaps=stravaRun?getLapsAffichage(stravaRun, effSess.structureIntervalles):[];
 
     // Seance masquee
     if (isHidden) {
