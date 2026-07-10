@@ -43,12 +43,6 @@
   .badge.longue{ background:var(--longue-soft); color:var(--longue); }
   .badge.repos{ background:transparent; color:rgba(238,240,234,0.35); font-weight:500; }
   .badge .tag{ font-family:'JetBrains Mono',monospace; font-size:10px; opacity:.8; }
-  .statut-tag{
-    cursor:pointer; font-size:15px; margin-left:8px;
-    padding:2px 4px; border-radius:6px;
-    transition:background .15s;
-  }
-  .statut-tag:active{ background:rgba(238,240,234,0.15); }
   .day-detail{
     font-size:13px; color:rgba(238,240,234,0.6);
     margin-top:6px; padding-left:2px; line-height:1.55;
@@ -557,7 +551,7 @@
     border-radius:10px;
     border:1.5px solid var(--pace);
     background:transparent;
-    color:var(--pace-soft);
+    color:var(--pace);
     font-family:'Manrope',sans-serif;
     font-weight:700;
     font-size:13px;
@@ -1450,26 +1444,18 @@
       }
       const a = semaine.assignment[i];
       let badgeClass, label, detail = '';
-      let suivable = false;
       if (!a) { badgeClass = 'repos'; label = 'Repos'; }
-      else if (a.type === 'longue') { badgeClass = 'longue'; label = 'Sortie longue'; detail = a.contenu; suivable = true; }
+      else if (a.type === 'longue') { badgeClass = 'longue'; label = 'Sortie longue'; detail = a.contenu; }
       else if (a.type === 'qualite') {
-        badgeClass = 'qualite'; label = a.estTest ? '🎯 Test' : 'Qualité'; detail = a.contenu; suivable = true;
+        badgeClass = 'qualite'; label = a.estTest ? '🎯 Test' : 'Qualité'; detail = a.contenu;
         const r = a.restrictionsAllure;
         if (r && !a.estTest) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
       }
-      else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; suivable = true; }
+      else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; }
       else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos' + (a.renfo ? ' <span class="tag">+ RENFO</span>' : ''); }
       const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
 
-      const uid = `${semaine.semaineNum}-${i}`;
-      const statut = dernierPlanGenere?.statuses?.[uid];
-      const ICONES_STATUT = { reussie: '✅', adaptee: '⚠️', ratee: '❌' };
-      const statutHtml = suivable
-        ? `<span class="statut-tag" onclick="cycleStatutSeance('${uid}')" title="Cliquer pour marquer réussie/adaptée/ratée">${ICONES_STATUT[statut] ?? '⬜'}</span>`
-        : '';
-
-      return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span>${statutHtml}</div>${detailHtml}</div></div>`;
+      return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span></div>${detailHtml}</div></div>`;
     }).join('');
 
     const dechargeTag = semaine.estDechargeSemaine ? '<span class="decharge-tag">décharge</span>' : '';
@@ -1513,18 +1499,6 @@
       html += renderSemaineHtml(semaine, jourCourseIndex, derniereSemaineNum, semaine.semaineNum === semaineADeplier);
     });
     planDiv.innerHTML = html;
-  }
-
-  function cycleStatutSeance(uid) {
-    if (!dernierPlanGenere) return;
-    dernierPlanGenere.statuses = dernierPlanGenere.statuses || {};
-    const ORDRE = [undefined, 'reussie', 'adaptee', 'ratee'];
-    const actuel = dernierPlanGenere.statuses[uid];
-    const indexActuel = ORDRE.indexOf(actuel);
-    const suivant = ORDRE[(indexActuel + 1) % ORDRE.length];
-    if (suivant === undefined) delete dernierPlanGenere.statuses[uid];
-    else dernierPlanGenere.statuses[uid] = suivant;
-    rafraichirPlanComplet();
   }
 
   let showingResults = false;
