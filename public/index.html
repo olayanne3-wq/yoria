@@ -1025,6 +1025,51 @@ async function nettoyerNotesMeteoDupliquees() {
   render();
 }
 
+// Ajout rétroactif de structureIntervalles sur un plan déjà existant
+// (section 2.8 du doc de convergence, demandé par Laurent le 8 juillet
+// 2026) — les plans générés avant l'introduction de structureIntervalles
+// n'ont pas cette donnée, donc pas de bouton "à programmer" affiché. Plutôt
+// que de recréer le plan depuis zéro (perte des statuts déjà validés),
+// régénère uniquement structureIntervalles pour chaque séance qualité
+// existante, sans toucher au contenu textuel déjà affiché ni au reste du
+// plan. Réutilise regenererStructuresIntervalles() du moteur (garde-fou
+// intégré : ne touche que les séances sans structureIntervalles déjà
+// présente, et vérifie que le sous-type recalculé correspond bien à
+// l'original avant d'appliquer).
+async function regenererStructuresIntervallesUI() {
+  const msgEl = document.getElementById('syncMsg');
+  if (!window.__PLAN_BRUT__) return;
+
+  let nbMisesAJour;
+  try {
+    nbMisesAJour = regenererStructuresIntervalles(window.__PLAN_BRUT__);
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = '❌ ' + e.message; msgEl.style.color = 'var(--signal)'; }
+    return;
+  }
+
+  if (nbMisesAJour === 0) {
+    if (msgEl) { msgEl.textContent = 'Toutes les séances ont déjà leur structure à programmer.'; msgEl.style.color = 'rgba(238,240,234,0.5)'; }
+    return;
+  }
+
+  // Re-traduit le plan brut corrigé vers le format v1 affiché, et sauvegarde
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+
+  try {
+    if (getGithubToken && getGithubToken() && sauvegarderPlan) {
+      await sauvegarderPlan(window.__PLAN_BRUT__);
+    }
+  } catch (e) {
+    console.warn('Régénération effectuée localement, sauvegarde échouée :', e.message);
+  }
+
+  if (msgEl) { msgEl.textContent = '✅ ' + nbMisesAJour + ' séance(s) mise(s) à jour.'; msgEl.style.color = '#22c55e'; }
+  render();
+}
+
 function rebuildPredHistory() {
   if (!stravaActivities.length || isRebuilding) return;
   isRebuilding = true; render();
@@ -3760,6 +3805,9 @@ function renderSettings() {
             el("button",{style:{background:"#eab30811",border:"1px solid #eab30833",borderRadius:"8px",padding:"8px",color:"#eab308",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
               onClick:()=>nettoyerNotesMeteoDupliquees()
             },"🧹 Nettoyer les notes météo dupliquées"),
+            el("button",{style:{background:"#60a5fa11",border:"1px solid #60a5fa33",borderRadius:"8px",padding:"8px",color:"#60a5fa",fontSize:"14px",cursor:"pointer",fontWeight:"600"},
+              onClick:()=>regenererStructuresIntervallesUI()
+            },"📱 Ajouter les structures à programmer (rétroactif)"),
             el("button",{style:{background:"none",border:"none",color:"#e2e8f0",fontSize:"14px",cursor:"pointer",padding:"0"},
               onClick:()=>{ stravaToken=null;stravaRefresh=null;stravaExpires=0;stravaActivities=[];save("lk_strava_token",null);save("lk_strava_refresh",null);save("lk_strava_expires",0);save("lk_strava_activities",[]);render(); }
             },"🔓 Déconnecter Strava")

@@ -1154,7 +1154,16 @@ export function genererContenuTest({ distance, alluresSec }) {
   const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
   const kmEstime = distanceTestKm + kmEchauffement + kmRetourCalme;
   const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${dureeConfirmationMin}min à allure course (${formatPace(C)}) — ${distanceTestKm}km, sert à confirmer/recalibrer ton allure objectif + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
-  return { sousType: 'test', contenu, kmEstime, distanceTestKm };
+  // structureIntervalles : un seul bloc continu (la séance test n'a pas de
+  // répétitions), même principe que genererContenuQualite() (section 2.8,
+  // ajouté le 8 juillet 2026).
+  const structureIntervalles = {
+    blocs: [{ repetitions: 1, dureeEffortSec: dureeConfirmationMin*60, allure: formatPace(C), dureeRecupSec: 0 }],
+    echauffementSec: DUREE_ECHAUFFEMENT_MIN*60,
+    retourCalmeSec: DUREE_RETOUR_CALME_MIN*60,
+    allureEchauffement: formatPace(E)
+  };
+  return { sousType: 'test', contenu, kmEstime, distanceTestKm, structureIntervalles };
 }
 
 // ---------------------------------------------------------------------------
@@ -1356,12 +1365,13 @@ export function placerSeanceTest(plan, alluresSec) {
   if (!jourQualite) return; // semaine de réacclimatation sans qualité, par exemple
   const [jour, seance] = jourQualite;
 
-  const { sousType, contenu, kmEstime, distanceTestKm } = genererContenuTest({ distance: plan.distance, alluresSec });
+  const { sousType, contenu, kmEstime, distanceTestKm, structureIntervalles } = genererContenuTest({ distance: plan.distance, alluresSec });
   seance.sousType = sousType;
   seance.contenu = contenu;
   seance.kmEstime = kmEstime;
   seance.estTest = true;
   seance.distanceTestKm = distanceTestKm;
+  seance.structureIntervalles = structureIntervalles;
 
   // Recalcule la répartition EF/longue de cette semaine, le kilométrage de
   // la séance qualité ayant changé (factorisé, recalculerRepartitionEFLongue)
@@ -1845,4 +1855,84 @@ export function appliquerAdaptations(plan) {
   }
 
   return nouveauxWarnings;
+}
+
+/**
+ * Régénère structureIntervalles pour toutes les séances qualité d'un plan
+ * déjà existant, SANS toucher au contenu textuel déjà affiché ni au reste
+ * du plan (statuts, dates, kmEstime) — action de rattrapage pour les plans
+ * générés avant l'ajout de structureIntervalles (section 2.8 du doc de
+ * convergence, demandé par Laurent le 8 juillet 2026, qui souhaite un
+ * effet rétroactif sur son plan Semi déjà existant plutôt que d'avoir à le
+ * recréer et perdre son historique de statuts).
+ *
+ * Garde-fou : vérifie que le sousType recalculé correspond bien à
+ * l'original avant d'appliquer la nouvelle structure — si un écart
+ * apparaît (ex. plan généré avec une version différente de
+ * ROTATION_SOUS_TYPE), la séance concernée est laissée intacte plutôt que
+ * de risquer une structure incohérente avec le contenu déjà affiché.
+ *
+ * Retourne le nombre de séances effectivement mises à jour.
+ */
+export function regenererStructuresIntervalles(plan) {
+  if (!plan.paramsOrigine || !plan.profilOrigine) {
+    throw new Error("Ce plan a été sauvegardé avant l'ajout de profilOrigine/paramsOrigine et ne peut pas être régénéré — recrée-le depuis le wizard.");
+  }
+
+  const alluresSec = computeAllures({
+    refTimeSeconds: parseTimeToSeconds(plan.paramsOrigine.tempsReference),
+    refDistanceKm: KM_BY_DISTANCE[plan.paramsOrigine.refDistance ?? plan.paramsOrigine.distance],
+    objectifTimeSeconds: parseTimeToSeconds(plan.paramsOrigine.objectif),
+    distanceCibleKm: KM_BY_DISTANCE[plan.paramsOrigine.distance]
+  });
+
+  let curseur = 0;
+  const bornesPhases = plan.phases.map(p => {
+    const debut = curseur;
+    curseur += p.semaines;
+    return { nom: p.nom, debut, fin: curseur };
+  });
+
+  let nbMisesAJour = 0;
+  for (const semaine of plan.semaines) {
+    const phaseInfo = bornesPhases.find(b => b.nom === semaine.phase && semaine.semaineNum > b.debut && semaine.semaineNum <= b.fin);
+    const semaineDansPhase = phaseInfo ? semaine.semaineNum - phaseInfo.debut - 1 : 0;
+
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'qualite' || seance.structureIntervalles) continue; // déjà présente, rien à faire
+
+      // La séance test (estTest: true) utilise genererContenuTest(), pas
+      // genererContenuQualite() — traitée séparément, sinon le garde-fou
+      // sousType !== seance.sousType la rejette systématiquement (elle
+      // recalculerait un sous-type par rotation normale, jamais 'test').
+      if (seance.estTest) {
+        const { structureIntervalles } = genererContenuTest({ distance: plan.paramsOrigine.distance, alluresSec });
+        seance.structureIntervalles = structureIntervalles;
+        nbMisesAJour++;
+        continue;
+      }
+
+      const { sousType, structureIntervalles } = genererContenuQualite({
+        distance: plan.paramsOrigine.distance,
+        phase: semaine.phase,
+        semaineDansPhase,
+        indexQualiteSemaine: seance.indexQualite ?? 0,
+        alluresSec,
+        restrictionsAllure: seance.restrictionsAllure,
+        tauxAffutage: semaine.tauxAffutage ?? 1,
+        estDechargeSemaine: semaine.estDecharge ?? false
+      });
+
+      // Garde-fou : n'applique la structure que si le sous-type recalculé
+      // correspond bien à celui déjà présent sur la séance (sinon la
+      // structure risquerait d'être incohérente avec le contenu textuel
+      // déjà affiché, jamais régénéré par cette fonction)
+      if (sousType !== seance.sousType) continue;
+
+      seance.structureIntervalles = structureIntervalles;
+      nbMisesAJour++;
+    }
+  }
+
+  return nbMisesAJour;
 }
