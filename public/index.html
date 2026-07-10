@@ -2181,17 +2181,31 @@ function renderBoutonStructureAProgrammer(structure) {
 // juste pour valider la séance du jour, pourtant déjà affichée).
 function renderStatusRow(uid) {
   const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap",marginTop:"4px"}});
+  const boutons = [];
+  const majApparenceBoutons = () => {
+    const cur = statuses[uid]||"—";
+    boutons.forEach(({b, opt}) => {
+      const actif = cur===opt;
+      b.style.background = actif ? SCOLORS[opt]+"33" : "#232738";
+      b.style.border = `1px solid ${actif ? SCOLORS[opt] : "#2e3347"}`;
+      b.style.color = actif ? SCOLORS[opt] : "#475569";
+      b.style.fontWeight = actif ? "700" : "400";
+    });
+  };
   SOPTS.forEach(opt=>{
     const cur=statuses[uid]||"—";
     const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
+    boutons.push({ b, opt });
     b.addEventListener("click",avecRetourTactile(()=>{
       statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true);
-      // Délai avant de refermer la carte (isDoneSession replie
-      // automatiquement les détails) quand on vient de marquer ✅/⚠️ —
-      // laisse le temps de voir le retour tactile/visuel du clic avant
-      // que la carte ne se réduise (demandé par Laurent le 8 juillet
-      // 2026 : la fermeture immédiate donnait l'impression que le clic
-      // n'avait pas été pris en compte).
+      // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
+      // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
+      // cette carte (render() reconstruit toute la vue). Corrigé : met à
+      // jour immédiatement l'apparence des boutons de CETTE rangée
+      // uniquement (sans render() global), puis planifie le vrai render()
+      // complet (qui déclenchera le repli de la carte via isDoneSession)
+      // après le délai — seul le repli est retardé, pas le reste de l'app.
+      majApparenceBoutons();
       if (opt==="✅"||opt==="⚠️") { setTimeout(render, 2500); }
       else { render(); }
     }));
