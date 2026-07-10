@@ -1021,10 +1021,21 @@
   // seulement si l'utilisateur a déjà avancé au-delà de l'étape 1 (progression
   // réelle qui serait perdue), pas de confirmation superflue si on vient
   // juste d'ouvrir le wizard sans rien avoir renseigné.
-  document.getElementById('btnRetourApp').addEventListener('click', () => {
-    if (current > 1 && !confirm("Quitter le wizard ? Ta progression sur ce plan ne sera pas conservée.")) return;
-    location.href = '/';
-  });
+  //
+  // Bug trouvé le 8 juillet 2026 : si document.getElementById('btnRetourApp')
+  // retournait null (élément absent du DOM pour une raison quelconque —
+  // probablement un cache PWA pas encore rafraîchi au moment du déploiement),
+  // .addEventListener sur null plantait et arrêtait TOUT LE RESTE DU SCRIPT,
+  // y compris la définition de nextStep() plus bas — le bouton "Terminer" ne
+  // faisait alors plus rien du tout, sans aucune erreur visible pour Laurent.
+  // Corrigé avec une vérification défensive (if) avant d'attacher l'écouteur.
+  const btnRetourApp = document.getElementById('btnRetourApp');
+  if (btnRetourApp) {
+    btnRetourApp.addEventListener('click', () => {
+      if (current > 1 && !confirm("Quitter le wizard ? Ta progression sur ce plan ne sera pas conservée.")) return;
+      location.href = '/';
+    });
+  }
 
   const distanceMeta = {
     "5":   { label:"5K",       name:"Ton dernier 5K",   refDefault:{h:0,m:22,s:30}, objDefault:{h:0,m:21,s:0},  unit:"min:sec" },
