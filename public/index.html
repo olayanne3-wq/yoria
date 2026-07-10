@@ -627,7 +627,7 @@ async function fetchCoachMsg() {
 
   // Données Strava de la séance du jour si terminée
   const todayStravaRun = sessionDone ? stravaActivities.find(r=>r.start_date_local?.slice(0,10)===t) : null;
-  const todayEffortLaps = todayStravaRun ? getEffortLaps(todayStravaRun) : [];
+  const todayEffortLaps = todayStravaRun ? getLapsAffichage(todayStravaRun, todaySessObj?.structureIntervalles) : [];
   const todayAvgPace = todayEffortLaps.length > 0
     ? fmtPace(todayEffortLaps.reduce((s,l)=>s+l.average_speed,0)/todayEffortLaps.length)+"/km"
     : todayStravaRun ? fmtPace(todayStravaRun.average_speed)+"/km" : null;
@@ -903,51 +903,70 @@ function getEffortLaps(activity) {
 // 8 juillet 2026 : Laurent programme fidèlement ses séances sur sa montre,
 // qui crée un lap DISTINCT pour chaque phase (effort, récup courte
 // intra-répétition, récup longue inter-séries) — les laps alternent
-// simplement effort/récup/effort/récup, avec une récup longue à la place
-// de la récup normale à la fin de chaque série (sauf la dernière).
+// simplement effort/récup/effort/récup, avec une récup longue en PLUS de
+// la récup normale à la fin de chaque série (sauf la dernière du plan).
 //
-// Deux tentatives précédentes rejetées par Laurent avant cette version :
+// Historique des tentatives rejetées avant cette version, pour ne pas
+// retomber dans les mêmes pièges si ce code est retouché plus tard :
 // 1) garder tous les laps du milieu sans distinction (mélangeait effort et
 //    récup) ; 2) filtrer par durée (ne fonctionne pas quand effort et
-//    récup ont la même durée, ex. un 30-30 où les deux durent 30s).
+//    récup ont la même durée, ex. un 30-30 où les deux durent 30s) ;
+// 3) traiter uniquement le cas à un seul bloc + boucle nbSeries, avec un
+//    second cas "tous les blocs sont des efforts continus" pour les
+//    structures multi-blocs — correct pour pyramidale/seuil-négatif (les
+//    seuls types existants avec plusieurs blocs), mais fragile : un futur
+//    type de séance avec plusieurs blocs à répétitions multiples (pas
+//    encore implémenté) casserait silencieusement ce deuxième cas,
+//    revenant au défaut n°1. Signalé explicitement par Laurent comme un
+//    vrai risque à couvrir avant d'ajouter de nouveaux types de séries.
 //
-// La bonne approche, directe : l'ORDRE des laps suit exactement la
-// structure programmée — un effort, puis une récup, en boucle, avec la
-// récup longue remplaçant la dernière récup de chaque série (sauf la
-// dernière série). Pas besoin de deviner : on sait exactement à quels
-// indices les efforts se trouvent, un par un.
+// Version généralisée : parcourt TOUS les blocs de la structure, un par
+// un, chacun avec ses PROPRES répétitions et sa propre récupération — pas
+// de cas particulier selon le nombre de blocs. Chaque bloc peut avoir
+// repetitions=1 (effort continu, ex. pyramidale/seuil-négatif) ou
+// repetitions>1 (vraies répétitions avec récup entre chacune, ex.
+// seuil-court/i-3min). nbSeries s'applique en répétant l'ENSEMBLE des
+// blocs (pas un seul), avec recupEntreSeriesSec ajoutée après le dernier
+// bloc de chaque série (sauf la toute dernière série du plan).
 function getLapsAffichage(activity, structureIntervalles) {
   if (!activity.laps || activity.laps.length < 4) return [];
-  if (structureIntervalles?.blocs?.length === 1 && structureIntervalles.blocs[0].dureeRecupSec != null) {
-    const middle = activity.laps.slice(1, -2);
-    const bloc = structureIntervalles.blocs[0];
-    const repsParSerie = bloc.repetitions || 1;
-    const nbSeries = structureIntervalles.nbSeries || 1;
-    const efforts = [];
-    let curseur = 0;
-    for (let serie = 0; serie < nbSeries; serie++) {
-      for (let rep = 0; rep < repsParSerie; rep++) {
-        if (curseur >= middle.length) break;
+  if (!structureIntervalles?.blocs?.length) return getEffortLaps(activity);
+
+  const middle = activity.laps.slice(1, -2);
+  const nbSeries = structureIntervalles.nbSeries || 1;
+  const efforts = [];
+  let curseur = 0;
+
+  for (let serie = 0; serie < nbSeries; serie++) {
+    const derniereSerie = serie === nbSeries - 1;
+    structureIntervalles.blocs.forEach((bloc, indexBloc) => {
+      const repsDuBloc = bloc.repetitions || 1;
+      const dernierBlocDeLaSerie = indexBloc === structureIntervalles.blocs.length - 1;
+      for (let rep = 0; rep < repsDuBloc; rep++) {
+        if (curseur >= middle.length) return;
         efforts.push(middle[curseur]); // lap d'effort
         curseur++;
-        const derniereRepDeLaSerie = rep === repsParSerie - 1;
-        const derniereSerie = serie === nbSeries - 1;
-        const dernierEffortDuPlan = derniereRepDeLaSerie && derniereSerie;
-        if (!dernierEffortDuPlan) {
-          curseur++; // saute la récup courte normale (toujours présente après chaque répétition, y compris la dernière de la série)
-          if (derniereRepDeLaSerie) curseur++; // fin de série (pas la dernière du plan) : un lap de récup LONGUE s'ajoute EN PLUS de la récup courte, pas à sa place
+        const derniereRepDuBloc = rep === repsDuBloc - 1;
+        const dernierEffortDuPlan = derniereRepDuBloc && dernierBlocDeLaSerie && derniereSerie;
+        if (dernierEffortDuPlan) continue; // aucune récup à sauter après le tout dernier effort du plan (le prochain lap est déjà le retour au calme, exclu par slice(1,-2))
+        // Une récup courte suit systématiquement chaque répétition (y
+        // compris entre deux blocs différents, et y compris la dernière
+        // répétition d'un bloc) — sauf si le bloc entier n'a qu'une seule
+        // répétition SANS récup définie (dureeRecupSec absent/0, ex. un
+        // bloc "effort continu" isolé sans vraie pause programmée).
+        if (bloc.dureeRecupSec) curseur++;
+        // Fin de série (dernier bloc de la série, dernière répétition de
+        // ce bloc, mais pas la toute dernière série du plan) : un lap de
+        // récup LONGUE s'ajoute EN PLUS de la récup courte normale, pas à
+        // sa place — vérifié explicitement par Laurent sur sa vraie
+        // séance (2 laps de récup successifs, pas un seul plus long).
+        if (derniereRepDuBloc && dernierBlocDeLaSerie && !derniereSerie && structureIntervalles.recupEntreSeriesSec) {
+          curseur++;
         }
       }
-    }
-    return efforts;
+    });
   }
-  // Structure à blocs multiples sans répétitions groupées (ex. pyramidale,
-  // seuil-négatif) : chaque bloc EST déjà un seul effort continu, pas
-  // d'alternance à gérer — tous les laps du milieu sont bien des efforts.
-  if (structureIntervalles?.blocs) {
-    return activity.laps.slice(1, -2);
-  }
-  return getEffortLaps(activity);
+  return efforts;
 }
 
 
@@ -1046,16 +1065,16 @@ function predict10KAtDate(dateStr) {
   const estimates = [];
 
   // SPEC → allure directe
-  const specRuns = runs.filter(r => { const s = ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="SPEC"); return s && statuses[s.uid]!=="❌"; });
-  const specLaps = specRuns.flatMap(r => getEffortLaps(r));
+  const specRunsAvecSeance = runs.map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="SPEC") })).filter(({s}) => s && statuses[s.uid]!=="❌");
+  const specLaps = specRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles));
   if (specLaps.length > 0) {
     const avgSpeed = specLaps.reduce((s,l)=>s+l.average_speed,0)/specLaps.length;
     estimates.push({ value: 10000/avgSpeed, weight: 0.45 });
   }
 
   // VMA → vitesse × 0.87
-  const vmaRuns = runs.filter(r => { const s = ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="VMA"); return s && statuses[s.uid]!=="❌"; });
-  const vmaLaps = vmaRuns.flatMap(r => getEffortLaps(r));
+  const vmaRunsAvecSeance = runs.map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="VMA") })).filter(({s}) => s && statuses[s.uid]!=="❌");
+  const vmaLaps = vmaRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles));
   if (vmaLaps.length > 0) {
     const avgSpeed = vmaLaps.reduce((s,l)=>s+l.average_speed,0)/vmaLaps.length;
     estimates.push({ value: 10000/(avgSpeed*0.87), weight: 0.35 });
@@ -2067,12 +2086,12 @@ function renderDashboard() {
     : null;
 
   // Allure intensive moyenne (VMA/SPEC)
-  const intensiveRuns = stravaActivities.filter(a => {
+  const intensiveRunsAvecSeance = stravaActivities.map(a => {
     const d = a.start_date_local?.slice(0,10);
     const s = ALL_SESSIONS.find(ss => ss.date===d && (ss.type==="VMA"||ss.type==="SPEC"));
-    return s && phaseWeeks.includes(s.week);
-  });
-  const intensiveLaps = intensiveRuns.flatMap(r => getEffortLaps(r));
+    return { a, s };
+  }).filter(({s}) => s && phaseWeeks.includes(s.week));
+  const intensiveLaps = intensiveRunsAvecSeance.flatMap(({a,s}) => getLapsAffichage(a, s.structureIntervalles));
   const intensiveAvgPace = intensiveLaps.length > 0
     ? fmtPace(intensiveLaps.reduce((s,l)=>s+l.average_speed,0)/intensiveLaps.length)
     : null;
@@ -2755,7 +2774,7 @@ function renderStats() {
     const points = sessions.map(s => {
       const run = stravaActivities.find(a=>a.start_date_local?.slice(0,10)===s.date);
       if (!run) return null;
-      const laps = getEffortLaps(run);
+      const laps = getLapsAffichage(run, s.structureIntervalles);
       if (!laps.length) return null;
       const ieVals = laps.map(l=>economyScore(l,type)).filter(v=>v!==null);
       const cadVals = laps.map(l=>l.average_cadence?Math.round(l.average_cadence*2):null).filter(v=>v!==null);
@@ -4463,7 +4482,7 @@ function parseTargetReps(session) {
 function autoValidate(session, stravaRun) {
   if (!stravaRun) return null;
   const type = session.type;
-  const effortLaps = getEffortLaps(stravaRun);
+  const effortLaps = getLapsAffichage(stravaRun, session.structureIntervalles);
   const target = SESSION_TARGETS[type];
 
   if (type === "EF" || type === "LONGUE") {
@@ -4504,7 +4523,7 @@ function validateReason(session, stravaRun) {
   const type = session.type;
   const status = statuses[session.uid];
   if (status !== "❌" && status !== "⚠️") return null;
-  const effortLaps = getEffortLaps(stravaRun);
+  const effortLaps = getLapsAffichage(stravaRun, session.structureIntervalles);
   const target = SESSION_TARGETS[type];
 
   if (type === "EF" || type === "LONGUE") {
