@@ -4034,7 +4034,15 @@ function renderSettings() {
 
   const versionSection = (function buildVersionSection() {
     const VERSIONS = [
-      { ver:"v1.9.3", title:"Banniere post-course, PDF & gestion seances", current:true, notes:["🏅 Banniere post-course","📄 Export PDF (3 types)","🔀 Deplacement de seance (appui long)","🗑️ Suppression et restauration (appui long)"]},
+      { ver:"v2.0", title:"Moteur générique multi-distances", current:true, notes:[
+        "🎯 Nouveau moteur : plans générés pour 5K/10K/Semi/Marathon (plus seulement 10K)",
+        "📱 Sélecteur de plan multi-appareils (synchronisation par QR code)",
+        "🏁 Wizard de configuration dédié, séparé de l'app principale",
+        "🌡️ Notes météo dynamiques pour la séance de demain",
+        "📋 Structure d'intervalles affichée pour programmer fidèlement ta montre",
+        "📊 Comparatif entre la structure prévue et tes vraies séances Strava",
+      ]},
+      { ver:"v1.9.3", title:"Banniere post-course, PDF & gestion seances", current:false, notes:["🏅 Banniere post-course","📄 Export PDF (3 types)","🔀 Deplacement de seance (appui long)","🗑️ Suppression et restauration (appui long)"]},
       { ver:"v1.9.2", title:"Dashboard condense & Course enrichie", current:false, notes:[
         "🎨 Dashboard condensé — Coach intégré dans la carte séance",
         "📊 Objectif + Estimation fusionnés, fourchette compacte",
