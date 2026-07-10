@@ -1743,7 +1743,6 @@ function renderDashboard() {
           ) : null,
           s.notes ? el("div",{style:{color:"#60a5facc",fontSize:"14px",fontStyle:"italic",marginBottom:"8px"}},"💡 "+s.notes) : null,
           s.structureIntervalles?renderBoutonStructureAProgrammer(s.structureIntervalles):null,
-          s.structureIntervalles?renderBoutonComparatifStructure(s.structureIntervalles, effortLaps2):null,
           !isRest?renderStatusRow(uid2):null,
           !isRest ? coachEl : null,
           // Bloc détail repliable après le coach
@@ -1798,7 +1797,8 @@ function renderDashboard() {
             ),
             effortLaps2.length>0?el("div",{style:{borderTop:"1px solid #fc4c0222",paddingTop:"8px"}},
               el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
-                el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Répétitions ("+effortLaps2.length+") · cible "+(SESSION_TARGETS[s.type]?.effort||"—")),
+                el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},
+                  "Répétitions ("+effortLaps2.length+(s.structureIntervalles ? "/"+aplatirRepetitionsAttendues(s.structureIntervalles).length : "")+") · cible "+(SESSION_TARGETS[s.type]?.effort||"—")),
                 (()=>{
                   const tgt=SESSION_TARGETS[s.type];
                   if(!tgt) return null;
@@ -2177,15 +2177,13 @@ function fmtDureeCourte(sec) {
   if (s === 0) return m + "min";
   return m + "min" + s + "s";
 }
-// ── Comparatif structure attendue vs laps réels (v2.0 streams, décidé le
-// 7 juillet 2026 : Strava n'expose pas la structure programmée elle-même,
-// seulement les laps résultants — comparer ce qui est vraiment ressorti de
-// Strava à ce qui était attendu, plutôt que deviner algorithmiquement) ────
-
 // Aplatit structureIntervalles en une liste plate de répétitions
 // individuelles attendues (une entrée par répétition, même pour les blocs
-// à répétitions multiples) — simplifie la comparaison avec les laps réels,
-// qui sont eux-mêmes une liste plate.
+// à répétitions multiples groupées, ex. "8 répétitions × 2 séries") — sert
+// à connaître le VRAI nombre de répétitions attendues pour une séance,
+// utilisé par le résumé de répétitions déjà existant (cf. commentaire à
+// son appel) plutôt que la simple longueur des laps détectés par Strava
+// (qui ne dit rien sur le nombre réellement prévu).
 function aplatirRepetitionsAttendues(structure) {
   if (!structure?.blocs) return [];
   const reps = [];
@@ -2200,105 +2198,6 @@ function aplatirRepetitionsAttendues(structure) {
     }
   });
   return reps;
-}
-
-// Convertit une allure texte ("4:18/km") en secondes/km, pour comparer avec
-// la vitesse réelle des laps Strava (average_speed, en m/s).
-function allureTexteVersSecPerKm(allureTxt) {
-  if (!allureTxt || typeof allureTxt !== 'string') return null;
-  const m = allureTxt.match(/^(\d+):(\d+)/);
-  if (!m) return null;
-  return parseInt(m[1])*60 + parseInt(m[2]);
-}
-
-// Compare la structure attendue (structureIntervalles) aux vrais laps
-// détectés par getEffortLaps() sur l'activité Strava du jour. Comparatif
-// détaillé (demandé par Laurent le 8 juillet 2026) : nombre de répétitions
-// réelles vs attendues, ET allure comparée une par une avec une tolérance
-// de ±15s/km (cohérente avec la tolérance déjà utilisée ailleurs dans le
-// moteur pour la détection de type d'effort, cf. SESSION_TARGETS.tolerance).
-// Retourne null si pas assez de données pour comparer (pas de structure,
-// pas de laps réels).
-function comparerStructureAuxLapsReels(structure, effortLaps) {
-  const attendues = aplatirRepetitionsAttendues(structure);
-  if (attendues.length === 0 || !effortLaps || effortLaps.length === 0) return null;
-
-  const TOLERANCE_SEC_PAR_KM = 15;
-  const nbMax = Math.max(attendues.length, effortLaps.length);
-  const lignes = [];
-  let nbAllureOk = 0;
-
-  for (let i = 0; i < nbMax; i++) {
-    const attendu = attendues[i];
-    const reel = effortLaps[i];
-    if (!attendu) {
-      // Répétition réelle en plus, pas attendue
-      lignes.push({ index: i+1, statut: 'en-trop', allureAttendue: null, allureReelle: reel.average_speed > 0 ? fmtPace(reel.average_speed) : '--:--' });
-      continue;
-    }
-    if (!reel) {
-      // Répétition attendue manquante
-      lignes.push({ index: i+1, statut: 'manquante', allureAttendue: attendu.allure, allureReelle: null });
-      continue;
-    }
-    const cibleSecPerKm = allureTexteVersSecPerKm(attendu.allure);
-    const reelSecPerKm = reel.average_speed > 0 ? 1000 / reel.average_speed : null;
-    const dansLaTolerance = cibleSecPerKm != null && reelSecPerKm != null &&
-      Math.abs(reelSecPerKm - cibleSecPerKm) <= TOLERANCE_SEC_PAR_KM;
-    if (dansLaTolerance) nbAllureOk++;
-    lignes.push({
-      index: i+1,
-      statut: dansLaTolerance ? 'ok' : 'ecart',
-      allureAttendue: attendu.allure,
-      allureReelle: reelSecPerKm != null ? fmtPace(reel.average_speed)+'/km' : '--:--'
-    });
-  }
-
-  return {
-    nbAttendu: attendues.length,
-    nbReel: effortLaps.length,
-    nbAllureOk,
-    lignes
-  };
-}
-
-// Affichage du comparatif, même principe de tap replié que la structure à
-// programmer — évite de surcharger la carte tant que l'utilisateur ne
-// demande pas explicitement le détail.
-function renderBoutonComparatifStructure(structure, effortLaps) {
-  const comparatif = comparerStructureAuxLapsReels(structure, effortLaps);
-  if (!comparatif) return null;
-
-  const { nbAttendu, nbReel, nbAllureOk, lignes } = comparatif;
-  const repsOk = nbReel === nbAttendu;
-  const couleurGlobale = repsOk && nbAllureOk === nbAttendu ? '#22c55e' : (repsOk || nbAllureOk >= nbAttendu*0.7) ? '#eab308' : '#ef4444';
-
-  const compBlock = el("div",{style:{display:"none",background:"#232738",borderRadius:"8px",padding:"10px 12px",marginBottom:"8px",border:"1px solid #2e3347"}},
-    el("div",{style:{fontSize:"13px",fontWeight:"700",color:couleurGlobale,marginBottom:"8px"}},
-      nbReel+"/"+nbAttendu+" répétitions · "+nbAllureOk+"/"+nbAttendu+" allures dans la cible (±15s/km)"),
-    ...lignes.map(l => {
-      const couleurLigne = l.statut==='ok' ? '#22c55e' : l.statut==='ecart' ? '#eab308' : '#ef4444';
-      const label = l.statut==='manquante' ? 'Rép. '+l.index+' : manquante (attendu '+l.allureAttendue+')'
-        : l.statut==='en-trop' ? 'Rép. '+l.index+' : en plus (réel '+l.allureReelle+')'
-        : 'Rép. '+l.index+' : '+l.allureReelle+' (cible '+l.allureAttendue+')';
-      return el("div",{style:{fontSize:"12px",color:couleurLigne,lineHeight:"1.6"}},label);
-    })
-  );
-  let compOpen = false;
-  const compBtn = el("button",{style:{
-    width:"100%",marginBottom:"8px",background:"none",border:"1px solid #2e3347",
-    borderRadius:"8px",padding:"6px",color:couleurGlobale,fontSize:"12px",cursor:"pointer",fontWeight:"600"
-  }},"📊 Comparer à ce qui était prévu ("+nbReel+"/"+nbAttendu+")");
-  compBtn.addEventListener("click",(e)=>{
-    e.stopPropagation();
-    compOpen = !compOpen;
-    compBlock.style.display = compOpen ? "block" : "none";
-    compBtn.textContent = compOpen ? "📊 Masquer" : "📊 Comparer à ce qui était prévu ("+nbReel+"/"+nbAttendu+")";
-  });
-  const compWrapper = document.createElement("div");
-  compWrapper.appendChild(compBtn);
-  compWrapper.appendChild(compBlock);
-  return compWrapper;
 }
 
 function renderStructureAProgrammer(structure) {
@@ -2456,7 +2355,6 @@ function renderWeekDetail(weekNum) {
       ):null,
       effSess.notes?el("div",{style:{color:"#60a5facc",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+effSess.notes):null,
       effSess.structureIntervalles?renderBoutonStructureAProgrammer(effSess.structureIntervalles):null,
-      effSess.structureIntervalles?renderBoutonComparatifStructure(effSess.structureIntervalles, effortLaps):null,
       stravaRun?el("div",{style:{background:"#fc4c0211",border:"1px solid #fc4c0233",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
           el("span",{class:"muted",style:{fontSize:"13px"}},
@@ -2504,7 +2402,8 @@ function renderWeekDetail(weekNum) {
           ):null,
         effortLaps.length>0?el("div",{style:{borderTop:"1px solid #fc4c0222",paddingTop:"8px"}},
           el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
-            el("div",{class:"muted",style:{fontSize:"14px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Répétitions ("+effortLaps.length+")"),
+            el("div",{class:"muted",style:{fontSize:"14px",textTransform:"uppercase",letterSpacing:"0.5px"}},
+              "Répétitions ("+effortLaps.length+(effSess.structureIntervalles ? "/"+aplatirRepetitionsAttendues(effSess.structureIntervalles).length : "")+")"),
             (()=>{
               const target = SESSION_TARGETS[effSess.type];
               if (!target) return null;
