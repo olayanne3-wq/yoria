@@ -243,7 +243,6 @@ let githubToken = load("lk_github_token", "");
 
 // URL params lus après déclarations
 let gistId = load("lk_gist_id", "");
-let gistMsg = "";
 
 // Récupérer token + gistId (+ gistV2, unifié le 11 juillet 2026 — Laurent
 // a demandé qu'un seul lien synchronise tout, plutôt que deux mécanismes
@@ -2451,7 +2450,7 @@ function renderStatusRow(uid) {
     const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"#232738",border:`1px solid ${cur===opt?SCOLORS[opt]:"#2e3347"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"#475569",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
     boutons.push({ b, opt });
     b.addEventListener("click",avecRetourTactile(()=>{
-      statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses); gistSave(true);
+      statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses);
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
       // cette carte (render() reconstruit toute la vue). Corrigé : met à
@@ -2627,7 +2626,7 @@ function renderWeekDetail(weekNum) {
       noteInput.addEventListener("change",()=>{
         if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
         else{delete sessionNotes[uid];}
-        save(clePourPlan("lk_session_notes"),sessionNotes); scheduleSave();
+        save(clePourPlan("lk_session_notes"),sessionNotes);
       });
       if(sessionNotes[uid]){card.appendChild(el("div",{style:{color:"#e2e8f0",fontSize:"14px",fontStyle:"italic",marginTop:"4px"}},"💬 "+sessionNotes[uid]));}
       card.appendChild(noteInput);
@@ -3295,7 +3294,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-dossard-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.dossard || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
           return inp;
         })()
       ),
@@ -3306,7 +3305,7 @@ function renderCourse() {
           inp.type = "time"; inp.id = "horaire-depart-input";
           inp.style.cssText = "width:110px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:4px 8px;color:#f1f5f9;font-size:13px;text-align:right;box-sizing:border-box;";
           inp.value = raceHoraires.depart || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); scheduleSave(); });
+          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
           return inp;
         })()
       )
@@ -3372,7 +3371,7 @@ function renderCourse() {
         inp.type = "text"; inp.placeholder = "Lien GPX ou carte du parcours...";
         inp.style.cssText = "width:100%;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:8px 12px;color:#f1f5f9;font-size:13px;box-sizing:border-box;";
         inp.value = raceParcoursUrl || "";
-        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); scheduleSave(); });
+        inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); });
         return inp;
       })(),
       raceParcoursUrl?el("a",{href:raceParcoursUrl,target:"_blank",style:{display:"block",marginTop:"8px",color:"#60a5fa",fontSize:"14px"}},"→ Voir le parcours"):null
@@ -3633,7 +3632,6 @@ function showSessionMenu(week, slotIdx) {
         delete swappedSessions[uid];
         delete swappedSessions[swapUid];
         save(clePourPlan("lk_swapped_sessions"), swappedSessions);
-        gistSave(true);
         overlay.remove();
         render();
       });
@@ -3656,7 +3654,6 @@ function showSessionMenu(week, slotIdx) {
       hideBtn.addEventListener("click", () => {
         hiddenSessions[uid] = true;
         save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
-        gistSave(true);
         overlay.remove();
         render();
       });
@@ -3673,7 +3670,6 @@ function showSessionMenu(week, slotIdx) {
       if (!conflict) {
         delete hiddenSessions[uid];
         save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
-        gistSave(true);
         render();
       } else {
         showRestoreMenu(week, slotIdx);
@@ -3735,7 +3731,6 @@ function showMoveMenu(week, slotIdx) {
         swappedSessions[uidB] = uidA;
       }
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
-      gistSave(true);
       overlay.remove();
       render();
     });
@@ -3788,7 +3783,6 @@ function showRestoreMenu(week, slotIdx) {
       swappedSessions[uidB] = uidA;
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
-      gistSave(true);
       overlay.remove();
       render();
     });
@@ -4014,8 +4008,7 @@ function renderSettings() {
             el("button",{style:{background:"none",border:"none",color:"#64748b",fontSize:"13px",cursor:"pointer"},
               onClick:()=>{ githubToken="";gistId="";save("lk_github_token","");save("lk_gist_id","");render(); }
             },"Déconnecter")
-          ),
-          gistMsg?el("div",{style:{fontSize:"14px",color:gistMsg.startsWith("✅")||gistMsg.startsWith("☁️")?"#22c55e":"#ef4444",marginTop:"8px",padding:"6px 10px",background:"#232738",borderRadius:"6px"}},gistMsg):null
+          )
         )
   );
 
@@ -4307,14 +4300,14 @@ function renderSettings() {
 
   // ── QR Code pour configurer un autre appareil ─────────────────────────────
   // Unifié le 11 juillet 2026 (demandé par Laurent : "plus de V2, uniquement
-  // synchro sur l'app") — synchronise maintenant TOUT en un seul lien
-  // (token GitHub + lk_gist_id, le Gist de backup général v1/statuts/
-  // activités + v2_gist_id, le Gist des plans v2), plutôt que deux
-  // mécanismes séparés dans deux fichiers différents (celui-ci ne
-  // synchronisait auparavant que token+lk_gist_id, le wizard avait son
-  // propre mécanisme séparé pour v2_gist_id — source de vraie confusion,
-  // Laurent cherchait le bouton "Copier le lien" du wizard dans cette
-  // section-ci, où il n'avait jamais existé).
+  // synchro sur l'app") — synchronise le token GitHub + v2_gist_id (le Gist
+  // des plans v2, seule vraie source de vérité désormais) en un seul lien.
+  // gist= (lk_gist_id) reste transmis pour compatibilité avec d'anciens
+  // liens qui circuleraient encore, mais le vieux système de backup v1
+  // associé (plan10k_backup.json) a été retiré complètement le même jour —
+  // toutes les vraies données qu'il gérait ont déjà leur foyer légitime
+  // dans le système préfixé par plan (clePourPlan()) ou des clés globales
+  // simples pour les caractéristiques personnelles de Laurent.
   const qrSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"📱 Configurer sur un autre appareil"),
     card(
@@ -4383,7 +4376,6 @@ function renderSettings() {
       else if (parts.length===3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) s = parts[0]*3600+parts[1]*60+parts[2];
       if (s!==null && s>0) { raceGoalTime=s; save(clePourPlan("lk_race_goal"),raceGoalTime); }
     }
-    gistSave(true);
     saveBtn.textContent = "✅ Paramètres enregistrés !";
     setTimeout(()=>{ saveBtn.textContent = "💾 Enregistrer les paramètres"; }, 2000);
     render();
@@ -4435,133 +4427,25 @@ function compressActivities(activities) {
   });
 }
 
-function getBackupData() {
-  return JSON.stringify({
-    statuses,
-    notesList,
-    sessionNotes,
-    stravaActivities: compressActivities(stravaActivities),
-    predHistory,
-    raceGoalTime,
-    runnerWeight,
-    runnerHeight,
-    runnerFcMax,
-    runnerPps,
-    raceHoraires,
-    raceParcoursUrl,
-    checklistItems,
-    hiddenSessions,
-    swappedSessions,
-    version: 3,
-    savedAt: new Date().toISOString()
-  });
-}
-
-let gistSaveTimer = null;
-
-async function gistSave(silent=false) {
-  if (!githubToken) return;
-  try {
-    const body = {description:"Plan Run by Léa — backup", public:false,
-      files:{"plan10k_backup.json":{content:getBackupData()}}};
-    let url="https://api.github.com/gists", method="POST";
-    if (gistId) { url+="/"+gistId; method="PATCH"; }
-    const resp = await fetch(url,{method,headers:{"Authorization":"token "+githubToken,"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if (!resp.ok) throw new Error(resp.status);
-    const data = await resp.json();
-    gistId = data.id; save("lk_gist_id",gistId);
-    if (!silent) { gistMsg="☁️ Sauvegardé "+new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}); render(); setTimeout(()=>{gistMsg="";render();},3000); }
-  } catch(e) {
-    if (!silent) { gistMsg="❌ Erreur sync"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
-  }
-}
-
-function scheduleSave() {
-  if (!githubToken) return;
-  if (gistSaveTimer) clearTimeout(gistSaveTimer);
-  gistSaveTimer = setTimeout(()=>gistSave(true),2000);
-}
-
-async function gistLoad() {
-  if (!githubToken||!gistId) return;
-  try {
-    const resp = await fetch("https://api.github.com/gists/"+gistId,{headers:{"Authorization":"token "+githubToken}});
-    if (!resp.ok) throw new Error();
-    const data = await resp.json();
-    const raw = data.files["plan10k_backup.json"]?.content;
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (Object.keys(statuses).length===0&&notesList.length===0) {
-      statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
-      if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-      if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
-      if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
-      save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
-      gistMsg="☁️ Données restaurées"; render(); setTimeout(()=>{gistMsg="";render();},4000);
-    }
-  } catch(e) {
-    console.warn("gistLoad échoué:", e.message);
-  }
-}
-
-async function gistForceRestore() {
-  if (!githubToken||!gistId) { gistMsg="❌ Pas de sauvegarde"; render(); setTimeout(()=>{gistMsg="";render();},3000); return; }
-  try {
-    const resp = await fetch("https://api.github.com/gists/"+gistId,{headers:{"Authorization":"token "+githubToken}});
-    if (!resp.ok) throw new Error();
-    const data = await resp.json();
-    const raw = data.files["plan10k_backup.json"]?.content;
-    if (!raw) throw new Error();
-    const parsed = JSON.parse(raw);
-    statuses=parsed.statuses||{}; notesList=parsed.notesList||[];
-    if (parsed.stravaActivities?.length) { stravaActivities=parsed.stravaActivities; save("lk_strava_activities",stravaActivities); }
-    if (parsed.predHistory?.length) { predHistory=parsed.predHistory; save(clePourPlan("lk_pred_history"),predHistory); }
-    if (parsed.sessionNotes) { sessionNotes=parsed.sessionNotes; save(clePourPlan("lk_session_notes"),sessionNotes); }
-    if (parsed.raceGoalTime) { raceGoalTime=parsed.raceGoalTime; save(clePourPlan("lk_race_goal"),raceGoalTime); }
-    if (parsed.runnerWeight) { runnerWeight=parsed.runnerWeight; save("lk_weight",runnerWeight); }
-    if (parsed.runnerHeight) { runnerHeight=parsed.runnerHeight; save("lk_height",runnerHeight); }
-    if (parsed.runnerFcMax) { runnerFcMax=parsed.runnerFcMax; save("lk_fc_max",runnerFcMax); }
-    if (parsed.runnerPps) { runnerPps=parsed.runnerPps; save("lk_pps",runnerPps); }
-    if (parsed.raceHoraires) { raceHoraires=parsed.raceHoraires; save(clePourPlan("lk_race_horaires"),raceHoraires); }
-    if (parsed.raceParcoursUrl) { raceParcoursUrl=parsed.raceParcoursUrl; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); }
-    if (parsed.checklistItems) { checklistItems=parsed.checklistItems; save(clePourPlan("lk_checklist"),checklistItems); }
-    save(clePourPlan("lk_statuses"),statuses); save(clePourPlan("lk_notes"),notesList);
-    gistMsg="✅ Restauré · "+(parsed.savedAt?new Date(parsed.savedAt).toLocaleDateString("fr-FR"):"");
-    render(); setTimeout(()=>{gistMsg="";render();},4000);
-  } catch(e) { gistMsg="❌ Erreur restauration"; render(); setTimeout(()=>{gistMsg="";render();},3000); }
-}
-
-// Bug de fond trouvé le 11 juillet 2026 : ce mécanisme historique (restaurer
-// automatiquement les statuts depuis plan10k_backup.json, le Gist de
-// backup v1, conçu à l'époque pour un seul plan sans notion de multi-plans)
-// écrasait aveuglément statuses avec les vieux statuts globaux du backup
-// v1, dès que statuses était vide pour le plan affiché — peu importe le
-// vrai plan sélectionné. Laurent a créé un nouveau plan (septembre), vidé
-// manuellement ses statuts (localStorage.removeItem), et ce mécanisme les a
-// aussitôt réécrasés avec les statuts de SON AUTRE plan (juillet), présents
-// dans ce vieux Gist de backup. Confirmé : le Gist des plans v2 lui-même
-// (plan10k_v2_plans.json) contenait bien "statuses": {} pour le nouveau
-// plan, la contamination venait uniquement de ce mécanisme de restauration
-// historique.
+// Système de backup v1 (getBackupData/gistSave/gistLoad/gistForceRestore,
+// plan10k_backup.json) retiré complètement le 11 juillet 2026 — Laurent
+// demande un vrai nettoyage après avoir trouvé un bug de fond (commit
+// f96797a) : ce vieux Gist global (jamais préfixé par plan, conçu à
+// l'époque pour un seul plan) contaminait à tort les statuts d'un nouveau
+// plan avec ceux d'un autre plan, dès que le nouveau avait des statuts
+// vides. Audit complet effectué avant de retirer : TOUTES les vraies
+// données que ce système sauvegardait ont déjà un vrai foyer légitime
+// ailleurs — statuses/notesList/sessionNotes/raceGoalTime/raceHoraires/
+// raceParcoursUrl/checklistItems/hiddenSessions/swappedSessions sont déjà
+// préfixées par plan (clePourPlan(), système construit pendant la
+// convergence v1/v2) ; runnerWeight/runnerHeight/runnerFcMax/runnerPps sont
+// déjà des clés globales simples (caractéristiques personnelles de Laurent,
+// pas liées à un plan) ; stravaActivities/predHistory ont déjà leurs
+// propres clés (lk_strava_activities, lk_pred_history préfixée). Ce système
+// était donc entièrement redondant, sans plus rien apporter d'unique.
 //
-// Corrigé : ce mécanisme ne s'applique plus que sur le plan de repli sans
-// vrai id (id === 'plan-repli-defaut', cf. commentaire section 7quater plus
-// haut dans ce fichier) — un vrai plan v2 (avec un id généré par
-// crypto.randomUUID()) n'a plus jamais ses statuts remplacés par ce vieux
-// mécanisme, sa vraie source de vérité étant exclusivement le Gist des
-// plans v2 (déjà correctement préfixé par plan.id).
-if (githubToken && gistId && window.__PLAN_BRUT__?.id === 'plan-repli-defaut') {
-  const hasLocalData = Object.keys(statuses).length > 0 || stravaActivities.length > 0;
-  if (!hasLocalData) {
-    // Pas de données locales → restauration automatique
-    console.log("Restauration automatique depuis le Gist...");
-    gistForceRestore();
-  } else {
-    // On a des données → chargement normal + sauvegarde si Gist vide
-    gistLoad();
-    setTimeout(()=>{ gistSave(true); }, 2000);
-  }
-}
+// scheduleSave() retirée aussi (n'existait que pour temporiser les appels à
+// gistSave()) — plus aucun appelant utile une fois gistSave() retirée.
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STRAVA
@@ -4596,7 +4480,6 @@ async function syncStrava() {
 
       save("lk_last_sync", lastSyncTime);
       syncMsg=`✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
-      scheduleSave();
       // Regénérer le coach après synchro si séance terminée aujourd'hui
       const todaySynced = ALL_SESSIONS.find(s=>s.date===today()&&s.type!=="REPOS");
       if (todaySynced && statuses[todaySynced.uid]) {
@@ -4930,7 +4813,7 @@ function render() {
 // fonctions ne sont plus sur window mais dans la portée locale de l'IIFE —
 // le check se fait donc directement par nom (eval prudent, seulement sur une
 // liste fixe de noms connus, jamais une entrée utilisateur).
-const CRITICAL_FNS = ['syncStrava','gistSave','gistLoad','predict10K','getEffortLaps','rebuildPredHistory','renderDashboard','renderWeeks','renderWeekDetail','el','badge'];
+const CRITICAL_FNS = ['syncStrava','predict10K','getEffortLaps','getLapsAffichage','rebuildPredHistory','renderDashboard','renderWeeks','renderWeekDetail','el','badge'];
 const missingFns = CRITICAL_FNS.filter(fn => {
   try { return typeof eval(fn) === 'undefined'; } catch { return true; }
 });
