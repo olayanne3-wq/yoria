@@ -627,6 +627,16 @@ let coachMsg = load(clePourPlan("lk_coach_msg"), null);
 let coachDate = load(clePourPlan("lk_coach_date"), "");
 if (coachDate !== today()) { coachMsg = null; } // forcer le fetch si nouveau jour
 
+// Conseil de Léa dédié à l'onglet Course — distinct du coach quotidien
+// ci-dessus. Remplace le 11 juillet 2026 un texte codé en dur qui ne
+// faisait que reformuler mécaniquement les mêmes segments déjà affichés
+// dans splitsCard (aucun vrai appel IA, aucune valeur ajoutée par rapport
+// aux chiffres déjà visibles) — Laurent signale explicitement ce doublon.
+// N'a pas besoin d'être recalculé chaque jour comme coachMsg (le contexte
+// course change peu d'un jour à l'autre), donc pas de vraie clé de date
+// associée — un bouton de rafraîchissement manuel suffit.
+let coachRaceMsg = load(clePourPlan("lk_coach_race_msg"), null);
+
 async function fetchCoachMsg() {
   const t = today();
   if (coachDate === t && coachMsg) return; // déjà fetché aujourd'hui
@@ -729,6 +739,41 @@ Réponds uniquement avec le message, sans guillemets.`;
 // Fetcher le message coach au démarrage
 if (!coachMsg || coachDate !== today()) {
   setTimeout(fetchCoachMsg, 2000);
+}
+
+// Conseil de Léa dédié à la course — vraie valeur ajoutée par rapport aux
+// segments déjà affichés dans splitsCard (pas juste reformuler les mêmes
+// chiffres) : contexte sur l'écart entre l'estimation actuelle et
+// l'objectif, la météo prévue le jour J si connue, le nombre de jours
+// restants — pour un vrai conseil mental/stratégique, pas une répétition
+// des allures déjà visibles.
+async function fetchCoachRaceMsg(notesSegments) {
+  const cd = countdown();
+  const predNow = currentPred || predict10K();
+  const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l'objectif" : '+'+fmtTime(predNow.gap)+" de l'objectif";
+
+  const prompt = `Tu es Léa, coach running qui prépare ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION}.
+Objectif : ${fmtTime(raceGoalTime)}. Estimation actuelle : ${predNow.timeStr} (${gapStr}).
+J-${cd} avant la course.
+Stratégie de course déjà affichée à l'utilisateur (ne la répète pas, ne redonne pas les allures/km déjà visibles) : ${notesSegments.join(' puis ')}.
+Donne un vrai conseil complémentaire, PAS une reformulation de la stratégie ci-dessus — plutôt un conseil mental (gestion du stress, focus), logistique (sommeil, alimentation les jours précédents) ou sur l'écart actuel avec l'objectif (rassurant si en avance, réaliste si en retard). 2-3 phrases max. Réponds uniquement avec le message, sans guillemets.`;
+
+  try {
+    const resp = await fetch("/api/coach", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ prompt })
+    });
+    const data = await resp.json();
+    const msg = data.text || null;
+    if (msg) {
+      coachRaceMsg = msg;
+      save(clePourPlan("lk_coach_race_msg"), coachRaceMsg);
+      render();
+    }
+  } catch(e) {
+    console.warn("Coach course indisponible:", e.message);
+  }
 }
 
 // ── Source de vérité unique — allures & seuils de validation ────────────────
@@ -3345,23 +3390,10 @@ function renderCourse() {
     )
   );
 
-  const strategieCard = el("div",{style:{marginBottom:"16px"}},
-    el("div",{class:"label"},"📋 Stratégie de course"),
-    el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
-      el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}},
-        el("div",{style:{background:"#60a5fa22",border:"1px solid #60a5fa44",borderRadius:"6px",padding:"4px 8px",color:"#60a5fa",fontSize:"13px",fontWeight:"700",whiteSpace:"nowrap"}},"Km 1–3"),
-        el("span",{class:"muted",style:{fontSize:"14px"}},"Prudent · 4:55–5:00/km · laisser partir")
-      ),
-      el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}},
-        el("div",{style:{background:"#f9731622",border:"1px solid #f9731644",borderRadius:"6px",padding:"4px 8px",color:"#f97316",fontSize:"13px",fontWeight:"700",whiteSpace:"nowrap"}},"Km 4–7"),
-        el("span",{class:"muted",style:{fontSize:"14px"}},"Allure cible · 4:51/km · contrôle")
-      ),
-      el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}},
-        el("div",{style:{background:"#22c55e22",border:"1px solid #22c55e44",borderRadius:"6px",padding:"4px 8px",color:"#22c55e",fontSize:"13px",fontWeight:"700",whiteSpace:"nowrap"}},"Km 8–10"),
-        el("span",{class:"muted",style:{fontSize:"14px"}},"Tout donner · accélération finale")
-      )
-    )
-  );
+  // strategieCard (codée en dur, jamais mise à jour selon le vrai objectif
+  // de Laurent) retirée le 11 juillet 2026 — n'était en fait plus utilisée
+  // dans l'assemblage final depuis un moment (vrai code mort), remplacée
+  // depuis par splitsCard ci-dessous, calculée dynamiquement.
 
   const parcoursCard = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🗺️ Parcours"),
@@ -3412,30 +3444,67 @@ function renderCourse() {
   const distanceKmCourse = DISTANCE_M_REFERENCE / 1000;
   const paceSecKm = raceGoalTime / distanceKmCourse; // secondes par km, allure cible moyenne
 
+  // Calcule les segments à partir de définitions avec un ÉCART relatif
+  // (offsetSecKm) pour tous les segments SAUF le dernier — le dernier
+  // segment est calibré mathématiquement pour compenser exactement l'écart
+  // accumulé, garantissant que la somme des temps de tous les segments
+  // corresponde TOUJOURS exactement à raceGoalTime, quelle que soit la
+  // stratégie choisie pour les segments intermédiaires.
+  //
+  // Bug corrigé le 11 juillet 2026 : l'ancienne version fixait un allure
+  // PLUS LENTE que l'objectif sur le premier segment (marge de sécurité au
+  // départ), mais le second segment restait exactement à l'allure cible
+  // moyenne, sans jamais compenser la perte de temps du premier — le temps
+  // total dépassait systématiquement l'objectif (33s de trop mesurées sur
+  // un 10K à 48:30, repéré par Laurent). Cette nouvelle fonction élimine
+  // structurellement ce risque : le dernier segment absorbe toujours
+  // exactement l'écart nécessaire.
+  function calculerSplitsCalibres(distanceKm, tempsObjectifSec, definitionsSegmentsIntermediaires, dernierNote) {
+    const paceMoyen = tempsObjectifSec / distanceKm;
+    let tempsUtilise = 0, distUtilisee = 0;
+    const segments = definitionsSegmentsIntermediaires.map(d => {
+      const pace = paceMoyen + d.offsetSecKm;
+      const dist = d.to - d.from;
+      tempsUtilise += dist * pace;
+      distUtilisee += dist;
+      return { from: d.from, to: d.to, note: d.note, pace };
+    });
+    const distRestante = distanceKm - distUtilisee;
+    const tempsRestant = tempsObjectifSec - tempsUtilise;
+    segments.push({ from: distUtilisee, to: distanceKm, note: dernierNote, pace: tempsRestant / distRestante });
+    return segments;
+  }
+
   let splits;
   if (distanceKmCourse <= 5.5) {
-    // 5K : quasi-plat, progression légère (même principe que genererContenuRace)
-    splits = [
-      { from:0, to:1, note:"Départ prudent", pace: paceSecKm + 4 },
-      { from:1, to:2, note:"Allure cible", pace: paceSecKm },
-      { from:2, to:4, note:"Accélération progressive", pace: paceSecKm - 3 },
-      { from:4, to:Math.round(distanceKmCourse), note:"Tout donner", pace: paceSecKm - 6 },
-    ];
+    // 5K : quasi-plat, 4 segments avec progression continue
+    const d = Math.round(distanceKmCourse);
+    splits = calculerSplitsCalibres(distanceKmCourse, raceGoalTime, [
+      { from:0, to:Math.min(1,d*0.2), note:"Départ prudent", offsetSecKm: 6 },
+      { from:Math.min(1,d*0.2), to:d*0.45, note:"Allure cible", offsetSecKm: 1 },
+      { from:d*0.45, to:d*0.8, note:"Accélération progressive", offsetSecKm: -2 },
+    ], "Tout donner");
   } else if (distanceKmCourse <= 12) {
-    // 10K : 2 segments nets
-    const kmSegment1 = Math.round(distanceKmCourse * 0.5);
-    splits = [
-      { from:0, to:kmSegment1, note:"Prudent, 1ère moitié", pace: paceSecKm + 6.5 },
-      { from:kmSegment1, to:Math.round(distanceKmCourse), note:"Allure maximale soutenable", pace: paceSecKm },
-    ];
+    // 10K : 4 segments — départ prudent, montée en régime, allure cible
+    // soutenue, effort final (au lieu des 2 segments bruts de l'ancienne
+    // version, qui ne compensaient jamais le départ prudent)
+    const d = distanceKmCourse;
+    splits = calculerSplitsCalibres(d, raceGoalTime, [
+      { from:0, to:d*0.2, note:"Départ prudent", offsetSecKm: 8 },
+      { from:d*0.2, to:d*0.5, note:"Montée en régime", offsetSecKm: 2 },
+      { from:d*0.5, to:d*0.8, note:"Allure cible soutenue", offsetSecKm: -2 },
+    ], "Dernier effort, tout donner");
   } else {
-    // Semi / Marathon : allure stable, marge de sécurité au départ, pas de
-    // paliers progressifs marqués
-    const kmDepart = Math.round(distanceKmCourse * 0.15); // ~15% de la distance pour la marge de sécurité initiale
-    splits = [
-      { from:0, to:kmDepart, note:"Marge de sécurité, ne pars pas trop vite", pace: paceSecKm + 5 },
-      { from:kmDepart, to:Math.round(distanceKmCourse), note:"Allure cible, ajuste au ressenti en fin de course", pace: paceSecKm },
-    ];
+    // Semi / Marathon : marge de sécurité au départ, allure stable au
+    // milieu, ajustement final au ressenti — 3 segments, pas de paliers
+    // aussi marqués que sur un 10K (distance plus longue, gestion d'effort
+    // différente)
+    const d = distanceKmCourse;
+    const kmDepart = d * 0.15;
+    splits = calculerSplitsCalibres(d, raceGoalTime, [
+      { from:0, to:kmDepart, note:"Marge de sécurité, ne pars pas trop vite", offsetSecKm: 5 },
+      { from:kmDepart, to:d*0.85, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+    ], "Ajuste au ressenti en fin de course");
   }
 
   // Calculer les temps de passage cumulés
@@ -3511,20 +3580,29 @@ function renderCourse() {
   );
 
   // ── Conseil Coach spécifique course ───────────────────────────────────────
-  // Généré depuis les vrais splits (pas un texte figé pour 10K) — même bug
-  // que la carte "Allures de passage" ci-dessus (cf. commentaire associé).
-  const premierSplit = splits[0];
-  const dernierSplit = splits[splits.length - 1];
-  const premierSplitStr = Math.floor(premierSplit.pace/60)+":"+(Math.round(premierSplit.pace%60)).toString().padStart(2,"0");
+  // Remplace le 11 juillet 2026 un texte codé en dur qui ne faisait que
+  // reformuler mécaniquement les segments déjà affichés dans splitsCard
+  // ci-dessus (aucune valeur ajoutée, signalé par Laurent) — vrai appel IA
+  // maintenant, avec un contexte dédié (écart estimation/objectif, jours
+  // restants) plutôt qu'une répétition des mêmes chiffres.
+  // Déclenche le premier appel si aucun message n'a encore été chargé pour
+  // ce plan (pas de vraie clé de date, contrairement à coachMsg — le
+  // contexte course change peu d'un jour à l'autre).
+  if (!coachRaceMsg) {
+    setTimeout(() => fetchCoachRaceMsg(splits.map(s=>s.note)), 2000);
+  }
+
   const coachRaceEl = el("div",{style:{marginBottom:"12px"}},
     el("div",{class:"label"},"🤖 Conseil de Léa pour la course"),
     el("div",{style:{background:"#232738",borderRadius:"10px",padding:"14px",display:"flex",gap:"10px"}},
       el("span",{style:{fontSize:"20px",flexShrink:"0"}},"🤖"),
-      el("div",{style:{color:"#e2e8f0",fontSize:"14px",lineHeight:"1.6"}},
-        premierSplit.note+" jusqu'au km "+premierSplit.to+" — vise "+premierSplitStr+"/km. "+
-        dernierSplit.note+" à partir du km "+dernierSplit.from+". "+
-        "Objectif mi-course : "+fmtTime(Math.round(raceGoalTime/2))+"."
-      )
+      el("div",{style:{color:"#e2e8f0",fontSize:"14px",lineHeight:"1.6",flex:"1"}},
+        coachRaceMsg || "Léa réfléchit à un conseil pour ta course…"
+      ),
+      el("button",{style:{background:"none",border:"none",color:"#64748b",fontSize:"16px",cursor:"pointer",flexShrink:"0"},
+        feedback:true,
+        onClick:()=>{ coachRaceMsg=null; fetchCoachRaceMsg(splits.map(s=>s.note)); render(); }
+      },"🔄")
     )
   );
 
