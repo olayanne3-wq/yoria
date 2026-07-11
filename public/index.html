@@ -4696,8 +4696,22 @@ function matchActivitiesToPlan(activities) {
   const runs = activities.filter(a =>
     a.type==="Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
   );
+  // Garde-fou ajouté le 11 juillet 2026 : Laurent signale des séances de
+  // septembre (un plan futur) marquées ✅/⚠️/❌ à tort. Cause de fond
+  // probable : plusieurs onglets ouverts simultanément sur des plans
+  // différents, chacun avec sa propre variable ALL_SESSIONS en mémoire mais
+  // un même localStorage/Gist partagé — une vraie race condition entre
+  // onglets a pu faire écrire les statuts d'un plan sous la clé préfixée
+  // d'un AUTRE plan (confirmé : le Gist lui-même contenait bien
+  // "statuses": {} pour le nouveau plan, la contamination est purement
+  // locale au navigateur). Peu importe la cause exacte, ce garde-fou est
+  // une protection universelle et peu coûteuse : jamais de statut
+  // automatique sur une séance dont la date est dans le futur, quel que
+  // soit le plan affiché.
+  const aujourdhui = today();
   ALL_SESSIONS.forEach(s => {
     if (s.type==="REPOS"||s.type==="RACE") return;
+    if (s.date > aujourdhui) return; // jamais de validation automatique sur une séance future
     const match = runs.find(r=>r.start_date_local?.slice(0,10)===s.date);
     if (match) {
       if (!statuses[s.uid] || statuses[s.uid]==="—") {
