@@ -936,14 +936,22 @@ function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualite
 
   switch (sousType) {
     case 'seuil-court': {
-      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
+      // Progression par niveau (v2.2, 11 juillet 2026) — base/plafond
+      // intermédiaire inchangés (3→5), débutant/confirmé ajustés d'une
+      // répétition de part et d'autre, cohérent avec l'ampleur déjà
+      // retenue pour i-30-30.
+      const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
       kmCorps = kmDepuisMinutes(reps * 6, T);
       contenuCorps = `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 6*60, allure: formatPace(T), dureeRecupSec: 90 }] };
       break;
     }
     case 'seuil': {
-      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
+      const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
       kmCorps = kmDepuisMinutes(reps * 8, T);
       contenuCorps = `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 8*60, allure: formatPace(T), dureeRecupSec: 2*60 }] };
@@ -1013,35 +1021,45 @@ function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualite
       break;
     }
     case 'i-3min': {
-      const reps = ajuster(reduireSelonNiveauProgression(4, 1, 6, semaineDansPhase), 2);
+      const PARAMS_NIVEAU = { debutant:{base:3,cap:5}, intermediaire:{base:4,cap:6}, confirme:{base:5,cap:7} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
       kmCorps = kmDepuisMinutes(reps * 3, I);
       contenuCorps = `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 3*60, allure: formatPace(I), dureeRecupSec: 2*60 }] };
       break;
     }
     case 'vitesse': {
-      const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
+      const PARAMS_NIVEAU = { debutant:{base:4,cap:8}, intermediaire:{base:6,cap:10}, confirme:{base:8,cap:12} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
       kmCorps = reps * 0.3; // distance directement connue (300m)
       contenuCorps = `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`;
       structureIntervalles = { blocs: [{ repetitions: reps, distanceEffortM: 300, allure: formatPace(V), dureeRecupSec: null, recupLabel: 'complète' }] };
       break;
     }
     case 'cotes': {
-      const reps = ajuster(reduireSelonNiveauProgression(6, 1, 10, semaineDansPhase), 3);
+      const PARAMS_NIVEAU = { debutant:{base:4,cap:8}, intermediaire:{base:6,cap:10}, confirme:{base:8,cap:12} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
       kmCorps = kmDepuisMinutes(reps * 0.5, V); // approximation : allure proche du V
       contenuCorps = `${reps}×30s en côte (effort soutenu), récupération trot`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 30, allure: 'effort soutenu (côte)', dureeRecupSec: null, recupLabel: 'trot' }] };
       break;
     }
     case 'allure-course': {
-      const reps = ajuster(reduireSelonNiveauProgression(3, 1, 5, semaineDansPhase), 2);
+      const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
       kmCorps = kmDepuisMinutes(reps * 5, C);
       contenuCorps = `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 5*60, allure: formatPace(C), dureeRecupSec: 2*60 }] };
       break;
     }
     case 'allure-course-court': {
-      const reps = ajuster(reduireSelonNiveauProgression(2, 1, 3, semaineDansPhase), 1);
+      const PARAMS_NIVEAU = { debutant:{base:1,cap:2}, intermediaire:{base:2,cap:3}, confirme:{base:3,cap:4} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 1);
       kmCorps = kmDepuisMinutes(reps * 3, C);
       contenuCorps = `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 3*60, allure: formatPace(C), dureeRecupSec: 2*60 }] };
@@ -1060,7 +1078,9 @@ function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualite
     case 'seuil-negatif': {
       // Deux blocs de seuil, le second plus rapide — travaille la capacité à
       // accélérer sur jambes fatiguées, cohérent avec le seuil classique
-      const dureeBloc = ajuster(reduireSelonNiveauProgression(8, 2, 12, semaineDansPhase), 5);
+      const PARAMS_NIVEAU = { debutant:{base:6,cap:10}, intermediaire:{base:8,cap:12}, confirme:{base:10,cap:14} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const dureeBloc = ajuster(reduireSelonNiveauProgression(base, 2, cap, semaineDansPhase), 5);
       const paceBloc2 = T - (T - I) * 0.3; // 30% du chemin vers l'allure VMA
       kmCorps = kmDepuisMinutes(dureeBloc, T) + kmDepuisMinutes(dureeBloc, paceBloc2);
       contenuCorps = `${dureeBloc}min @ ${formatPace(T)} (Seuil) puis ${dureeBloc}min @ ${formatPace(paceBloc2)} (Seuil soutenu), enchaînés sans récup`;
@@ -1071,14 +1091,18 @@ function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualite
       break;
     }
     case 'tempo-court': {
-      const duree = ajuster(reduireSelonNiveauProgression(20, 5, 35, semaineDansPhase), 10);
+      const PARAMS_NIVEAU = { debutant:{base:15,cap:25}, intermediaire:{base:20,cap:35}, confirme:{base:25,cap:40} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const duree = ajuster(reduireSelonNiveauProgression(base, 5, cap, semaineDansPhase), 10);
       kmCorps = kmDepuisMinutes(duree, T);
       contenuCorps = `${duree}min continu @ ${formatPace(T)} (Seuil léger)`;
       structureIntervalles = { blocs: [{ repetitions: 1, dureeEffortSec: duree*60, allure: formatPace(T), dureeRecupSec: 0 }] };
       break;
     }
     case 'seuil-2min': {
-      const reps = ajuster(reduireSelonNiveauProgression(4, 1, 8, semaineDansPhase), 3);
+      const PARAMS_NIVEAU = { debutant:{base:3,cap:7}, intermediaire:{base:4,cap:8}, confirme:{base:5,cap:9} };
+      const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
+      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
       // Portions rapides comptées à l'allure T, portions faciles ignorées dans
       // l'estimation km (approximation assumée, comme pour i-30-30)
       kmCorps = kmDepuisMinutes(reps * 2, T);

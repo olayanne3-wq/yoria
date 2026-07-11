@@ -137,3 +137,45 @@ console.log(' prudemment que les coureurs confirmés)');
   console.log('Débutant < Intermédiaire < Confirmé :',
     (premiereRepParNiveau.debutant < premiereRepParNiveau.intermediaire && premiereRepParNiveau.intermediaire < premiereRepParNiveau.confirme) ? 'OK' : 'ÉCHEC');
 }
+
+console.log('\n--- Extension du niveau aux 9 autres sous-types à répétitions/durée simples (11 juillet 2026) ---');
+console.log('(seuil-court, seuil, i-3min, vitesse, cotes, allure-course, allure-course-court,');
+console.log(' seuil-negatif, tempo-court, seuil-2min — vérifie que débutant < intermédiaire < confirmé');
+console.log(' pour chacun, en cherchant sur plusieurs distances pour être sûr de les rencontrer tous)');
+{
+  const extractPremiereValeur = (sousType, contenu) => {
+    if (sousType === 'seuil-negatif') { const m = contenu.match(/EF\) \+ (\d+)min/); return m ? parseInt(m[1]) : null; }
+    if (sousType === 'tempo-court') { const m = contenu.match(/(\d+)min continu/); return m ? parseInt(m[1]) : null; }
+    const m = contenu.match(/EF\) \+ (\d+)×/);
+    return m ? parseInt(m[1]) : null;
+  };
+  const sousTypesACouvrir = ['seuil-court','seuil','i-3min','vitesse','cotes','allure-course','allure-course-court','seuil-negatif','tempo-court','seuil-2min'];
+  const trouves = {};
+  ['10K','Semi','Marathon'].forEach(distance => {
+    const p2 = { ...params, distance, refDistance:'10K' };
+    ['debutant','intermediaire','confirme'].forEach(niveau => {
+      const p = generatePlan({ ...profil, niveau }, p2);
+      p.semaines.forEach(s => {
+        if (s.estDechargeSemaine || s.phase === 'Affutage') return; // exclure les semaines réduites, faussent la comparaison de base
+        Object.values(s.assignment).forEach(a => {
+          if (sousTypesACouvrir.includes(a.sousType) && !(trouves[a.sousType]?.[niveau])) {
+            trouves[a.sousType] = trouves[a.sousType] || {};
+            trouves[a.sousType][niveau] = extractPremiereValeur(a.sousType, a.contenu);
+          }
+        });
+      });
+    });
+  });
+  let tousOk = true;
+  sousTypesACouvrir.forEach(st => {
+    const v = trouves[st];
+    if (!v || v.debutant == null || v.intermediaire == null || v.confirme == null) {
+      console.log(st + ' : PAS RENCONTRÉ dans les distances testées (ignoré, pas un échec)');
+      return;
+    }
+    const ok = v.debutant < v.intermediaire && v.intermediaire < v.confirme;
+    if (!ok) tousOk = false;
+    console.log(st + ' : debutant=' + v.debutant + ' intermediaire=' + v.intermediaire + ' confirme=' + v.confirme, ok ? 'OK' : 'ÉCHEC');
+  });
+  console.log('Tous les sous-types rencontrés respectent debutant < intermediaire < confirme :', tousOk ? 'OK' : 'ÉCHEC');
+}
