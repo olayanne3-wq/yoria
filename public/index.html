@@ -681,7 +681,7 @@ async function fetchCoachMsg() {
   const prompt = `Tu es Léa, coach running qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
-${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui : ${sessType} — ${sessDesc}.`}
+${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
 ${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
 ${isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
@@ -690,13 +690,13 @@ ${isMonday
   ? `Fais un bilan motivant de la semaine ${prevWeekNum} (séances, km, progression) et donne un aperçu positif de la semaine ${currentWeek()} qui commence. 3-4 phrases max.`
   : sessionDone
     ? (sessType==='EF'||sessType==='LONGUE')
-      ? 'Commente brièvement la sortie EF (sensations, récupération). Pas de conseil technique intensif. 2-3 phrases max.'
-      : 'Fais une analyse de la séance terminée (qualité, points positifs, axes d\'amélioration). Mentionne l\'IE ou la cadence si disponibles dans le contexte. 3-4 phrases max.'
+      ? 'La séance ci-dessus est DÉJÀ TERMINÉE. Commente brièvement la sortie EF (sensations, récupération). Pas de conseil technique intensif. 2-3 phrases max.'
+      : 'La séance ci-dessus est DÉJÀ TERMINÉE. Fais une analyse de la séance terminée (qualité, points positifs, axes d\'amélioration). Mentionne l\'IE ou la cadence si disponibles dans le contexte. 3-4 phrases max.'
     : isEveOfKeySession
-      ? 'Donne un conseil pour bien préparer la séance clé de demain (récupération, sommeil, hydratation). 2-3 phrases max.'
+      ? 'La séance du jour N\'A PAS ENCORE EU LIEU. Donne un conseil pour bien préparer la séance clé de DEMAIN (récupération, sommeil, hydratation) — ne commente pas la séance du jour comme si elle était terminée. 2-3 phrases max.'
       : (sessType==='EF'||sessType==='LONGUE'||sessType==='REPOS')
-        ? 'Message court sur la récupération ou la régularité. 2-3 phrases max.'
-        : 'Génère UN message de coaching court et motivant sur la séance à venir. 2-3 phrases max.'}
+        ? 'La séance du jour N\'A PAS ENCORE EU LIEU (ou c\'est un jour de repos) — ne la commente jamais au passé ni comme si elle était déjà faite. Message court, tourné vers l\'AVANT (préparation, régularité, état d\'esprit pour aujourd\'hui). 2-3 phrases max.'
+        : 'La séance du jour N\'A PAS ENCORE EU LIEU — ne la commente jamais au passé ni comme si elle était déjà faite. Génère UN message de coaching court et motivant, tourné vers l\'AVANT, sur la séance à venir. 2-3 phrases max.'}
 ${isLastTwoWeeks ? "Mentionne le compte à rebours." : "Ne mentionne pas le nombre de jours restants."}
 Réponds uniquement avec le message, sans guillemets.`;
 
