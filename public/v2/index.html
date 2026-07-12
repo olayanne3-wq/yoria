@@ -2266,6 +2266,82 @@
   };
   const KM_PAR_DISTANCE_WIZARD = { '5K':5, '10K':10, 'Semi':21.0975, 'Marathon':42.195 };
 
+  // Vérifie qu'un record donné reste physiologiquement cohérent avec les
+  // AUTRES records du profil (demandé par Laurent le 12 juillet 2026) —
+  // ex. un vieux 10K oublié qui n'a jamais été mis à jour depuis un 5K plus
+  // récent et bien plus rapide serait détecté comme "probablement périmé",
+  // pas utilisé tel quel même s'il correspond exactement à la distance
+  // visée par le plan.
+  //
+  // Pour chaque AUTRE distance ayant un record, calcule l'estimation Riegel
+  // du record à vérifier depuis cette autre distance, puis prend la
+  // moyenne de toutes ces estimations. Si le vrai temps déclaré s'écarte
+  // de plus de 10% de cette moyenne (dans les deux sens — trop rapide OU
+  // trop lent), le record est considéré incohérent. Seuil choisi
+  // volontairement large (Riegel a sa propre marge d'imprécision naturelle
+  // même pour un profil cohérent, souvent citée entre 3 et 8% selon les
+  // individus) pour éviter les faux positifs sur de vraies différences de
+  // profil (meilleur en VMA qu'en endurance, ou l'inverse).
+  const SEUIL_INCOHERENCE_RECORDS = 0.10;
+
+  function verifierCoherenceRecord(distance, records) {
+    const recordCible = records[distance];
+    if (!recordCible?.temps) return { coherent: true };
+    const tempsCibleSec = Engine.parseTimeToSeconds(recordCible.temps);
+    const estimations = [];
+    Object.keys(records).forEach(autreDistance => {
+      if (autreDistance === distance || !records[autreDistance]?.temps) return;
+      const tempsAutreSec = Engine.parseTimeToSeconds(records[autreDistance].temps);
+      const estimation = Engine.riegelPredict(tempsAutreSec, KM_PAR_DISTANCE_WIZARD[autreDistance], KM_PAR_DISTANCE_WIZARD[distance]);
+      estimations.push({ distance: autreDistance, estimation, date: records[autreDistance].date });
+    });
+    if (estimations.length === 0) return { coherent: true }; // rien à comparer, pas de vrai signal possible
+    const moyenneEstimation = estimations.reduce((a,e)=>a+e.estimation,0) / estimations.length;
+    const ecartRelatif = Math.abs(tempsCibleSec - moyenneEstimation) / moyenneEstimation;
+    const coherentBrut = ecartRelatif <= SEUIL_INCOHERENCE_RECORDS;
+    if (coherentBrut) return { coherent: true, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif };
+
+    // Incohérence détectée — problème de symétrie relevé le 12 juillet
+    // 2026 : si A est incohérent avec B, B l'est nécessairement aussi avec
+    // A (avec seulement 2 records qui divergent, ni l'un ni l'autre ne
+    // "gagne" jamais avec une comparaison symétrique brute). Départage par
+    // date, dans l'ordre de préférence décidé avec Laurent :
+    // 1) si LES DEUX dates sont connues, le plus RÉCENT l'emporte
+    // 2) si UNE SEULE date est connue, celui qui en a une l'emporte
+    // 3) si AUCUNE date n'est connue, on ne tranche pas (incohérence
+    //    confirmée mais non résolue) — le record reste utilisable par
+    //    défaut, avec un vrai signal d'incertitude dans le message
+    const dateCible = recordCible.date;
+    // Compare à la moyenne des dates des autres records impliqués (le cas
+    // le plus fréquent n'a qu'un seul "autre" record de toute façon)
+    const autresAvecDate = estimations.filter(e => e.date);
+    if (dateCible && autresAvecDate.length > 0) {
+      const dateCibleTime = new Date(dateCible).getTime();
+      const dateAutrePlusRecente = autresAvecDate.reduce((max,e) => Math.max(max, new Date(e.date).getTime()), 0);
+      if (dateCibleTime >= dateAutrePlusRecente) {
+        // Le record cible est le plus récent (ou aussi récent) : on le
+        // considère finalement fiable malgré l'écart avec un plus ancien
+        return { coherent: true, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif, departageParDate: true };
+      }
+      // Le record cible est plus ancien qu'un autre impliqué : reste incohérent
+      return { coherent: false, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif, departageParDate: true };
+    }
+    if (!dateCible && autresAvecDate.length > 0) {
+      // Le record cible n'a pas de date, un autre en a une : l'autre l'emporte
+      return { coherent: false, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif, departageParDate: true };
+    }
+    if (dateCible && autresAvecDate.length === 0) {
+      // Le record cible A une date, mais aucun des autres n'en a — la
+      // cible a plus d'info pour elle, donc elle l'emporte (cas manquant
+      // trouvé en testant : la condition précédente ne couvrait que "la
+      // cible n'a pas de date, un autre en a" — pas le cas inverse).
+      return { coherent: true, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif, departageParDate: true };
+    }
+    // Aucune date exploitable des deux côtés : incohérence non résolue,
+    // reste utilisable par défaut (pas de vraie base pour trancher)
+    return { coherent: true, estimationCoherente: Math.round(moyenneEstimation), ecartRelatif, incertitudeNonResolue: true };
+  }
+
   function preremplirDepuisProfilCoureur() {
     if (!window.Engine) return; // pas encore chargé, l'appel via engineReady réessaiera
     let profil;
@@ -2277,19 +2353,57 @@
 
     const distanceViseeActuelle = currentDist === '5' ? '5K' : currentDist === '10' ? '10K' : currentDist === '21.1' ? 'Semi' : 'Marathon';
     const ordre = ORDRE_PROXIMITE_DISTANCE[distanceViseeActuelle] || ORDRE_PROXIMITE_DISTANCE['10K'];
-    const distanceAvecRecord = ordre.find(d => profil.records?.[d]?.temps);
-    if (!distanceAvecRecord) return; // aucun record connu du tout, laisse les vraies valeurs par défaut du wizard
+
+    // Vérifie D'ABORD explicitement si un record EXACT existe pour la
+    // distance visée mais est écarté pour incohérence — cas distinct de
+    // "aucun record exact du tout", pour donner un vrai message spécifique
+    // (demandé par Laurent le 12 juillet 2026) plutôt que le message
+    // générique d'estimation, qui ne dirait pas POURQUOI ce record précis
+    // n'a pas été utilisé.
+    const recordExactViseVerif = profil.records?.[distanceViseeActuelle]?.temps
+      ? verifierCoherenceRecord(distanceViseeActuelle, profil.records)
+      : null;
+    const recordExactEcarteIncoherent = recordExactViseVerif && !recordExactViseVerif.coherent;
+
+    // Ne considère comme "record disponible" que ceux qui sont cohérents
+    // avec les autres — un record exact mais incohérent (probablement
+    // périmé) est écarté au profit du prochain candidat dans l'ordre de
+    // proximité, exactement comme s'il n'existait pas.
+    const distanceAvecRecord = ordre.find(d => {
+      if (!profil.records?.[d]?.temps) return false;
+      const verif = verifierCoherenceRecord(d, profil.records);
+      return verif.coherent;
+    });
+    if (!distanceAvecRecord) return; // aucun record connu ou cohérent, laisse les vraies valeurs par défaut du wizard
 
     const recordSource = profil.records[distanceAvecRecord];
     let tempsAUtiliserSec = Engine.parseTimeToSeconds(recordSource.temps);
-    if (distanceAvecRecord !== distanceViseeActuelle) {
-      // Pas de record exact pour la distance visée par CE plan : conversion
-      // Riegel depuis le record le plus proche disponible, avec un vrai
-      // message explicite pour que Laurent sache que c'est une estimation,
-      // pas sa vraie performance mesurée sur cette distance précise.
+    if (recordExactEcarteIncoherent) {
+      // Cas spécifique : le record exact existe mais a été jugé incohérent
+      // avec les autres records du profil (ex. vieux record jamais mis à
+      // jour depuis une nette progression sur une autre distance) — message
+      // dédié plutôt que le message générique "pas de record exact".
+      const h2 = Math.floor(recordExactViseVerif.estimationCoherente/3600), m2 = Math.floor((recordExactViseVerif.estimationCoherente%3600)/60), s2 = recordExactViseVerif.estimationCoherente%60;
+      const estimStr = (h2>0?h2+':':'')+m2.toString().padStart(h2>0?2:1,'0')+':'+s2.toString().padStart(2,'0');
+      const noteEstimation = document.getElementById('refHelpText');
+      if (noteEstimation) noteEstimation.textContent = `Ton record ${distanceViseeActuelle} (${profil.records[distanceViseeActuelle].temps}) semble ne plus correspondre à tes autres records (écart de ${Math.round(recordExactViseVerif.ecartRelatif*100)}%, estimation attendue ~${estimStr}) — utilisé plutôt ton record ${distanceAvecRecord}. Ajuste si besoin.`;
+    } else if (distanceAvecRecord !== distanceViseeActuelle) {
+      // Pas de record exact/cohérent pour la distance visée par CE plan :
+      // conversion Riegel depuis le record le plus proche disponible, avec
+      // un vrai message explicite pour que Laurent sache que c'est une
+      // estimation, pas sa vraie performance mesurée sur cette distance.
       tempsAUtiliserSec = Math.round(Engine.riegelPredict(tempsAUtiliserSec, KM_PAR_DISTANCE_WIZARD[distanceAvecRecord], KM_PAR_DISTANCE_WIZARD[distanceViseeActuelle]));
       const noteEstimation = document.getElementById('refHelpText');
       if (noteEstimation) noteEstimation.textContent = `Estimé depuis ton record ${distanceAvecRecord} (${recordSource.temps}) — corrige si besoin, c'est une estimation.`;
+    } else {
+      // Record exact ET cohérent trouvé : vérifie quand même s'il existe un
+      // record incohérent SUR CETTE distance visée elle-même — pas
+      // possible ici puisque distanceAvecRecord===distanceViseeActuelle
+      // implique déjà la vérification passée plus haut, mais un vrai
+      // message positif confirme explicitement que le record utilisé a
+      // bien été jugé fiable.
+      const noteEstimation = document.getElementById('refHelpText');
+      if (noteEstimation) noteEstimation.textContent = '';
     }
     const h = Math.floor(tempsAUtiliserSec/3600), m = Math.floor((tempsAUtiliserSec%3600)/60), s = tempsAUtiliserSec%60;
     if (h > 0) { document.getElementById('tHour').value = h; }
