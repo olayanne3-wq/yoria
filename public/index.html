@@ -2919,7 +2919,11 @@ function renderStats() {
   // "6:20" codée en dur (bug trouvé le 7 juillet 2026, même famille que
   // les autres résidus de cette session). Repli "6:20" si absente
   // (compatibilité avec un plan sans cette donnée).
-  const alluresEF = window.__PLAN_BRUT__?.allures?.E || "6:20/km";
+  // .replace("/km","") : allures.E est stocké au format "6:10/km" — sans ce
+  // nettoyage, le "/km" ajouté à l'affichage (paceEl, bloc Informations) se
+  // retrouvait dupliqué ("6:10/km/km"), bug remonté par Laurent le 12
+  // juillet 2026 sur l'onglet Stats.
+  const alluresEF = (window.__PLAN_BRUT__?.allures?.E || "6:20").replace("/km","");
   const chaleurEF = (() => {
     const allureStr = window.__PLAN_BRUT__?.allures?.E; // ex. "6:10/km"
     if (!allureStr) return "6:40"; // repli historique
@@ -3208,7 +3212,7 @@ function renderStats() {
           el("div",{class:"muted",style:{fontSize:"13px"}},r.heat?"Chaud : "+r.heat:SESSION_TARGETS[r.type]?"Tolérance "+SESSION_TARGETS[r.type].tolerance:"—")
         ),
         el("div",{style:{textAlign:"right"}},
-          el("div",{style:{color:r.color,fontSize:"15px",fontWeight:"700"}},r.pace),
+          el("div",{style:{color:r.color,fontSize:"15px",fontWeight:"700"}},r.pace.replace(/\/km/g,"")+"/km"),
           el("div",{class:"muted",style:{fontSize:"13px"}},r.fc+" bpm")
         )
       ))
@@ -3298,12 +3302,7 @@ function renderStats() {
         ["Date",new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+" · "+RACE_LOCATION,"#f1f5f9"],
         ["Objectif",fmtTime(raceGoalTime)+" · "+fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km","#f97316"],
         ["Référence",fmtTime(BASE_TIME_REFERENCE),"#f1f5f9"],
-        ["Allure EF",(window.__PLAN_BRUT__?.allures?.E||"6:20")+"/km · "+(() => {
-          const allureStr = window.__PLAN_BRUT__?.allures?.E;
-          if (!allureStr) return "6:40";
-          const [m,s] = allureStr.replace("/km","").split(":").map(Number);
-          return formatPace(m*60+s+20);
-        })()+"/km si chaud","#60a5fa"],
+        ["Allure EF",alluresEF+"/km · "+chaleurEF+"/km si chaud","#60a5fa"],
         ["FC max",runnerFcMax+" bpm","#f1f5f9"],
         // Km courus DEPUIS LE DÉBUT DU PLAN ACTUEL, pas toutes les activités
         // Strava jamais bornées — bug trouvé le 7 juillet 2026 : Laurent, sur
