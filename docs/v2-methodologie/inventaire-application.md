@@ -1,7 +1,7 @@
 # Inventaire de l'application "Run by Léa"
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
-> sans re-parcourir tout le repo. Mis à jour au 13 juillet 2026.
+> sans re-parcourir tout le repo. Mis à jour au 13 juillet 2026 (chantier ACWR en cours).
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 
@@ -150,6 +150,24 @@ Adaptation dynamique du plan en cours de route :
 - `appliquerAdaptations` — applique l'adaptation après confirmation utilisateur
 - `regenererStructuresIntervalles`
 
+**ACWR (Acute:Chronic Workload Ratio)** — section 33bis, chantier lancé le
+13 juillet 2026, validé historiquement sur les données réelles de Laurent avant
+codage (approche décidée le 11 juillet). `calculerACWR(activitesStrava)` : à
+partir des activités Strava réelles (type `Run` uniquement, jamais le plan
+théorique), calcule pour chaque jour la charge aiguë (somme des 7 derniers
+jours) et la charge chronique (moyenne des 4 fenêtres de 7 jours sur 28 jours),
+retourne l'historique quotidien complet + le dernier ratio connu. v1
+volontairement simple : volume brut (km), sans pondération FC ni allure —
+TRIMP ou pondération `SESSION_TARGETS` identifiés comme piste v2 si
+nécessaire. Seuils : `ACWR_SEUIL_RISQUE` (1.5), `ACWR_SEUIL_VIGILANCE` (1.3),
+`ACWR_SEUIL_SOUS_CHARGE` (0.8). Fonction pure, dupliquée dans
+`engine-classic-scripts/plan-generator.classic.js` (sans export) pour
+`index.html`. Affichée dans l'onglet Stats (`renderStats`, deux graphiques
+empilés : charge aiguë vs chronique, puis ratio avec zones colorées + texte
+d'explication) — **pas encore intégrée** comme second facteur dans
+`analyserAdaptations()` (intégration dashboard reportée à une session
+séparée, décision du 13 juillet).
+
 Autres briques : gestion des références de temps (`riegelPredict`, `computeAllures`),
 zones FC (`computeFcMaxTanaka`, `computeZonesFC`), jalons de transition entre phases,
 notes pratiques et repères de ressenti injectés dans les séances, cohérence de la
@@ -165,6 +183,14 @@ semaine test.
   (`extractTargetSpeed`). L'API Strava n'expose que les laps résultants, jamais la
   structure de programmation de la montre — approche par streams explorée et
   abandonnée (voir mémoires, chantier "v2.0 streams", clos).
+- `syncStrava()` (`index.html`) : demande toujours au moins 8 semaines
+  d'historique en arrière (`plan_start` = le plus ancien entre le vrai début
+  du plan et 8 semaines avant aujourd'hui), pas seulement depuis la date de
+  début du plan actuel — corrigé le 13 juillet 2026, nécessaire pour que
+  l'ACWR ait toujours assez de recul même sur un plan qui vient de démarrer.
+  `activitesDuPlan()` continue de filtrer correctement sur `dateDebutPlan`
+  indépendamment de ce qui est chargé en amont (aucun effet de bord sur le
+  "Km courus" du bloc Infos de Stats).
 
 **Météo** — proxy Open-Meteo (`api/weather.js`), gratuit, sans clé API. Alerte
 chaleur si température max prévue > 28°C. Utilise la géolocalisation GPS réelle,
@@ -190,7 +216,7 @@ géré par `v2/engine/gist-sync.js` (`chargerPlans`, `sauvegarderPlan`,
 | v2.3 profil coureur unifié + cohérence records | ✅ Clos (12 juillet, commits 81dd647, d37eaf3, 0e4969d) |
 | Connecteur MCP GitHub custom (remplacer PAT) | ❌ Abandonné (12 juillet) — OAuth App trop lourd pour l'usage |
 | Dé-duplication moteur/classic (`type="module"`) | ⏸️ Reporté — trop risqué à chaud |
-| ACWR (Acute:Chronic Workload Ratio) | 🔜 Pas codé — validation historique requise avant codage |
+| ACWR (Acute:Chronic Workload Ratio) | 🟡 En cours (13 juillet) — moteur + graphique Stats codés, intégration dashboard (analyserAdaptations) reportée |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
 | v2.5 commercialisation (Supabase, Stripe, multi-user) | 🔜 Architecture décidée, pas codée |
 
