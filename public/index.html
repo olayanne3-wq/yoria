@@ -290,10 +290,46 @@ const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || win
 const DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
 
 let raceGoalTime = load(clePourPlan("lk_race_goal"), OBJECTIF_REFERENCE);
-let runnerWeight = load("lk_weight", null);
-let runnerHeight = load("lk_height", null);
-let runnerFcMax = load("lk_fc_max", 181);
-let runnerPps = load("lk_pps", "");
+
+// Profil coureur unifié (v2.3, demandé par Laurent le 12 juillet 2026,
+// cohérent avec la vraie vision multi-utilisateurs v2.5) — remplace les
+// anciennes clés globales séparées (lk_weight/lk_height/lk_fc_max/lk_pps),
+// avec en plus des vrais records personnels PAR DISTANCE (5K/10K/Semi/
+// Marathon), pour que le wizard n'ait plus besoin de te redemander ton
+// temps de référence à chaque nouveau plan.
+//
+// Migration douce au premier chargement : si l'ancien format existe mais
+// pas le nouveau, on regroupe les anciennes valeurs dans le nouveau
+// profil — aucune vraie perte de données pour Laurent, qui avait déjà
+// poids/taille/FC max/PPS enregistrés séparément avant ce changement.
+function migrerVersProfilCoureur() {
+  const dejaMigre = load("lk_profil_coureur", null);
+  if (dejaMigre) return dejaMigre;
+  const ancienPoids = load("lk_weight", null);
+  const ancienneTaille = load("lk_height", null);
+  const ancienneFcMax = load("lk_fc_max", null);
+  const ancienPps = load("lk_pps", "");
+  const profil = {
+    prenom: "", nom: "",
+    anneeNaissance: null,
+    poids: ancienPoids, taille: ancienneTaille, fcMax: ancienneFcMax ?? 181,
+    pps: ancienPps,
+    records: { "5K": null, "10K": null, "Semi": null, "Marathon": null }
+  };
+  save("lk_profil_coureur", profil);
+  return profil;
+}
+let profilCoureur = migrerVersProfilCoureur();
+function sauvegarderProfilCoureur() { save("lk_profil_coureur", profilCoureur); }
+
+// Alias conservés pour compatibilité avec le reste du fichier (encore
+// beaucoup d'usages de runnerWeight/runnerHeight/runnerFcMax/runnerPps
+// directement) — lisent/écrivent maintenant profilCoureur en coulisses,
+// pas de vraie migration complète de tous les usages dans l'immédiat.
+let runnerWeight = profilCoureur.poids;
+let runnerHeight = profilCoureur.taille;
+let runnerFcMax = profilCoureur.fcMax;
+let runnerPps = profilCoureur.pps;
 let raceHoraires = load(clePourPlan("lk_race_horaires"), { dossard: "", depart: "" });
 let raceParcoursUrl = load(clePourPlan("lk_race_parcours"), "");
 let checklistItems = load(clePourPlan("lk_checklist"), {
@@ -4099,6 +4135,10 @@ function renderSettings() {
       const tbl = document.createElement("table");
       tbl.style.cssText = "width:100%;border-collapse:collapse;";
       const rows = [
+        {label:"Prénom", id:"inp-prenom", type:"text", unit:"", val:profilCoureur.prenom||""},
+        {label:"Nom", id:"inp-nom", type:"text", unit:"", val:profilCoureur.nom||""},
+        {label:"Année de naissance", id:"inp-annee-naissance", type:"number", unit:"", val:profilCoureur.anneeNaissance||""},
+        {label:"separator"},
         {label:"Poids", id:"inp-poids", type:"number", unit:"kg", val:runnerWeight||""},
         {label:"Taille", id:"inp-taille", type:"number", unit:"cm", val:runnerHeight||""},
         {label:"FC max", id:"inp-fcmax", type:"number", unit:"bpm", val:runnerFcMax||181},
@@ -4138,6 +4178,43 @@ function renderSettings() {
         tbl.appendChild(tr);
       });
       wrap.appendChild(tbl);
+      return wrap;
+    })(),
+  );
+
+  // ── Records personnels par distance (v2.3, 12 juillet 2026) ──────────────
+  // Un temps de référence par distance, mémorisé une fois pour toutes dans
+  // profilCoureur.records — le wizard n'a plus besoin de le redemander à
+  // chaque nouveau plan, il choisit automatiquement le record le plus
+  // pertinent pour la distance visée (avec repli sur Riegel si aucun
+  // record exact n'existe, cf. section 2.3 du doc de convergence).
+  const recordsSection = el("div",{style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"🏅 Records personnels"),
+    (()=>{
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "background:#1a1d27;border:1px solid #2e3347;border-radius:10px;padding:14px;";
+      ["5K","10K","Semi","Marathon"].forEach((dist,i) => {
+        const rec = profilCoureur.records?.[dist];
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;"+(i>0?"border-top:1px solid #2e334722;":"");
+        const label = document.createElement("span");
+        label.style.cssText = "color:#94a3b8;font-size:15px;width:70px;flex-shrink:0;";
+        label.textContent = dist;
+        const tempsInp = document.createElement("input");
+        tempsInp.type = "text"; tempsInp.id = "rec-temps-"+dist; tempsInp.placeholder = "mm:ss";
+        tempsInp.value = rec?.temps || "";
+        tempsInp.style.cssText = "width:80px;background:#232738;border:1px solid #2e3347;border-radius:6px;padding:5px 8px;color:#f1f5f9;font-size:15px;text-align:right;font-variant-numeric:tabular-nums;";
+        const dateInp = document.createElement("input");
+        dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
+        dateInp.value = rec?.date || "";
+        dateInp.style.cssText = "background:#232738;border:1px solid #2e3347;border-radius:6px;padding:5px 8px;color:#94a3b8;font-size:13px;flex:1;min-width:0;";
+        row.appendChild(label); row.appendChild(tempsInp); row.appendChild(dateInp);
+        wrap.appendChild(row);
+      });
+      const note = document.createElement("p");
+      note.className = "muted"; note.style.cssText = "font-size:13px;margin-top:10px;margin-bottom:0;";
+      note.textContent = "La date est optionnelle — elle aide juste à savoir si un record est encore à jour.";
+      wrap.appendChild(note);
       return wrap;
     })(),
   );
@@ -4448,10 +4525,24 @@ function renderSettings() {
   saveBtn.textContent = "💾 Enregistrer les paramètres";
   saveBtn.addEventListener("click", avecRetourTactile(()=>{
     // Lire toutes les valeurs des inputs
-    const poids = document.getElementById("inp-poids"); if(poids) { runnerWeight=parseInt(poids.value)||null; save("lk_weight",runnerWeight); }
-    const taille = document.getElementById("inp-taille"); if(taille) { runnerHeight=parseInt(taille.value)||null; save("lk_height",runnerHeight); }
-    const fcmax = document.getElementById("inp-fcmax"); if(fcmax) { runnerFcMax=parseInt(fcmax.value)||181; save("lk_fc_max",runnerFcMax); }
-    const pps = document.getElementById("pps-input"); if(pps) { runnerPps=pps.value.trim(); save("lk_pps",runnerPps); }
+    const prenom = document.getElementById("inp-prenom"); if(prenom) { profilCoureur.prenom=prenom.value.trim(); }
+    const nom = document.getElementById("inp-nom"); if(nom) { profilCoureur.nom=nom.value.trim(); }
+    const anneeNaissance = document.getElementById("inp-annee-naissance"); if(anneeNaissance) { profilCoureur.anneeNaissance=parseInt(anneeNaissance.value)||null; }
+    profilCoureur.records = profilCoureur.records || {};
+    ["5K","10K","Semi","Marathon"].forEach(dist => {
+      const tempsInp = document.getElementById("rec-temps-"+dist);
+      const dateInp = document.getElementById("rec-date-"+dist);
+      if (tempsInp && tempsInp.value.trim()) {
+        profilCoureur.records[dist] = { temps: tempsInp.value.trim(), date: dateInp?.value || null };
+      } else {
+        profilCoureur.records[dist] = null;
+      }
+    });
+    const poids = document.getElementById("inp-poids"); if(poids) { runnerWeight=parseInt(poids.value)||null; profilCoureur.poids=runnerWeight; }
+    const taille = document.getElementById("inp-taille"); if(taille) { runnerHeight=parseInt(taille.value)||null; profilCoureur.taille=runnerHeight; }
+    const fcmax = document.getElementById("inp-fcmax"); if(fcmax) { runnerFcMax=parseInt(fcmax.value)||181; profilCoureur.fcMax=runnerFcMax; }
+    const pps = document.getElementById("pps-input"); if(pps) { runnerPps=pps.value.trim(); profilCoureur.pps=runnerPps; }
+    sauvegarderProfilCoureur();
     const goal = document.getElementById("inp-goal"); if(goal) {
       // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
       // correction que fmtTime/fmtTimeShort (cf. commentaire associé),
@@ -4479,7 +4570,7 @@ function renderSettings() {
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
-    profileSection, saveBtn, pdfSection, stravaSection,
+    profileSection, recordsSection, saveBtn, pdfSection, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, advancedToggle, advancedContent),
     githubToken ? qrSection : null,
     versionSection
