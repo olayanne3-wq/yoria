@@ -631,7 +631,10 @@
   <!-- Bandeau avec logo, cohérent avec le header du dashboard de l'app
        (index.html, dashHeaderEl) — demandé par Laurent le 8 juillet 2026
        dans le cadre de l'harmonisation de la direction artistique
-       (commit 83cb4f0). SVG recopié à l'identique de runByLeaIcon(). -->
+       (commit 83cb4f0). SVG recopié à l'identique de runByLeaIcon().
+       Sous-titre "Conception de plan" + bouton aide ajoutés le 13 juillet
+       2026 pour clarifier qu'on est dans le wizard (pas le dashboard) et
+       offrir un point d'aide, comme dans l'app (helpBtn / dashHeaderEl). -->
   <div style="display:flex; align-items:center; gap:8px; padding:12px 16px 10px; margin:0 16px 4px; border-bottom:1px solid var(--line);">
     <svg width="24" height="24" viewBox="0 0 512 512" style="border-radius:6px; flex-shrink:0;">
       <rect width="512" height="512" rx="114" fill="#f97316"/>
@@ -650,8 +653,54 @@
         <line x1="124" y1="296" x2="178" y2="296" stroke-width="13" opacity="0.24"/>
       </g>
     </svg>
-    <div style="color:var(--paper); font-size:16px; font-weight:800;">Run by Léa</div>
+    <div>
+      <div style="color:var(--paper); font-size:16px; font-weight:800; line-height:1.2;">Run by Léa</div>
+      <div style="color:var(--signal); font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; line-height:1.2;">Conception de plan</div>
+    </div>
+    <div style="flex:1;"></div>
+    <button id="btnWizardHelp" style="background:#232738; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:15px; font-weight:700; cursor:pointer; flex-shrink:0;">?</button>
   </div>
+
+  <!-- Modale d'aide du wizard — même famille visuelle que les cartes de
+       l'app (fond --ink-soft, bordure --line, radius 10-12px). Contenu
+       propre au wizard (pas renderHelp() de l'app, inaccessible d'ici). -->
+  <div id="wizardHelpOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:999; align-items:flex-end; justify-content:center;">
+    <div style="width:100%; max-width:430px; max-height:80vh; overflow-y:auto; background:var(--ink-soft); border:1px solid var(--line); border-radius:16px 16px 0 0; padding:18px 18px 24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <div style="color:var(--paper); font-size:15px; font-weight:800;">❓ Aide — Conception de plan</div>
+        <button id="btnWizardHelpClose" style="background:#232738; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; color:#94a3b8; font-size:15px; font-weight:700; cursor:pointer;">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; font-size:13px; line-height:1.5; color:var(--paper);">
+        <div>
+          <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">À quoi sert cet assistant ?</div>
+          <div style="color:#b0bec5;">Il te pose quelques questions (objectif, niveau, disponibilités) pour générer un plan d'entraînement personnalisé, étape par étape.</div>
+        </div>
+        <div>
+          <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Puis-je revenir en arrière ?</div>
+          <div style="color:#b0bec5;">Oui, tu peux naviguer entre les étapes tant que le plan n'est pas généré. Le bouton « Retour à l'app » te ramène au dashboard sans valider.</div>
+        </div>
+        <div>
+          <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Mes réponses sont-elles perdues si je quitte ?</div>
+          <div style="color:#b0bec5;">Tant que le plan n'est pas généré et enregistré, oui — mieux vaut aller jusqu'au bout en une fois.</div>
+        </div>
+        <div>
+          <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Une fois le plan généré ?</div>
+          <div style="color:#b0bec5;">Tu retrouves toutes les explications détaillées (séances, adaptations, suivi) dans l'aide de l'app, accessible via le bouton « ? » du dashboard.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('btnWizardHelp').addEventListener('click', function(){
+      document.getElementById('wizardHelpOverlay').style.display = 'flex';
+    });
+    document.getElementById('btnWizardHelpClose').addEventListener('click', function(){
+      document.getElementById('wizardHelpOverlay').style.display = 'none';
+    });
+    document.getElementById('wizardHelpOverlay').addEventListener('click', function(e){
+      if (e.target === this) this.style.display = 'none';
+    });
+  </script>
 
   <!-- Bouton retour vers l'app, visible à chaque étape (pas seulement à la
        fin via "Terminer") — demandé par Laurent le 8 juillet 2026, qui
