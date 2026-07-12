@@ -3293,6 +3293,115 @@ function renderStats() {
     );
   }
 
+  // ── ACWR (Acute:Chronic Workload Ratio) ─────────────────────────────────
+  // Chantier lancé le 13 juillet 2026, validé historiquement sur les données
+  // réelles de Laurent avant codage (doc convergence-v1-v2.md / mémoires).
+  // v1 volontairement simple : volume brut (km courus), pas de pondération
+  // FC/allure. Calcul via calculerACWR() (v2/engine/plan-generator.js,
+  // section 33bis), sur stravaActivities réelles (jamais le plan théorique).
+  const acwrEl = (() => {
+    const acwr = (typeof stravaActivities !== "undefined" && stravaActivities.length)
+      ? calculerACWR(stravaActivities) : null;
+    if (!acwr) {
+      return el("div",{style:{marginBottom:"16px"}},
+        el("div",{class:"label"},"⚖️ Charge d'entraînement (ACWR)"),
+        el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"14px",textAlign:"center"}},
+          el("div",{class:"muted",style:{fontSize:"13px",fontStyle:"italic"}},"Disponible après 4 semaines d'activités Strava enregistrées")
+        )
+      );
+    }
+
+    // Ne garde que les 8 dernières semaines d'historique pour la lisibilité
+    // du graphique (cohérent avec la période de validation du 13/07/2026)
+    const hist = acwr.historique.slice(-56);
+    const W = 340, H = 100, PAD = { t: 12, r: 12, b: 20, l: 34 };
+    const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
+    const mk = (tag, attrs) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
+    const xScale = i => PAD.l + (i / Math.max(hist.length - 1, 1)) * iW;
+
+    // ── Graphique 1 : charge aiguë vs chronique ────────────────────────────
+    const svg1 = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg1.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg1.style.width = "100%"; svg1.style.display = "block";
+    const maxCharge = Math.max(...hist.map(h => Math.max(h.chargeAigue, h.chargeChronique))) * 1.1;
+    const yScale1 = v => PAD.t + iH - (v / maxCharge) * iH;
+    svg1.appendChild(mk("rect", { x: 0, y: 0, width: W, height: H, fill: "#1a1d27" }));
+    [0, Math.round(maxCharge / 2), Math.round(maxCharge)].forEach(v => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", PAD.l - 4); t.setAttribute("y", yScale1(v) + 3);
+      t.setAttribute("fill", "#94a3b8"); t.setAttribute("font-size", "8"); t.setAttribute("text-anchor", "end");
+      t.textContent = v; svg1.appendChild(t);
+    });
+    const ptsAigue = hist.map((h, i) => `${xScale(i)},${yScale1(h.chargeAigue)}`).join(" ");
+    const ptsChronique = hist.map((h, i) => `${xScale(i)},${yScale1(h.chargeChronique)}`).join(" ");
+    svg1.appendChild(mk("polyline", { points: ptsChronique, fill: "none", stroke: "#94a3b8", "stroke-width": "2", "stroke-dasharray": "4,3", "stroke-linejoin": "round" }));
+    svg1.appendChild(mk("polyline", { points: ptsAigue, fill: "none", stroke: "#60a5fa", "stroke-width": "2.5", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+
+    // ── Graphique 2 : ratio ACWR avec zones ────────────────────────────────
+    const svg2 = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg2.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg2.style.width = "100%"; svg2.style.display = "block";
+    const ratios = hist.map(h => h.ratio).filter(r => r !== null);
+    const maxRatio = Math.max(1.6, ...ratios) * 1.05;
+    const yScale2 = v => PAD.t + iH - (v / maxRatio) * iH;
+    svg2.appendChild(mk("rect", { x: 0, y: 0, width: W, height: H, fill: "#1a1d27" }));
+    // Zone de risque (>1.5)
+    const yRisque = yScale2(ACWR_SEUIL_RISQUE);
+    svg2.appendChild(mk("rect", { x: PAD.l, y: PAD.t, width: iW, height: yRisque - PAD.t, fill: "#ef4444", opacity: "0.08" }));
+    svg2.appendChild(mk("line", { x1: PAD.l, y1: yRisque, x2: W - PAD.r, y2: yRisque, stroke: "#ef444488", "stroke-width": "1", "stroke-dasharray": "4,3" }));
+    // Zone sous-charge (<0.8)
+    const ySous = yScale2(ACWR_SEUIL_SOUS_CHARGE);
+    svg2.appendChild(mk("line", { x1: PAD.l, y1: ySous, x2: W - PAD.r, y2: ySous, stroke: "#eab30888", "stroke-width": "1", "stroke-dasharray": "4,3" }));
+    [ACWR_SEUIL_RISQUE, 1, ACWR_SEUIL_SOUS_CHARGE].forEach(v => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", PAD.l - 4); t.setAttribute("y", yScale2(v) + 3);
+      t.setAttribute("fill", "#94a3b8"); t.setAttribute("font-size", "8"); t.setAttribute("text-anchor", "end");
+      t.textContent = v; svg2.appendChild(t);
+    });
+    const ptsRatio = hist.filter(h => h.ratio !== null).map((h) => {
+      const i = hist.indexOf(h);
+      return `${xScale(i)},${yScale2(h.ratio)}`;
+    }).join(" ");
+    svg2.appendChild(mk("polyline", { points: ptsRatio, fill: "none", stroke: "#a855f7", "stroke-width": "2.5", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    hist.forEach((h, i) => {
+      if (h.ratio === null) return;
+      const color = h.ratio > ACWR_SEUIL_RISQUE ? "#ef4444" : h.ratio < ACWR_SEUIL_SOUS_CHARGE ? "#eab308" : "#a855f7";
+      svg2.appendChild(mk("circle", { cx: xScale(i), cy: yScale2(h.ratio), r: i === hist.length - 1 ? "4" : "2", fill: color }));
+    });
+    const dernierRatioVal = acwr.dernierRatio;
+    const dernierLbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    dernierLbl.setAttribute("x", xScale(hist.length - 1)); dernierLbl.setAttribute("y", yScale2(dernierRatioVal) - 8);
+    dernierLbl.setAttribute("fill", "#f1f5f9"); dernierLbl.setAttribute("font-size", "10"); dernierLbl.setAttribute("text-anchor", "end"); dernierLbl.setAttribute("font-weight", "700");
+    dernierLbl.textContent = dernierRatioVal.toFixed(2); svg2.appendChild(dernierLbl);
+
+    const statutColor = dernierRatioVal > ACWR_SEUIL_RISQUE ? "#ef4444" : dernierRatioVal > ACWR_SEUIL_VIGILANCE ? "#eab308" : dernierRatioVal < ACWR_SEUIL_SOUS_CHARGE ? "#60a5fa" : "#22c55e";
+    const statutTexte = dernierRatioVal > ACWR_SEUIL_RISQUE ? "Risque élevé — charge en forte hausse"
+      : dernierRatioVal > ACWR_SEUIL_VIGILANCE ? "Vigilance — charge en hausse"
+      : dernierRatioVal < ACWR_SEUIL_SOUS_CHARGE ? "Sous-charge — récupération ou moins de volume"
+      : "Zone stable";
+
+    return el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"⚖️ Charge d'entraînement (ACWR)"),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"12px",marginBottom:"8px"}},
+        el("div",{class:"muted",style:{fontSize:"11px",marginBottom:"6px",display:"flex",gap:"12px"}},
+          el("span",{},el("span",{style:{color:"#60a5fa"}},"⎯"),"  Aiguë (7j)"),
+          el("span",{},el("span",{style:{color:"#94a3b8"}},"⎯⎯"),"  Chronique (moy./sem sur 28j)")
+        ),
+        svg1
+      ),
+      el("div",{style:{background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"12px",padding:"12px",marginBottom:"8px"}},
+        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
+          el("span",{class:"muted",style:{fontSize:"11px"}},"Ratio charge aiguë / chronique"),
+          el("span",{style:{color:statutColor,fontSize:"12px",fontWeight:"700"}},statutTexte)
+        ),
+        svg2
+      ),
+      el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5",padding:"0 4px"}},
+        "L'ACWR compare ta charge des 7 derniers jours à ta moyenne des 4 dernières semaines. Un ratio autour de 1 signale une charge stable. Au-delà de "+ACWR_SEUIL_RISQUE+", le risque de blessure augmente selon la littérature — c'est le signal à surveiller après une montée en volume rapide."
+      )
+    );
+  })();
+
   // ── Infos du plan ─────────────────────────────────────────────────────
   const infoEl=el("div",{},
     el("div",{class:"label"},"Informations"),
@@ -3326,6 +3435,7 @@ function renderStats() {
     fcCurveEl,
     ieCurveEl,
     cadCurveEl,
+    acwrEl,
     projEl,
     paceEl,
     infoEl
