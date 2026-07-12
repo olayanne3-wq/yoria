@@ -1792,10 +1792,88 @@ function generatePlan(profil, params) {
 }
 
 // ---------------------------------------------------------------------------
+// Section 33bis — ACWR (Acute:Chronic Workload Ratio)
+// ---------------------------------------------------------------------------
+// v1 volontairement simple (chantier ACWR, discuté 11/07/2026, validé
+// historiquement le 13/07/2026) : volume brut (km courus), sans pondération
+// FC ni allure — ce sera l'étape suivante (TRIMP ou pondération
+// SESSION_TARGETS) si ce v1 s'avère insuffisant. Calcul sur activités
+// Strava réelles uniquement (jamais le plan théorique) : charge aiguë =
+// somme des 7 derniers jours, charge chronique = moyenne des 4 fenêtres de
+// 7 jours sur les 28 derniers jours. Seuil de risque communément admis en
+// littérature : ratio > 1.5.
+//
+// NOTE : copie manuelle de v2/engine/plan-generator.js (dette de
+// duplication moteur/classic documentée dans l'inventaire) — toute
+// modification doit être répercutée dans les deux fichiers.
+
+const ACWR_SEUIL_RISQUE = 1.5;
+const ACWR_SEUIL_VIGILANCE = 1.3;
+const ACWR_SEUIL_SOUS_CHARGE = 0.8;
+
+function kmParJour(activitesStrava) {
+  const parJour = {};
+  for (const a of activitesStrava) {
+    if (a.type !== 'Run') continue;
+    const dateLocal = (a.start_date_local || a.start_date || '').slice(0, 10);
+    if (!dateLocal) continue;
+    parJour[dateLocal] = (parJour[dateLocal] || 0) + (a.distance || 0) / 1000;
+  }
+  return parJour;
+}
+
+function calculerACWR(activitesStrava) {
+  const parJour = kmParJour(activitesStrava);
+  const dates = Object.keys(parJour);
+  if (dates.length === 0) return null;
+
+  const toutesLesDates = dates.sort();
+  const premiereDate = new Date(toutesLesDates[0] + 'T00:00:00Z');
+  const derniereDate = new Date(toutesLesDates[toutesLesDates.length - 1] + 'T00:00:00Z');
+  const nbJoursTotal = Math.round((derniereDate - premiereDate) / 86400000) + 1;
+  if (nbJoursTotal < 28) return null;
+
+  const kmSur = (dateFin, nbJours) => {
+    let total = 0;
+    for (let i = 0; i < nbJours; i++) {
+      const d = new Date(dateFin);
+      d.setUTCDate(d.getUTCDate() - i);
+      total += parJour[d.toISOString().slice(0, 10)] || 0;
+    }
+    return total;
+  };
+
+  const historique = [];
+  for (let i = 27; i < nbJoursTotal; i++) {
+    const d = new Date(premiereDate);
+    d.setUTCDate(d.getUTCDate() + i);
+    const chargeAigue = kmSur(d, 7);
+    const chargeChronique = kmSur(d, 28) / 4;
+    const ratio = chargeChronique > 0 ? chargeAigue / chargeChronique : null;
+    historique.push({
+      date: d.toISOString().slice(0, 10),
+      chargeAigue: Math.round(chargeAigue * 10) / 10,
+      chargeChronique: Math.round(chargeChronique * 10) / 10,
+      ratio: ratio !== null ? Math.round(ratio * 100) / 100 : null
+    });
+  }
+
+  if (historique.length === 0) return null;
+  const dernier = historique[historique.length - 1];
+
+  return {
+    historique,
+    dernierRatio: dernier.ratio,
+    dernierePeriode: { chargeAigue: dernier.chargeAigue, chargeChronique: dernier.chargeChronique }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Section 33 — Règles d'adaptation du plan selon les résultats réels
 // ---------------------------------------------------------------------------
 
 const POIDS_STATUT = { ratee: 1, adaptee: 0.5, reussie: 0 };
+
 
 /**
  * Score d'une semaine à partir des statuts des séances dures (qualité +
