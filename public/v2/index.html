@@ -2000,6 +2000,18 @@
     if (!confirm(`Supprimer définitivement "${titre}" ? Cette action ne supprime que ce plan (le reste de tes sauvegardes est conservé).`)) return;
     try {
       await supprimerPlan(id);
+      // Suppression Supabase — ajoutée le 13 juillet 2026. plans.id a un
+      // ON DELETE CASCADE vers plan_donnees.plan_id (cf. schéma SQL), donc
+      // supprimer la ligne plans suffit à nettoyer les deux tables.
+      // Best-effort : ne bloque pas si Supabase échoue, la suppression
+      // Gist (déjà faite) reste le résultat visible pour l'utilisateur.
+      if (window.__UTILISATEUR__ && window.LkAuth) {
+        try {
+          await window.LkAuth.supabase.from('plans').delete().eq('id', id);
+        } catch (eSupabase) {
+          console.warn('Suppression Supabase du plan échouée (Gist OK, non bloquant) :', eSupabase.message);
+        }
+      }
       await afficherPlansSauvegardes();
     } catch (e) {
       alert('Erreur lors de la suppression : ' + e.message);
