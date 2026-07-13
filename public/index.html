@@ -334,6 +334,17 @@ function clePourPlan(cle) {
 let view = "dashboard";
 let selectedWeek = 1;
 let statuses = load(clePourPlan("lk_statuses"), {});
+// Source de données par défaut affichée sur la carte du jour (docs/
+// source-donnees-seances.md) — "strava" | "manuel" | "montre" | "gpx".
+// N'est PAS un mode exclusif : la correction manuelle reste toujours
+// accessible quel que soit ce réglage, voir renderStatusRow/manualPerf.
+let dataSource = load(clePourPlan("lk_data_source"), "strava");
+// Saisies manuelles de performance par séance (docs/source-donnees-
+// seances.md, section 4-5) : {uid: {average_speed, distance,
+// average_heartrate, rpe}}. Dès qu'une entrée existe pour un uid, elle
+// prime automatiquement sur Strava pour cette séance dans le prédicteur
+// — aucune hiérarchie/décote, voir section 2 du doc.
+let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 // Mémorise le dernier lien de synchro généré, pour le bouton "Copier le
 // lien" (section "Configurer sur un autre appareil", unifié le 11 juillet
 // 2026 pour synchroniser token + lk_gist_id + v2_gist_id en un seul lien).
@@ -588,6 +599,17 @@ function fmtPace(speedMs) {
   const min = Math.floor(secPerKm / 60);
   const sec = Math.round(secPerKm % 60).toString().padStart(2,"0");
   return `${min}:${sec}`;
+}
+// Inverse de fmtPace : "4:15" (mm:ss/km) → vitesse en m/s, ou null si
+// saisie invalide/vide. Utilisé par le formulaire de saisie manuelle
+// (docs/source-donnees-seances.md, section 4).
+function parsePace(str) {
+  if (!str) return null;
+  const m = String(str).trim().match(/^(\d{1,2}):([0-5]?\d)$/);
+  if (!m) return null;
+  const secPerKm = parseInt(m[1],10)*60 + parseInt(m[2],10);
+  if (secPerKm <= 0) return null;
+  return 1000 / secPerKm;
 }
 function fmtTime(seconds) {
   // Format heures/minutes/secondes au-delà de 60 minutes (pertinent pour un
@@ -1291,17 +1313,33 @@ function predict10KAtDate(dateStr) {
   );
   const estimates = [];
 
+  // Laps virtuels manuels (docs/source-donnees-seances.md, section 2) : une
+  // saisie manuelle prime automatiquement sur Strava pour sa date — on
+  // l'exclut donc de specRunsAvecSeance/vmaRunsAvecSeance ci-dessous via
+  // datesManuellesParType, et on l'injecte séparément à poids égal.
+  function manualLapsPourType(sessionType) {
+    return ALL_SESSIONS.filter(sess =>
+      sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
+      sess.date <= dateStr && (!dateDebutPlan || sess.date >= dateDebutPlan) &&
+      statuses[sess.uid]!=="❌"
+    ).map(sess => ({ average_speed: manualPerf[sess.uid].average_speed }));
+  }
+  const manualSpecLaps = manualLapsPourType("SPEC");
+  const manualVmaLaps = manualLapsPourType("VMA");
+  const datesManuellesSpec = new Set(manualSpecLaps.length ? ALL_SESSIONS.filter(sess=>sess.type==="SPEC"&&manualPerf[sess.uid]?.average_speed).map(sess=>sess.date) : []);
+  const datesManuellesVma = new Set(manualVmaLaps.length ? ALL_SESSIONS.filter(sess=>sess.type==="VMA"&&manualPerf[sess.uid]?.average_speed).map(sess=>sess.date) : []);
+
   // SPEC → allure directe
-  const specRunsAvecSeance = runs.map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="SPEC") })).filter(({s}) => s && statuses[s.uid]!=="❌");
-  const specLaps = specRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles));
+  const specRunsAvecSeance = runs.filter(r=>!datesManuellesSpec.has(r.start_date_local?.slice(0,10))).map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="SPEC") })).filter(({s}) => s && statuses[s.uid]!=="❌");
+  const specLaps = specRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles)).concat(manualSpecLaps);
   if (specLaps.length > 0) {
     const avgSpeed = specLaps.reduce((s,l)=>s+l.average_speed,0)/specLaps.length;
     estimates.push({ value: 10000/avgSpeed, weight: 0.45 });
   }
 
   // VMA → vitesse × 0.87
-  const vmaRunsAvecSeance = runs.map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="VMA") })).filter(({s}) => s && statuses[s.uid]!=="❌");
-  const vmaLaps = vmaRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles));
+  const vmaRunsAvecSeance = runs.filter(r=>!datesManuellesVma.has(r.start_date_local?.slice(0,10))).map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="VMA") })).filter(({s}) => s && statuses[s.uid]!=="❌");
+  const vmaLaps = vmaRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles)).concat(manualVmaLaps);
   if (vmaLaps.length > 0) {
     const avgSpeed = vmaLaps.reduce((s,l)=>s+l.average_speed,0)/vmaLaps.length;
     estimates.push({ value: 10000/(avgSpeed*0.87), weight: 0.35 });
@@ -1328,8 +1366,16 @@ function predict10KAtDate(dateStr) {
 // besoin de la rappeler manuellement plus tard.
 
 
+// Nombre de séances avec saisie manuelle exploitable — utilisé pour
+// déclencher rebuildPredHistory au même titre que stravaActivities
+// (docs/source-donnees-seances.md), sinon un utilisateur 100% manuel ne
+// verrait jamais son historique de prédiction se construire.
+function nbSaisiesManuelles() {
+  return Object.values(manualPerf).filter(m => m?.average_speed).length;
+}
+
 function rebuildPredHistory() {
-  if (!stravaActivities.length || isRebuilding) return;
+  if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
   isRebuilding = true; render();
   // Générer une entrée par jour depuis le début du plan jusqu\'à aujourd\'hui
   const startDate = PLAN[0].sessions[0].date;
@@ -1340,7 +1386,9 @@ function rebuildPredHistory() {
   while (d <= end) {
     const dateStr = d.toISOString().slice(0,10);
     const time = predict10KAtDate(dateStr);
-    const confidence = stravaActivities.filter(a=>a.start_date_local?.slice(0,10)<=dateStr).length > 0 ? 45 : 30;
+    const aDesDonnees = stravaActivities.some(a=>a.start_date_local?.slice(0,10)<=dateStr) ||
+      Object.entries(manualPerf).some(([uid,m])=>m?.average_speed && ALL_SESSIONS.find(s=>s.uid===uid && s.date<=dateStr));
+    const confidence = aDesDonnees ? 45 : 30;
     newHistory.push({ date: dateStr, time, confidence, predictorVersion: PREDICTOR_VERSION });
     d.setDate(d.getDate()+1);
   }
@@ -1353,7 +1401,7 @@ function rebuildPredHistory() {
 }
 
 // Reconstruire l\'historique si manquant ou incomplet
-if (stravaActivities.length > 0 && (predHistory.length <= 1 || (predHistory[0] && predHistory[0].predictorVersion !== PREDICTOR_VERSION))) {
+if ((stravaActivities.length > 0 || nbSaisiesManuelles() > 0) && (predHistory.length <= 1 || (predHistory[0] && predHistory[0].predictorVersion !== PREDICTOR_VERSION))) {
   rebuildPredHistory();
 }
 
@@ -1394,9 +1442,18 @@ function predict10K() {
     //    séance SPEC à 4'49/km pouvait passer le test de tolérance VMA, qui
     //    vise 4'10/km, et être comptée deux fois — corrigé en retenant
     //    uniquement le type le plus proche, pas "dans la tolérance".
+    // Dates couvertes par une saisie manuelle (docs/source-donnees-seances.md,
+    // section 2) : la saisie manuelle prime automatiquement sur Strava pour
+    // ces dates-là, sans hiérarchie ni fusion — on exclut donc ici les
+    // activités Strava dont la date a une entrée manualPerf, pour éviter
+    // tout double comptage dans le poids agrégé.
+    const datesManuelles = new Set(
+      ALL_SESSIONS.filter(sess => sess.type===sessionType && manualPerf[sess.uid]?.average_speed).map(sess => sess.date)
+    );
     const sessionRuns = SESSION_TARGETS[sessionType] ? runs.filter(r => {
       if (!r.laps || r.laps.length < 4) return false;
       const date = r.start_date_local?.slice(0,10);
+      if (datesManuelles.has(date)) return false;
       const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
       if (planSess?.structureIntervalles && planSess.type === sessionType) return true;
       if (planSess?.structureIntervalles) return false; // structure connue mais pour un AUTRE type : pas de repli sur la détection par tolérance, qui pourrait se tromper
@@ -1405,7 +1462,17 @@ function predict10K() {
       const detection = detecterTypeEffort(middle);
       return detection && detection.type === sessionType;
     }) : [];
-    if (!sessionRuns.length) return null;
+
+    // Séances du même type validées avec une saisie manuelle (allure
+    // renseignée) — injectées comme un "lap virtuel" unique par séance dans
+    // le même agrégat pondéré par durée d'effort, à poids strictement égal
+    // aux laps Strava (aucune décote, section 2 du doc).
+    const manualSessions = ALL_SESSIONS.filter(sess =>
+      sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
+      (!dateDebutPlan || sess.date >= dateDebutPlan)
+    );
+
+    if (!sessionRuns.length && !manualSessions.length) return null;
 
     let totalWeight = 0;
     let weightedSpeed = 0;
@@ -1423,8 +1490,18 @@ function predict10K() {
       allLaps = allLaps.concat(laps);
     });
 
+    manualSessions.forEach(sess => {
+      const mp = manualPerf[sess.uid];
+      const distance = mp.distance || distanceEffortStructure(sess.structureIntervalles) || 0;
+      if (!distance) return; // pas de distance connue : lap virtuel impossible à pondérer, ignoré plutôt que fausser le calcul
+      const effortDuration = distance / mp.average_speed;
+      weightedSpeed += mp.average_speed * effortDuration;
+      totalWeight += effortDuration;
+      allLaps.push({ average_speed: mp.average_speed, distance, average_heartrate: mp.average_heartrate||null });
+    });
+
     if (!totalWeight) return null;
-    return { speed: weightedSpeed / totalWeight, laps: allLaps, runs: sessionRuns };
+    return { speed: weightedSpeed / totalWeight, laps: allLaps, runs: sessionRuns, manualCount: manualSessions.length };
   }
 
   // ── 1. SPEC → allure directe ──────────────────────────────────────────────
@@ -2042,6 +2119,13 @@ function renderDashboard() {
           s.notes ? el("div",{style:{color:"#60a5facc",fontSize:"14px",fontStyle:"italic",marginBottom:"8px"}},"💡 "+s.notes) : null,
           s.structureIntervalles?renderBoutonStructureAProgrammer(s.structureIntervalles):null,
           !isRest?renderStatusRow(uid2):null,
+          // Saisie/correction manuelle de performance (docs/source-donnees-
+          // seances.md) : toujours accessible pour SPEC/VMA quel que soit
+          // dataSource — pas réservée au mode "manuel". Une saisie existante
+          // prime automatiquement sur Strava pour cette séance, sans
+          // confirmation (décision section 2 du doc : le coureur est seul
+          // juge de la fiabilité de sa donnée, ex. montre qui a buggé).
+          !isRest && (s.type==="SPEC"||s.type==="VMA") ? renderManualPerfRow(uid2, s, stravaRun2) : null,
           !isRest ? coachEl : null,
           // Bloc détail repliable après le coach
           (()=>{
@@ -2586,6 +2670,131 @@ function renderStatusRow(uid) {
     statusRow.appendChild(b);
   });
   return statusRow;
+}
+
+// Saisie/correction manuelle de performance pour une séance SPEC/VMA
+// (docs/source-donnees-seances.md). Toujours affichée (pas conditionnée à
+// dataSource) — l'utilisateur choisit d'ouvrir le détail s'il veut
+// saisir/corriger. Dès qu'une entrée manualPerf existe pour ce uid, elle
+// prime automatiquement sur Strava pour le prédicteur (section 2 du doc),
+// sans confirmation : c'est un acte volontaire du coureur.
+function renderManualPerfRow(uid, s, stravaRun) {
+  let expanded = false;
+  const hasManualNow = () => !!manualPerf[uid];
+
+  const summaryLine = el("div",{style:{
+    display:"flex",alignItems:"center",justifyContent:"space-between",
+    marginTop:"6px",padding:"6px 10px",
+    borderRadius:"8px",cursor:"pointer"
+  }});
+  const rebuildSummary = () => {
+    summaryLine.style.background = hasManualNow() ? "#378ADD1a" : "transparent";
+    summaryLine.style.border = hasManualNow() ? "1px solid #378ADD44" : "1px dashed #2e3347";
+    summaryLine.innerHTML = "";
+    summaryLine.appendChild(el("span",{style:{fontSize:"13px",color:hasManualNow()?"#378ADD":"#475569"}},
+      hasManualNow()
+        ? "✏️ Saisie manuelle · "+fmtPace(manualPerf[uid].average_speed)+"/km"+(stravaRun?" (prime sur Strava)":"")
+        : "✏️ Saisir/corriger manuellement"
+    ));
+    summaryLine.appendChild(el("span",{style:{fontSize:"12px",color:"#475569"}}, expanded?"▲":"▼"));
+  };
+  rebuildSummary();
+
+  const formWrap = el("div",{style:{display:"none",marginTop:"8px",background:"#232738",borderRadius:"8px",padding:"10px 12px"}});
+
+  const rebuildForm = () => {
+    formWrap.innerHTML = "";
+    const cur = manualPerf[uid] || {};
+    const paceInput = el("input",{type:"text",placeholder:"4:15",value:cur.average_speed?fmtPace(cur.average_speed):"",
+      style:{width:"100%",background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"6px",padding:"6px 8px",color:"#f1f5f9",fontSize:"14px",textAlign:"center"}});
+    const hrInput = el("input",{type:"number",placeholder:"165",value:cur.average_heartrate||"",
+      style:{width:"100%",background:"#1a1d27",border:"1px solid #2e3347",borderRadius:"6px",padding:"6px 8px",color:"#f1f5f9",fontSize:"14px",textAlign:"center"}});
+    const rpeOpts = [{v:1,e:"🙂"},{v:2,e:"😐"},{v:3,e:"😓"}];
+    let rpeVal = cur.rpe || null;
+    const rpeRow = el("div",{style:{display:"flex",gap:"6px"}});
+    const rebuildRpe = () => {
+      rpeRow.innerHTML = "";
+      rpeOpts.forEach(o=>{
+        const b = el("button",{type:"button",style:{
+          flex:"1",padding:"6px 0",fontSize:"16px",
+          background:rpeVal===o.v?"#eab30822":"#1a1d27",
+          border:`1px solid ${rpeVal===o.v?"#eab308":"#2e3347"}`,borderRadius:"6px",cursor:"pointer"
+        }}, o.e);
+        b.addEventListener("click",()=>{ rpeVal = rpeVal===o.v?null:o.v; rebuildRpe(); });
+        rpeRow.appendChild(b);
+      });
+    };
+    rebuildRpe();
+
+    formWrap.appendChild(el("div",{style:{fontSize:"12px",color:"#94a3b8",marginBottom:"8px"}},
+      stravaRun ? "Strava a une activité ce jour-là — ta saisie primera dessus si tu valides." :
+        "Pas de donnée Strava ce jour-là. Ajoute tes chiffres si tu les connais."));
+
+    formWrap.appendChild(el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}},
+      el("div",{},el("div",{style:{fontSize:"11px",color:"#475569",marginBottom:"4px"}},"Allure effort"),paceInput),
+      el("div",{},el("div",{style:{fontSize:"11px",color:"#475569",marginBottom:"4px"}},"FC moyenne (optionnel)"),hrInput)
+    ));
+    formWrap.appendChild(el("div",{style:{fontSize:"11px",color:"#475569",marginBottom:"6px"}},"Ressenti"));
+    formWrap.appendChild(rpeRow);
+
+    const btnRow = el("div",{style:{display:"flex",gap:"8px",marginTop:"10px"}});
+    const saveBtn = el("button",{type:"button",style:{flex:"1",background:"#378ADD22",border:"1px solid #378ADD55",borderRadius:"8px",padding:"8px",color:"#378ADD",fontWeight:"700",fontSize:"14px",cursor:"pointer"}},"✓ Enregistrer");
+    saveBtn.addEventListener("click", avecRetourTactile(()=>{
+      const speed = parsePace(paceInput.value);
+      const hr = hrInput.value ? parseFloat(hrInput.value) : null;
+      if (!speed && !hr && !rpeVal) {
+        delete manualPerf[uid];
+      } else {
+        const distance = s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null;
+        manualPerf[uid] = { average_speed: speed||null, distance: distance||null, average_heartrate: hr, rpe: rpeVal };
+      }
+      save(clePourPlan("lk_manual_perf"), manualPerf);
+      if (speed) rebuildPredHistory(); // une allure a été saisie/modifiée : le prédicteur doit en tenir compte
+      expanded = false;
+      formWrap.style.display = "none";
+      rebuildSummary();
+    }));
+    btnRow.appendChild(saveBtn);
+    if (hasManualNow()) {
+      const delBtn = el("button",{type:"button",style:{background:"none",border:"1px solid #2e3347",borderRadius:"8px",padding:"8px 12px",color:"#475569",fontSize:"14px",cursor:"pointer"}},"🗑️");
+      delBtn.addEventListener("click", avecRetourTactile(()=>{
+        const avaitAllure = !!manualPerf[uid]?.average_speed;
+        delete manualPerf[uid];
+        save(clePourPlan("lk_manual_perf"), manualPerf);
+        if (avaitAllure) rebuildPredHistory(); // ré-agréger sans cette saisie (Strava reprend la main s'il existe)
+        expanded = false;
+        formWrap.style.display = "none";
+        rebuildSummary();
+      }));
+      btnRow.appendChild(delBtn);
+    }
+    formWrap.appendChild(btnRow);
+  };
+
+  summaryLine.addEventListener("click", avecRetourTactile(()=>{
+    expanded = !expanded;
+    if (expanded) rebuildForm();
+    formWrap.style.display = expanded ? "block" : "none";
+    rebuildSummary();
+  }));
+
+  return el("div",{}, summaryLine, formWrap);
+}
+
+// Distance totale d'effort (hors récups/échauffement) déduite d'une
+// structureIntervalles, utilisée quand l'utilisateur ne précise que
+// l'allure en saisie manuelle (docs/source-donnees-seances.md, section 4).
+function distanceEffortStructure(structureIntervalles) {
+  if (!structureIntervalles?.blocs?.length) return null;
+  const nbSeries = structureIntervalles.nbSeries || 1;
+  let total = 0;
+  for (let serie=0; serie<nbSeries; serie++) {
+    structureIntervalles.blocs.forEach(bloc=>{
+      const reps = bloc.repetitions || 1;
+      if (bloc.distanceM) total += bloc.distanceM * reps;
+    });
+  }
+  return total || null;
 }
 
 function renderWeekDetail(weekNum) {
@@ -4371,6 +4580,53 @@ function renderSettings() {
     })(),
   );
 
+    // Réglage source de données par défaut (docs/source-donnees-seances.md) —
+    // n'est qu'une préférence d'affichage sur la carte du jour, pas un mode
+    // exclusif : la correction manuelle reste toujours possible ensuite,
+    // et le prédicteur agrège les deux sources sans hiérarchie (section 2).
+    const DATA_SOURCE_OPTS = [
+      { id:"strava", label:"Strava", desc:"Synchro auto, allures et FC détaillées", icon:"🟠", available:true },
+      { id:"manuel", label:"Saisie manuelle", desc:"Tu entres allure et FC toi-même après chaque séance", icon:"✏️", available:true },
+      { id:"montre", label:"Garmin, Coros, Polar…", desc:"Bientôt disponible", icon:"⌚", available:false },
+      { id:"gpx", label:"Import GPX", desc:"Bientôt disponible", icon:"📁", available:false },
+    ];
+    const dataSourceSection = el("div",{style:{marginBottom:"24px"}},
+      el("div",{class:"label"},"Source de données"),
+      card(
+        ...DATA_SOURCE_OPTS.map((opt,i)=>{
+          const actif = dataSource===opt.id;
+          const row = el("div",{style:{
+            display:"flex",alignItems:"center",gap:"12px",
+            padding:"10px 4px",
+            marginTop:i>0?"6px":"0",
+            borderRadius:"8px",
+            background:actif?"#378ADD1a":"transparent",
+            border:`1px solid ${actif?"#378ADD":"transparent"}`,
+            cursor:opt.available?"pointer":"default",
+            opacity:opt.available?"1":"0.5"
+          }},
+            el("span",{style:{fontSize:"18px"}},opt.icon),
+            el("div",{style:{flex:"1"}},
+              el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:actif?"700":"400"}},opt.label),
+              el("div",{class:"muted",style:{fontSize:"12px"}},opt.desc)
+            ),
+            !opt.available?el("span",{style:{fontSize:"11px",color:"#475569",border:"1px solid #2e3347",borderRadius:"6px",padding:"2px 6px"}},"À venir"):null
+          );
+          if (opt.available) {
+            row.addEventListener("click", avecRetourTactile(()=>{
+              dataSource = opt.id;
+              save(clePourPlan("lk_data_source"), dataSource);
+              render();
+            }));
+          }
+          return row;
+        }),
+        el("div",{class:"muted",style:{fontSize:"12px",marginTop:"10px",paddingTop:"10px",borderTop:"1px solid #2e334722"}},
+          "Change à tout moment. Le suivi du plan fonctionne dans tous les cas — cette option affine surtout l'estimation 10K."
+        )
+      )
+    );
+
     const stravaSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Strava"),
     stravaToken
@@ -4670,7 +4926,7 @@ function renderSettings() {
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
     accountSection,
-    profileSection, recordsSection, saveBtn, pdfSection, stravaSection,
+    profileSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, stravaSection),
     githubToken ? qrSection : null,
     versionSection
