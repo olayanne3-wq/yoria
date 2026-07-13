@@ -2684,19 +2684,21 @@ function renderManualPerfRow(uid, s, stravaRun) {
 
   const summaryLine = el("div",{style:{
     display:"flex",alignItems:"center",justifyContent:"space-between",
-    marginTop:"6px",padding:"6px 10px",
+    marginTop:"8px",padding:"9px 12px",
     borderRadius:"8px",cursor:"pointer"
   }});
   const rebuildSummary = () => {
-    summaryLine.style.background = hasManualNow() ? "#378ADD1a" : "transparent";
-    summaryLine.style.border = hasManualNow() ? "1px solid #378ADD44" : "1px dashed #2e3347";
+    const manual = hasManualNow();
+    summaryLine.style.background = manual ? "#378ADD22" : "#378ADD14";
+    summaryLine.style.border = `1px solid ${manual ? "#378ADD" : "#378ADD55"}`;
     summaryLine.innerHTML = "";
-    summaryLine.appendChild(el("span",{style:{fontSize:"13px",color:hasManualNow()?"#378ADD":"#475569"}},
-      hasManualNow()
-        ? "✏️ Saisie manuelle · "+fmtPace(manualPerf[uid].average_speed)+"/km"+(stravaRun?" (prime sur Strava)":"")
-        : "✏️ Saisir/corriger manuellement"
+    summaryLine.appendChild(el("span",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"14px",fontWeight:"700",color:"#5B9BE0"}},
+      el("span",{style:{fontSize:"15px"}},"✏️"),
+      manual
+        ? "Saisie manuelle · "+fmtPace(manualPerf[uid].average_speed)+"/km"+(stravaRun?" (prime sur Strava)":"")
+        : "Saisir ou corriger manuellement"
     ));
-    summaryLine.appendChild(el("span",{style:{fontSize:"12px",color:"#475569"}}, expanded?"▲":"▼"));
+    summaryLine.appendChild(el("span",{style:{fontSize:"13px",color:"#5B9BE0"}}, expanded?"▲":"▼"));
   };
   rebuildSummary();
 
