@@ -729,6 +729,179 @@
        wizard, seulement à la toute fin du processus. -->
   <button id="btnRetourApp" style="display:block;width:calc(100% - 32px);margin:0 16px 12px;padding:8px;text-align:center;background:#23273811;border:1px solid #2e334733;border-radius:8px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;">← Retour à l'app</button>
 
+  <!-- ============================================================
+       Choix de mode (Objectif course / Mode forme) — ajouté le 13
+       juillet 2026. S'affiche AVANT le wizard course existant, en
+       dehors du système data-step numérique (pour ne rien décaler
+       dans les nombreuses références existantes à totalSteps/current).
+       Redirige soit vers le wizard course inchangé (#track/.content),
+       soit vers le flux Forme dédié (#wizard-forme-contenu), plus
+       court, ci-dessous.
+  ============================================================ -->
+  <div id="choix-mode-contenu">
+    <div class="content" style="padding-top:8px;">
+      <span class="eyebrow">Objectif</span>
+      <h1>Quel est ton objectif&nbsp;?</h1>
+      <p class="sub">Choisis le type de plan qui te correspond.</p>
+      <div class="options">
+        <div class="opt" id="choixModeCourse" onclick="choisirMode('course')">
+          <div class="ico">🏁</div>
+          <div><div class="label">Objectif course</div><div class="desc">Prépare une date précise (5K, 10K, semi, marathon)</div></div>
+          <div class="check"></div>
+        </div>
+        <div class="opt" id="choixModeForme" onclick="choisirMode('forme')">
+          <div class="ico">💓</div>
+          <div><div class="label">Mode forme</div><div class="desc">Entretiens ta forme, sans date de course</div></div>
+          <div class="check"></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <button class="btn btn-next" id="btnChoixModeContinuer" disabled onclick="validerChoixMode()">Continuer</button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       Flux Mode Forme — ajouté le 13 juillet 2026. Volontairement
+       court (4 étapes : niveau, volume, jours, accent) : pas de
+       distance/objectif/date de course, cf. plan-forme.js. Masqué
+       par défaut, affiché uniquement si "Mode forme" est choisi.
+  ============================================================ -->
+  <div id="wizard-forme-contenu" style="display:none;">
+    <div class="track" id="trackForme"></div>
+    <div class="stepmeta">
+      <span class="num" id="stepNumForme">ÉTAPE 1</span>
+      <span class="total">SUR 4</span>
+    </div>
+
+    <div class="content">
+
+      <!-- FORME STEP 1: Niveau -->
+      <div class="screen active" data-step-forme="1">
+        <span class="eyebrow">Point de départ</span>
+        <h1>Où en es-tu aujourd'hui&nbsp;?</h1>
+        <p class="sub">Ça nous aide à calibrer le point de départ du plan — pas de mauvaise réponse.</p>
+        <div class="options">
+          <div class="opt" data-group="niveau-forme" onclick="selectOptForme(this)">
+            <div class="ico">🌱</div>
+            <div><div class="label">Je débute</div><div class="desc">Moins de 6 mois de course régulière</div></div>
+            <div class="check"></div>
+          </div>
+          <div class="opt selected" data-group="niveau-forme" onclick="selectOptForme(this)">
+            <div class="ico">🏃</div>
+            <div><div class="label">Intermédiaire</div><div class="desc">Je cours depuis un moment, j'ai déjà couru un 10K</div></div>
+            <div class="check"></div>
+          </div>
+          <div class="opt" data-group="niveau-forme" onclick="selectOptForme(this)">
+            <div class="ico">⚡</div>
+            <div><div class="label">Confirmé</div><div class="desc">Plusieurs courses, je connais mes allures</div></div>
+            <div class="check"></div>
+          </div>
+        </div>
+
+        <div class="block-label" style="margin-top:22px;">Profil — enregistré une seule fois</div>
+        <div class="date-field">
+          <input type="number" id="birthYearForme" placeholder="Année de naissance" style="font-size:16px; padding:14px;">
+        </div>
+        <p class="sub" style="margin-top:8px; margin-bottom:0;">Sert à calculer une zone de fréquence cardiaque par défaut (formule de Tanaka).</p>
+
+        <div class="date-field" style="margin-top:10px;">
+          <input type="number" id="fcMaxConnueForme" placeholder="FC max connue (optionnel)" style="font-size:16px; padding:14px;">
+        </div>
+
+        <div class="block-label" style="margin-top:22px;">Une référence de temps, pour calibrer tes allures</div>
+        <p class="sub" style="margin-top:0; margin-bottom:8px;">N'importe quelle distance récente (5K, 10K, semi...), même approximative.</p>
+        <div class="time-input" style="padding:16px 10px;">
+          <input type="text" maxlength="2" value="50" id="tMinForme" style="font-size:28px;">
+          <span class="sep">:</span>
+          <input type="text" maxlength="2" value="21" id="tSecForme" style="font-size:28px;">
+          <span class="unit">min:sec</span>
+        </div>
+      </div>
+
+      <!-- FORME STEP 2: Volume actuel -->
+      <div class="screen" data-step-forme="2">
+        <span class="eyebrow">Point de départ</span>
+        <h1>Combien tu cours actuellement&nbsp;?</h1>
+        <p class="sub">Sert de base au plateau de volume visé — pas de progression agressive en mode forme.</p>
+
+        <div class="strava-card" id="stravaConnexionBlocForme" style="display:none;">
+          <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines).</p>
+          <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
+        </div>
+
+        <div class="strava-card" id="stravaCardForme">
+          <div class="strava-head">
+            <span class="strava-badge">📡 Depuis Strava</span>
+            <span class="strava-period">Médiane, 8 dernières semaines</span>
+          </div>
+          <div class="strava-value"><span id="stravaKmForme">32</span><span class="strava-unit">km / semaine</span></div>
+          <span class="alt-toggle" onclick="toggleManualVolumeForme()">Ce chiffre ne te semble pas juste ? Corriger manuellement</span>
+          <span class="alt-toggle" onclick="deconnecterStrava()" style="display:block; margin-top:4px; opacity:0.6;">Déconnecter Strava</span>
+        </div>
+
+        <div class="manual-volume" id="manualVolumeForme" style="display:none;">
+          <div class="time-input">
+            <input type="text" maxlength="3" value="30" id="manualKmForme" style="width:3ch;">
+            <span class="unit">km / semaine</span>
+          </div>
+          <span class="alt-toggle" onclick="toggleManualVolumeForme()">Revenir à l'estimation Strava</span>
+        </div>
+
+        <div class="flag" id="noStravaFlagForme" style="display:none; margin-top:16px;">
+          <span class="ico">ℹ️</span>
+          <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
+        </div>
+      </div>
+
+      <!-- FORME STEP 3: Disponibilité -->
+      <div class="screen" data-step-forme="3">
+        <span class="eyebrow">Disponibilité</span>
+        <h1>Quels jours tu peux courir&nbsp;?</h1>
+        <p class="sub">Sélectionne tes créneaux possibles, le plan placera les séances clés dessus.</p>
+        <div class="count-badge">● <span id="dayCountForme">3</span> séances / semaine</div>
+        <div class="days-grid" id="daysGridForme"></div>
+
+        <div class="block-label" style="margin-top:22px;">Renforcement musculaire</div>
+        <div class="toggle-row">
+          <span class="label">Inclure dans le plan</span>
+          <div class="switch" id="renfoSwitchForme" onclick="toggleRenfoForme()"></div>
+        </div>
+      </div>
+
+      <!-- FORME STEP 4: Accent -->
+      <div class="screen" data-step-forme="4">
+        <span class="eyebrow">Orientation</span>
+        <h1>Quel accent pour tes séances&nbsp;?</h1>
+        <p class="sub">Détermine le style des séances qualité de ton plan.</p>
+        <div class="options">
+          <div class="opt selected" data-group="accent-forme" data-value="vma" onclick="selectAccentForme(this)">
+            <div class="ico">⚡</div>
+            <div><div class="label">VMA</div><div class="desc">Fartlek, pyramidale, variations d'allure</div></div>
+            <div class="check"></div>
+          </div>
+          <div class="opt" data-group="accent-forme" data-value="endurance" onclick="selectAccentForme(this)">
+            <div class="ico">🛣️</div>
+            <div><div class="label">Endurance</div><div class="desc">Volume et sorties longues privilégiés</div></div>
+            <div class="check"></div>
+          </div>
+          <div class="opt" data-group="accent-forme" data-value="polyvalent" onclick="selectAccentForme(this)">
+            <div class="ico">🎛️</div>
+            <div><div class="label">Polyvalent</div><div class="desc">Un peu de tout, rotation équilibrée</div></div>
+            <div class="check"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="footer">
+      <button class="btn btn-back" id="backBtnForme" onclick="prevStepForme()">←</button>
+      <button class="btn btn-next" id="nextBtnForme" onclick="nextStepForme()">Continuer</button>
+    </div>
+  </div>
+
+  <div id="wizard-course-contenu" style="display:none;">
   <div class="track" id="track"></div>
   <div class="stepmeta">
     <span class="num" id="stepNum">ÉTAPE 1</span>
@@ -773,6 +946,7 @@
       <span class="eyebrow">Point de départ</span>
       <h1>Où en es-tu aujourd'hui&nbsp;?</h1>
       <p class="sub">Ça nous aide à calibrer le point de départ du plan — pas de mauvaise réponse.</p>
+
       <div class="options">
         <div class="opt" data-group="niveau" onclick="selectOpt(this)">
           <div class="ico">🌱</div>
@@ -1094,16 +1268,18 @@
     <button class="btn btn-back" id="backBtn" onclick="prevStep()">←</button>
     <button class="btn btn-next" id="nextBtn" onclick="nextStep()">Continuer</button>
   </div>
+  </div>
 
 </div>
 
 <script type="module">
   import * as PlanGenerator from '/v2/engine/plan-generator.js';
+  import * as PlanForme from '/v2/engine/plan-forme.js';
   import * as Strava from '/v2/engine/strava.js';
   import * as GistSync from '/v2/engine/gist-sync.js';
   import * as PdfExport from '/v2/engine/pdf-export.js';
   import * as Weather from '/v2/engine/weather.js';
-  window.Engine = { ...PlanGenerator, ...Strava, ...GistSync, ...PdfExport, ...Weather };
+  window.Engine = { ...PlanGenerator, ...PlanForme, ...Strava, ...GistSync, ...PdfExport, ...Weather };
   // Signale explicitement que window.Engine est prêt : un <script type="module">
   // s'exécute de façon asynchrone/différée par rapport à un <script> classique
   // placé après lui dans le document, donc rien ne garantit que window.Engine
@@ -1480,12 +1656,23 @@
   }
 
   function renderResults(plan){
-    document.getElementById('resultsAmpleur').textContent =
-      `Objectif catégorisé "${plan.ampleurObjectif}" — ${plan.warnings.length} avertissement(s).`;
+    // Mode Forme (13 juillet 2026) : pas de phases/dureeSemaines/ampleurObjectif
+    // (notions propres au plan course, cf. plan-forme.js) — repli textuel
+    // plutôt qu'un plantage sur plan.phases.map(...) undefined.
+    const estModeForme = plan.mode === 'forme';
+    document.getElementById('resultsAmpleur').textContent = estModeForme
+      ? `Mode forme — accent ${plan.accent} — ${plan.warnings.length} avertissement(s).`
+      : `Objectif catégorisé "${plan.ampleurObjectif}" — ${plan.warnings.length} avertissement(s).`;
     document.getElementById('resultsWarnCount').textContent = `${plan.warnings.length} alerte(s)`;
-    document.getElementById('resDuree').textContent = `${plan.dureeSemaines} semaines`;
-    document.getElementById('resPhases').textContent = plan.phases.map(p => `${p.nom} ${p.semaines}sem`).join(' / ');
-    document.getElementById('resPlafond').textContent = `${plan.volumePlafondKm} km/sem`;
+    document.getElementById('resDuree').textContent = estModeForme
+      ? `Bloc de ${plan.tailleBlocSemaines} semaines (glissant)`
+      : `${plan.dureeSemaines} semaines`;
+    document.getElementById('resPhases').textContent = estModeForme
+      ? 'Mode forme — pas de phases'
+      : plan.phases.map(p => `${p.nom} ${p.semaines}sem`).join(' / ');
+    document.getElementById('resPlafond').textContent = estModeForme
+      ? '—'
+      : `${plan.volumePlafondKm} km/sem`;
     document.getElementById('resFcMax').textContent = plan.zoneFC
       ? `${plan.zoneFC.fcMax} bpm max (${plan.zoneFC.methode === 'mesuree' ? 'mesurée' : 'estimée, formule de Tanaka'})`
       : 'Renseigne ton année de naissance ou ta FC max connue pour voir cette zone';
@@ -2514,13 +2701,238 @@
     document.addEventListener('engineReady', preremplirDepuisProfilCoureur, { once: true });
   }
 
-  // Restaure l'étape du wizard si elle a été persistée (ex: juste avant un
-  // rechargement forcé par le retour OAuth Strava) — évite de renvoyer
-  // l'utilisateur à l'étape 1 après un reload alors qu'il était déjà plus
-  // loin dans le wizard.
+  // Restaure l'étape du wizard course si elle a été persistée (ex: juste
+  // avant un rechargement forcé par le retour OAuth Strava) — évite de
+  // renvoyer l'utilisateur à l'étape 1 après un reload. Ne s'applique
+  // qu'au mode course (le mode Forme n'a pas ce mécanisme de persistance,
+  // flux volontairement plus court, moins gênant à recommencer).
   const etapeSauvegardee = parseInt(sessionStorage.getItem('v2_wizard_step') || '1', 10);
-  current = (etapeSauvegardee >= 1 && etapeSauvegardee <= totalSteps) ? etapeSauvegardee : 1;
-  showStep(current);
+
+  // ===========================================================================
+  // Choix de mode (Objectif course / Mode forme) — ajouté le 13 juillet 2026.
+  // Affiché en premier, indépendamment du système data-step numérique du
+  // wizard course existant (totalSteps/current), pour ne rien décaler dans
+  // les nombreuses références déjà en place. Une fois choisi, affiche soit
+  // wizard-course-contenu (flux existant inchangé), soit wizard-forme-contenu
+  // (flux dédié, plus court, cf. plus bas).
+  // ===========================================================================
+  let modeChoisi = null;
+
+  function choisirMode(mode) {
+    modeChoisi = mode;
+    document.getElementById('choixModeCourse').classList.toggle('selected', mode === 'course');
+    document.getElementById('choixModeForme').classList.toggle('selected', mode === 'forme');
+    document.getElementById('btnChoixModeContinuer').disabled = false;
+  }
+
+  function validerChoixMode() {
+    if (!modeChoisi) return;
+    document.getElementById('choix-mode-contenu').style.display = 'none';
+    if (modeChoisi === 'course') {
+      document.getElementById('wizard-course-contenu').style.display = 'block';
+      current = (etapeSauvegardee >= 1 && etapeSauvegardee <= totalSteps) ? etapeSauvegardee : 1;
+      showStep(current);
+    } else {
+      document.getElementById('wizard-forme-contenu').style.display = 'block';
+      renderDaysForme();
+      showStepForme(currentForme);
+    }
+  }
+
+  // ===========================================================================
+  // Flux Mode Forme — ajouté le 13 juillet 2026. 4 étapes : niveau, volume,
+  // jours, accent. Réutilise le même pattern visuel/interaction que le
+  // wizard course (options/days-grid/strava-card), mais des champs/fonctions
+  // distincts (suffixe Forme) pour ne jamais interférer avec l'état du
+  // wizard course (ex. currentDist, renfoOn) — les deux flux ne cohabitent
+  // jamais dans la même session, mais mieux vaut ne pas partager d'état
+  // mutable entre les deux par prudence.
+  // ===========================================================================
+  const totalStepsForme = 4;
+  let currentForme = 1;
+  let renfoOnForme = false;
+  let accentChoisi = 'vma';
+
+  function renderTrackForme() {
+    const track = document.getElementById('trackForme');
+    track.innerHTML = '';
+    for (let i = 1; i <= totalStepsForme; i++) {
+      const lap = document.createElement('div');
+      lap.className = 'lap' + (i < currentForme ? ' done' : '') + (i === currentForme ? ' current' : '');
+      track.appendChild(lap);
+    }
+  }
+
+  function showStepForme(n) {
+    document.querySelectorAll('#wizard-forme-contenu .screen').forEach(s => s.classList.remove('active'));
+    document.querySelector(`#wizard-forme-contenu .screen[data-step-forme="${n}"]`).classList.add('active');
+    document.getElementById('stepNumForme').textContent = 'ÉTAPE ' + n;
+    document.getElementById('backBtnForme').style.visibility = n === 1 ? 'hidden' : 'visible';
+    document.getElementById('nextBtnForme').textContent = n === totalStepsForme ? 'Générer le plan' : 'Continuer';
+    renderTrackForme();
+  }
+
+  function nextStepForme() {
+    if (currentForme < totalStepsForme) { currentForme++; showStepForme(currentForme); }
+    else { genererPlanFormeUI(); }
+  }
+  function prevStepForme() {
+    if (currentForme > 1) { currentForme--; showStepForme(currentForme); }
+    else {
+      // Retour à l'écran de choix de mode depuis la toute première étape
+      document.getElementById('wizard-forme-contenu').style.display = 'none';
+      document.getElementById('choix-mode-contenu').style.display = 'block';
+    }
+  }
+
+  function selectOptForme(el) {
+    document.querySelectorAll('.opt[data-group="niveau-forme"]').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+
+  function selectAccentForme(el) {
+    document.querySelectorAll('.opt[data-group="accent-forme"]').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    accentChoisi = el.dataset.value;
+  }
+
+  function toggleRenfoForme() {
+    renfoOnForme = !renfoOnForme;
+    document.getElementById('renfoSwitchForme').classList.toggle('on', renfoOnForme);
+  }
+
+  function renderDaysForme() {
+    const days = ['L','M','M','J','V','S','D'];
+    const selectedDefault = [1,3,5];
+    const grid = document.getElementById('daysGridForme');
+    grid.innerHTML = '';
+    days.forEach((d,i)=>{
+      const el = document.createElement('div');
+      el.className = 'day' + (selectedDefault.includes(i) ? ' selected' : '');
+      el.dataset.dayIndex = i;
+      el.innerHTML = `<span class="d">${d}</span><span>●</span>`;
+      el.onclick = () => { el.classList.toggle('selected'); updateDayCountForme(); };
+      grid.appendChild(el);
+    });
+    updateDayCountForme();
+  }
+
+  function updateDayCountForme() {
+    const n = document.querySelectorAll('#daysGridForme .day.selected').length;
+    document.getElementById('dayCountForme').textContent = n;
+  }
+
+  function toggleManualVolumeForme(){
+    const strava = document.getElementById('stravaCardForme');
+    const manual = document.getElementById('manualVolumeForme');
+    const showManual = strava.style.display !== 'none';
+    strava.style.display = showManual ? 'none' : 'block';
+    manual.style.display = showManual ? 'block' : 'none';
+  }
+
+  // Réutilise le même mécanisme Strava que le wizard course (Engine.*),
+  // juste affiché dans les éléments -Forme plutôt que ceux du wizard course.
+  async function chargerVolumeStravaForme() {
+    const blocConnexion = document.getElementById('stravaConnexionBlocForme');
+    const blocValeur = document.getElementById('stravaCardForme');
+    const flag = document.getElementById('noStravaFlagForme');
+    if (!blocConnexion || !blocValeur) return; // flux Forme pas encore affiché
+
+    const accessToken = await Engine.assurerTokenStravaValide();
+    if (!accessToken) {
+      blocValeur.style.display = 'none';
+      blocConnexion.style.display = 'block';
+      return;
+    }
+    blocConnexion.style.display = 'none';
+    blocValeur.style.display = 'block';
+
+    const { mediane, erreur } = await Engine.recupererVolumeStrava(accessToken);
+    if (erreur || mediane === null) {
+      flag.style.display = 'flex';
+      toggleManualVolumeForme();
+    } else {
+      document.getElementById('stravaKmForme').textContent = mediane;
+    }
+  }
+
+  const NIVEAU_MAP_FORME = { "Je débute": "debutant", "Intermédiaire": "intermediaire", "Confirmé": "confirme" };
+
+  function collectParamsFromWizardForme(){
+    const niveauLabel = document.querySelector('.opt[data-group="niveau-forme"].selected .label').textContent;
+    const joursDisponibles = [...document.querySelectorAll('#daysGridForme .day.selected')]
+      .map(el => parseInt(el.dataset.dayIndex));
+
+    const volumeActuel = document.getElementById('stravaCardForme').style.display !== 'none'
+      ? parseFloat(document.getElementById('stravaKmForme').textContent)
+      : parseFloat(document.getElementById('manualKmForme').value);
+
+    const profil = {
+      niveau: NIVEAU_MAP_FORME[niveauLabel] ?? 'intermediaire',
+      anneeNaissance: parseInt(document.getElementById('birthYearForme').value) || undefined,
+      fcMaxConnue: parseInt(document.getElementById('fcMaxConnueForme').value) || undefined,
+      joursDisponiblesHabituels: joursDisponibles,
+      renforcementMusculaire: renfoOnForme
+    };
+
+    const tMin = document.getElementById('tMinForme').value || '0';
+    const tSec = document.getElementById('tSecForme').value || '0';
+
+    const params = {
+      refDistance: '10K',
+      tempsReference: `${tMin}:${String(tSec).padStart(2,'0')}`,
+      volumeActuel: isNaN(volumeActuel) ? 30 : volumeActuel,
+      accent: accentChoisi,
+      dateDebut: new Date().toISOString().slice(0,10)
+    };
+
+    return { profil, params };
+  }
+
+  let dernierPlanFormeGenere = null;
+
+  function genererPlanFormeUI(){
+    const { profil, params } = collectParamsFromWizardForme();
+    let plan;
+    try {
+      plan = Engine.generatePlanForme(profil, params);
+    } catch (err) {
+      alert("Erreur de génération : " + err.message);
+      console.error(err);
+      return;
+    }
+    plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-forme-' + Date.now());
+    plan.statuses = plan.statuses || {};
+    plan.profilOrigine = profil;
+    plan.paramsOrigine = params;
+    dernierPlanFormeGenere = plan;
+
+    // Réutilise dernierPlanGenere (variable du wizard course) et les
+    // fonctions renderResults()/rafraichirPlanComplet() existantes pour
+    // l'écran de résultats — celles-ci lisent déjà plan.semaines/warnings/
+    // allures/zoneFC de façon générique. Seuls les champs spécifiques à la
+    // course (plan.phases, plan.dateCourse) sont absents : renderResults()
+    // les traite via `?.`/repli, donc pas de plantage, juste ces champs
+    // n'apparaissent pas dans le récap (cohérent, ils n'ont pas de sens
+    // en mode Forme).
+    dernierPlanGenere = plan;
+    renderResults(plan);
+    showingResults = true;
+    document.getElementById('wizard-forme-contenu').style.display = 'none';
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelector('.screen[data-step="10"]').classList.add('active');
+    document.getElementById('wizard-course-contenu').style.display = 'block';
+    document.getElementById('nextBtn').textContent = 'Terminer';
+  }
+
+  document.getElementById('choix-mode-contenu').style.display = 'block';
+
+  if (window.Engine) {
+    chargerVolumeStravaForme();
+  } else {
+    document.addEventListener('engineReady', chargerVolumeStravaForme, { once: true });
+  }
+
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
