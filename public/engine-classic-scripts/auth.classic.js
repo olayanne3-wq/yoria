@@ -127,8 +127,11 @@
         resolve(user);
       }
 
+      let modeRecovery = false;
+
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
+        if (modeRecovery) return;
         submitBtn.disabled = true;
         messageEl.textContent = '';
         const email = emailInput.value.trim();
@@ -168,6 +171,7 @@
 
       supabase.auth.onAuthStateChange(function (event, session) {
         if (event !== 'PASSWORD_RECOVERY') return;
+        modeRecovery = true;
         form.innerHTML =
           '<label for="auth-nouveau-mdp">Choisis un nouveau mot de passe</label>' +
           '<input type="password" id="auth-nouveau-mdp" autocomplete="new-password" required minlength="6">' +
