@@ -12,12 +12,20 @@
 // ============================================================
 
 (function () {
-  const SUPABASE_URL = "https://oppwuzbcnhchtokxpzla.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wcHd1emJjbmhjaHRva3hwemxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4OTA0OTMsImV4cCI6MjA5OTQ2NjQ5M30.0TWjUiPO3QbxVmhpGiQ4HPsQSgSq1yUUa9fR-XW5pvk";
+  // Clés récupérées depuis /api/config (route serverless Vercel), plutôt
+  // qu'en dur ici — ajouté le 13 juillet 2026. `supabase` (variable locale
+  // à cette IIFE) n'est disponible qu'après résolution de supabaseReady ;
+  // toute fonction interne l'utilisant doit d'abord `await supabaseReady`.
+  let supabase;
+  const supabaseReady = fetch('/api/config')
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      supabase = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+      return supabase;
+    });
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  function monterEcranAuth(conteneurId) {
+  async function monterEcranAuth(conteneurId) {
+    await supabaseReady;
     conteneurId = conteneurId || 'ecran-auth-hote';
     const hote = document.getElementById(conteneurId);
     if (!hote) throw new Error('monterEcranAuth: conteneur #' + conteneurId + ' introuvable');
@@ -132,17 +140,24 @@
   }
 
   async function deconnecter() {
+    await supabaseReady;
     const res = await supabase.auth.signOut();
     if (res.error) throw res.error;
   }
 
   async function utilisateurActuel() {
+    await supabaseReady;
     const res = await supabase.auth.getUser();
     return res.data.user;
   }
 
   window.LkAuth = {
-    supabase: supabase,
+    // Getter plutôt que valeur figée : `supabase` (variable locale) vaut
+    // undefined tant que supabaseReady n'est pas résolue — un accès direct
+    // à window.LkAuth.supabase avant résolution doit refléter cet état
+    // réel, pas une capture figée au moment de cette assignation.
+    get supabase() { return supabase; },
+    supabaseReady: supabaseReady,
     monterEcranAuth: monterEcranAuth,
     deconnecter: deconnecter,
     utilisateurActuel: utilisateurActuel

@@ -21,6 +21,7 @@
   const CLE_MARQUEUR_MIGRATION_PLAN_PREFIX = 'lk_migration_supabase_plan_faite_';
 
   async function migrerDonneesExistantes(userId, planId) {
+    await window.LkAuth.supabaseReady;
     const supabase = window.LkAuth.supabase;
     const planIdValide = estUuidValide(planId) ? planId : null;
     const dejaGlobale = !!localStorage.getItem(CLE_MARQUEUR_MIGRATION_GLOBALE);
@@ -103,6 +104,7 @@
   }
 
   async function precharger(userId, planId) {
+    await window.LkAuth.supabaseReady;
     const planIdValide = estUuidValide(planId) ? planId : null;
     const supabase = window.LkAuth.supabase;
     try {
@@ -152,6 +154,14 @@
   function synchroniserVersSupabase(userId, planId, cle, valeur) {
     const supabase = window.LkAuth.supabase;
     if (!userId) return;
+    if (!supabase) {
+      // Appelée trop tôt (supabaseReady pas encore résolue) : réessaie
+      // une fois prêt, plutôt que de planter sur supabase undefined.
+      window.LkAuth.supabaseReady.then(function () {
+        synchroniserVersSupabase(userId, planId, cle, valeur);
+      });
+      return;
+    }
 
     if (cle === 'lk_profil_coureur') {
       supabase.from('profils_coureur')
@@ -216,6 +226,7 @@
 
   async function assurerPlanExiste(userId, planId, planBrut) {
     if (!estUuidValide(planId)) return;
+    await window.LkAuth.supabaseReady;
     const supabase = window.LkAuth.supabase;
 
     try {
