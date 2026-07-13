@@ -4342,30 +4342,11 @@ function renderSettings() {
     )
   );
 
-  const cloudSection=el("div",{style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"☁️ Sauvegarde cloud"),
-    !githubToken
-      ? card(
-          el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"10px",lineHeight:"1.6"}},"Scanne le QR code depuis un appareil configuré, ou entre ton token GitHub."),
-          el("div",{style:{display:"flex",gap:"8px"}},
-            el("input",{type:"password",placeholder:"ghp_...",id:"github-token-input",style:{flex:"1",background:"#232738",border:"1px solid #2e3347",borderRadius:"8px",padding:"8px",color:"#f1f5f9",fontSize:"15px"}}),
-            el("button",{style:{background:"#60a5fa22",border:"1px solid #60a5fa55",borderRadius:"8px",padding:"8px 14px",color:"#60a5fa",fontWeight:"700",fontSize:"15px",cursor:"pointer"},
-              onClick:()=>{ const t=document.getElementById("github-token-input").value.trim(); if(t){githubToken=t;save("lk_github_token",t);render();} }
-            },"OK")
-          )
-        )
-      : card(
-          el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-            el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-              el("div",{style:{width:"8px",height:"8px",borderRadius:"50%",background:"#22c55e",flexShrink:"0"}}),
-              el("div",{style:{color:"#22c55e",fontSize:"15px",fontWeight:"600"}},"Sync automatique activée")
-            ),
-            el("button",{style:{background:"none",border:"none",color:"#64748b",fontSize:"13px",cursor:"pointer"},
-              onClick:()=>{ githubToken="";gistId="";save("lk_github_token","");save("lk_gist_id","");render(); }
-            },"Déconnecter")
-          )
-        )
-  );
+  // Section "☁️ Sauvegarde cloud" retirée le 13 juillet 2026 — redondante
+  // avec la synchro Supabase (table integrations, cf. sync-storage.js).
+  // chargerPlans()/githubToken/gistId restent utilisés en interne (Gist),
+  // seule l'UI manuelle de gestion du token est retirée.
+  const cloudSection = null;
 
   // ── Profil coureur + Objectif + PPS ─────────────────────────────────────
   const profileSection = el("div",{style:{marginBottom:"16px"}},
@@ -4701,7 +4682,7 @@ function renderSettings() {
     width:"100%",background:"none",border:"1px solid #2e3347",borderRadius:"8px",
     padding:"10px",color:"#e2e8f0",fontSize:"14px",cursor:"pointer",marginBottom:"8px"
   }}, "⚙️ Options avancées");
-  const advancedContent = el("div",{style:{display:"none"}}, cloudSection, stravaSection);
+  const advancedContent = el("div",{style:{display:"none"}}, stravaSection);
   advancedToggle.addEventListener("click",()=>{
     advancedOpen=!advancedOpen;
     advancedContent.style.display=advancedOpen?"block":"none";
