@@ -23,7 +23,7 @@
 // file d'attente de sync si ça devient un problème réel en usage.
 // ============================================================
 
-import { supabase } from './auth.js';
+import { supabase, supabaseReady } from './auth.js';
 
 // Clés globales (non préfixées par plan) à synchroniser avec la table
 // `integrations` plutôt que `profils_coureur` ou `plan_donnees` —
@@ -61,6 +61,7 @@ const CLE_MARQUEUR_MIGRATION_GLOBALE = 'lk_migration_supabase_globale_faite';
 const CLE_MARQUEUR_MIGRATION_PLAN_PREFIX = 'lk_migration_supabase_plan_faite_';
 
 export async function migrerDonneesExistantes(userId, planId) {
+  await supabaseReady;
   const planIdValide = estUuidValide(planId) ? planId : null;
   const dejaGlobale = !!localStorage.getItem(CLE_MARQUEUR_MIGRATION_GLOBALE);
   const cleMarqueurPlan = planIdValide ? `${CLE_MARQUEUR_MIGRATION_PLAN_PREFIX}${planIdValide}` : null;
@@ -149,6 +150,7 @@ export async function migrerDonneesExistantes(userId, planId) {
 // session (avant que index.html ne lise ses variables `let x = load(...)`).
 // ------------------------------------------------------------
 export async function precharger(userId, planId) {
+  await supabaseReady;
   const planIdValide = estUuidValide(planId) ? planId : null;
   try {
     const [profilRes, integrationsRes, planDonneesRes] = await Promise.all([
@@ -201,6 +203,15 @@ export async function precharger(userId, planId) {
 // ------------------------------------------------------------
 export function synchroniserVersSupabase(userId, planId, cle, valeur) {
   if (!userId) return; // pas connecté, pas de sync possible (ne devrait pas arriver)
+  // Reste volontairement synchrone (fire-and-forget) côté appelant — en
+  // pratique save() n'est appelée qu'après le premier rendu, donc
+  // supabaseReady est déjà résolue. Garde de sécurité quand même : si
+  // jamais appelée trop tôt, on attend silencieusement plutôt que de
+  // planter sur `supabase` undefined.
+  if (!supabase) {
+    supabaseReady.then(() => synchroniserVersSupabase(userId, planId, cle, valeur));
+    return;
+  }
 
   if (cle === 'lk_profil_coureur') {
     supabase.from('profils_coureur')
@@ -220,7 +231,20 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
       lk_gist_id: 'gist_id',
     };
     const colonne = colonnes[cle];
-    const payload = { user_id: userId, [colonne]: valeur };
+    // strava_expires et last_sync sont des colonnes timestamptz côté
+    // Postgres — index.html stocke ces valeurs en timestamp Unix (parfois
+    // en secondes, parfois en millisecondes selon l'origine), jamais en
+    // ISO. Écrire le nombre brut fait échouer l'upsert avec "date/time
+    // field value out of range" (bug découvert en test de production le
+    // 13 juillet 2026). On convertit ici plutôt que de supposer un format.
+    let valeurFinale = valeur;
+    if ((colonne === 'strava_expires' || colonne === 'last_sync') && typeof valeur === 'number') {
+      // En dessous de ce seuil (an ~2001 en millisecondes), c'est presque
+      // certainement des secondes Unix, pas des millisecondes — on multiplie.
+      const enMillisecondes = valeur < 1e12 ? valeur * 1000 : valeur;
+      valeurFinale = new Date(enMillisecondes).toISOString();
+    }
+    const payload = { user_id: userId, [colonne]: valeurFinale };
     supabase.from('integrations')
       .upsert(payload)
       .then(({ error }) => { if (error) console.warn('Sync intégration échouée :', error.message); });
@@ -256,4 +280,48 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
     })
     .then((res) => { if (res?.error) console.warn('Sync plan_donnees échouée :', res.error.message); })
     .catch((err) => console.warn('Sync plan_donnees échouée :', err.message));
+}
+
+// ------------------------------------------------------------
+// Garantit qu'une ligne existe dans la table `plans` pour ce planId,
+// AVANT toute tentative d'écriture vers `plan_donnees` (qui a une
+// contrainte de clé étrangère vers plans.id — cf. schéma SQL). Sans
+// cet appel, la toute première écriture vers plan_donnees échoue en
+// 409 "violates foreign key constraint plan_donnees_plan_id_fkey",
+// car aucun code n'insérait jamais de ligne dans `plans` elle-même —
+// bug découvert en test de production le 13 juillet 2026, cf.
+// inventaire §8bis. À appeler une fois, dès que window.__PLAN_BRUT__
+// est connu, avant le premier appel à synchroniserVersSupabase() ou
+// migrerDonneesExistantes() pour ce plan.
+// ------------------------------------------------------------
+export async function assurerPlanExiste(userId, planId, planBrut) {
+  await supabaseReady;
+  if (!estUuidValide(planId)) return; // plan de repli ou id non-UUID : rien à faire
+
+  try {
+    const { data: existant, error: erreurLecture } = await supabase
+      .from('plans')
+      .select('id')
+      .eq('id', planId)
+      .maybeSingle();
+
+    if (erreurLecture) {
+      console.warn('Vérification existence du plan échouée :', erreurLecture.message);
+      return;
+    }
+    if (existant) return; // déjà là, rien à faire
+
+    const nom = planBrut?.nom || `${planBrut?.distance || ''} — ${planBrut?.objectif || ''}`.trim() || 'Plan';
+    const { error: erreurInsertion } = await supabase.from('plans').insert({
+      id: planId,
+      user_id: userId,
+      nom,
+      plan_brut: planBrut || {},
+    });
+    if (erreurInsertion) {
+      console.warn('Création de la ligne plans échouée :', erreurInsertion.message);
+    }
+  } catch (err) {
+    console.warn('assurerPlanExiste a échoué :', err.message);
+  }
 }
