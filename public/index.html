@@ -32,6 +32,30 @@ input[type=text], input[type=number], input[type=password] {
 </head>
 <body>
 <div id="app"></div>
+
+<!-- ============================================================
+     Écran d'authentification Supabase — ajouté le 13 juillet 2026.
+     Le HTML/CSS/logique réel est dans engine-classic-scripts/auth.classic.js
+     (dérivé de v2/engine/auth.js, source de vérité — même pattern que
+     plan-generator.classic.js / v1-bridge.classic.js / gist-sync.classic.js /
+     weather.classic.js, cf. inventaire §3). Ce conteneur reste vide tant
+     que LkAuth.monterEcranAuth() ne l'a pas rempli.
+============================================================ -->
+<div id="ecran-auth-hote"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/engine-classic-scripts/auth.classic.js"></script>
+<script>
+  // Démarre le montage de l'écran d'auth dès que possible ; la promesse
+  // se résout avec l'utilisateur dès qu'une session est active (existante
+  // au chargement, ou obtenue via le formulaire). Attendue juste avant
+  // render() en fin de fichier — cf. bloc juste avant l'appel final.
+  window.__AUTH_PRET__ = LkAuth.monterEcranAuth('ecran-auth-hote').then(function (user) {
+    window.__UTILISATEUR__ = user;
+    return user;
+  });
+</script>
+
 <!-- Moteur v2 chargé en script classique (pas de modules ES) pour garantir
      un ordre d'exécution strictement séquentiel avec le reste de ce fichier,
      qui lit PLAN dès son chargement (pas seulement sur interaction).
@@ -5139,6 +5163,16 @@ if (missingFns.length > 0) {
   console.warn('⚠️ Fonctions manquantes:', missingFns.join(', '));
 }
 
+// render() n'est appelée qu'une fois une session Supabase confirmée —
+// ajouté le 13 juillet 2026. window.__AUTH_PRET__ se résout dès que
+// l'écran d'auth (monté via LkAuth.monterEcranAuth(), dans
+// engine-classic-scripts/auth.classic.js) a soit trouvé une session
+// existante au chargement, soit reçu une connexion/inscription réussie.
+// Le chargement du plan (window.__PLAN_PRET__, attendu juste avant ce
+// bloc dans l'IIFE englobante) continue de tourner en parallèle sans
+// dépendre de l'auth — les deux promesses avancent indépendamment,
+// on attend juste que les deux soient résolues avant le premier rendu.
+await window.__AUTH_PRET__;
 render();
 
 if ('serviceWorker' in navigator) {
