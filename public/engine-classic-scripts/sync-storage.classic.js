@@ -12,6 +12,71 @@
 
   const CLES_LOCALES_UNIQUEMENT = ['lk_weather_cache'];
 
+  const CLE_FILE_SYNC = 'lk_file_attente_sync';
+
+  function litFileSync() {
+    try { return JSON.parse(localStorage.getItem(CLE_FILE_SYNC)) || []; }
+    catch (e) { return []; }
+  }
+
+  function ecritFileSync(file) {
+    try { localStorage.setItem(CLE_FILE_SYNC, JSON.stringify(file)); }
+    catch (e) { /* quota dépassé */ }
+  }
+
+  function ajouterALaFile(type, payload) {
+    const file = litFileSync();
+    file.push({ type: type, payload: payload, essais: 0, ajoute: Date.now() });
+    ecritFileSync(file);
+  }
+
+  async function rejouerEntreeFile(entree) {
+    await window.LkAuth.supabaseReady;
+    const supabase = window.LkAuth.supabase;
+    try {
+      if (entree.type === 'profil') {
+        const res = await supabase.from('profils_coureur').upsert(entree.payload);
+        return !res.error;
+      }
+      if (entree.type === 'integration') {
+        const res = await supabase.from('integrations').upsert(entree.payload);
+        return !res.error;
+      }
+      if (entree.type === 'plan_donnees') {
+        const lecture = await supabase.from('plan_donnees').select('data').eq('plan_id', entree.payload.plan_id).maybeSingle();
+        if (lecture.error) return false;
+        const donnees = Object.assign({}, (lecture.data && lecture.data.data) || {});
+        donnees[entree.payload.cleBase] = entree.payload.valeur;
+        const res = await supabase.from('plan_donnees').upsert({
+          plan_id: entree.payload.plan_id, user_id: entree.payload.user_id, data: donnees,
+        });
+        return !res.error;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function rejouerFileSync() {
+    const file = litFileSync();
+    if (file.length === 0) return;
+
+    const fileRestante = [];
+    for (let i = 0; i < file.length; i++) {
+      const entree = file[i];
+      const reussi = await rejouerEntreeFile(entree);
+      if (!reussi) {
+        entree.essais++;
+        if (entree.essais < 10) fileRestante.push(entree);
+      }
+    }
+    ecritFileSync(fileRestante);
+  }
+
+  window.addEventListener('online', function () { rejouerFileSync(); });
+  setInterval(function () { rejouerFileSync(); }, 5 * 60 * 1000);
+
   const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   function estUuidValide(valeur) {
     return typeof valeur === 'string' && RE_UUID.test(valeur);
@@ -164,9 +229,15 @@
     }
 
     if (cle === 'lk_profil_coureur') {
+      const payloadProfil = { user_id: userId, data: valeur };
       supabase.from('profils_coureur')
-        .upsert({ user_id: userId, data: valeur })
-        .then(function (res) { if (res.error) console.warn('Sync profil échouée :', res.error.message); });
+        .upsert(payloadProfil)
+        .then(function (res) {
+          if (res.error) {
+            console.warn('Sync profil échouée, mise en file :', res.error.message);
+            ajouterALaFile('profil', payloadProfil);
+          }
+        });
       return;
     }
 
@@ -190,7 +261,12 @@
       payload[colonne] = valeurFinale;
       supabase.from('integrations')
         .upsert(payload)
-        .then(function (res) { if (res.error) console.warn('Sync intégration échouée :', res.error.message); });
+        .then(function (res) {
+          if (res.error) {
+            console.warn('Sync intégration échouée, mise en file :', res.error.message);
+            ajouterALaFile('integration', payload);
+          }
+        });
       return;
     }
 
@@ -220,8 +296,16 @@
           data: donnees,
         });
       })
-      .then(function (res) { if (res && res.error) console.warn('Sync plan_donnees échouée :', res.error.message); })
-      .catch(function (err) { console.warn('Sync plan_donnees échouée :', err.message); });
+      .then(function (res) {
+        if (res && res.error) {
+          console.warn('Sync plan_donnees échouée, mise en file :', res.error.message);
+          ajouterALaFile('plan_donnees', { plan_id: planId, user_id: userId, cleBase: cleBase, valeur: valeur });
+        }
+      })
+      .catch(function (err) {
+        console.warn('Sync plan_donnees échouée, mise en file :', err.message);
+        ajouterALaFile('plan_donnees', { plan_id: planId, user_id: userId, cleBase: cleBase, valeur: valeur });
+      });
   }
 
   async function assurerPlanExiste(userId, planId, planBrut) {
@@ -258,6 +342,7 @@
     precharger: precharger,
     synchroniserVersSupabase: synchroniserVersSupabase,
     migrerDonneesExistantes: migrerDonneesExistantes,
-    assurerPlanExiste: assurerPlanExiste
+    assurerPlanExiste: assurerPlanExiste,
+    rejouerFileSync: rejouerFileSync
   };
 })();
