@@ -2,7 +2,8 @@
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
 > sans re-parcourir tout le repo. Mis à jour au 13 juillet 2026 (chantier ACWR en cours ;
-> harmonisation visuelle app/wizard ; badge décharge onglet Semaines).
+> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; démarrage
+> chantier v2.5 authentification Supabase).
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -42,6 +43,9 @@ plan-10k/
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2,
 │   │                               # utilisées par index.html (script classique).
 │   │                               # À régénérer manuellement à chaque modif du moteur.
+│   │                               # Inclut auth.classic.js (dérivé de v2/engine/auth.js,
+│   │                               # 13 juillet 2026), attaché à window.LkAuth plutôt
+│   │                               # qu'aux globals habituels PLAN/ALL_SESSIONS.
 │   └── v2/
 │       ├── index.html             # Wizard de création de plan (~120K)
 │       ├── manifest.json, sw.js   # PWA v2
@@ -51,6 +55,7 @@ plan-10k/
 │           ├── pdf-export.js      # Export PDF du plan (jsPDF)
 │           ├── strava.js          # Intégration Strava côté client (tokens, volume)
 │           ├── weather.js         # Intégration météo côté client
+│           ├── auth.js            # Auth Supabase (écran connexion/inscription, session) — v2.5, 13 juillet 2026
 │           ├── v1-bridge.js       # Traduction plan v2 → format v1 (pour affichage classic)
 │           └── test-*.mjs         # Suite de tests (13 fichiers, un par module/fonctionnalité)
 ├── vercel.json                    # Routage : /api/*, /v2, fallback statique
@@ -242,6 +247,84 @@ commercial (v2.5).
 géré par `v2/engine/gist-sync.js` (`chargerPlans`, `sauvegarderPlan`,
 `supprimerPlan`, `renommerPlan`, détection de conflit de dates entre plans).
 
+## 8bis. Authentification Supabase (v2.5, chantier lancé le 13 juillet 2026)
+
+**Contexte** — prérequis identifié pour la publication Play Store (§9,
+v2.5 commercialisation) : une app multi-utilisateur nécessite un vrai
+backend d'auth et de stockage serveur, pas uniquement `localStorage`
+côté device. Décision : Supabase (Postgres + Auth), plan gratuit pour
+démarrer (500 Mo, 50k utilisateurs actifs mensuels inclus — largement
+suffisant à l'échelle actuelle). Projet créé, URL et clé `anon`
+(publique par conception) en dur dans `auth.js`/`auth.classic.js` — la
+clé `service_role`, elle, ne doit jamais apparaître côté client.
+
+**Schéma base de données** — 4 tables, RLS (Row Level Security) activé
+partout dès le départ (équivalent serveur du principe de préfixage
+`lk_` déjà en place) :
+- `profils_coureur` (`user_id` clé primaire → `auth.users`, `data` JSONB)
+  — remplace `lk_profil_coureur`
+- `plans` (`id` UUID, `user_id`, `plan_brut` JSONB) — remplace
+  `window.__PLAN_BRUT__` actuellement stocké via le Gist
+- `plan_donnees` (`plan_id` clé primaire, `user_id` dupliqué pour
+  simplifier les policies RLS, `data` JSONB) — regroupe toutes les
+  clés préfixées par plan (`lk_statuses`, `lk_hidden_sessions`,
+  `lk_notes`, `lk_race_goal`, etc., cf. §5) en un seul objet
+- `integrations` (`user_id` clé primaire, tokens Strava/GitHub/Gist)
+  — table séparée car données sensibles, isolées du reste
+- Trigger générique `set_updated_at()` sur les 4 tables
+
+**Ce qui est fait** :
+- Schéma SQL exécuté avec succès sur le projet Supabase
+- Authentification par email + mot de passe (pas de magic link,
+  décision du 13 juillet — usage quotidien, friction du lien email à
+  chaque connexion jugée trop coûteuse pour cet usage)
+- `v2/engine/auth.js` créé — source de vérité, module ES. Expose
+  `supabase` (client), `monterEcranAuth(conteneurId)` (construit et
+  affiche l'écran connexion/inscription, retourne une Promise résolue
+  avec l'utilisateur dès qu'une session est active), `deconnecter()`,
+  `utilisateurActuel()`
+- `engine-classic-scripts/auth.classic.js` créé — copie dérivée,
+  attache tout à `window.LkAuth` (même pattern que les autres modules
+  classic). Nécessite le SDK Supabase chargé en amont via
+  `<script src="...supabase-js@2/dist/umd/supabase.min.js">`
+  (jsdelivr) plutôt qu'en import ES, cohérent avec le reste de
+  `index.html`
+- `index.html` modifié : conteneur `#ecran-auth-hote` juste après
+  `#app`, charge le SDK puis `auth.classic.js`, appelle
+  `LkAuth.monterEcranAuth()` dont la promesse (`window.__AUTH_PRET__`)
+  est attendue juste avant l'appel à `render()` en fin de fichier.
+  Le chargement du plan (`window.__PLAN_PRET__`, Gist) n'est pas
+  touché — les deux promesses avancent en parallèle, indépendantes
+  l'une de l'autre
+- Tests validés manuellement (page de test isolée, hors repo) :
+  inscription, connexion, déconnexion, écriture/lecture sur
+  `profils_coureur`, et surtout confirmation que RLS bloque bien
+  l'accès aux données côté base (pas seulement côté client) pour un
+  utilisateur non authentifié
+
+**Pas encore fait** (suite du chantier) :
+- Intégration testée en conditions réelles dans `index.html` (préview
+  Vercel ou serveur local — le fichier ne fonctionne pas en `file://`
+  à cause des imports de `engine-classic-scripts/`)
+- `v2/index.html` (wizard) ne demande pas encore d'authentification —
+  à faire avant publication, sinon un plan peut être créé sans
+  utilisateur associé
+- **Migration des données `localStorage` existantes vers Supabase**
+  — aucune migration automatique n'existe encore. Un utilisateur qui
+  se connecte pour la première fois ne récupère pas ses données
+  `lk_*` locales. Prévoir un import one-shot au premier login, sans
+  écrasement silencieux
+- Bascule effective des lectures/écritures de `index.html` (`PLAN`,
+  `ALL_SESSIONS`, toutes les clés `lk_*` du §5) vers les tables
+  Supabase plutôt que `localStorage`/Gist — c'est le plus gros
+  morceau du chantier v2.5, pas commencé
+- Confirmation email Supabase (actuellement comportement par défaut,
+  à décider : activer pour de vrais utilisateurs publics, ou
+  désactiver pour un usage familial/perso plus simple)
+- Variables d'environnement Vercel pour les clés Supabase (actuellement
+  en dur dans le code — acceptable pour la clé `anon` mais à revoir
+  pour la maintenabilité si le projet est régénéré)
+
 ## 9. État des chantiers (au 13/07/2026)
 
 | Chantier | Statut |
@@ -258,7 +341,8 @@ géré par `v2/engine/gist-sync.js` (`chargerPlans`, `sauvegarderPlan`,
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
-| v2.5 commercialisation (Supabase, Stripe, multi-user) | 🔜 Architecture décidée, pas codée |
+| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — schéma DB + écran connexion codés et testés isolément, intégration réelle dans index.html et migration localStorage restent à faire (détail §8bis) |
+| v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 
 ## 10. Principes transverses à retenir
 
