@@ -45,13 +45,25 @@ input[type=text], input[type=number], input[type=password] {
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="/engine-classic-scripts/auth.classic.js"></script>
+<script src="/engine-classic-scripts/sync-storage.classic.js"></script>
 <script>
   // Démarre le montage de l'écran d'auth dès que possible ; la promesse
   // se résout avec l'utilisateur dès qu'une session est active (existante
-  // au chargement, ou obtenue via le formulaire). Attendue juste avant
-  // render() en fin de fichier — cf. bloc juste avant l'appel final.
-  window.__AUTH_PRET__ = LkAuth.monterEcranAuth('ecran-auth-hote').then(function (user) {
+  // au chargement, ou obtenue via le formulaire).
+  //
+  // Une fois connecté, précharge toutes les données Supabase de
+  // l'utilisateur dans localStorage AVANT de résoudre window.__AUTH_PRET__
+  // — ainsi, quand le script principal plus bas exécute ses ~22 lignes
+  // `let x = load(clePourPlan("lk_..."), défaut)`, les données viennent
+  // déjà de Supabase plutôt que d'un éventuel ancien état local. Le plan
+  // actif n'étant pas encore connu à ce stade (window.__PLAN_BRUT__ se
+  // prépare en parallèle, cf. script suivant), on précharge d'abord sans
+  // planId — les données préfixées par plan seront chargées séparément
+  // une fois le plan connu (cf. bloc juste avant render(), fin de fichier).
+  // Chantier v2.5 migration, 13 juillet 2026 — voir inventaire §8bis.
+  window.__AUTH_PRET__ = LkAuth.monterEcranAuth('ecran-auth-hote').then(async function (user) {
     window.__UTILISATEUR__ = user;
+    await LkSync.precharger(user.id, null);
     return user;
   });
 </script>
@@ -129,6 +141,16 @@ input[type=text], input[type=number], input[type=password] {
 <script>
 (async () => {
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
+await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
+
+// Deuxième passe de préchargement, cette fois avec le planId maintenant
+// connu (window.__PLAN_BRUT__.id) — remplit localStorage avec les
+// données préfixées par plan (lk_statuses_xxx, lk_notes_xxx, etc.) AVANT
+// que les lignes `let x = load(clePourPlan("lk_..."), défaut)` plus bas
+// dans ce même script ne s'exécutent. Chantier v2.5, 13 juillet 2026.
+if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
+  await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
+}
 
 const STRAVA_CLIENT_ID = "260339";
 
@@ -230,7 +252,23 @@ const INTERVAL_SESSION_DATES = new Set(
 // STORAGE
 // ══════════════════════════════════════════════════════════════════════════════
 function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; } }
-function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  // Synchronisation Supabase en arrière-plan (fire-and-forget) — ajouté
+  // le 13 juillet 2026, chantier v2.5 migration (inventaire §8bis).
+  // N'attend pas la réponse réseau : localStorage reste la source de
+  // vérité immédiate pour l'affichage, Supabase suit derrière.
+  try {
+    LkSync.synchroniserVersSupabase(
+      window.__UTILISATEUR__?.id,
+      window.__PLAN_BRUT__?.id,
+      key,
+      val
+    );
+  } catch (e) {
+    console.warn('Synchronisation Supabase non déclenchée :', e.message);
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -5163,16 +5201,14 @@ if (missingFns.length > 0) {
   console.warn('⚠️ Fonctions manquantes:', missingFns.join(', '));
 }
 
-// render() n'est appelée qu'une fois une session Supabase confirmée —
-// ajouté le 13 juillet 2026. window.__AUTH_PRET__ se résout dès que
-// l'écran d'auth (monté via LkAuth.monterEcranAuth(), dans
-// engine-classic-scripts/auth.classic.js) a soit trouvé une session
-// existante au chargement, soit reçu une connexion/inscription réussie.
-// Le chargement du plan (window.__PLAN_PRET__, attendu juste avant ce
-// bloc dans l'IIFE englobante) continue de tourner en parallèle sans
-// dépendre de l'auth — les deux promesses avancent indépendamment,
-// on attend juste que les deux soient résolues avant le premier rendu.
-await window.__AUTH_PRET__;
+// render() n'est appelée qu'une fois auth ET préchargement Supabase
+// terminés — les deux await (__PLAN_PRET__, __AUTH_PRET__) ont déjà eu
+// lieu en tout début de cette IIFE (lignes ~143-144), avant même la
+// déclaration de STRAVA_CLIENT_ID et de toutes les variables `let x =
+// load(...)` qui suivent. Pas besoin de réattendre ici — on appelle
+// simplement render() directement, les données sont déjà en place dans
+// localStorage à ce stade. Chantier v2.5 migration, 13 juillet 2026,
+// cf. inventaire §8bis.
 render();
 
 if ('serviceWorker' in navigator) {
