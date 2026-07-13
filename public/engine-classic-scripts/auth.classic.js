@@ -48,6 +48,8 @@
       '#ecran-auth .message { margin-top: 14px; font-size: 0.82rem; text-align: center; min-height: 1.2em; }' +
       '#ecran-auth .message.erreur { color: #f87171; }' +
       '#ecran-auth .message.succes { color: #22c55e; }' +
+      '#ecran-auth .lien-secondaire { margin-top: 12px; font-size: 0.82rem; text-align: center; color: #9ca3af; }' +
+      '#ecran-auth .lien-secondaire:hover { color: #f97316; }' +
       '</style>' +
       '<div id="ecran-auth">' +
       '<div class="carte">' +
@@ -64,6 +66,7 @@
       '<button type="submit" class="btn-principal" id="auth-submit">Se connecter</button>' +
       '<div class="message" id="auth-message"></div>' +
       '</form>' +
+      '<div class="lien-secondaire" id="lien-mdp-oublie" style="cursor:pointer; text-decoration:underline;">Mot de passe oublié ?</div>' +
       '</div>' +
       '</div>';
 
@@ -75,6 +78,7 @@
       const submitBtn = hote.querySelector('#auth-submit');
       const messageEl = hote.querySelector('#auth-message');
       const onglets = hote.querySelectorAll('#ecran-auth .onglet');
+      const lienMdpOublie = hote.querySelector('#lien-mdp-oublie');
 
       let mode = 'connexion';
       let dejaResolu = false;
@@ -85,6 +89,7 @@
           onglets.forEach(function (b) { b.classList.toggle('actif', b === btn); });
           submitBtn.textContent = mode === 'connexion' ? 'Se connecter' : 'Créer mon compte';
           passwordInput.autocomplete = mode === 'connexion' ? 'current-password' : 'new-password';
+          lienMdpOublie.style.display = mode === 'connexion' ? 'block' : 'none';
           messageEl.textContent = '';
         });
       });
@@ -93,6 +98,27 @@
         messageEl.textContent = texte;
         messageEl.className = 'message ' + type;
       }
+
+      lienMdpOublie.addEventListener('click', async function () {
+        const email = emailInput.value.trim();
+        if (!email) {
+          afficherMessage('Entre ton email ci-dessus, puis clique à nouveau sur ce lien.', 'erreur');
+          return;
+        }
+        lienMdpOublie.style.pointerEvents = 'none';
+        afficherMessage('Envoi en cours…', 'succes');
+        try {
+          const res = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin,
+          });
+          if (res.error) throw res.error;
+          afficherMessage('Email envoyé — vérifie ta boîte mail (et les spams) pour le lien de réinitialisation.', 'succes');
+        } catch (err) {
+          afficherMessage('Erreur : ' + err.message, 'erreur');
+        } finally {
+          lienMdpOublie.style.pointerEvents = 'auto';
+        }
+      });
 
       function debloquer(user) {
         if (dejaResolu) return;
@@ -135,6 +161,29 @@
 
       supabase.auth.getUser().then(function (res) {
         if (res.data.user) debloquer(res.data.user);
+      });
+
+      supabase.auth.onAuthStateChange(function (event, session) {
+        if (event !== 'PASSWORD_RECOVERY') return;
+        form.innerHTML =
+          '<label for="auth-nouveau-mdp">Choisis un nouveau mot de passe</label>' +
+          '<input type="password" id="auth-nouveau-mdp" autocomplete="new-password" required minlength="6">' +
+          '<button type="submit" class="btn-principal">Valider</button>';
+        hote.querySelector('#ecran-auth .onglets').style.display = 'none';
+        lienMdpOublie.style.display = 'none';
+        hote.querySelector('.sous-titre').textContent = 'Nouveau mot de passe';
+
+        form.addEventListener('submit', async function (e) {
+          e.preventDefault();
+          const nouveauMdp = hote.querySelector('#auth-nouveau-mdp').value;
+          try {
+            const res = await supabase.auth.updateUser({ password: nouveauMdp });
+            if (res.error) throw res.error;
+            debloquer(session.user);
+          } catch (err) {
+            afficherMessage('Erreur : ' + err.message, 'erreur');
+          }
+        }, { once: true });
       });
     });
   }
