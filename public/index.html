@@ -171,7 +171,14 @@ await window.__AUTH_PRET__; // attend la session ET le premier préchargement (s
 // l'appeler ici aussi permet de rattraper les données préfixées par
 // plan qui n'avaient pas encore de planId connu lors du premier appel
 // (juste après connexion, avant que le plan soit chargé).
+// assurerPlanExiste() DOIT être appelée en premier, avant tout appel
+// touchant plan_donnees (migrerDonneesExistantes, precharger, et
+// chaque save() plus tard) — plan_donnees.plan_id a une contrainte de
+// clé étrangère vers plans.id, donc toute écriture échoue en 409 tant
+// qu'aucune ligne n'existe côté plans. Bug découvert en test de
+// production le 13 juillet 2026, cf. inventaire §8bis.
 if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
+  await LkSync.assurerPlanExiste(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id, window.__PLAN_BRUT__);
   await LkSync.migrerDonneesExistantes(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
   await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
 }
