@@ -94,6 +94,19 @@ input[type=text], input[type=number], input[type=password] {
   // format traduit PLAN/ALL_SESSIONS — nécessaires pour ne plus coder ces
   // valeurs en dur (docs/v2-methodologie/convergence-v1-v2.md, section 7bis).
   window.__PLAN_PRET__ = (async () => {
+    // Attend que le préchargement Supabase (window.__AUTH_PRET__) ait
+    // restauré lk_github_token/lk_gist_id en localStorage AVANT d'appeler
+    // chargerPlans() — sinon celle-ci part sans token (pas encore rentré
+    // depuis Supabase) et échoue silencieusement, avec repli sur le plan
+    // par défaut. Bug découvert le 13 juillet 2026 en test de production :
+    // les deux promesses démarraient en parallèle sans dépendance, donc
+    // chargerPlans() pouvait gagner la course et échouer avant que le
+    // préchargement n'ait eu lieu. Chantier v2.5 migration, cf. inventaire
+    // §8bis. Coût : le premier rendu attend maintenant la connexion réseau
+    // à Supabase avant de tenter le Gist, légèrement plus lent qu'avant,
+    // mais correct plutôt que rapide-et-faux.
+    await window.__AUTH_PRET__;
+
     const idPlanChoisi = localStorage.getItem('v2_preview_plan_id');
     let planBrut = null;
     let plansDisponibles = [];
