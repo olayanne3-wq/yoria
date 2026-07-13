@@ -2125,7 +2125,7 @@ function renderDashboard() {
           // prime automatiquement sur Strava pour cette séance, sans
           // confirmation (décision section 2 du doc : le coureur est seul
           // juge de la fiabilité de sa donnée, ex. montre qui a buggé).
-          !isRest && (s.type==="SPEC"||s.type==="VMA") ? renderManualPerfRow(uid2, s, stravaRun2) : null,
+          !isRest ? renderManualPerfRow(uid2, s, stravaRun2) : null,
           !isRest ? coachEl : null,
           // Bloc détail repliable après le coach
           (()=>{
@@ -2951,6 +2951,10 @@ function renderWeekDetail(weekNum) {
       }
       const statusRow=renderStatusRow(uid);
       card.appendChild(statusRow);
+      // Saisie/correction manuelle (docs/source-donnees-seances.md) — même
+      // bloc que sur la carte du jour, pour pouvoir corriger une séance
+      // passée depuis le détail de semaine.
+      card.appendChild(renderManualPerfRow(uid, s, stravaRun));
       const noteInput=el("input",{type:"text",placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"#0f1117",border:"1px solid #2e3347",borderRadius:"8px",padding:"7px 10px",color:"#f1f5f9",fontSize:"14px",outline:"none",width:"100%"}});
       noteInput.value=sessionNotes[uid]||"";
       noteInput.addEventListener("change",()=>{
