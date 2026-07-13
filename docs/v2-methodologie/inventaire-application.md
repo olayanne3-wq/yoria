@@ -59,7 +59,7 @@ plan-10k/
 │           ├── strava.js          # Intégration Strava côté client (tokens, volume)
 │           ├── weather.js         # Intégration météo côté client
 │           ├── auth.js            # Auth Supabase (écran connexion/inscription, session) — v2.5, 13 juillet 2026
-│           ├── sync-storage.js    # Synchronisation localStorage ↔ Supabase — v2.5, 13 juillet 2026
+│           ├── sync-storage.js    # Synchronisation localStorage ↔ Supabase, incl. migration rétroactive one-shot — v2.5, 13 juillet 2026
 │           ├── v1-bridge.js       # Traduction plan v2 → format v1 (pour affichage classic)
 │           └── test-*.mjs         # Suite de tests (13 fichiers, un par module/fonctionnalité)
 ├── vercel.json                    # Routage : /api/*, /v2, fallback statique
@@ -312,6 +312,30 @@ inadvertance plus tôt dans la session) — à éviter en temps normal, y
 revenir en pratique standard dès que ce chantier n'est plus en phase
 de découverte active.
 
+**Vraie cause racine identifiée après la première correction** — la
+correction de l'ordre de course (ci-dessus) était nécessaire mais pas
+suffisante. Le vrai problème : ce compte avait `lk_github_token` en
+`localStorage` **depuis avant** la mise en place de la synchronisation
+Supabase (13 juillet 2026) ; comme aucune migration rétroactive
+n'existait, `precharger()` n'avait rigoureusement rien à restaurer côté
+Supabase (`integrations.github_token` = `null` pour ce compte, confirmé
+en Table Editor), donc le token restait `null` en `localStorage` même
+une fois l'ordre de course corrigé, et `chargerPlans()` échouait faute
+d'authentification GitHub.
+
+**Correctif : `migrerDonneesExistantes(userId, planId)`** ajoutée dans
+`sync-storage.js`/`sync-storage.classic.js` — migration one-shot par
+appareil (marqueurs `lk_migration_supabase_globale_faite` et
+`lk_migration_supabase_plan_faite_<planId>` en `localStorage`,
+distincts l'un de l'autre car le `planId` n'est pas encore connu au
+tout premier appel) qui pousse vers Supabase les données déjà
+présentes en `localStorage` **avant** que `precharger()` ne les
+écrase. Appelée juste avant chaque appel à `precharger()` dans
+`index.html`, aux deux points de préchargement (sans `planId` juste
+après connexion, puis avec le vrai `planId` une fois le plan chargé).
+En cas d'échec réseau, les marqueurs ne sont pas posés, pour retenter
+au prochain appel plutôt que d'abandonner silencieusement.
+
 **Ce qui est fait** :
 - Schéma SQL exécuté avec succès sur le projet Supabase
 - Authentification par email + mot de passe (pas de magic link,
@@ -367,10 +391,11 @@ de découverte active.
     les autres clés du même objet JSON) — deux appels réseau au lieu
     d'un. Acceptable en l'état, à revoir si ça devient un problème de
     performance perceptible
-  - **Pas encore testé en conditions réelles** — la logique est en
-    place et syntaxiquement validée, mais n'a pas encore été vérifiée
-    avec de vraies données allant et venant entre localStorage et
-    Supabase sur la preview Vercel
+  - **Testé en production le 13 juillet** avec un compte réel ayant
+    déjà une sync Gist active — a révélé le bug de course puis le
+    besoin de migration rétroactive documentés ci-dessus. Après les
+    deux correctifs, en attente de re-confirmation sur ce même compte
+    avant de considérer la migration validée de bout en bout
 
 **Pas encore fait** (suite du chantier) :
 - Tester la migration en conditions réelles : créer/modifier des
@@ -410,7 +435,7 @@ de découverte active.
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
-| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — écran connexion testé en conditions réelles sur preview Vercel ; migration localStorage↔Supabase implémentée (sync-storage.js), pas encore testée en conditions réelles ; wizard pas encore protégé par auth (détail §8bis) |
+| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — écran connexion validé en production ; bug de course + absence de migration rétroactive découverts en test réel et corrigés (migrerDonneesExistantes) ; re-confirmation en attente ; wizard pas encore protégé par auth (détail §8bis) |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 
 ## 10. Principes transverses à retenir
