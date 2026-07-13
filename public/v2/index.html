@@ -637,6 +637,7 @@
 <div id="ecran-auth-hote"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="/engine-classic-scripts/auth.classic.js"></script>
+<script src="/engine-classic-scripts/sync-storage.classic.js"></script>
 <script>
   window.__AUTH_PRET__ = LkAuth.monterEcranAuth('ecran-auth-hote').then(function (user) {
     window.__UTILISATEUR__ = user;
@@ -1662,6 +1663,19 @@
     msgEl.style.color = 'rgba(238,240,234,0.5)';
     try {
       await sauvegarderPlan(dernierPlanGenere);
+      // Sync Supabase — ajouté le 13 juillet 2026. Le Gist reste la
+      // sauvegarde principale (inchangé) ; on crée aussi la ligne dans
+      // la table `plans` pour que ce plan existe côté Supabase dès sa
+      // création, avant même la première coche de séance côté app.
+      // Best-effort : un échec ici n'empêche pas la sauvegarde Gist
+      // (déjà réussie) d'être considérée comme un succès pour l'utilisateur.
+      if (window.__UTILISATEUR__ && window.LkSync && dernierPlanGenere.id) {
+        try {
+          await window.LkSync.assurerPlanExiste(window.__UTILISATEUR__.id, dernierPlanGenere.id, dernierPlanGenere);
+        } catch (eSupabase) {
+          console.warn('Sync Supabase du plan échouée (Gist OK, non bloquant) :', eSupabase.message);
+        }
+      }
       msgEl.textContent = '✅ Plan sauvegardé dans le cloud.';
       msgEl.style.color = 'var(--pace)';
       await afficherPlansSauvegardes();
