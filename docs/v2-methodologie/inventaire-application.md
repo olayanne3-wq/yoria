@@ -336,6 +336,55 @@ après connexion, puis avec le vrai `planId` une fois le plan chargé).
 En cas d'échec réseau, les marqueurs ne sont pas posés, pour retenter
 au prochain appel plutôt que d'abandonner silencieusement.
 
+**Deux incidents supplémentaires découverts et corrigés lors du test
+de production du 13 juillet 2026** (après les deux premiers,
+ci-dessus) :
+
+1. **Bouton de déconnexion manquant** — `LkAuth.deconnecter()`
+   existait dans `auth.js`/`auth.classic.js` depuis le début du
+   chantier, mais aucun bouton dans l'interface n'y donnait accès.
+   Corrigé : section "👤 Compte" ajoutée en tête de `renderSettings()`
+   dans `index.html`, avec confirmation avant déconnexion et
+   rechargement de page ensuite.
+
+2. **Perte de données du profil coureur (poids, taille, records
+   personnels)** — au cours des multiples tests de connexion/
+   déconnexion effectués avant que `migrerDonneesExistantes()` existe,
+   le préchargement Supabase (qui, à l'époque, ne trouvait rien côté
+   serveur) a écrasé un `localStorage` qui contenait encore les
+   bonnes valeurs. Une fois la migration ajoutée, c'est cette version
+   déjà appauvrie qui a été migrée vers Supabase — confirmée identique
+   des deux côtés (`poids`, `taille`, `records` tous `null`, alors que
+   `nom`/`prenom`/`fcMax` étaient corrects). **Aucune copie de secours
+   trouvée** (pas d'autre appareil avec les données intactes) ;
+   Laurent a dû ressaisir ces champs manuellement dans Réglages.
+   Aucune action corrective côté code — c'est un risque inhérent à
+   avoir testé en conditions réelles sur un compte réel pendant que
+   la logique de migration était encore incomplète, pas un bug
+   récurrent une fois `migrerDonneesExistantes()` en place.
+
+3. **Wizard `v2/index.html` accidentellement écrasé** — à un moment de
+   la session, `public/index.html` (l'app, avec écran d'auth) a été
+   poussé par erreur vers `public/v2/index.html` au lieu de
+   `public/index.html`, remplaçant intégralement le vrai wizard de
+   création de plan. Symptôme : cliquer sur "🏁 Configurer un plan"
+   affichait un flash de l'écran de connexion puis revenait à l'app,
+   sans jamais atteindre le wizard. Restauré en récupérant la version
+   précédente via l'historique des commits GitHub (onglet History du
+   fichier) et en la repoussant au bon endroit. Point de vigilance
+   retenu : `public/index.html` et `public/v2/index.html` sont deux
+   fichiers distincts au nom identique (`index.html`) dans des dossiers
+   différents — vérifier le chemin affiché sur GitHub avant chaque
+   commit, en particulier lors d'un glisser-déposer.
+
+**État de fin de session (13 juillet 2026)** : authentification,
+déconnexion, sélecteur de plan et wizard tous fonctionnels en
+production. La migration rétroactive et le préchargement ont été
+validés pour les tokens d'intégration (GitHub/Gist) sur un compte
+réel. **Reste à vérifier** : l'écriture réelle vers `plan_donnees`
+avec un vrai plan actif (UUID, pas le plan de repli) — non testée
+explicitement cette session, cf. plus bas.
+
 **Ce qui est fait** :
 - Schéma SQL exécuté avec succès sur le projet Supabase
 - Authentification par email + mot de passe (pas de magic link,
@@ -435,7 +484,7 @@ au prochain appel plutôt que d'abandonner silencieusement.
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
-| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — écran connexion validé en production ; bug de course + absence de migration rétroactive découverts en test réel et corrigés (migrerDonneesExistantes) ; re-confirmation en attente ; wizard pas encore protégé par auth (détail §8bis) |
+| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — auth/déconnexion/sélecteur de plan/wizard fonctionnels en production après plusieurs incidents corrigés (course, migration manquante, wizard écrasé) ; profil coureur d'un compte de test perdu et ressaisi manuellement ; écriture réelle plan_donnees pas encore testée ; wizard pas protégé par auth (détail §8bis) |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 
 ## 10. Principes transverses à retenir
