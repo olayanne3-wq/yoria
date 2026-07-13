@@ -9,13 +9,24 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const SUPABASE_URL = "https://oppwuzbcnhchtokxpzla.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wcHd1emJjbmhjaHRva3hwemxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4OTA0OTMsImV4cCI6MjA5OTQ2NjQ5M30.0TWjUiPO3QbxVmhpGiQ4HPsQSgSq1yUUa9fR-XW5pvk";
-// Clé "anon", publique par conception — la sécurité vient de RLS côté
-// base, pas du secret de cette clé. La clé service_role, elle, ne doit
-// JAMAIS apparaître dans du code exécuté côté client.
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Clés récupérées depuis /api/config (route serverless Vercel lisant de
+// vraies variables d'environnement), plutôt qu'en dur dans ce fichier —
+// ajouté le 13 juillet 2026. La clé "anon" reste publique par conception
+// (sécurité via RLS côté base) ; ceci n'est qu'une question de
+// maintenabilité (changer la clé sans retoucher le code).
+//
+// `supabase` n'est plus disponible immédiatement au chargement du module
+// (fetch réseau nécessaire) — export d'une promesse `supabaseReady` que
+// tout appelant doit attendre avant le premier usage. Les fonctions de ce
+// fichier (monterEcranAuth, etc.) l'attendent en interne, donc ce n'est
+// visible que pour du code externe qui importerait `supabase` directement.
+export let supabase;
+export const supabaseReady = fetch('/api/config')
+  .then(r => r.json())
+  .then(({ supabaseUrl, supabaseAnonKey }) => {
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    return supabase;
+  });
 
 // ------------------------------------------------------------
 // Construit et monte l'écran de connexion/inscription dans le
@@ -23,7 +34,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // l'utilisateur connecté dès qu'une session est active (existante
 // au chargement, ou obtenue via le formulaire).
 // ------------------------------------------------------------
-export function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
+export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
+  await supabaseReady; // garantit que `supabase` est bien créé avant usage
   const hote = document.getElementById(conteneurId);
   if (!hote) throw new Error(`monterEcranAuth: conteneur #${conteneurId} introuvable`);
 
@@ -169,6 +181,7 @@ export function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
 // Déconnexion — utilisable depuis renderSettings() par exemple.
 // ------------------------------------------------------------
 export async function deconnecter() {
+  await supabaseReady;
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }
@@ -178,6 +191,7 @@ export async function deconnecter() {
 // afficher l'écran d'auth — utile pour des vérifications ponctuelles.
 // ------------------------------------------------------------
 export async function utilisateurActuel() {
+  await supabaseReady;
   const { data: { user } } = await supabase.auth.getUser();
   return user;
 }
