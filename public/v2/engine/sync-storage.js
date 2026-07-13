@@ -360,6 +360,8 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
     return;
   }
   const cleBase = planId ? cle.replace(`_${planId}`, '') : cle;
+  marquerEchoLocal(planId); // avant l'écriture : l'événement Realtime qui
+  // reviendra pour ce planId dans les 3s sera ignoré, c'est notre propre écho.
 
   supabase.from('plan_donnees')
     .select('data')
@@ -428,3 +430,70 @@ export async function assurerPlanExiste(userId, planId, planBrut) {
     console.warn('assurerPlanExiste a échoué :', err.message);
   }
 }
+
+// ------------------------------------------------------------
+// Realtime — ajouté le 13 juillet 2026. S'abonne aux changements sur
+// plan_donnees (filtré par plan_id) pour cet utilisateur, afin qu'un
+// changement fait sur un AUTRE appareil (ex: coche une séance sur le
+// téléphone) déclenche un rafraîchissement ici, sans attendre un
+// rechargement manuel de la page. N'écoute que plan_donnees pour
+// l'instant — c'est la table qui change le plus souvent (statuts,
+// notes) ; profils_coureur/integrations changent rarement, pas encore
+// couverts par Realtime (peuvent l'être plus tard si besoin réel).
+//
+// Anti-écho : chaque écriture via synchroniserVersSupabase() de CETTE
+// session marque brièvement la clé concernée comme "origine locale" —
+// si l'événement Realtime qui revient correspond à une écriture qu'on
+// vient nous-mêmes de faire, on l'ignore (pas de re-render inutile).
+// Fenêtre de 3s, largement suffisante pour un aller-retour réseau normal.
+// ------------------------------------------------------------
+const ECHOS_RECENTS = new Map(); // planId -> timestamp du dernier upsert local
+
+function marquerEchoLocal(planId) {
+  ECHOS_RECENTS.set(planId, Date.now());
+}
+
+function estEchoRecent(planId) {
+  const t = ECHOS_RECENTS.get(planId);
+  return t && (Date.now() - t) < 3000;
+}
+
+let canalRealtimeActuel = null;
+
+// ------------------------------------------------------------
+// Active l'écoute Realtime pour un plan donné. `onChangement(payload)`
+// est appelé à chaque modification distante détectée (pas la nôtre).
+// Retourne une fonction de désabonnement, à appeler si on change de
+// plan actif (évite d'accumuler des abonnements sur d'anciens plans).
+// ------------------------------------------------------------
+export async function activerRealtime(planId, onChangement) {
+  await supabaseReady;
+  if (!estUuidValide(planId)) return () => {}; // plan de repli : rien à écouter
+
+  // Ferme un éventuel abonnement précédent avant d'en ouvrir un nouveau —
+  // évite d'accumuler des canaux si l'utilisateur change de plan plusieurs
+  // fois dans la même session.
+  if (canalRealtimeActuel) {
+    supabase.removeChannel(canalRealtimeActuel);
+    canalRealtimeActuel = null;
+  }
+
+  const canal = supabase
+    .channel(`plan_donnees_${planId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'plan_donnees', filter: `plan_id=eq.${planId}` },
+      (payload) => {
+        if (estEchoRecent(planId)) return; // c'est notre propre écriture qui revient, on ignore
+        onChangement(payload);
+      }
+    )
+    .subscribe();
+
+  canalRealtimeActuel = canal;
+  return () => {
+    supabase.removeChannel(canal);
+    if (canalRealtimeActuel === canal) canalRealtimeActuel = null;
+  };
+}
+
