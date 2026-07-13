@@ -2,9 +2,9 @@
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
 > sans re-parcourir tout le repo. Mis à jour au 13 juillet 2026 (chantier ACWR en cours ;
-> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; chantier v2.5
-> authentification Supabase intégré et testé en conditions réelles ; premier jet de
-> migration localStorage → Supabase implémenté).
+> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; **v2.5 publiée** —
+> authentification Supabase, migration rétroactive, sync temps réel, wizard protégé,
+> nettoyage Réglages, variables d'env Vercel, file d'attente de sync).
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -38,6 +38,13 @@ plan-10k/
 │   ├── notes-meteo.md
 │   └── notes-pratiques.md
 │   └── reperes-qualitatifs.md
+├── api/
+│   ├── strava.js, coach.js, weather.js  # Routes serverless existantes
+│   └── config.js                  # Expose SUPABASE_URL/SUPABASE_ANON_KEY (variables
+│                                    # d'environnement Vercel) au client — ajouté le
+│                                    # 13 juillet 2026. Route déclarée explicitement dans
+│                                    # vercel.json (routing en liste blanche, absence
+│                                    # initiale de cette route causait un 404).
 ├── public/
 │   ├── index.html                 # App principale (dashboard) — sert le plan v2, ~300K
 │   ├── manifest.json, sw.js, icônes  # PWA v1 (racine)
@@ -483,22 +490,72 @@ en conditions réelles**, pas seulement en théorie ou en test isolé.
   données (statuts de séance, notes, profil coureur) et confirmer
   qu'elles apparaissent bien dans les tables Supabase, PUIS qu'elles
   se rechargent correctement sur un autre appareil/navigateur
-- `v2/index.html` (wizard) ne demande pas encore d'authentification —
-  à faire avant publication, sinon un plan peut être créé sans
-  utilisateur associé
-- En cas de perte réseau pendant une sauvegarde Supabase, la donnée
-  reste correcte en `localStorage` sur l'appareil courant mais ne
-  remonte pas au serveur tant que la prochaine sauvegarde réussie ne
-  se produit pas — pas de file d'attente de synchronisation pour
-  l'instant, à envisager si ça devient un problème réel en usage
-- Confirmation email Supabase désactivée pour l'instant (cf. incident
-  ci-dessus) — à reconsidérer si l'app s'ouvre à des utilisateurs
-  externes
-- Variables d'environnement Vercel pour les clés Supabase (actuellement
-  en dur dans le code — acceptable pour la clé `anon` mais à revoir
-  pour la maintenabilité si le projet est régénéré)
-- Fusion de la branche `test-auth-supabase` vers `main`, une fois la
-  migration validée en conditions réelles
+**Suite de la session — tout ce qui a été fait après les 5 bugs
+ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
+
+- **Wizard protégé par authentification** — `v2/index.html` monte le
+  même écran de connexion que l'app (bloc `#ecran-auth-hote` +
+  `auth.classic.js`) avant d'afficher son contenu. Un plan ne peut
+  plus être créé sans utilisateur associé.
+- **Sync du plan dès sa création dans le wizard** —
+  `sauvegarderPlanUI()` appelle `LkSync.assurerPlanExiste()` juste
+  après la sauvegarde Gist (best-effort, non bloquant si Supabase
+  échoue). Chargement de `sync-storage.classic.js` ajouté au wizard.
+- **Sync de la suppression** — `supprimerPlanUI()` supprime aussi la
+  ligne `plans` correspondante sur Supabase ; `plan_donnees` suit par
+  `ON DELETE CASCADE` (déjà dans le schéma SQL, un seul appel suffit).
+- **Nettoyage de Réglages** — retirés : section "☁️ Sauvegarde
+  cloud" (token GitHub manuel), QR code de transfert d'appareil,
+  toggle "Options avancées" (devenu vide), fonctions
+  `nettoyerNotesMeteoDupliquees()` et `regenererStructuresIntervallesUI()`
+  (plus d'appelant). Tout redondant avec la sync Supabase automatique
+  au login.
+- **Variables d'environnement Vercel** — clés Supabase déplacées du
+  code vers `SUPABASE_URL`/`SUPABASE_ANON_KEY` sur Vercel, exposées au
+  client via une nouvelle route `api/config.js`. `auth.js`/
+  `auth.classic.js` font un `fetch('/api/config')` avant de créer le
+  client (`export let supabase` + `export const supabaseReady`,
+  plutôt qu'un `export const supabase` figé — tout appelant doit
+  attendre `supabaseReady`). Route ajoutée à `vercel.json` (absente
+  initialement du routing explicite, causait un 404).
+- **File d'attente de synchronisation** — tout échec d'écriture
+  (`profils_coureur`, `integrations`, `plan_donnees`) est mis en file
+  dans `localStorage` (`lk_file_attente_sync`) plutôt qu'abandonné.
+  Rejouée au retour réseau (`online`) et toutes les 5 min en secours.
+  Abandon après 10 essais infructueux.
+- **Supabase Realtime** — décision : ne pas supprimer `localStorage`
+  (chantier jugé disproportionné vu le risque sur ce fichier), mais
+  combler son vrai defaut (pas de rafraîchissement entre appareils)
+  via Realtime. `activerRealtime(planId, onChangement)` s'abonne aux
+  changements sur `plan_donnees` filtrés par `plan_id` ; anti-écho par
+  fenêtre de 3s (`marquerEchoLocal`) pour ignorer les événements
+  provoqués par ses propres écritures. Publication `supabase_realtime`
+  activée manuellement sur `plan_donnees` côté Supabase (Database →
+  Publications) — nécessaire, pas actif par défaut sur une nouvelle
+  table. `profils_coureur`/`integrations`/`plans` volontairement pas
+  couverts (changements trop rares pour justifier le code
+  supplémentaire ; à ajouter si besoin réel constaté).
+- **Version affichée passée à v2.5, bandeau rendu dynamique** — entrée
+  ajoutée en tête de `VERSIONS` dans `index.html`. Le bandeau header
+  (`el("div",...)` juste avant `"· plan-10k-alpha.vercel.app"`)
+  affichait un numéro figé en dur, retrouvé bloqué sur `v1.8.15` alors
+  que l'app était déjà en v2.3 — oublié à chaque mise à jour depuis
+  plusieurs versions. Corrigé en sortant `const VERSIONS` de
+  `buildVersionSection()` pour la rendre accessible dans tout
+  `renderSettings()` (même scope de fonction), et en faisant lire au
+  bandeau `VERSIONS[0].ver` plutôt qu'une chaîne écrite à la main. Le
+  bandeau suit maintenant automatiquement la première entrée du
+  tableau, plus de risque d'oubli futur.
+
+**Restant** (aucun bloquant pour l'usage courant) :
+- Confirmation email Supabase désactivée (cf. incident plus haut) —
+  à reconsidérer si l'app s'ouvre un jour à des utilisateurs externes
+  non familiers
+- `localStorage` reste un doublon volontaire de Supabase (pas
+  supprimé, cf. décision Realtime ci-dessus) — cache local + source de
+  vérité distante, pas une vraie source unique
+- Publication effective sur le Play Store (TWA/Bubblewrap, compte
+  développeur, fiche store) — chantier distinct, pas commencé
 
 ## 9. État des chantiers (au 13/07/2026)
 
@@ -516,7 +573,7 @@ en conditions réelles**, pas seulement en théorie ou en test isolé.
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
-| v2.5 authentification Supabase | 🟢 Confirmé fonctionnel de bout en bout (13 juillet) — auth, migration rétroactive, wizard, et synchronisation réelle des séances vers Supabase tous validés en production après 5 bugs corrigés. Restant : wizard pas protégé par auth ; bascule complète des lectures vers Supabase (localStorage reste la source vive) ; variables d'env Vercel (détail §8bis) |
+| v2.5 authentification Supabase | 🟢 **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés. Reste : Play Store (TWA/Bubblewrap), confirmation email à reconsidérer si ouverture publique (détail §8bis) |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 
 ## 10. Principes transverses à retenir
