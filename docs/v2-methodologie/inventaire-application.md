@@ -2,8 +2,9 @@
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
 > sans re-parcourir tout le repo. Mis à jour au 13 juillet 2026 (chantier ACWR en cours ;
-> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; démarrage
-> chantier v2.5 authentification Supabase).
+> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; chantier v2.5
+> authentification Supabase intégré et testé en conditions réelles ; premier jet de
+> migration localStorage → Supabase implémenté).
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -44,7 +45,9 @@ plan-10k/
 │   │                               # utilisées par index.html (script classique).
 │   │                               # À régénérer manuellement à chaque modif du moteur.
 │   │                               # Inclut auth.classic.js (dérivé de v2/engine/auth.js,
-│   │                               # 13 juillet 2026), attaché à window.LkAuth plutôt
+│   │                               # 13 juillet 2026) et sync-storage.classic.js (dérivé de
+│   │                               # v2/engine/sync-storage.js, 13 juillet 2026), attachés à
+│   │                               # window.LkAuth et window.LkSync respectivement, plutôt
 │   │                               # qu'aux globals habituels PLAN/ALL_SESSIONS.
 │   └── v2/
 │       ├── index.html             # Wizard de création de plan (~120K)
@@ -56,6 +59,7 @@ plan-10k/
 │           ├── strava.js          # Intégration Strava côté client (tokens, volume)
 │           ├── weather.js         # Intégration météo côté client
 │           ├── auth.js            # Auth Supabase (écran connexion/inscription, session) — v2.5, 13 juillet 2026
+│           ├── sync-storage.js    # Synchronisation localStorage ↔ Supabase — v2.5, 13 juillet 2026
 │           ├── v1-bridge.js       # Traduction plan v2 → format v1 (pour affichage classic)
 │           └── test-*.mjs         # Suite de tests (13 fichiers, un par module/fonctionnalité)
 ├── vercel.json                    # Routage : /api/*, /v2, fallback statique
@@ -273,11 +277,25 @@ partout dès le départ (équivalent serveur du principe de préfixage
   — table séparée car données sensibles, isolées du reste
 - Trigger générique `set_updated_at()` sur les 4 tables
 
+**Incident résolu pendant les tests** (13 juillet 2026) — plusieurs
+échecs de connexion en apparence liés à un mauvais mot de passe
+provenaient en réalité de la **limite d'envoi d'emails du plan gratuit
+Supabase**, épuisée par les tests répétés (confirmation d'inscription
+et reset de mot de passe échouaient silencieusement ou avec l'erreur
+`email rate limit exceeded`). Résolu en désactivant "Confirm email"
+dans Authentication → Providers → Email — décision assumée pour un
+usage familial/perso : un compte s'active immédiatement à
+l'inscription, sans dépendre d'un email qui peut être retardé,
+bloqué, ou en spam. Point de vigilance si l'app s'ouvre un jour à
+des utilisateurs externes non familiers : reconsidérer l'activation
+de la confirmation email à ce moment-là.
+
 **Ce qui est fait** :
 - Schéma SQL exécuté avec succès sur le projet Supabase
 - Authentification par email + mot de passe (pas de magic link,
   décision du 13 juillet — usage quotidien, friction du lien email à
-  chaque connexion jugée trop coûteuse pour cet usage)
+  chaque connexion jugée trop coûteuse pour cet usage). Confirmation
+  email désactivée (cf. incident ci-dessus)
 - `v2/engine/auth.js` créé — source de vérité, module ES. Expose
   `supabase` (client), `monterEcranAuth(conteneurId)` (construit et
   affiche l'écran connexion/inscription, retourne une Promise résolue
@@ -292,38 +310,67 @@ partout dès le départ (équivalent serveur du principe de préfixage
 - `index.html` modifié : conteneur `#ecran-auth-hote` juste après
   `#app`, charge le SDK puis `auth.classic.js`, appelle
   `LkAuth.monterEcranAuth()` dont la promesse (`window.__AUTH_PRET__`)
-  est attendue juste avant l'appel à `render()` en fin de fichier.
-  Le chargement du plan (`window.__PLAN_PRET__`, Gist) n'est pas
-  touché — les deux promesses avancent en parallèle, indépendantes
-  l'une de l'autre
-- Tests validés manuellement (page de test isolée, hors repo) :
-  inscription, connexion, déconnexion, écriture/lecture sur
-  `profils_coureur`, et surtout confirmation que RLS bloque bien
-  l'accès aux données côté base (pas seulement côté client) pour un
-  utilisateur non authentifié
+  est attendue en tout début de la deuxième IIFE (avant même la
+  déclaration de `STRAVA_CLIENT_ID`), donc avant toutes les lectures
+  `load()` qui suivent plus bas dans le même script
+- **Testé en conditions réelles** sur preview Vercel (branche
+  `test-auth-supabase`) : inscription, connexion, déconnexion, session
+  persistante au rechargement — fonctionnel de bout en bout
+- **Migration localStorage → Supabase, premier jet implémenté**
+  (13 juillet 2026) — stratégie retenue : plutôt que de rendre
+  asynchrones les ~22 lectures synchrones `let x = load(clePourPlan(...))`
+  qui initialisent l'état au chargement de `index.html` (risque élevé
+  de casser le séquencement sur un fichier de 5000+ lignes), on
+  précharge toutes les données Supabase dans `localStorage` AVANT que
+  ces lignes s'exécutent. `load()`/`save()` restent inchangées dans
+  leur usage par le reste du fichier ; `save()` déclenche en plus une
+  synchronisation vers Supabase en arrière-plan (fire-and-forget, ne
+  bloque pas l'affichage)
+  - `v2/engine/sync-storage.js` (source) et sa copie
+    `engine-classic-scripts/sync-storage.classic.js` (`window.LkSync`)
+    créés : `precharger(userId, planId)` et
+    `synchroniserVersSupabase(userId, planId, cle, valeur)`
+  - Deux passes de préchargement dans `index.html` : une première
+    juste après connexion (sans `planId`, pas encore connu — couvre
+    `lk_profil_coureur` et les clés `integrations`), une seconde une
+    fois `window.__PLAN_BRUT__.id` disponible (couvre les clés
+    préfixées par plan, regroupées dans `plan_donnees.data`)
+  - Routage par table dans `synchroniserVersSupabase` : `lk_profil_coureur`
+    → table `profils_coureur` ; tokens Strava/GitHub/Gist → table
+    `integrations` ; `lk_weather_cache` volontairement non synchronisé
+    (donnée re-générable) ; toutes les autres clés préfixées par plan
+    → table `plan_donnees`, regroupées dans une seule colonne JSONB
+  - **Limite connue assumée** : l'écriture vers `plan_donnees` fait un
+    `select` puis un `upsert` à chaque sauvegarde (pour ne pas écraser
+    les autres clés du même objet JSON) — deux appels réseau au lieu
+    d'un. Acceptable en l'état, à revoir si ça devient un problème de
+    performance perceptible
+  - **Pas encore testé en conditions réelles** — la logique est en
+    place et syntaxiquement validée, mais n'a pas encore été vérifiée
+    avec de vraies données allant et venant entre localStorage et
+    Supabase sur la preview Vercel
 
 **Pas encore fait** (suite du chantier) :
-- Intégration testée en conditions réelles dans `index.html` (préview
-  Vercel ou serveur local — le fichier ne fonctionne pas en `file://`
-  à cause des imports de `engine-classic-scripts/`)
+- Tester la migration en conditions réelles : créer/modifier des
+  données (statuts de séance, notes, profil coureur) et confirmer
+  qu'elles apparaissent bien dans les tables Supabase, PUIS qu'elles
+  se rechargent correctement sur un autre appareil/navigateur
 - `v2/index.html` (wizard) ne demande pas encore d'authentification —
   à faire avant publication, sinon un plan peut être créé sans
   utilisateur associé
-- **Migration des données `localStorage` existantes vers Supabase**
-  — aucune migration automatique n'existe encore. Un utilisateur qui
-  se connecte pour la première fois ne récupère pas ses données
-  `lk_*` locales. Prévoir un import one-shot au premier login, sans
-  écrasement silencieux
-- Bascule effective des lectures/écritures de `index.html` (`PLAN`,
-  `ALL_SESSIONS`, toutes les clés `lk_*` du §5) vers les tables
-  Supabase plutôt que `localStorage`/Gist — c'est le plus gros
-  morceau du chantier v2.5, pas commencé
-- Confirmation email Supabase (actuellement comportement par défaut,
-  à décider : activer pour de vrais utilisateurs publics, ou
-  désactiver pour un usage familial/perso plus simple)
+- En cas de perte réseau pendant une sauvegarde Supabase, la donnée
+  reste correcte en `localStorage` sur l'appareil courant mais ne
+  remonte pas au serveur tant que la prochaine sauvegarde réussie ne
+  se produit pas — pas de file d'attente de synchronisation pour
+  l'instant, à envisager si ça devient un problème réel en usage
+- Confirmation email Supabase désactivée pour l'instant (cf. incident
+  ci-dessus) — à reconsidérer si l'app s'ouvre à des utilisateurs
+  externes
 - Variables d'environnement Vercel pour les clés Supabase (actuellement
   en dur dans le code — acceptable pour la clé `anon` mais à revoir
   pour la maintenabilité si le projet est régénéré)
+- Fusion de la branche `test-auth-supabase` vers `main`, une fois la
+  migration validée en conditions réelles
 
 ## 9. État des chantiers (au 13/07/2026)
 
@@ -341,7 +388,7 @@ partout dès le départ (équivalent serveur du principe de préfixage
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
-| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — schéma DB + écran connexion codés et testés isolément, intégration réelle dans index.html et migration localStorage restent à faire (détail §8bis) |
+| v2.5 authentification Supabase | 🟡 En cours (13 juillet) — écran connexion testé en conditions réelles sur preview Vercel ; migration localStorage↔Supabase implémentée (sync-storage.js), pas encore testée en conditions réelles ; wizard pas encore protégé par auth (détail §8bis) |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 
 ## 10. Principes transverses à retenir
