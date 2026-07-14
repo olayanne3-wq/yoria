@@ -28,9 +28,26 @@ import { supabase, supabaseReady } from './auth.js';
 // Clés globales (non préfixées par plan) à synchroniser avec la table
 // `integrations` plutôt que `profils_coureur` ou `plan_donnees` —
 // cf. schéma SQL, ces clés contiennent des tokens tiers.
+//
+// v2_gist_id ajouté le 14 juillet 2026 : oubliée depuis la création de
+// cette liste, c'est l'id du Gist contenant les VRAIS plans v2 (multi-
+// plans, format wizard) — distinct de lk_gist_id (résidu de l'ancien
+// système de backup v1, cf. inventaire §10, chantier "nettoyage backup
+// v1"). Son absence ici faisait qu'une toute nouvelle installation (ou
+// un nouvel appareil) restaurait bien lk_github_token/lk_gist_id depuis
+// Supabase, mais jamais v2_gist_id — chargerPlans() (qui lit v2_gist_id,
+// pas lk_gist_id) se retrouvait donc sans le bon id de Gist et
+// retournait une liste de plans vide, malgré des plans bien réels et
+// intacts sur GitHub. Bug découvert le 14 juillet 2026 lors du premier
+// test d'installation Play Store sur un appareil neuf (aucun localStorage
+// préexistant, contrairement aux tests précédents qui gardaient toujours
+// une trace locale de sessions antérieures). Nécessite une colonne
+// v2_gist_id (text) sur la table integrations côté Supabase, ajoutée en
+// même temps que ce correctif.
 const CLES_INTEGRATIONS = [
   'lk_strava_token', 'lk_strava_refresh', 'lk_strava_expires',
   'lk_strava_activities', 'lk_last_sync', 'lk_github_token', 'lk_gist_id',
+  'v2_gist_id',
 ];
 
 // Clé globale de cache météo — pas de table dédiée pour l'instant,
@@ -165,11 +182,14 @@ export async function migrerDonneesExistantes(userId, planId) {
       }
 
       // Intégrations (tokens Strava/GitHub/Gist)
+      // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+      // CLES_INTEGRATIONS plus haut dans ce fichier.
       const colonnes = {
         lk_strava_token: 'strava_token',
         lk_strava_refresh: 'strava_refresh',
         lk_github_token: 'github_token',
         lk_gist_id: 'gist_id',
+        v2_gist_id: 'v2_gist_id',
       };
       const payloadIntegrations = { user_id: userId };
       let auMoinsUneIntegration = false;
@@ -257,6 +277,13 @@ export async function precharger(userId, planId) {
       if (i.strava_activities_cache) localStorage.setItem('lk_strava_activities', JSON.stringify(i.strava_activities_cache));
       if (i.github_token) localStorage.setItem('lk_github_token', JSON.stringify(i.github_token));
       if (i.gist_id) localStorage.setItem('lk_gist_id', JSON.stringify(i.gist_id));
+      // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+      // CLES_INTEGRATIONS plus haut dans ce fichier. Sans cette ligne,
+      // le préchargement restaurait bien lk_gist_id (résidu v1) mais
+      // jamais v2_gist_id (le vrai id utilisé par chargerPlans()), donc
+      // une nouvelle installation ne retrouvait jamais les plans v2
+      // pourtant bien migrés au premier login.
+      if (i.v2_gist_id) localStorage.setItem('v2_gist_id', JSON.stringify(i.v2_gist_id));
       if (i.last_sync) localStorage.setItem('lk_last_sync', JSON.stringify(new Date(i.last_sync).getTime()));
     }
 
@@ -311,6 +338,8 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
   }
 
   if (CLES_INTEGRATIONS.includes(cle)) {
+    // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+    // CLES_INTEGRATIONS plus haut dans ce fichier.
     const colonnes = {
       lk_strava_token: 'strava_token',
       lk_strava_refresh: 'strava_refresh',
@@ -319,6 +348,7 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
       lk_last_sync: 'last_sync',
       lk_github_token: 'github_token',
       lk_gist_id: 'gist_id',
+      v2_gist_id: 'v2_gist_id',
     };
     const colonne = colonnes[cle];
     // strava_expires et last_sync sont des colonnes timestamptz côté
@@ -496,4 +526,3 @@ export async function activerRealtime(planId, onChangement) {
     if (canalRealtimeActuel === canal) canalRealtimeActuel = null;
   };
 }
-
