@@ -902,7 +902,15 @@ async function fetchCoachMsg() {
     return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
-  const prompt = `Tu es Léa, coach running.${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
+  // Prénom du coureur (13 juillet 2026) — sans lui, l'IA a tendance à
+  // confondre le prénom de la coach (Léa, personnage du produit) avec
+  // celui de l'utilisateur, ex. "Bravo Léa !" adressé à Laurent. Fourni
+  // seulement s'il est renseigné dans le profil (Paramètres) ; sinon
+  // instruction explicite de ne jamais utiliser "Léa" pour s'adresser au
+  // coureur, seulement pour se présenter elle-même.
+  const prenomCoureur = profilCoureur.prenom?.trim();
+
+  const prompt = `Tu es Léa, coach running.${prenomCoureur ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureur} — utilise son prénom pour t'adresser à lui, jamais "Léa" (qui est TON propre prénom, pas le sien).` : ' Ne t\'adresse jamais au coureur par "Léa" — c\'est ton propre prénom, pas le sien ; utilise "tu" sans prénom si tu ne connais pas le sien.'}${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
 ${ESTMODEFORME ? '' : `Estimation actuelle : ${predNow.timeStr} (${gapStr}).`}
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
@@ -967,8 +975,12 @@ async function fetchCoachRaceMsg(notesSegments) {
   const cd = countdown();
   const predNow = currentPred || predict10K();
   const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l'objectif" : '+'+fmtTime(predNow.gap)+" de l'objectif";
+  // cf. fetchCoachMsg() plus haut pour le contexte de ce correctif (13
+  // juillet 2026) — évite que l'IA confonde le prénom de la coach (Léa)
+  // avec celui du coureur.
+  const prenomCoureurRace = profilCoureur.prenom?.trim();
 
-  const prompt = `Tu es Léa, coach running qui prépare ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION}.
+  const prompt = `Tu es Léa, coach running qui prépare ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION}.${prenomCoureurRace ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureurRace} — utilise son prénom, jamais "Léa" (qui est TON propre prénom).` : ' Ne t\'adresse jamais au coureur par "Léa" — c\'est ton propre prénom, pas le sien.'}
 Objectif : ${fmtTime(raceGoalTime)}. Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 J-${cd} avant la course.
 Stratégie de course déjà affichée à l'utilisateur (ne la répète pas, ne redonne pas les allures/km déjà visibles) : ${notesSegments.join(' puis ')}.
