@@ -55,19 +55,19 @@ export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
       text-transform: uppercase; margin-top: 4px;
     }
     #ecran-auth .onglets {
-      display: flex; border: 1px solid #D6DCE5; border-radius: 10px;
+      display: flex; border: 1px solid #1F293722; border-radius: 10px;
       overflow: hidden; margin-bottom: 20px;
     }
     #ecran-auth .onglet {
-      flex: 1; padding: 10px; text-align: center; background: #FFFFFF;
+      flex: 1; padding: 10px; text-align: center; background: #F8FAFC;
       color: #1F2937; cursor: pointer; font-size: 0.85rem; border: none;
       transition: background 0.15s;
     }
     #ecran-auth .onglet.actif { background: #1E4ED8; color: #F8FAFC; font-weight: 600; }
-    #ecran-auth label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #6B7280; }
+    #ecran-auth label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #1F293799; }
     #ecran-auth input {
       width: 100%; padding: 11px 12px; margin-bottom: 14px; border-radius: 8px;
-      border: 1px solid #D6DCE5; background: #FFFFFF; color: #1F2937;
+      border: 1px solid #1F293722; background: #F8FAFC; color: #1F2937;
       font-size: 0.95rem; box-sizing: border-box;
     }
     #ecran-auth input:focus { outline: none; border-color: #1E4ED8; }
@@ -78,9 +78,9 @@ export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
     }
     #ecran-auth .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
     #ecran-auth .message { margin-top: 14px; font-size: 0.82rem; text-align: center; min-height: 1.2em; }
-    #ecran-auth .message.erreur { color: #f87171; }
-    #ecran-auth .message.succes { color: #22c55e; }
-    #ecran-auth .lien-secondaire { margin-top: 12px; font-size: 0.82rem; text-align: center; color: #6B7280; }
+    #ecran-auth .message.erreur { color: #FF7755; }
+    #ecran-auth .message.succes { color: #22C7B8; }
+    #ecran-auth .lien-secondaire { margin-top: 12px; font-size: 0.82rem; text-align: center; color: #1F293799; }
     #ecran-auth .lien-secondaire:hover { color: #1E4ED8; }
     </style>
     <div id="ecran-auth">
