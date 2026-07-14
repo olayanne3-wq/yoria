@@ -228,6 +228,14 @@ const COULEUR_PHASE_V2 = { 'Construction': '#60a5fa', 'Specifique': '#a855f7', '
 const PHASES = (() => {
   const phasesBrutes = window.__PLAN_BRUT__?.phases;
   if (!phasesBrutes) {
+    // Mode Forme (13 juillet 2026) : pas de plan.phases par nature (cf.
+    // plan-forme.js) — une seule "phase" neutre couvrant tout le bloc,
+    // plutôt que le repli historique ci-dessous qui afficherait à tort
+    // "Construction/Spécifique/Affûtage" sur un plan qui n'en a pas.
+    if (window.__PLAN_BRUT__?.mode === 'forme') {
+      const nbSemaines = window.__PLAN_BRUT__?.tailleBlocSemaines || window.__PLAN_BRUT__?.semaines?.length || 4;
+      return [{ id:"Forme", label:"", weeks: Array.from({length: nbSemaines}, (_,i)=>i+1), color:"#f97316" }];
+    }
     // Repli : plages historiques du plan de Laurent (11 semaines), avec les
     // vrais noms v2 (le plan historique de Laurent a bien 3 phases
     // Construction/Specifique/Affutage, cf. section 3 du doc de convergence)
@@ -579,12 +587,20 @@ function activitesDuPlan() {
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
   return stravaActivities.filter(a => !dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan);
 }
+// Mode Forme (13 juillet 2026) : plan sans dateCourse, cf. plan-forme.js.
+// ESTMODEFORME sert de discriminant pour masquer tout ce qui suppose une
+// course (compte à rebours, phases, jour J) — le reste (ACWR, Stats,
+// séance du jour, statuts) reste identique, déjà générique.
+const ESTMODEFORME = window.__PLAN_BRUT__?.mode === 'forme';
+
 // Date de course lue depuis le plan chargé (paramsOrigine.dateCourse ou
 // dateCourse directement sur l'objet plan, cf. section 7bis du doc de
 // convergence) plutôt que codée en dur — repli sur la date historique de
-// Laurent si absente.
-const DATE_COURSE_REFERENCE = window.__PLAN_BRUT__?.dateCourse || "2026-09-06";
-function countdown() { return Math.ceil((new Date(DATE_COURSE_REFERENCE) - new Date()) / 86400000); }
+// Laurent si absente. En mode Forme, DATE_COURSE_REFERENCE reste null
+// (pas de repli sur l'ancienne date en dur) : countdown() doit refléter
+// l'absence réelle de date de course, pas une fausse valeur.
+const DATE_COURSE_REFERENCE = ESTMODEFORME ? null : (window.__PLAN_BRUT__?.dateCourse || "2026-09-06");
+function countdown() { return DATE_COURSE_REFERENCE ? Math.ceil((new Date(DATE_COURSE_REFERENCE) - new Date()) / 86400000) : null; }
 function currentWeek() {
   const t = today();
   for (const w of PLAN) {
@@ -828,7 +844,7 @@ async function fetchCoachMsg() {
   const sessDesc = todaySess.length ? todaySess[0].session : "Repos";
   const lastVma = stravaActivities.filter(a=>a.laps?.length>0).slice(-1)[0];
   const vmaInfo = lastVma ? `Dernière VMA : ${fmtPace(lastVma.laps.filter(l=>l.average_speed>0&&1000/l.average_speed<330).reduce((s,l,_,a)=>s+l.average_speed/a.length,0))}/km` : "";
-  const isLastTwoWeeks = cd <= 14;
+  const isLastTwoWeeks = cd !== null && cd <= 14;
 
   const predNow = currentPred || predict10K();
   const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l\'objectif" : '+'+fmtTime(predNow.gap)+" de l\'objectif";
@@ -870,13 +886,13 @@ async function fetchCoachMsg() {
     return w && w.sessions.map(s=>s.date).includes(s.date) && s.type!=="REPOS";
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
-  const prompt = `Tu es Léa, coach running qui prépare le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).
+  const prompt = `Tu es Léa, coach running.${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
 Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
 ${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
-${isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
+${!ESTMODEFORME && isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
 ${vmaInfo}
 ${isMonday
   ? `Fais un bilan motivant de la semaine ${prevWeekNum} (séances, km, progression) et donne un aperçu positif de la semaine ${currentWeek()} qui commence. 3-4 phrases max.`
@@ -1778,7 +1794,7 @@ function renderDashboard() {
 
   // Banniere post-course
   const raceResult = load(clePourPlan("lk_race_result"), null);
-  if (today() >= DATE_COURSE_REFERENCE && raceResult) {
+  if (!ESTMODEFORME && today() >= DATE_COURSE_REFERENCE && raceResult) {
     const diff = raceResult - raceGoalTime;
     const achieved = diff <= 0;
     const close = diff > 0 && diff <= 60;
@@ -2475,7 +2491,7 @@ function renderDashboard() {
     runByLeaIcon(24, 6),
     el("div",{style:{color:"#f1f5f9",fontSize:"16px",fontWeight:"800"}},"Run by Léa"),
     el("div",{style:{flex:"1"}}),
-    el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"14px",fontWeight:"700"}},"J–"+countdown()),
+    ESTMODEFORME ? null : el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"14px",fontWeight:"700"}},"J–"+countdown()),
     helpBtn
   );
 
@@ -5339,7 +5355,7 @@ function render() {
       el("div",{style:{color:"#f1f5f9",fontSize:"17px",fontWeight:"700",lineHeight:"1"}},titles[view]||""),
       view==="weekDetail"?el("div",{class:"muted",style:{fontSize:"13px",marginTop:"1px"}},phaseOf(selectedWeek).label):null
     ),
-    el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"15px",fontWeight:"700"}},"J–"+countdown())
+    ESTMODEFORME ? null : el("div",{style:{background:"#232738",borderRadius:"8px",padding:"4px 10px",color:"#f97316",fontSize:"15px",fontWeight:"700"}},"J–"+countdown())
   );
 
   // Calculer predict10K une seule fois — synchronise dashboard et graphique
@@ -5350,7 +5366,8 @@ function render() {
   else if (view==="weeks") content=renderWeeks();
   else if (view==="weekDetail") content=renderWeekDetail(selectedWeek);
   else if (view==="stats") content=renderStats();
-  else if (view==="course") content=renderCourse();
+  else if (view==="course" && !ESTMODEFORME) content=renderCourse();
+  else if (view==="course" && ESTMODEFORME) content=renderDashboard(); // repli : onglet Course n'existe pas en mode Forme
   else if (view==="help") content=renderHelp();
   else content=renderSettings();
 
@@ -5358,7 +5375,7 @@ function render() {
     {id:"dashboard",icon:"⚡",label:"Dashboard"},
     {id:"weeks",    icon:"📅",label:"Semaines"},
     {id:"stats",    icon:"📊",label:"Stats"},
-    {id:"course",   icon:"🏁",label:"Course"},
+    ...(ESTMODEFORME ? [] : [{id:"course",   icon:"🏁",label:"Course"}]),
     {id:"settings", icon:"⚙️",label:"Paramètres"},
   ];
   const activeNav=["dashboard","stats","settings","course","help"].includes(view)?view:"weeks";
