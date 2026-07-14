@@ -35,6 +35,7 @@ const FAMILLE_VERS_TYPE_V1 = {
 function typeV1DepuisSeanceV2(seance) {
   if (seance.estCourse) return 'RACE';
   if (seance.type === 'repos') return 'REPOS';
+  if (seance.type === 'marche-course') return 'MARCHE_COURSE';
   if (seance.type === 'longue') return 'LONGUE';
   if (seance.type === 'ef') return 'EF';
   if (seance.type === 'qualite') return FAMILLE_VERS_TYPE_V1[seance.sousType] ?? 'SEUIL';
@@ -140,6 +141,15 @@ export function traduirePlanVersFormatV1(plan) {
       if (seance.type === 'qualite') {
         const { warmup, session, cooldown, notes } = parserContenuQualite(seance.contenu);
         return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime, structureIntervalles };
+      }
+      if (seance.type === 'marche-course') {
+        // Contenu déjà rédigé de façon lisible par genererContenuMarcheCourse
+        // (échauffement/cycles/retour au calme dans une seule phrase) — pas
+        // de découpage warmup/session/cooldown séparé comme pour les
+        // séances qualité, ça n'apporterait rien pour ce format. palierLabel
+        // propagé pour l'affichage (ex. badge "Palier : 3min course/1min30
+        // marche" sur la carte de séance côté v1).
+        return { day: jourNom, date: dateStr, type: 'MARCHE_COURSE', warmup: '', session: seance.contenu, cooldown: '', notes: '', kmEstime, palierLabel: seance.palierLabel };
       }
       // ef ou longue
       const { session, notes } = parserContenuEfOuLongue(seance.contenu);
