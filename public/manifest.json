@@ -1,12 +1,12 @@
 {
-  "name": "Run by Léa",
-  "short_name": "Run by Léa",
+  "name": "Yoria",
+  "short_name": "Yoria",
   "description": "Ton coach running personnel — plan généré par le moteur v2",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0f1117",
-  "theme_color": "#f97316",
+  "background_color": "#07162F",
+  "theme_color": "#1E4ED8",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
