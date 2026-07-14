@@ -489,10 +489,31 @@ async function fetchHistoricalWeather(date, lat, lon) {
   } catch(e) { return null; }
 }
 
+// Coordonnées pour la météo actuelle — dynamiques depuis la dernière
+// activité Strava connue avec GPS (13 juillet 2026, demandé par Laurent :
+// les coordonnées fixes ne reflètent pas où le coureur court vraiment,
+// notamment en voyage). Repli sur Toulon (43.12, 5.93 — position
+// historique de Laurent) si aucune activité Strava n'a de GPS, ou si
+// stravaActivities est vide (avant toute synchro).
+function coordonneesMeteoActuelles() {
+  const REPLI = { lat: 43.12, lon: 5.93 };
+  if (!stravaActivities?.length) return REPLI;
+  // La plus récente activité AVEC GPS — pas juste la plus récente tout
+  // court, une activité sans start_latlng (tapis de course, montre sans
+  // GPS) ne doit pas faire retomber sur le repli si une activité GPS plus
+  // ancienne existe.
+  const derniereAvecGps = [...stravaActivities]
+    .filter(a => a.start_latlng?.length === 2)
+    .sort((a, b) => (b.start_date_local || '').localeCompare(a.start_date_local || ''))[0];
+  if (!derniereAvecGps) return REPLI;
+  return { lat: derniereAvecGps.start_latlng[0], lon: derniereAvecGps.start_latlng[1] };
+}
+
 async function fetchWeather() {
   try {
+    const { lat, lon } = coordonneesMeteoActuelles();
     const resp = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=43.12&longitude=5.93&current=temperature_2m,weathercode&timezone=Europe%2FParis"
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=Europe%2FParis`
     );
     const data = await resp.json();
     weatherTemp = Math.round(data.current.temperature_2m);
