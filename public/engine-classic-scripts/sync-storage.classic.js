@@ -113,14 +113,11 @@
           } catch (e) { /* ignore */ }
         }
 
-        // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
-        // CLES_INTEGRATIONS plus haut dans ce fichier.
         const colonnes = {
           lk_strava_token: 'strava_token',
           lk_strava_refresh: 'strava_refresh',
           lk_github_token: 'github_token',
           lk_gist_id: 'gist_id',
-          v2_gist_id: 'v2_gist_id',
         };
         const payloadIntegrations = { user_id: userId };
         let auMoinsUneIntegration = false;
@@ -135,6 +132,19 @@
               auMoinsUneIntegration = true;
             } catch (e) { /* ignore */ }
           }
+        }
+        // v2_gist_id traité séparément, en lecture BRUTE (pas de JSON.parse)
+        // — contrairement aux autres clés, gist-sync.js l'écrit sans
+        // JSON.stringify() (setV2GistId() fait un storage.setItem() brut).
+        // Un JSON.parse('4b9e8e7d...') dessus échoue silencieusement (ce
+        // n'est pas du JSON valide), donc la boucle générique ci-dessus ne
+        // migrait jamais cette clé, même une fois ajoutée à
+        // CLES_INTEGRATIONS. Bug découvert le 14 juillet 2026, distinct du
+        // bug initial "clé manquante" corrigé plus tôt le même jour.
+        const v2GistIdBrut = localStorage.getItem('v2_gist_id');
+        if (v2GistIdBrut) {
+          payloadIntegrations.v2_gist_id = v2GistIdBrut;
+          auMoinsUneIntegration = true;
         }
         const stravaExpiresBrut = localStorage.getItem('lk_strava_expires');
         if (stravaExpiresBrut) {
@@ -210,7 +220,14 @@
         // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
         // CLES_INTEGRATIONS plus haut dans ce fichier. Sans cette ligne,
         // une nouvelle installation ne retrouvait jamais les plans v2.
-        if (i.v2_gist_id) localStorage.setItem('v2_gist_id', JSON.stringify(i.v2_gist_id));
+        //
+        // IMPORTANT — pas de JSON.stringify() ici, contrairement aux autres
+        // clés : getV2GistId() dans gist-sync.js lit v2_gist_id en BRUT
+        // (sans JSON.parse()). Écrire une valeur JSON.stringify()-ée ici
+        // fait échouer chargerPlans() avec une URL GitHub invalide
+        // (%224b9e...%22) — bug découvert le 14 juillet 2026, distinct du
+        // bug initial "clé manquante" corrigé plus tôt le même jour.
+        if (i.v2_gist_id) localStorage.setItem('v2_gist_id', i.v2_gist_id);
         if (i.last_sync) localStorage.setItem('lk_last_sync', JSON.stringify(new Date(i.last_sync).getTime()));
       }
 
