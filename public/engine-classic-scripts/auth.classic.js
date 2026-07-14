@@ -35,25 +35,26 @@
       '#ecran-auth { position: fixed; inset: 0; z-index: 9999; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }' +
       '#ecran-auth .carte { width: 100%; max-width: 360px; }' +
       '#ecran-auth .bandeau { text-align: center; margin-bottom: 28px; }' +
+      '#ecran-auth .bandeau svg { margin-bottom: 12px; }' +
       '#ecran-auth .bandeau h1 { font-size: 1.3rem; margin: 0; font-weight: 700; }' +
       '#ecran-auth .bandeau .sous-titre { color: var(--accent); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }' +
-      '#ecran-auth .onglets { display: flex; border: 1px solid var(--text)22; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }' +
+      '#ecran-auth .onglets { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }' +
       '#ecran-auth .onglet { flex: 1; padding: 10px; text-align: center; background: var(--bg); color: var(--text); cursor: pointer; font-size: 0.85rem; border: none; transition: background 0.15s; }' +
       '#ecran-auth .onglet.actif { background: var(--accent); color: var(--bg); font-weight: 600; }' +
-      '#ecran-auth label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text)99; }' +
-      '#ecran-auth input { width: 100%; padding: 11px 12px; margin-bottom: 14px; border-radius: 8px; border: 1px solid var(--text)22; background: var(--bg); color: var(--text); font-size: 0.95rem; box-sizing: border-box; }' +
+      '#ecran-auth label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted); }' +
+      '#ecran-auth input { width: 100%; padding: 11px 12px; margin-bottom: 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.95rem; box-sizing: border-box; }' +
       '#ecran-auth input:focus { outline: none; border-color: var(--accent); }' +
       '#ecran-auth .btn-principal { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: var(--bg); font-weight: 700; font-size: 0.95rem; cursor: pointer; margin-top: 4px; }' +
       '#ecran-auth .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }' +
       '#ecran-auth .message { margin-top: 14px; font-size: 0.82rem; text-align: center; min-height: 1.2em; }' +
       '#ecran-auth .message.erreur { color: var(--warn); }' +
       '#ecran-auth .message.succes { color: var(--accent2); }' +
-      '#ecran-auth .lien-secondaire { margin-top: 12px; font-size: 0.82rem; text-align: center; color: var(--text)99; }' +
+      '#ecran-auth .lien-secondaire { margin-top: 12px; font-size: 0.82rem; text-align: center; color: var(--text-muted); }' +
       '#ecran-auth .lien-secondaire:hover { color: var(--accent); }' +
       '</style>' +
       '<div id="ecran-auth">' +
       '<div class="carte">' +
-      '<div class="bandeau"><h1>Yoria</h1><div class="sous-titre">Connexion</div></div>' +
+      '<div class="bandeau"><svg width="72" height="72" viewBox="0 0 512 512"><defs><linearGradient id="g1" x1="100" y1="80" x2="260" y2="430" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1E4ED8"/><stop offset="1" stop-color="#2E8CF0"/></linearGradient><linearGradient id="g2" x1="420" y1="80" x2="250" y2="430" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#22C7B8"/><stop offset="1" stop-color="#75E4D8"/></linearGradient></defs><path d="M92 92 C184 104, 232 154, 256 230 C270 276, 264 342, 246 420" fill="none" stroke="url(#g1)" stroke-width="42" stroke-linecap="round"/><path d="M420 92 C328 104, 280 154, 256 230 C242 276, 248 342, 266 420" fill="none" stroke="url(#g2)" stroke-width="42" stroke-linecap="round"/></svg><h1>Yoria</h1><div class="sous-titre">Connexion</div></div>' +
       '<div class="onglets">' +
       '<button type="button" class="onglet actif" data-mode="connexion">Se connecter</button>' +
       '<button type="button" class="onglet" data-mode="inscription">Créer un compte</button>' +
