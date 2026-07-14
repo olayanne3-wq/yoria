@@ -22,8 +22,10 @@
 
 ## 1. Vue d'ensemble
 
-**Run by Léa** — PWA coach running, génère des plans d'entraînement adaptatifs.
-Déployée sur Vercel : `plan-10k-alpha.vercel.app`. Repo GitHub : `olayanne3-wq/plan-10k`.
+**Yoria** (anciennement "Run by Léa", renommée le 14 juillet 2026 — voir §13)
+— PWA coach running, génère des plans d'entraînement adaptatifs.
+Déployée sur Vercel : `plan-10k-alpha.vercel.app` (domaine inchangé au
+rebranding). Repo GitHub : `olayanne3-wq/yoria`.
 Stack : vanilla HTML/CSS/JS, hosting statique Vercel, API serverless dans `/api/`.
 Utilisateur principal actuel : Laurent, qui prépare un Semi le 1er novembre 2026.
 
