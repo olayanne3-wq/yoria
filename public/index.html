@@ -291,14 +291,14 @@ const PHASES = (() => {
 })();
 
 const STYPES = {
-  EF:    { label:"Endurance fondamentale", color:"var(--accent)",  short:"EF"    },
-  VMA:   { label:"Intervalles VMA",        color:"var(--accent)",  short:"VMA"   },
-  SEUIL: { label:"Travail au seuil",       color:"var(--accent2)",  short:"SEUIL" },
-  SPEC:  { label:"Allure spécifique 10K",  color:"var(--accent)",  short:"SPEC"  },
-  LONGUE:{ label:"Sortie longue",          color:"var(--accent2)",  short:"LONG"  },
-  TEST:  { label:"Séance test",            color:"var(--accent)",  short:"TEST"  },
-  REPOS: { label:"Repos",                  color:"var(--text2)",  short:"REPOS" },
-  RACE:  { label:"Course",                 color:"var(--accent)",  short:"RACE"  },
+  EF:    { label:"Endurance fondamentale", color:"var(--accent2)", colorSoft:"rgba(var(--accent2-rgb),", short:"EF"    },
+  VMA:   { label:"Intervalles VMA",        color:"var(--warn)", colorSoft:"rgba(var(--warn-rgb),", short:"VMA"   },
+  SEUIL: { label:"Travail au seuil",       color:"var(--accent)", colorSoft:"rgba(var(--accent-rgb),", short:"SEUIL" },
+  SPEC:  { label:"Allure spécifique 10K",  color:"var(--accent)", colorSoft:"rgba(var(--accent-rgb),", short:"SPEC"  },
+  LONGUE:{ label:"Sortie longue",          color:"var(--accent2)", colorSoft:"rgba(var(--accent2-rgb),", short:"LONG"  },
+  TEST:  { label:"Séance test",            color:"var(--warn)", colorSoft:"rgba(var(--warn-rgb),", short:"TEST"  },
+  REPOS: { label:"Repos",                  color:"var(--text2)", colorSoft:"rgba(var(--text-rgb),", short:"REPOS" },
+  RACE:  { label:"Course",                 color:"var(--warn)", colorSoft:"rgba(var(--warn-rgb),", short:"RACE"  },
 };
 
 // Options de statut de séance (✅/❌/⚠️/😴) — déplacées ici le 8 juillet
@@ -2094,8 +2094,8 @@ function renderDashboard() {
   const nextKey = nextKeySession();
   const daysNext = nextKey ? daysUntil(nextKey.date) : 99;
   const nextKeyEl = nextKey && daysNext <= 7 ? el("div",{style:{
-    background:(STYPES[nextKey.type]?.color||"var(--accent)")+"22",
-    border:"1px solid "+(STYPES[nextKey.type]?.color||"var(--accent)")+"44",
+    background:(STYPES[nextKey.type]?.colorSoft||"rgba(var(--accent-rgb),")+"0.13)",
+    border:"1px solid "+(STYPES[nextKey.type]?.colorSoft||"rgba(var(--accent-rgb),")+"0.27)",
     borderLeft:"3px solid "+(STYPES[nextKey.type]?.color||"var(--accent)"),
     borderRadius:"10px",padding:"12px 14px",marginBottom:"12px",
     display:"flex",alignItems:"center",justifyContent:"space-between"
@@ -2184,13 +2184,14 @@ function renderDashboard() {
         const stravaRun2 = stravaActivities.find(r=>r.start_date_local?.slice(0,10)===s.date);
         const effortLaps2 = stravaRun2 ? getLapsAffichage(stravaRun2, s.structureIntervalles) : [];
         const statusColor = status2==="✅"?"var(--accent2)":status2==="⚠️"?"var(--warn)":status2==="❌"?"var(--warn)":st.color;
+        const statusColorSoft = status2==="✅"?"rgba(var(--accent2-rgb),":status2==="⚠️"?"rgba(var(--warn-rgb),":status2==="❌"?"rgba(var(--warn-rgb),":st.colorSoft;
 
         const card=el("div",{style:{
           background:"var(--bg)",
-          border:`1px solid ${isDone?statusColor+"33":st.color+"33"}`,
+          border:`1px solid ${isDone?statusColorSoft+"0.2)":st.colorSoft+"0.2)"}`,
           borderTop:`3px solid ${isDone?statusColor:st.color}`,
           borderRadius:"12px",padding:"14px",marginBottom:"8px",
-          boxShadow:`0 6px 24px ${isDone?statusColor:st.color}22, 0 2px 8px rgba(0,0,0,0.4)`
+          boxShadow:`0 6px 24px ${isDone?statusColorSoft:st.colorSoft}0.13), 0 2px 8px rgba(0,0,0,0.4)`
         }},
           el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}},
             el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
@@ -2523,7 +2524,7 @@ function renderDashboard() {
         const st = STYPES[t.type]||STYPES.EF;
         const pct = t.total > 0 ? Math.round(t.done/t.total*100) : 0;
         return el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-          el("span",{style:{background:st.color+"22",color:st.color,border:"1px solid "+st.color+"44",borderRadius:"4px",padding:"2px 7px",fontSize:"12px",fontWeight:"700",minWidth:"50px",textAlign:"center"}},t.type),
+          el("span",{style:{background:st.color,color:"var(--bg)",borderRadius:"4px",padding:"2px 7px",fontSize:"12px",fontWeight:"700",minWidth:"50px",textAlign:"center"}},t.type),
           el("div",{style:{flex:"1",height:"4px",background:"var(--border-soft)",borderRadius:"2px"}},
             el("div",{style:{width:pct+"%",height:"100%",background:st.color,borderRadius:"2px"}})
           ),
@@ -2972,10 +2973,10 @@ function renderWeekDetail(weekNum) {
     let cardExpanded = false;
     const card=el("div",{style:{
       background:isToday?"var(--border-soft)":"var(--bg)",
-      border:`1px solid ${isToday?"rgba(var(--accent-rgb),0.2)":st.color+"22"}`,
+      border:`1px solid ${isToday?"rgba(var(--accent-rgb),0.2)":st.colorSoft+"0.13)"}`,
       borderTop:`3px solid ${st.color}`,
       borderRadius:"12px",
-      boxShadow:`0 6px 24px ${st.color}1a, 0 2px 8px rgba(0,0,0,0.4)`,
+      boxShadow:`0 6px 24px ${st.colorSoft}0.1), 0 2px 8px rgba(0,0,0,0.4)`,
       padding:"12px 14px",marginBottom:"8px",
       opacity:isDoneSession?"0.7":"1",
       cursor:isDoneSession?"pointer":"default",
@@ -5362,7 +5363,7 @@ function svgCircle(pct, size, strokeW, color, inner) {
 
 function badge(type) {
   const st = STYPES[type]||STYPES.REPOS;
-  return el("span",{style:{background:st.color+"22",color:st.color,border:`1px solid ${st.color}44`,borderRadius:"4px",padding:"2px 7px",fontSize:"13px",fontWeight:"700"}},st.short||type);
+  return el("span",{style:{background:st.color,color:"var(--bg)",borderRadius:"4px",padding:"2px 7px",fontSize:"13px",fontWeight:"700"}},st.short||type);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
