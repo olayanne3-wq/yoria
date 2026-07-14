@@ -12,15 +12,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#07162F;
-    --ink-soft:#1a1d27;
-    --paper:#f1f5f9;
-    --paper-dim:#2e3347;
+    --ink:#F8FAFC;
+    --ink-soft:#FFFFFF;
+    --paper:#1F2937;
+    --paper-dim:#D6DCE5;
     --signal:#1E4ED8;
     --signal-dim:#1E4ED822;
     --pace:#22c55e;
     --pace-soft:#22c55e22;
-    --line: #2e3347;
+    --line: #D6DCE5;
     --longue:#06b6d4;
     --longue-soft:#06b6d422;
     --vma:#1E4ED8;
@@ -679,7 +679,7 @@
       <div style="color:var(--signal); font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; line-height:1.2;">Conception de plan</div>
     </div>
     <div style="flex:1;"></div>
-    <button id="btnWizardHelp" style="background:#232738; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:15px; font-weight:700; cursor:pointer; flex-shrink:0;">?</button>
+    <button id="btnWizardHelp" style="background:#E5E9F0; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:#64748B; font-size:15px; font-weight:700; cursor:pointer; flex-shrink:0;">?</button>
   </div>
 
   <!-- Modale d'aide du wizard — même famille visuelle que les cartes de
@@ -689,24 +689,24 @@
     <div style="width:100%; max-width:430px; max-height:80vh; overflow-y:auto; background:var(--ink-soft); border:1px solid var(--line); border-radius:16px 16px 0 0; padding:18px 18px 24px;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <div style="color:var(--paper); font-size:15px; font-weight:800;">❓ Aide — Conception de plan</div>
-        <button id="btnWizardHelpClose" style="background:#232738; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; color:#94a3b8; font-size:15px; font-weight:700; cursor:pointer;">✕</button>
+        <button id="btnWizardHelpClose" style="background:#E5E9F0; border:1px solid var(--line); border-radius:50%; width:26px; height:26px; color:#64748B; font-size:15px; font-weight:700; cursor:pointer;">✕</button>
       </div>
       <div style="display:flex; flex-direction:column; gap:14px; font-size:13px; line-height:1.5; color:var(--paper);">
         <div>
           <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">À quoi sert cet assistant ?</div>
-          <div style="color:#b0bec5;">Il te pose quelques questions (objectif, niveau, disponibilités) pour générer un plan d'entraînement personnalisé, étape par étape.</div>
+          <div style="color:#6B7280;">Il te pose quelques questions (objectif, niveau, disponibilités) pour générer un plan d'entraînement personnalisé, étape par étape.</div>
         </div>
         <div>
           <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Puis-je revenir en arrière ?</div>
-          <div style="color:#b0bec5;">Oui, tu peux naviguer entre les étapes tant que le plan n'est pas généré. Le bouton « Retour à l'app » te ramène au dashboard sans valider.</div>
+          <div style="color:#6B7280;">Oui, tu peux naviguer entre les étapes tant que le plan n'est pas généré. Le bouton « Retour à l'app » te ramène au dashboard sans valider.</div>
         </div>
         <div>
           <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Mes réponses sont-elles perdues si je quitte ?</div>
-          <div style="color:#b0bec5;">Tant que le plan n'est pas généré et enregistré, oui — mieux vaut aller jusqu'au bout en une fois.</div>
+          <div style="color:#6B7280;">Tant que le plan n'est pas généré et enregistré, oui — mieux vaut aller jusqu'au bout en une fois.</div>
         </div>
         <div>
           <div style="color:var(--signal); font-weight:700; margin-bottom:4px;">Une fois le plan généré ?</div>
-          <div style="color:#b0bec5;">Tu retrouves toutes les explications détaillées (séances, adaptations, suivi) dans l'aide de l'app, accessible via le bouton « ? » du dashboard.</div>
+          <div style="color:#6B7280;">Tu retrouves toutes les explications détaillées (séances, adaptations, suivi) dans l'aide de l'app, accessible via le bouton « ? » du dashboard.</div>
         </div>
       </div>
     </div>
@@ -727,7 +727,7 @@
        fin via "Terminer") — demandé par Laurent le 8 juillet 2026, qui
        n'avait aucun moyen de revenir à l'app en cours de route dans le
        wizard, seulement à la toute fin du processus. -->
-  <button id="btnRetourApp" style="display:block;width:calc(100% - 32px);margin:0 16px 12px;padding:8px;text-align:center;background:#23273811;border:1px solid #2e334733;border-radius:8px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;">← Retour à l'app</button>
+  <button id="btnRetourApp" style="display:block;width:calc(100% - 32px);margin:0 16px 12px;padding:8px;text-align:center;background:#E5E9F011;border:1px solid #D6DCE533;border-radius:8px;color:#64748B;font-size:13px;font-weight:600;cursor:pointer;">← Retour à l'app</button>
 
   <!-- ============================================================
        Choix de mode (Objectif course / Mode forme) — ajouté le 13
