@@ -110,35 +110,64 @@ async function ecrireListePlans(plans, storage = localStorage) {
 
 // ---------------------------------------------------------------------------
 // Non-chevauchement des dates entre plans (doc convergence-v1-v2.md, section
-// 7ter) — empêche la création d'un nouveau plan dont la plage de dates
-// (dateDebut -> dateCourse) chevauche celle d'un plan déjà sauvegardé.
-// Décisions actées le 6 juillet 2026 : intersection stricte (pas de marge de
-// tolérance), comportement bloquant (pas un simple avertissement) — cas le
-// plus simple et prévisible pour démarrer, à assouplir plus tard si un vrai
-// besoin de chevauchement volontaire apparaît en usage réel.
+// 7ter) — empêche la création d'un nouveau plan dont la période active
+// chevauche celle d'un plan déjà sauvegardé. Décisions actées le 6 juillet
+// 2026 : intersection stricte (pas de marge de tolérance), comportement
+// bloquant (pas un simple avertissement) — cas le plus simple et prévisible
+// pour démarrer, à assouplir plus tard si un vrai besoin de chevauchement
+// volontaire apparaît en usage réel.
+//
+// Généralisé le 13 juillet 2026 pour couvrir le mode Forme (plan.mode ===
+// 'forme'), qui n'a pas de date de fin naturelle (cf. plan-forme.js) —
+// contrairement à un plan course borné par dateCourse. Principe retenu avec
+// Laurent : un seul plan actif à la fois, tous types confondus. Un plan
+// Forme est "en cours" indéfiniment tant qu'aucune dateCloture optionnelle
+// n'est fixée dessus ; une fois clôturé, il redevient possible de planifier
+// un plan course (ou un autre plan Forme) à sa suite.
 // ---------------------------------------------------------------------------
 
 /**
- * Détecte si deux plages de dates [debut, fin] se chevauchent (bornes
- * incluses). Comparaison de chaînes ISO (YYYY-MM-DD), valide tant que les
- * deux dates sont dans ce format.
+ * Renvoie la date de fin de la période "active" d'un plan, ou null si cette
+ * période n'a jamais de fin (plan Forme sans dateCloture) — un null signifie
+ * "actif indéfiniment dans le futur", pas "pas de plan".
  */
-function datesChevauchent(debutA, finA, debutB, finB) {
-  return debutA <= finB && debutB <= finA;
+function dateFinPeriodeActive(plan) {
+  if (plan.mode === 'forme') return plan.dateCloture || null;
+  return plan.dateCourse || null;
 }
 
 /**
- * Trouve, parmi une liste de plans, celui qui chevauche la plage de dates
- * donnée (hors le plan portant idAExclure, pour ne pas se comparer à
- * soi-même lors d'une mise à jour). Retourne le premier plan trouvé en
- * conflit, ou null si aucun chevauchement.
+ * Détecte si deux plages de dates se chevauchent, chacune pouvant être
+ * ouverte (fin = null, signifie "sans fin connue", jamais "aujourd'hui").
+ * Comparaison de chaînes ISO (YYYY-MM-DD), valide tant que les deux dates
+ * sont dans ce format.
  */
-function trouverPlanEnConflit(plans, dateDebut, dateCourse, idAExclure) {
-  return plans.find(p =>
-    p.id !== idAExclure &&
-    p.dateDebut && p.dateCourse &&
-    datesChevauchent(dateDebut, dateCourse, p.dateDebut, p.dateCourse)
-  ) || null;
+function datesChevauchent(debutA, finA, debutB, finB) {
+  // A commence après la fin connue de B (B a une fin, A démarre après) : pas
+  // de chevauchement possible, peu importe si A a lui-même une fin ou non.
+  if (finB !== null && finB !== undefined && debutA > finB) return false;
+  // B commence après la fin connue de A : même raisonnement, symétrique.
+  if (finA !== null && finA !== undefined && debutB > finA) return false;
+  // Dans tous les autres cas (au moins une des deux périodes n'a pas de fin
+  // connue avant que l'autre ne démarre), les deux périodes se recouvrent.
+  return true;
+}
+
+/**
+ * Trouve, parmi une liste de plans, celui qui chevauche la période active
+ * du plan candidat (hors le plan portant idAExclure, pour ne pas se
+ * comparer à soi-même lors d'une mise à jour). Retourne le premier plan
+ * trouvé en conflit, ou null si aucun chevauchement. Fonctionne pour
+ * n'importe quelle combinaison de types (course/course, course/forme,
+ * forme/forme) — dateFinPeriodeActive() abstrait la différence de règle
+ * entre les deux.
+ */
+function trouverPlanEnConflit(plans, dateDebut, dateFin, idAExclure) {
+  return plans.find(p => {
+    if (p.id === idAExclure || !p.dateDebut) return false;
+    const finExistant = dateFinPeriodeActive(p);
+    return datesChevauchent(dateDebut, dateFin ?? null, p.dateDebut, finExistant);
+  }) || null;
 }
 
 async function sauvegarderPlan(plan, storage = localStorage) {
@@ -147,15 +176,44 @@ async function sauvegarderPlan(plan, storage = localStorage) {
   // Remplace le plan existant (même id) plutôt que d'en créer un doublon —
   // nécessaire pour que le suivi de complétion se mette à jour en place
   const indexExistant = plansExistants.findIndex(p => p.id === plan.id);
+  const planAvant = indexExistant >= 0 ? plansExistants[indexExistant] : null;
 
+  // Clôture permanente d'un plan Forme (décision du 13 juillet 2026, avec
+  // Laurent) : une fois dateCloture fixée et sauvegardée, le plan devient
+  // intégralement figé — plus aucune modification possible (contenu,
+  // statuts, notes, sync Strava…), y compris retirer ou changer la
+  // dateCloture elle-même. Choix volontairement strict : élimine tout
+  // risque de contournement du garde-fou "un seul plan actif à la fois"
+  // (plus besoin de revérifier les conflits à chaque modification), et
+  // rend le comportement d'un plan clôturé prévisible — lecture seule,
+  // point final, comme un plan course déjà passé.
+  if (planAvant?.mode === 'forme' && planAvant.dateCloture) {
+    throw new Error(`Ce plan est clôturé depuis le ${planAvant.dateCloture} et ne peut plus être modifié — il reste consultable en lecture seule.`);
+  }
+
+  // dateFin dépend du type de plan (13 juillet 2026) : un plan course est
+  // toujours borné par dateCourse ; un plan Forme n'a de fin que si
+  // dateCloture a été explicitement fixée (sinon null = actif
+  // indéfiniment, cf. datesChevauchent/dateFinPeriodeActive plus haut dans
+  // ce fichier). Un plan Forme sans dateCloture bloque donc la création de
+  // tout nouveau plan (course ou Forme) tant qu'il n'a pas été clôturé.
+  //
   // La vérification de chevauchement ne s'applique qu'à la création d'un
-  // NOUVEAU plan distinct — une mise à jour d'un plan déjà existant (même
-  // id) ne doit jamais être bloquée par elle-même.
-  if (indexExistant === -1 && plan.dateDebut && plan.dateCourse) {
-    const conflit = trouverPlanEnConflit(plansExistants, plan.dateDebut, plan.dateCourse, plan.id);
+  // NOUVEAU plan distinct (indexExistant === -1). Une mise à jour d'un plan
+  // déjà existant et NON clôturé (le seul cas restant possible, cf. garde
+  // ci-dessus) n'a pas besoin d'être revérifiée : sa période active était
+  // déjà validée lors de sa création, et elle ne peut plus changer que via
+  // le wizard/la clôture elle-même, tous deux traités comme des créations
+  // (nouvelle sauvegarde, ou blocage total une fois clôturé).
+  const dateFinDuNouveauPlan = plan.mode === 'forme' ? (plan.dateCloture || null) : plan.dateCourse;
+
+  if (indexExistant === -1 && plan.dateDebut) {
+    const conflit = trouverPlanEnConflit(plansExistants, plan.dateDebut, dateFinDuNouveauPlan, plan.id);
     if (conflit) {
-      const nomConflit = conflit.nom || `${conflit.distance || '?'} — ${conflit.objectif || '?'}`;
-      throw new Error(`Ce plan (${plan.dateDebut} → ${plan.dateCourse}) chevauche un plan déjà sauvegardé : "${nomConflit}" (${conflit.dateDebut} → ${conflit.dateCourse}). Choisis d'autres dates, ou supprime/remplace le plan existant.`);
+      const nomConflit = conflit.nom || (conflit.mode === 'forme' ? 'Plan forme' : `${conflit.distance || '?'} — ${conflit.objectif || '?'}`);
+      const finConflit = conflit.mode === 'forme' ? (conflit.dateCloture || 'sans date de fin') : conflit.dateCourse;
+      const finNouveau = dateFinDuNouveauPlan || 'sans date de fin';
+      throw new Error(`Ce plan (${plan.dateDebut} → ${finNouveau}) chevauche un plan déjà actif : "${nomConflit}" (${conflit.dateDebut} → ${finConflit}). Un seul plan peut être actif à la fois — clôture ou supprime le plan existant, ou choisis d'autres dates.`);
     }
   }
 
