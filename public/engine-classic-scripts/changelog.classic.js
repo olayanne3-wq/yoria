@@ -21,7 +21,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.6", title:"Mode Forme, clôture de plan & fiabilité du coach", current:true, notes:[
+      { ver:"v2.7", title:"Yoria — nouvelle identité et thème clair/sombre", current:true, notes:[
+        "🎨 Nouveau nom et nouvelle identité visuelle : Run by Léa devient Yoria",
+        "☀️🌙 Choix du thème clair ou sombre, dans Paramètres",
+        "🏷️ Badges de séance recolorés par intensité (VMA/Test/Course, Seuil/Allure course, EF/Longue)",
+        "🐛 Correctifs d'affichage et de navigation liés au changement de thème",
+      ]},
+      { ver:"v2.6", title:"Mode Forme, clôture de plan & fiabilité du coach", current:false, notes:[
         "💓 Mode Forme : plan d'entraînement sans date de course, pour le maintien en forme (fartlek, pyramidale, variations d'allure)",
         "🔒 Clôture définitive d'un plan Forme, pour pouvoir planifier un objectif course à sa suite en toute sécurité",
         "🚦 Un seul plan actif à la fois (course ou forme) — garde-fou anti-chevauchement généralisé aux deux types",
