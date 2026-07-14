@@ -4985,6 +4985,90 @@ function renderSettings() {
     render();
   }));
 
+  // Clôture du plan Forme — ajoutée le 13 juillet 2026. Un plan Forme sans
+  // dateCloture est considéré "actif indéfiniment" par la logique de
+  // non-chevauchement (gist-sync.js, trouverPlanEnConflit) — cette section
+  // permet de fixer ou modifier cette date depuis un plan déjà actif, sans
+  // repasser par le wizard, pour débloquer la création d'un plan course à
+  // sa suite. N'apparaît qu'en mode Forme (n'a pas de sens pour un plan
+  // course, déjà borné par dateCourse).
+  const formeClotureSection = ESTMODEFORME ? (() => {
+    const dateActuelle = window.__PLAN_BRUT__?.dateCloture || "";
+
+    // Plan déjà clôturé (13 juillet 2026) : action permanente et
+    // irréversible (cf. sauvegarderPlan() dans gist-sync.js, qui rejette
+    // toute écriture sur un plan Forme dont dateCloture est déjà fixée) —
+    // affichage en lecture seule uniquement, aucun champ ni bouton
+    // modifiable. Un plan clôturé se consulte comme un plan course déjà
+    // couru : figé, mais toujours accessible via le sélecteur de plan.
+    if (dateActuelle) {
+      return el("div",{style:{marginBottom:"24px"}},
+        el("div",{class:"label"},"🏁 Plan clôturé"),
+        card(
+          el("div",{style:{display:"flex",alignItems:"center",gap:"10px"}},
+            el("span",{style:{fontSize:"18px"}},"🔒"),
+            el("div",{},
+              el("div",{style:{color:"#f1f5f9",fontSize:"14px",fontWeight:"600"}},
+                "Clôturé le " + new Date(dateActuelle+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})
+              ),
+              el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},
+                "Ce plan est figé — consultable en lecture seule, plus de synchro Strava ni de modification possible."
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const msgEl = el("div",{style:{marginTop:"8px",fontSize:"13px"}});
+    const inp = document.createElement("input");
+    inp.type = "date";
+    inp.style.cssText = "width:100%;background:#232738;border:1px solid #2e3347;border-radius:8px;padding:10px 12px;color:#f1f5f9;font-size:14px;box-sizing:border-box;";
+
+    const confirmBtn = el("button",{style:{width:"100%",marginTop:"10px",background:"#f9731622",border:"1px solid #f9731644",borderRadius:"8px",padding:"9px",color:"#f97316",fontWeight:"700",fontSize:"14px",cursor:"pointer"}},
+      "Clôturer définitivement à cette date");
+    confirmBtn.addEventListener("click", async () => {
+      const val = inp.value;
+      if (!val) { msgEl.textContent = "Choisis une date."; msgEl.style.color = "#f97316"; return; }
+      if (val < window.__PLAN_BRUT__.dateDebut) {
+        msgEl.textContent = "La date de clôture doit être après le début du plan (" + window.__PLAN_BRUT__.dateDebut + ").";
+        msgEl.style.color = "#ef4444";
+        return;
+      }
+      // Action irréversible (13 juillet 2026) : une vraie confirmation
+      // explicite est nécessaire, contrairement à la plupart des autres
+      // sauvegardes de ce fichier — pas de bouton "Retirer" possible après.
+      const dateAffichee = new Date(val+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
+      if (!confirm(`Clôturer définitivement ce plan au ${dateAffichee} ?\n\nCette action est IRRÉVERSIBLE : le plan deviendra figé (lecture seule, plus de synchro Strava, plus aucune modification possible).`)) return;
+
+      window.__PLAN_BRUT__.dateCloture = val;
+      msgEl.textContent = "Sauvegarde…";
+      msgEl.style.color = "#94a3b8";
+      try {
+        await sauvegarderPlan(window.__PLAN_BRUT__);
+        msgEl.textContent = "✅ Plan clôturé. Tu peux maintenant planifier un plan course à partir du lendemain.";
+        msgEl.style.color = "#22c55e";
+        render();
+      } catch (e) {
+        msgEl.textContent = "❌ " + e.message;
+        msgEl.style.color = "#ef4444";
+        console.error(e);
+      }
+    });
+
+    return el("div",{style:{marginBottom:"24px"}},
+      el("div",{class:"label"},"🏁 Clôture du plan forme"),
+      card(
+        el("div",{class:"muted",style:{fontSize:"13px",marginBottom:"10px",lineHeight:"1.5"}},
+          "Ce plan est actif sans limite de temps. Clôture-le pour pouvoir planifier un plan course à sa suite — attention, cette action est définitive : le plan deviendra figé et non modifiable."
+        ),
+        inp,
+        confirmBtn,
+        msgEl
+      )
+    );
+  })() : null;
+
   const hasRes=!!load(clePourPlan("lk_race_result"),null);
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
@@ -4998,6 +5082,7 @@ function renderSettings() {
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
     accountSection,
+    formeClotureSection,
     profileSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, stravaSection),
     githubToken ? qrSection : null,
@@ -5068,6 +5153,16 @@ async function ensureFreshToken() {
 }
 
 async function syncStrava() {
+  // Plan Forme clôturé (13 juillet 2026) : intégralement figé, y compris
+  // plus aucune synchro Strava — cohérent avec sauvegarderPlan() côté
+  // gist-sync.js, qui rejette toute écriture sur un plan Forme clôturé.
+  // Bloqué ici en amont plutôt que de laisser l'appel réseau se faire pour
+  // rien avant d'échouer à la sauvegarde.
+  if (window.__PLAN_BRUT__?.mode === 'forme' && window.__PLAN_BRUT__?.dateCloture) {
+    syncMsg = "Plan clôturé — synchronisation Strava désactivée.";
+    render();
+    return;
+  }
   syncing=true; syncMsg="Connexion à Strava..."; render();
   const ok = await ensureFreshToken();
   if (!ok) { syncing=false; syncMsg="Erreur de token"; render(); return; }
