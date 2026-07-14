@@ -1756,7 +1756,7 @@ function renderSelecteurPlan() {
 
   plans.forEach(p => {
     const label = p.nom || `${p.distance || '?'} — ${p.objectif || '?'}`;
-    const option = el("option",{value:p.id},label);
+    const option = el("option",{value:p.id,style:{background:"#FFFFFF",color:"#1F2937"}},label);
     if (p.id === idActuel) option.selected = true;
     select.appendChild(option);
   });
@@ -1764,7 +1764,7 @@ function renderSelecteurPlan() {
   // Repli explicite si aucun plan sauvegardé — évite un <select> visuellement
   // vide, plus cohérent qu'un menu sans aucune option affichée
   if (plans.length === 0) {
-    select.appendChild(el("option",{value:"",disabled:"",selected:""},"Aucun plan sauvegardé (plan par défaut affiché)"));
+    select.appendChild(el("option",{value:"",disabled:"",selected:"",style:{background:"#FFFFFF",color:"#1F2937"}},"Aucun plan sauvegardé (plan par défaut affiché)"));
   }
 
   // Bouton vers le wizard v2 pour créer un nouveau plan (demandé par Laurent
@@ -5336,7 +5336,7 @@ function render() {
     :null;
 
   const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",settings:"Paramètres",course:"Course",help:"Aide"};
-  const hdr = view==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(15,17,23,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid #D6DCE5",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
+  const hdr = view==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(248,250,252,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid #D6DCE5",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
     backBtn||"",
     runByLeaIcon(24, 6),
     el("div",{style:{flex:"1"}},
@@ -5367,7 +5367,7 @@ function render() {
     {id:"settings", icon:"⚙️",label:"Paramètres"},
   ];
   const activeNav=["dashboard","stats","settings","course","help"].includes(view)?view:"weeks";
-  const nav=el("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"430px",background:"rgba(26,29,39,0.97)",backdropFilter:"blur(16px)",borderTop:"1px solid #D6DCE5",display:"flex",zIndex:"20"}},
+  const nav=el("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"430px",background:"rgba(255,255,255,0.97)",backdropFilter:"blur(16px)",borderTop:"1px solid #D6DCE5",display:"flex",zIndex:"20"}},
     ...NAV.map(n=>{
       const hasBadge = n.id==="dashboard" && (() => {
         if (new Date().getHours() < 18) return false;
@@ -5376,7 +5376,7 @@ function render() {
       })();
       const iconWrap=el("div",{style:{position:"relative",display:"inline-block"}},
         el("span",{style:{fontSize:"20px"}},n.icon),
-        hasBadge?el("div",{style:{position:"absolute",top:"-2px",right:"-4px",width:"8px",height:"8px",borderRadius:"50%",background:"#ef4444",border:"2px solid rgba(26,29,39,0.97)"}}):null
+        hasBadge?el("div",{style:{position:"absolute",top:"-2px",right:"-4px",width:"8px",height:"8px",borderRadius:"50%",background:"#ef4444",border:"2px solid rgba(255,255,255,0.97)"}}):null
       );
       const b=el("button",{style:{flex:"1",background:"none",border:"none",cursor:"pointer",padding:"10px 0 14px",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",opacity:activeNav===n.id?"1":"0.45"}},
         iconWrap,
