@@ -1140,3 +1140,255 @@ adb shell pm list packages | findstr /i "<mot-clé>"
 adb uninstall <package>
 adb install <apk>
 ```
+
+---
+
+## 13. Rebranding "Run by Léa" → "Yoria" (14 juillet 2026)
+
+### 13.1 Périmètre du changement
+
+Renommage complet de l'application, à la demande de Laurent, en vue de la
+commercialisation v2.5 (500 abonnés cible). Nouveau nom : **Yoria**.
+
+**Repo GitHub renommé** : `plan-10k` → `yoria` (`olayanne3-wq/yoria`).
+GitHub applique un redirect automatique de l'ancien nom, Vercel a continué
+à déployer sans reconfiguration (connecté par ID de repo, pas par nom).
+Domaine Vercel de production inchangé : `plan-10k-alpha.vercel.app` (pas
+renommé à ce stade — changement de domaine non demandé).
+
+**Fichiers modifiés pour le nom/l'identité** :
+- `public/index.html` (titre, UI, icône SVG inline)
+- `public/manifest.json`, `public/v2/manifest.json`
+- `public/v2/index.html` (wizard)
+- `public/engine-classic-scripts/auth.classic.js` et
+  `public/v2/engine/auth.js` (écran de connexion — texte "Run by Léa"
+  oublié lors du premier passage, corrigé dans une session ultérieure)
+- `public/icon.svg`, `public/icon-192.png`, `public/icon-512.png`
+  (remplacés par les assets du pack Yoria fourni par Laurent)
+- `README.md`
+- `public/sw.js`, `public/v2/sw.js` (nom de cache renommé
+  `plan10k-v21` → `yoria-v1`, `plan10k-v2-v2` → `yoria-v2-v1`, pour forcer
+  un rafraîchissement du cache PWA côté utilisateurs existants)
+
+### 13.2 APK Android (TWA) — régénération
+
+Projet Android local (`C:\Users\olaya\runbylea-android-v3\`, nom de
+dossier resté tel quel — cosmétique, aucun impact) : `twa-manifest.json`
+mis à jour avec `name`/`launcherName: "Yoria"`, `themeColor`/
+`backgroundColor` alignés sur la nouvelle palette, `iconUrl`/
+`maskableIconUrl` pointant vers `https://plan-10k-alpha.vercel.app/icon-512.png`
+(champ `maskableIconUrl` absent par défaut du fichier généré par
+Bubblewrap — ajouté manuellement).
+
+**Bug de signature `BadPaddingException` reproduit** (déjà documenté
+section 8bis) — contournement habituel par `apksigner.jar` en ligne de
+commande. **Précision utile pour la prochaine fois** : l'échec initial
+venait d'un mauvais mot de passe pour `--key-pass` (une valeur différente
+de celle du keystore, provenant probablement d'un essai antérieur) —
+`keytool -list -v -keystore android.keystore -storepass <pwd>` a permis
+de confirmer que keystore et clé partagent en réalité le **même mot de
+passe**. Utiliser la même valeur pour `--ks-pass` et `--key-pass` a résolu
+la signature.
+
+Après signature, désinstallation de l'ancien package via
+`adb uninstall app.vercel.plan_10k_alpha.twa` a échoué
+(`DELETE_FAILED_INTERNAL_ERROR`) — contournée par désinstallation manuelle
+depuis les paramètres du téléphone, puis `adb install
+app-release-signed.apk` a fonctionné normalement. Package Android
+inchangé : `app.vercel.plan_10k_alpha.twa` (changer l'identifiant
+casserait toute mise à jour future — non fait, aucune raison de le faire
+tant que l'app n'est pas publiée).
+
+### 13.3 Palette graphique
+
+Pack de branding fourni par Laurent (`Yoria_Google_Play_Assets.zip`) avec
+`palette.json` :
+```
+primary:   #1E4ED8 (bleu)
+secondary: #22C7B8 (turquoise)
+navy:      #07162F (fond sombre, version initiale — remplacé ensuite,
+                     voir 13.5)
+off_white: #F8FAFC (fond clair)
+charcoal:  #1F2937 (texte)
+```
+Une 5e couleur d'accent orange (`#FF7755`) a été ajoutée par Laurent dans
+une maquette Google Play ultérieure (mockups incluant captures d'écran,
+bannière, feature graphic) — adoptée comme couleur d'alerte/accent
+secondaire à la place du rouge/jaune/violet historiques.
+
+**Décisions de mapping validées avec Laurent** :
+- Vert succès (`#22c55e`) → turquoise (`#22C7B8`)
+- Rouge erreur (`#ef4444`, `#f87171`) et jaune (`#eab308`) → orange
+  (`#FF7755`)
+- Violet (`#a855f7`, séances spécifiques/adaptation) → bleu (`#1E4ED8`)
+- Cartes : pas de distinction de fond (auparavant blanc sur gris clair) —
+  fond uniforme `#F8FAFC` partout, séparation visuelle par **ombre légère**
+  (`box-shadow`) plutôt que bordure dure, conforme au style observé sur la
+  maquette Google Play.
+
+**Contrainte stricte de Laurent** : n'utiliser QUE les 5 couleurs
+officielles (+ leurs variantes d'opacité), aucune couleur "de convenance"
+ajoutée. Un audit complet du repo (`index.html`, `v2/index.html`,
+`auth.classic.js`, `auth.js`, tous les fichiers moteur classic/module, API
+serverless) a confirmé zéro couleur hors palette après nettoyage — y
+compris deux résidus `#fff` en dur sur des boutons à fond plein, corrigés
+vers `#F8FAFC` (couleur officielle) bien que visuellement déjà corrects.
+
+**Piège rencontré pendant les remplacements automatisés** : plusieurs
+passages successifs de remplacement de couleurs par script ont généré des
+couleurs hexadécimales invalides à 10 caractères (ex. `#1F29372222`,
+`#1F29371111`) en concaténant un second suffixe d'opacité sur une valeur
+déjà suffixée. CSS ignore silencieusement une couleur invalide — aucune
+erreur visible, juste un style non appliqué. Détecté par grep ciblé
+(`#[0-9a-fA-F]{10}`) lors d'un audit, corrigé à la source avant de
+poursuivre. **Vigilance à conserver** pour toute future automatisation de
+remplacement de couleurs sur ce projet.
+
+### 13.4 Thème clair (light mode) — première itération
+
+Passage du thème sombre historique (fond `#0f1117`/`#07162F`) à un thème
+clair (fond `#F8FAFC`), à la demande de Laurent après une maquette Google
+Play montrant des captures d'app en fond clair. Conversion appliquée sur
+`index.html`, `v2/index.html`, et l'écran d'authentification (deux
+versions, classic et module).
+
+**Bugs de contraste identifiés après la conversion initiale** (couleurs en
+`rgba(...)` codées avec des valeurs numériques littérales, invisibles à un
+`grep` sur `#hex` et donc oubliées lors du premier passage) :
+- Barre de navigation du bas : `background: rgba(26,29,39,0.97)`
+  (quasi-noir) — resté actif sur fond clair, rendant la barre illisible.
+- Header sticky en haut de certains écrans : `rgba(15,17,23,0.95)` — même
+  problème.
+- Wizard v2 : 43 occurrences de texte en `rgba(238,240,234,X)` (blanc cassé,
+  ancienne couleur de texte sur fond sombre) jamais migrées → texte
+  quasiment invisible sur le nouveau fond clair.
+- `<option>` d'un `<select>` HTML natif (sélecteur de plan dans
+  `index.html`) : sans couleur explicite sur chaque `<option>`, certains
+  navigateurs/OS appliquent leur propre thème sombre système, rendant le
+  texte illisible malgré un CSS correct sur le `<select>` parent. Corrigé
+  en forçant `style:{background,color}` sur chaque `<option>` généré.
+
+**Leçon retenue** : lors d'une conversion de palette, chercher aussi les
+couleurs en `rgb()`/`rgba()` avec valeurs décimales, pas seulement les
+`#hex` — un simple `grep -oE "#[0-9a-fA-F]{6}"` laisse passer ces cas.
+
+### 13.5 Système de thème clair/sombre avec bascule utilisateur
+
+Demande ultérieure de Laurent : proposer un vrai choix clair/sombre dans
+les Paramètres, pas seulement un remplacement figé du thème sombre par le
+clair. Nécessite que **toute couleur soit une variable**, jamais une
+valeur en dur, pour permettre une bascule dynamique.
+
+**Architecture retenue** — variables CSS basées sur des triplets RGB (pas
+directement des couleurs hexadécimales), pour permettre une composition
+d'opacité propre sans collision :
+```css
+:root {
+  --bg-rgb: 248,250,252;       --text-rgb: 31,41,55;
+  --accent-rgb: 30,78,216;     --accent2-rgb: 34,199,184;
+  --warn-rgb: 255,119,85;
+  --bg: rgb(var(--bg-rgb));    --text: rgb(var(--text-rgb));
+  --text-muted: rgba(var(--text-rgb),0.6);
+  --text2: rgba(var(--text-rgb),0.8);
+  --border: rgba(var(--text-rgb),0.13);
+  /* etc. */
+}
+[data-theme="dark"] {
+  --bg-rgb: 13,17,23;          --surface-rgb: 31,41,55;
+  --text-rgb: 248,250,252;
+  --shadow1: rgba(0,0,0,0.4);  /* ombres neutres, pas liées au thème */
+}
+```
+Couleurs d'accent (`--accent`, `--accent2`, `--warn`) **identiques dans
+les deux thèmes** — seules les couleurs de fond/texte/bordure changent,
+conformément aux deux maquettes fournies par Laurent (light et dark
+utilisent les mêmes bleu/turquoise/orange).
+
+**Piège rencontré (deuxième occurrence du même type de bug)** : le premier
+essai de conversion a réutilisé des variables déjà porteuses d'une opacité
+fixe (ex. `--border: rgba(...,0.13)`) en leur accolant un second suffixe
+d'opacité hexadécimal (`var(--border)22`), générant une couleur CSS
+invalide silencieusement ignorée — même symptôme que celui de la section
+13.3, cette fois provoqué par la conversion en variables elle-même plutôt
+que par un remplacement hex→hex. Corrigé en repartant d'une version
+propre du fichier et en utilisant systématiquement le pattern
+`rgba(var(--x-rgb), N)` pour toute opacité personnalisée, jamais de
+suffixe collé à une variable qui contient déjà une couleur complète.
+
+**Toggle utilisateur** : section "🎨 Apparence" ajoutée dans
+`renderSettings()` (juste après la section "👤 Compte"), deux boutons
+Clair/Sombre, sauvegarde dans `localStorage` (`lk_theme`), application
+immédiate via `document.documentElement.setAttribute('data-theme', ...)`
++ `render()`. Un script en tête de `<head>` (avant tout style visible)
+lit `localStorage` et pose l'attribut `data-theme` sur `<html>` dès le
+chargement, pour éviter un flash de thème incorrect.
+
+**Wizard v2 et écran d'authentification** : branchés sur le même système
+de variables (le wizard réutilise ses variables sémantiques historiques —
+`--ink`, `--paper`, `--signal`, etc. — redéfinies pour pointer vers les
+nouvelles variables RGB plutôt que des couleurs figées). L'écran
+d'authentification (`auth.classic.js`/`auth.js`) injecte son propre
+`<style>` en JS dans un `<div>` hôte du document principal
+(`#ecran-auth-hote`) : confirmé qu'il hérite bien des variables `:root`/
+`[data-theme]` définies dans le document parent (`index.html` ou
+`v2/index.html`), donc `var(--accent)` etc. fonctionnent correctement
+sans dupliquer les définitions de variables dans ce fichier.
+
+**Résidus de couleurs en dur oubliés lors du passage initial en variables**
+(trouvés après retour utilisateur signalant onglets/header toujours
+blancs en mode sombre, et texte illisible dans le wizard) :
+- `index.html` : les mêmes `rgba(255,255,255,0.97)` /
+  `rgba(248,250,252,0.95)` de la nav bar et du header sticky (section
+  13.4) avaient été remplacés par leurs équivalents en thème clair lors du
+  passage en variables, mais pas reliés à la variable `--bg` — recorrigés
+  en `rgba(var(--bg-rgb), X)`.
+- `v2/index.html` : 43 occurrences de texte en `rgba(31,41,55,X)`
+  (charcoal, couleur de texte clair) codées avec des valeurs RGB
+  littérales plutôt que `var(--text-rgb)` — texte resté sombre figé même
+  en thème sombre, illisible sur fond sombre. Recorrigé en
+  `rgba(var(--text-rgb), X)`.
+
+**Méthode de vérification établie pour ce type de bug** : après toute
+conversion de couleurs, chercher spécifiquement les `rgba(N,N,N` avec
+valeurs numériques (`grep -oE "rgba\([0-9]+,[0-9]+,[0-9]+"`), en plus des
+`#hex`, car ce sont deux syntaxes distinctes qui n'apparaissent pas dans
+le même filtre.
+
+### 13.6 Bug fonctionnel découvert pendant le débogage du theming (non lié)
+
+Signalé par Laurent : impossible de cliquer sur un plan existant dans la
+liste de la page 1 du wizard (`renderSelecteurPlan` / bib-row du wizard) —
+aucune réaction visible, aucune erreur console.
+
+**Diagnostic** (par tests successifs en console développeur, pas de
+reproduction locale possible) : la fonction `chargerPlanExistant(id)`
+activait bien la classe `.active` sur l'écran de résultats
+(`data-step="10"`, confirmé par `dataset.step === '10'` après clic), mais
+l'écran restait visuellement invisible
+(`getBoundingClientRect()` retournait `width:0, height:0`) car un autre
+conteneur, `#choix-mode-contenu` (la page de choix Objectif course / Mode
+forme), restait affiché par-dessus (`style.display: 'block'`), jamais
+masqué par cette fonction — contrairement à `choisirMode()` qui fait
+`document.getElementById('choix-mode-contenu').style.display = 'none'`
+avant d'afficher un écran suivant.
+
+**Bug préexistant, sans lien avec les changements de couleur/thème** —
+probablement présent depuis l'ajout du sélecteur de plans sauvegardés
+dans le wizard, découvert seulement maintenant car Laurent teste peu ce
+chemin (chargement d'un plan déjà existant depuis la page d'accueil du
+wizard, plutôt que d'en créer un nouveau).
+
+**Correctif** : ajout de la ligne manquante dans `chargerPlanExistant()` :
+```js
+document.getElementById('choix-mode-contenu').style.display = 'none';
+```
+
+**Méthode de diagnostic utile pour la prochaine fois** : en l'absence
+d'accès direct au navigateur de Laurent, diagnostic entièrement mené via
+allers-retours de commandes à coller dans la console développeur
+(`document.elementFromPoint`, `getBoundingClientRect`, `dataset.step`,
+appel direct de la fonction vs `.click()` simulé vs `.onclick` inspecté)
+pour isoler méthodiquement si le problème venait du DOM (élément
+manquant/mal ciblé), de l'événement (listener non attaché), de la logique
+(fonction en erreur), ou du rendu (élément actif mais non visible) — dans
+cet ordre d'élimination.
