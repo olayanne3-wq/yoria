@@ -627,6 +627,7 @@ export function computeVolumeProgression({ volumeDepart, distance, niveau, total
 // ---------------------------------------------------------------------------
 
 export function nbQualiteFor(nbSeances, niveau) {
+  if (niveau === 'grand-debutant') return 0; // marche-course uniquement, pas de qualité (§ marche-course)
   if (nbSeances <= 4) return nbSeances >= 2 ? 1 : 0;
   if (nbSeances === 5) return niveau === 'debutant' ? 1 : 2;
   return 2; // 6+
@@ -663,6 +664,27 @@ export function placerSemaine({ joursDisponibles, niveau, renforcementActif, mod
 
   if (nb < 2) {
     warnings.push({ code: 'JOURS_INSUFFISANTS', message: 'Au moins 2 jours disponibles sont nécessaires.' });
+    return { assignment, warnings };
+  }
+
+  // Grand débutant (§ marche-course) : pas de distinction longue/EF/qualité —
+  // toutes les séances de la semaine sont du marche-course au même palier de
+  // progression. Les études (NHS Couch-to-5K, etc.) ne différencient jamais
+  // une "sortie longue" chez ce public : 3 séances identiques + repos entre
+  // chaque, la structure classique n'apparaît qu'une fois la course continue
+  // acquise (transition vers le niveau "debutant").
+  if (niveau === 'grand-debutant') {
+    days.forEach(d => { assignment[d] = { type: 'marche-course' }; });
+    // Garde-fou #6 (48h entre séances dures) : le marche-course est doux mais
+    // reste un effort cardio répété, on applique la même vérification.
+    for (let i = 1; i < days.length; i++) {
+      if (days[i] - days[i - 1] < 2) {
+        warnings.push({
+          code: 'ECART_RECUPERATION_INSUFFISANT',
+          message: `Moins de 48h de récupération entre deux séances marche-course (jours ${days[i - 1]} et ${days[i]}).`
+        });
+      }
+    }
     return { assignment, warnings };
   }
 
@@ -1175,6 +1197,73 @@ const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150
  * Approximation assumée : échauffement/retour au calme et jogs de récupération
  * ne sont pas comptés séparément, ils sont absorbés dans l'allure EF globale.
  */
+// ---------------------------------------------------------------------------
+// Marche-course (grand débutant) — méthode Galloway / Couch-to-5K
+// Paliers de ratio course/marche, une seule variable qui bouge à la fois
+// (durée totale de séance stable ~20-30min), conforme aux plans NHS/C25K :
+// on ne rallonge jamais la durée ET le ratio simultanément. La progression
+// d'un palier au suivant est CONDITIONNELLE (pas liée à une semaine fixe) —
+// voir compterSeancesValideesPalier et le garde-fou de §analyserAdaptations.
+// ---------------------------------------------------------------------------
+
+export const PALIERS_MARCHE_COURSE = [
+  { id: 0, courseSec: 60,  marcheSec: 90,  label: '1min course / 1min30 marche' },
+  { id: 1, courseSec: 90,  marcheSec: 120, label: '1min30 course / 2min marche' },
+  { id: 2, courseSec: 180, marcheSec: 90,  label: '3min course / 1min30 marche' },
+  { id: 3, courseSec: 300, marcheSec: 120, label: '5min course / 2min marche' },
+  { id: 4, courseSec: 480, marcheSec: 120, label: '8min course / 2min marche' },
+  { id: 5, courseSec: 1200, marcheSec: 0,  label: '20min course continue' },
+  { id: 6, courseSec: 1800, marcheSec: 0,  label: '30min course continue (transition)' }
+];
+
+// Nombre de séances réussies au palier courant avant de proposer le suivant.
+// Volontairement bas (2) : la progression reste soumise à la confirmation du
+// coureur (via le statut de la séance), pas automatique dès ce seuil atteint —
+// cf. analyserAdaptations pour la logique de recul/maintien si ça se passe mal.
+const SEANCES_MIN_PAR_PALIER = 2;
+
+// Durée totale cible de séance, stable sur tout le programme (§ principe
+// "une seule variable à la fois") — le nombre de répétitions du cycle
+// course/marche s'ajuste pour tenir dans cette fenêtre.
+const DUREE_CIBLE_MARCHE_COURSE_MIN = 25;
+
+/**
+ * Détermine le palier courant à partir du nombre de séances marche-course
+ * déjà validées avec succès (statut "fait" ou équivalent positif) DEPUIS le
+ * dernier changement de palier. Le compteur est fourni par l'appelant
+ * (dérivé des statuses du plan, même logique que nbApparitionsParSousType).
+ */
+export function palierMarcheCourseFor(seancesValideesPalierCourant, palierActuelId = 0) {
+  const palier = PALIERS_MARCHE_COURSE[Math.min(palierActuelId, PALIERS_MARCHE_COURSE.length - 1)];
+  const pretPourSuivant = seancesValideesPalierCourant >= SEANCES_MIN_PAR_PALIER
+    && palierActuelId < PALIERS_MARCHE_COURSE.length - 1;
+  return { palier, pretPourSuivant };
+}
+
+export function genererContenuMarcheCourse({ palierId = 0 }) {
+  const palier = PALIERS_MARCHE_COURSE[Math.min(palierId, PALIERS_MARCHE_COURSE.length - 1)];
+
+  if (palier.marcheSec === 0) {
+    const dureeMin = Math.round(palier.courseSec / 60);
+    return {
+      contenu: `Échauffement marche 5min + ${dureeMin}min de course continue + retour au calme marche 5min`,
+      kmEstime: null, // pas d'estimation fiable tant que l'allure grand-débutant n'est pas établie
+      palierLabel: palier.label
+    };
+  }
+
+  const cycleSec = palier.courseSec + palier.marcheSec;
+  const nbCycles = Math.max(1, Math.round((DUREE_CIBLE_MARCHE_COURSE_MIN * 60) / cycleSec));
+  const dureeCourseMin = Math.round(palier.courseSec / 60 * 10) / 10;
+  const dureeMarcheMin = Math.round(palier.marcheSec / 60 * 10) / 10;
+
+  return {
+    contenu: `Échauffement marche 5min + ${nbCycles} × (${dureeCourseMin}min course / ${dureeMarcheMin}min marche) + retour au calme marche 5min`,
+    kmEstime: null,
+    palierLabel: palier.label
+  };
+}
+
 export function genererContenuEF({ alluresSec, kmCible, role = 'standard' }) {
   const dureeMinBrut = (kmCible * alluresSec.E) / 60;
   const dureeMin = Math.round(Math.min(dureeMinBrut, DUREE_MAX_EF_MIN));
@@ -1585,10 +1674,65 @@ function differencierEF({ assignment, kmParEF }) {
 }
 
 // ---------------------------------------------------------------------------
+// Plan dédié grand débutant (marche-course) — pas de phases Construction/
+// Spécifique/Affûtage (qui supposent une allure course/Riegel dont ce public
+// n'a pas encore besoin), pas de sortie longue, pas de séance qualité. Le
+// plan est une simple répétition du palier courant sur toutes les semaines
+// disponibles ; la progression de palier est pilotée séparément (côté app,
+// via analyserProgressionMarcheCourse) et ne régénère PAS tout le plan à
+// chaque palier — seul le contenu affiché change, cf. genererContenuMarcheCourse.
+// ---------------------------------------------------------------------------
+
+function generatePlanMarcheCourse(profil, params) {
+  const debut = new Date(params.dateDebut);
+  const course = new Date(params.dateCourse);
+  const totalJours = Math.round((course - debut) / 86400000);
+  const totalSemaines = Math.max(1, Math.round(totalJours / 7));
+  const warnings = [];
+
+  if (totalJours < 0) {
+    warnings.push({ code: 'DATE_INVALIDE', message: "La date de course doit être après le début du plan." });
+    return { semaines: [], warnings, profilOrigine: profil, paramsOrigine: params, statuses: {} };
+  }
+
+  const palierId = profil.palierMarcheCourse ?? 0;
+  const semaines = [];
+  for (let s = 1; s <= totalSemaines; s++) {
+    const { assignment, warnings: warningsPlacement } = placerSemaine({
+      joursDisponibles: profil.joursDisponiblesHabituels,
+      niveau: 'grand-debutant',
+      renforcementActif: false
+    });
+    for (const seance of Object.values(assignment)) {
+      if (seance.type === 'marche-course') {
+        const { contenu, kmEstime, palierLabel } = genererContenuMarcheCourse({ palierId });
+        seance.contenu = contenu;
+        seance.kmEstime = kmEstime;
+        seance.palierLabel = palierLabel;
+      }
+    }
+    warningsPlacement.forEach(w => warnings.push({ ...w, message: `S${s} : ${w.message}` }));
+    semaines.push({ semaineNum: s, phase: 'MarcheCourse', assignment, estDechargeSemaine: false });
+  }
+
+  return {
+    semaines,
+    warnings,
+    profilOrigine: profil,
+    paramsOrigine: params,
+    statuses: {}
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrateur — assemble tout en un Plan conforme au schéma (section 9)
 // ---------------------------------------------------------------------------
 
 export function generatePlan(profil, params) {
+  if (profil.niveau === 'grand-debutant') {
+    return generatePlanMarcheCourse(profil, params);
+  }
+
   const distanceKm = KM_BY_DISTANCE[params.distance];
   const refTimeSeconds = parseTimeToSeconds(params.tempsReference);
   const objectifTimeSeconds = parseTimeToSeconds(params.objectif);
@@ -1886,6 +2030,65 @@ export function calculerACWR(activitesStrava) {
 
 const POIDS_STATUT = { ratee: 1, adaptee: 0.5, reussie: 0 };
 
+// ---------------------------------------------------------------------------
+// Progression marche-course (grand débutant) — distincte du mécanisme
+// d'adaptation classique (décharge de volume) : ici il s'agit de faire
+// avancer ou non le palier de ratio course/marche, pas d'ajuster un volume.
+// Garde-fou de durée totale : au-delà de GARDE_FOU_SEMAINES_MARCHE_COURSE
+// semaines sans atteindre le dernier palier (course continue), on avertit
+// plutôt que de laisser le plan traîner silencieusement (cf. décision du
+// 14/07/2026 : la progression conditionnelle n'a pas de fin automatique,
+// donc il faut un signal si elle ne converge pas).
+// ---------------------------------------------------------------------------
+
+export const GARDE_FOU_SEMAINES_MARCHE_COURSE = 12;
+
+/**
+ * Détermine, à partir des statuts enregistrés, si le coureur est prêt à
+ * passer au palier suivant. Compte les séances "réussie" au palier courant
+ * (profil.palierMarcheCourse) parmi les semaines déjà vécues du plan ; une
+ * séance "ratee" ou "adaptee" ne fait pas reculer le palier mais ne compte
+ * pas non plus comme validation (cohérent avec "pas de saut brutal", et on
+ * ne pénalise pas un grand débutant qui a eu une mauvaise semaine).
+ */
+export function analyserProgressionMarcheCourse(plan) {
+  if (plan.profilOrigine?.niveau !== 'grand-debutant') return null;
+
+  const palierId = plan.profilOrigine?.palierMarcheCourse ?? 0;
+  let seancesValidees = 0;
+  let totalSeancesSuivies = 0;
+  let premiereSeanceSemaine = null;
+  let derniereSeanceSemaine = null;
+
+  for (const semaine of plan.semaines) {
+    for (const [jour, seance] of Object.entries(semaine.assignment)) {
+      if (seance.type !== 'marche-course') continue;
+      const uid = `${semaine.semaineNum}-${jour}`;
+      const statut = plan.statuses?.[uid];
+      if (!statut) continue;
+      totalSeancesSuivies++;
+      if (premiereSeanceSemaine === null) premiereSeanceSemaine = semaine.semaineNum;
+      derniereSeanceSemaine = semaine.semaineNum;
+      if (statut === 'reussie') seancesValidees++;
+    }
+  }
+
+  const { pretPourSuivant } = palierMarcheCourseFor(seancesValidees, palierId);
+  const dernierPalier = palierId >= PALIERS_MARCHE_COURSE.length - 1;
+  const semainesEcoulees = premiereSeanceSemaine !== null
+    ? (derniereSeanceSemaine - premiereSeanceSemaine + 1)
+    : 0;
+
+  const warnings = [];
+  if (!dernierPalier && semainesEcoulees >= GARDE_FOU_SEMAINES_MARCHE_COURSE) {
+    warnings.push({
+      code: 'MARCHE_COURSE_PROGRESSION_LENTE',
+      message: `Toujours au palier "${PALIERS_MARCHE_COURSE[palierId].label}" après ${semainesEcoulees} semaines — ça vaut le coup de vérifier si le rythme est le bon, sans pression pour autant.`
+    });
+  }
+
+  return { palierId, pretPourSuivant, dernierPalier, seancesValidees, totalSeancesSuivies, warnings };
+}
 
 /**
  * Score d'une semaine à partir des statuts des séances dures (qualité +
