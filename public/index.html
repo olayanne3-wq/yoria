@@ -855,26 +855,21 @@ async function fetchCoachMsg() {
   const tomorrowKeySess = ALL_SESSIONS.find(s=>s.date===tomorrowKeyStr&&["VMA","SPEC","SEUIL","TEST"].includes(s.type));
   const isEveOfKeySession = !!tomorrowKeySess;
 
-  // Données Strava de la séance du jour si terminée
-  const todayStravaRun = sessionDone ? stravaActivities.find(r=>r.start_date_local?.slice(0,10)===t) : null;
-  const todayEffortLaps = todayStravaRun ? getLapsAffichage(todayStravaRun, todaySessObj?.structureIntervalles) : [];
-  const todayAvgPace = todayEffortLaps.length > 0
-    ? fmtPace(todayEffortLaps.reduce((s,l)=>s+l.average_speed,0)/todayEffortLaps.length)+"/km"
-    : todayStravaRun ? fmtPace(todayStravaRun.average_speed)+"/km" : null;
-  const todayInTarget = todayEffortLaps.length > 0 && SESSION_TARGETS[sessType]
-    ? todayEffortLaps.filter(l=>(1000/l.average_speed)<=SESSION_TARGETS[sessType].okPace).length+"/"+todayEffortLaps.length+" reps dans la cible"
-    : null;
-  // IE moyen et cadence moyenne de la séance terminée (si assez de données — min 3 séances du même type)
-  const todayNSameType = stravaActivities.filter(a=>{
-    const d = a.start_date_local?.slice(0,10);
-    return ALL_SESSIONS.find(ss=>ss.date===d&&ss.type===sessType);
-  }).length;
-  const todayIEVals = todayEffortLaps.length > 0 ? todayEffortLaps.map(l=>economyScore(l,sessType)).filter(v=>v!==null) : [];
-  const todayAvgIE = (todayIEVals.length > 0 && todayNSameType >= 3)
-    ? Math.round(todayIEVals.reduce((a,b)=>a+b,0)/todayIEVals.length)
-    : null;
-  const todayCadVals = todayEffortLaps.length > 0 ? todayEffortLaps.map(l=>l.average_cadence?Math.round(l.average_cadence*2):null).filter(v=>v!==null) : [];
-  const todayAvgCad = todayCadVals.length > 0 ? Math.round(todayCadVals.reduce((a,b)=>a+b,0)/todayCadVals.length) : null;
+  // Charge d'entraînement (ACWR) — utilisée pour NUANCER le ton du coach
+  // (prudence si charge élevée, encouragement si charge basse/stable),
+  // jamais mentionnée explicitement (terme trop technique pour un message
+  // de coaching quotidien) — demandé par Laurent le 14 juillet 2026 pour
+  // le mode Forme, mais s'applique en pratique à tous les modes puisque
+  // l'ACWR lui-même est déjà indépendant de la notion de course.
+  const acwrActuel = (typeof stravaActivities !== "undefined" && stravaActivities.length)
+    ? calculerACWR(stravaActivities) : null;
+  const ratioActuel = acwrActuel?.dernierRatio ?? null;
+  let consigneChargeInterne = '';
+  if (ratioActuel !== null) {
+    if (ratioActuel > ACWR_SEUIL_RISQUE) consigneChargeInterne = "Charge d'entraînement récente élevée par rapport aux dernières semaines — ton ton doit être prudent, valorise la récupération, n'encourage pas à en faire plus.";
+    else if (ratioActuel > ACWR_SEUIL_VIGILANCE) consigneChargeInterne = "Charge d'entraînement en légère hausse — reste positif mais pas non plus insistant sur l'intensité.";
+    else if (ratioActuel < ACWR_SEUIL_SOUS_CHARGE) consigneChargeInterne = "Charge d'entraînement plutôt basse récemment — tu peux être plus encourageant sur la reprise d'un bon rythme, sans culpabiliser.";
+  }
 
   // Variables lundi matin
   const isMonday = new Date().getDay() === 1;
@@ -887,12 +882,13 @@ async function fetchCoachMsg() {
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
   const prompt = `Tu es Léa, coach running.${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
-Estimation actuelle : ${predNow.timeStr} (${gapStr}).
+${ESTMODEFORME ? '' : `Estimation actuelle : ${predNow.timeStr} (${gapStr}).`}
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} terminée ce soir — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
 ${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
 ${!ESTMODEFORME && isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
+${consigneChargeInterne}
 ${vmaInfo}
 ${isMonday
   ? `Fais un bilan motivant de la semaine ${prevWeekNum} (séances, km, progression) et donne un aperçu positif de la semaine ${currentWeek()} qui commence. 3-4 phrases max.`
@@ -905,7 +901,8 @@ ${isMonday
       : (sessType==='EF'||sessType==='LONGUE'||sessType==='REPOS')
         ? 'La séance du jour N\'A PAS ENCORE EU LIEU (ou c\'est un jour de repos) — ne la commente jamais au passé ni comme si elle était déjà faite. Message court, tourné vers l\'AVANT (préparation, régularité, état d\'esprit pour aujourd\'hui). 2-3 phrases max.'
         : 'La séance du jour N\'A PAS ENCORE EU LIEU — ne la commente jamais au passé ni comme si elle était déjà faite. Génère UN message de coaching court et motivant, tourné vers l\'AVANT, sur la séance à venir. 2-3 phrases max.'}
-${isLastTwoWeeks ? "Mentionne le compte à rebours." : "Ne mentionne pas le nombre de jours restants."}
+${!ESTMODEFORME && isLastTwoWeeks ? "Mentionne le compte à rebours." : "Ne mentionne pas le nombre de jours restants."}
+Ne mentionne jamais le terme "ACWR" ou "charge aiguë/chronique" — reste dans un langage naturel de coach, pas technique.
 Réponds uniquement avec le message, sans guillemets.`;
 
   try {
@@ -2500,7 +2497,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,adaptationEl,heroPred,todayEl||"",phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,adaptationEl,ESTMODEFORME?null:heroPred,todayEl||"",phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
