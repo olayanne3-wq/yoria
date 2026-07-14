@@ -189,7 +189,6 @@ export async function migrerDonneesExistantes(userId, planId) {
         lk_strava_refresh: 'strava_refresh',
         lk_github_token: 'github_token',
         lk_gist_id: 'gist_id',
-        v2_gist_id: 'v2_gist_id',
       };
       const payloadIntegrations = { user_id: userId };
       let auMoinsUneIntegration = false;
@@ -201,6 +200,20 @@ export async function migrerDonneesExistantes(userId, planId) {
             auMoinsUneIntegration = true;
           } catch (e) { /* ignore */ }
         }
+      }
+      // v2_gist_id traité séparément, en lecture BRUTE (pas de JSON.parse) —
+      // contrairement aux autres clés d'intégration, gist-sync.js l'écrit
+      // sans JSON.stringify() (storage.setItem('v2_gist_id', id) brut dans
+      // setV2GistId()). Un JSON.parse('4b9e8e7d...') sur cette valeur
+      // échoue silencieusement (ce n'est pas du JSON valide), donc la
+      // boucle générique ci-dessus ne migrait jamais cette clé, même une
+      // fois ajoutée à CLES_INTEGRATIONS. Bug découvert le 14 juillet 2026,
+      // distinct du bug initial "clé manquante" corrigé plus tôt le même
+      // jour — cf. commentaire sur CLES_INTEGRATIONS plus haut.
+      const v2GistIdBrut = localStorage.getItem('v2_gist_id');
+      if (v2GistIdBrut) {
+        payloadIntegrations.v2_gist_id = v2GistIdBrut;
+        auMoinsUneIntegration = true;
       }
       const stravaExpiresBrut = localStorage.getItem('lk_strava_expires');
       if (stravaExpiresBrut) {
@@ -283,7 +296,18 @@ export async function precharger(userId, planId) {
       // jamais v2_gist_id (le vrai id utilisé par chargerPlans()), donc
       // une nouvelle installation ne retrouvait jamais les plans v2
       // pourtant bien migrés au premier login.
-      if (i.v2_gist_id) localStorage.setItem('v2_gist_id', JSON.stringify(i.v2_gist_id));
+      //
+      // IMPORTANT — pas de JSON.stringify() ici, contrairement aux autres
+      // clés d'intégration : getV2GistId() dans gist-sync.js lit v2_gist_id
+      // en BRUT (storage.getItem('v2_gist_id') sans JSON.parse()), alors que
+      // getGithubToken() dans ce même fichier gère les deux formats. Écrire
+      // une valeur JSON.stringify()-ée ici ("4b9e..." avec guillemets) fait
+      // que chargerPlans() construit une URL GitHub invalide
+      // (api.github.com/gists/%224b9e...%22) et échoue en 404 — bug
+      // découvert le 14 juillet 2026 lors du tout premier test réel sur un
+      // appareil neuf, distinct du bug initial "clé manquante" corrigé plus
+      // tôt le même jour.
+      if (i.v2_gist_id) localStorage.setItem('v2_gist_id', i.v2_gist_id);
       if (i.last_sync) localStorage.setItem('lk_last_sync', JSON.stringify(new Date(i.last_sync).getTime()));
     }
 
