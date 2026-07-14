@@ -4,7 +4,8 @@
     "namespace": "android_app",
     "package_name": "app.vercel.plan_10k_alpha.twa",
     "sha256_cert_fingerprints": [
-      "52:BB:6E:3D:84:10:8F:68:8C:56:33:4C:2D:58:07:B8:55:AF:2E:F6:31:EC:C9:D9:BD:1F:FB:66:F5:30:84:32"
+      "52:BB:6E:3D:84:10:8F:68:8C:56:33:4C:2D:58:07:B8:55:AF:2E:F6:31:EC:C9:D9:BD:1F:FB:66:F5:30:84:32",
+      "A0:1C:C0:57:38:9B:AD:F5:10:8F:EC:0F:F6:A5:5A:BC:19:03:D2:46:CB:65:F2:FB:51:54:9D:37:33:47:52:1F"
     ]
   }
 }]
