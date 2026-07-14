@@ -272,6 +272,14 @@ export function generatePlanForme(profil, params) {
     mode: 'forme',
     accent,
     dateDebut: params.dateDebut,
+    // Date de clôture optionnelle (13 juillet 2026, décision avec Laurent) :
+    // permet de définir une fin explicite au plan Forme, pour pouvoir
+    // planifier un plan course à sa suite sans conflit — cf.
+    // trouverPlanEnConflit()/estPlanEnCours() dans gist-sync.js, qui
+    // considèrent un plan Forme "en cours" indéfiniment (pas de fin
+    // naturelle liée aux blocs générés) tant qu'aucune dateCloture n'est
+    // fixée. undefined si non renseignée, jamais une chaîne vide.
+    dateCloture: params.dateCloture || undefined,
     tailleBlocSemaines: nbSemaines,
     allures,
     zoneFC: (() => {
@@ -299,6 +307,14 @@ export function generatePlanForme(profil, params) {
  * décharge — la décharge est un creux temporaire, pas le nouveau niveau de
  * référence), pour que la progression ne redémarre pas de zéro ni ne recule
  * à chaque enchaînement de bloc.
+ *
+ * IMPORTANT (13 juillet 2026) : ne jamais appeler cette fonction sur un plan
+ * dont dateCloture est déjà fixée — un plan Forme clôturé est figé de façon
+ * permanente (cf. sauvegarderPlan() dans gist-sync.js, qui rejette toute
+ * écriture ultérieure sur un tel plan). Ce module étant un générateur pur,
+ * il ne vérifie pas lui-même ce garde-fou : c'est à l'appelant (index.html)
+ * de contrôler planPrecedent.dateCloture avant d'invoquer genererBlocSuivant,
+ * et de ne jamais tenter de sauvegarder le résultat si le plan est clôturé.
  */
 export function genererBlocSuivant(planPrecedent, profilOrigine, paramsOrigine) {
   const derniereSemaine = planPrecedent.semaines[planPrecedent.semaines.length - 1];
