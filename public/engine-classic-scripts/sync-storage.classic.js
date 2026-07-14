@@ -5,9 +5,17 @@
 // ============================================================
 
 (function () {
+  // v2_gist_id ajouté le 14 juillet 2026 : oubliée depuis la création de
+  // cette liste, c'est l'id du Gist contenant les VRAIS plans v2 (multi-
+  // plans, format wizard) — distinct de lk_gist_id (résidu de l'ancien
+  // système de backup v1). Son absence faisait qu'une nouvelle
+  // installation restaurait lk_gist_id mais jamais v2_gist_id, donc
+  // "Aucun plan enregistré" malgré des plans bien réels sur GitHub.
+  // Nécessite la colonne v2_gist_id (text) sur la table integrations.
   const CLES_INTEGRATIONS = [
     'lk_strava_token', 'lk_strava_refresh', 'lk_strava_expires',
     'lk_strava_activities', 'lk_last_sync', 'lk_github_token', 'lk_gist_id',
+    'v2_gist_id',
   ];
 
   const CLES_LOCALES_UNIQUEMENT = ['lk_weather_cache'];
@@ -105,11 +113,14 @@
           } catch (e) { /* ignore */ }
         }
 
+        // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+        // CLES_INTEGRATIONS plus haut dans ce fichier.
         const colonnes = {
           lk_strava_token: 'strava_token',
           lk_strava_refresh: 'strava_refresh',
           lk_github_token: 'github_token',
           lk_gist_id: 'gist_id',
+          v2_gist_id: 'v2_gist_id',
         };
         const payloadIntegrations = { user_id: userId };
         let auMoinsUneIntegration = false;
@@ -196,6 +207,10 @@
         if (i.strava_activities_cache) localStorage.setItem('lk_strava_activities', JSON.stringify(i.strava_activities_cache));
         if (i.github_token) localStorage.setItem('lk_github_token', JSON.stringify(i.github_token));
         if (i.gist_id) localStorage.setItem('lk_gist_id', JSON.stringify(i.gist_id));
+        // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+        // CLES_INTEGRATIONS plus haut dans ce fichier. Sans cette ligne,
+        // une nouvelle installation ne retrouvait jamais les plans v2.
+        if (i.v2_gist_id) localStorage.setItem('v2_gist_id', JSON.stringify(i.v2_gist_id));
         if (i.last_sync) localStorage.setItem('lk_last_sync', JSON.stringify(new Date(i.last_sync).getTime()));
       }
 
@@ -242,6 +257,8 @@
     }
 
     if (CLES_INTEGRATIONS.indexOf(cle) !== -1) {
+      // v2_gist_id ajouté le 14 juillet 2026 — cf. commentaire sur
+      // CLES_INTEGRATIONS plus haut dans ce fichier.
       const colonnes = {
         lk_strava_token: 'strava_token',
         lk_strava_refresh: 'strava_refresh',
@@ -250,6 +267,7 @@
         lk_last_sync: 'last_sync',
         lk_github_token: 'github_token',
         lk_gist_id: 'gist_id',
+        v2_gist_id: 'v2_gist_id',
       };
       const colonne = colonnes[cle];
       let valeurFinale = valeur;
