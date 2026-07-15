@@ -3042,6 +3042,24 @@
 
   document.getElementById('choix-mode-contenu').style.display = 'block';
 
+  // Grand débutant (v2.8, §17.9) : le profil (Réglages), pas le wizard,
+  // détermine ce niveau — un profil grand-débutant ne peut déclencher
+  // qu'un plan Mode Forme (généré via plan-forme.js, cf. §17.1). "Objectif
+  // course" est grisé plutôt que retiré : plus clair sur pourquoi l'option
+  // n'est pas disponible que si elle disparaissait silencieusement.
+  (function bloquerCourseSiGrandDebutant() {
+    let profilStocke;
+    try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+    if (profilStocke?.niveau !== 'grand-debutant') return;
+
+    const optCourse = document.getElementById('choixModeCourse');
+    optCourse.style.opacity = '0.4';
+    optCourse.style.pointerEvents = 'none';
+    optCourse.onclick = null;
+    const descEl = optCourse.querySelector('.desc');
+    if (descEl) descEl.textContent = "Disponible une fois que tu cours en continu (Mode forme)";
+  })();
+
   if (window.Engine) {
     chargerVolumeStravaForme();
   } else {
