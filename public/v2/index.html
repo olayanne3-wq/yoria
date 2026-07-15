@@ -817,16 +817,9 @@
             <div class="check"></div>
           </div>
         </div>
-
-        <div class="block-label" style="margin-top:22px;">Profil — enregistré une seule fois</div>
-        <div class="date-field">
-          <input type="number" id="birthYearForme" placeholder="Année de naissance" style="font-size:16px; padding:14px;">
-        </div>
-        <p class="sub" style="margin-top:8px; margin-bottom:0;">Sert à calculer une zone de fréquence cardiaque par défaut (formule de Tanaka).</p>
-
-        <div class="date-field" style="margin-top:10px;">
-          <input type="number" id="fcMaxConnueForme" placeholder="FC max connue (optionnel)" style="font-size:16px; padding:14px;">
-        </div>
+        <!-- Champs profil (année naissance, FC max) retirés le 14/07/2026
+             (v2.8, §17.7) — mêmes raisons que côté plan course, voir plus
+             haut. -->
 
         <div class="block-label" style="margin-top:22px;">Une référence de temps, pour calibrer tes allures</div>
         <p class="sub" style="margin-top:0; margin-bottom:8px;">N'importe quelle distance récente (5K, 10K, semi...), même approximative.</p>
@@ -992,18 +985,14 @@
           <div class="check"></div>
         </div>
       </div>
-
-      <div class="block-label" style="margin-top:22px;">Profil — enregistré une seule fois</div>
-      <div class="date-field">
-        <input type="number" id="birthYear" placeholder="Année de naissance" style="font-size:16px; padding:14px;">
-      </div>
-      <p class="sub" style="margin-top:8px; margin-bottom:0;">Sert à calculer une zone de fréquence cardiaque par défaut (formule de Tanaka), en complément des zones d'allure.</p>
-
-      <div class="date-field" style="margin-top:10px;">
-        <input type="number" id="fcMaxConnue" placeholder="FC max connue (optionnel)" style="font-size:16px; padding:14px;">
-      </div>
-      <p class="sub" style="margin-top:8px; margin-bottom:0;">Si tu connais ta vraie FC max (mesurée en course ou via un test), indique-la ici — elle remplacera l'estimation par formule, toujours plus précise qu'une moyenne de population.</p>
     </div>
+
+    <!-- Step 2 : niveau + champs profil (année naissance, FC max) retirés
+         du wizard le 14/07/2026 (v2.8, §17.7) — ces données vivent
+         désormais uniquement dans Réglages > Profil (profilCoureur.niveau,
+         onboarding post-inscription, cf. auth.js/monterEcranOnboarding).
+         collectParamsFromWizard lit désormais profilCoureur directement
+         plutôt que ces champs, cf. plus bas. -->
 
     <!-- STEP 3: Volume actuel -->
     <div class="screen" data-step="3">
@@ -1657,10 +1646,15 @@
       ? parseFloat(document.getElementById('stravaKm').textContent)
       : parseFloat(document.getElementById('manualKm').value);
 
+    let profilStocke;
+    try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+
     const profil = {
       niveau: NIVEAU_MAP[niveauLabel] ?? 'intermediaire',
-      anneeNaissance: parseInt(document.getElementById('birthYear').value) || undefined,
-      fcMaxConnue: parseInt(document.getElementById('fcMaxConnue').value) || undefined,
+      // Retirés du wizard le 14/07/2026 (v2.8, §17.7) — lus depuis le profil
+      // global (Réglages > Profil), plus jamais saisis ici.
+      anneeNaissance: profilStocke?.anneeNaissance || undefined,
+      fcMaxConnue: profilStocke?.fcMax || undefined,
       joursDisponiblesHabituels: joursDisponibles,
       renforcementMusculaire: renfoOn,
       // Palier de départ toujours 0 à la création d'un plan marche-course —
@@ -2731,8 +2725,9 @@
     try { profil = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profil = null; }
     if (!profil) return;
 
-    if (profil.anneeNaissance) document.getElementById('birthYear').value = profil.anneeNaissance;
-    if (profil.fcMax) document.getElementById('fcMaxConnue').value = profil.fcMax;
+    // birthYear/fcMaxConnue retirés du wizard le 14/07/2026 (v2.8, §17.7) —
+    // profil.anneeNaissance et profil.fcMax ne sont plus lus ici, uniquement
+    // depuis Réglages > Profil.
 
     const distanceViseeActuelle = currentDist === '5' ? '5K' : currentDist === '10' ? '10K' : currentDist === '21.1' ? 'Semi' : 'Marathon';
     const ordre = ORDRE_PROXIMITE_DISTANCE[distanceViseeActuelle] || ORDRE_PROXIMITE_DISTANCE['10K'];
@@ -2968,10 +2963,14 @@
       ? parseFloat(document.getElementById('stravaKmForme').textContent)
       : parseFloat(document.getElementById('manualKmForme').value);
 
+    let profilStockeForme;
+    try { profilStockeForme = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStockeForme = null; }
+
     const profil = {
       niveau: NIVEAU_MAP_FORME[niveauLabel] ?? 'intermediaire',
-      anneeNaissance: parseInt(document.getElementById('birthYearForme').value) || undefined,
-      fcMaxConnue: parseInt(document.getElementById('fcMaxConnueForme').value) || undefined,
+      // Retirés du wizard le 14/07/2026 (v2.8, §17.7).
+      anneeNaissance: profilStockeForme?.anneeNaissance || undefined,
+      fcMaxConnue: profilStockeForme?.fcMax || undefined,
       joursDisponiblesHabituels: joursDisponibles,
       renforcementMusculaire: renfoOnForme
     };
