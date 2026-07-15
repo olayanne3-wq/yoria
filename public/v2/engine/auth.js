@@ -220,9 +220,27 @@ export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
       }
     });
 
+    // CORRECTIF SÉCURITÉ (15/07/2026) — deuxième barrière en plus du nettoyage
+    // fait par deconnecter() : celle-ci ne couvre que le cas où l'utilisateur
+    // clique explicitement sur "Se déconnecter". Si une session expire toute
+    // seule, ou qu'un autre compte se connecte directement sans passer par ce
+    // bouton (ex. session Supabase jamais fermée proprement), localStorage
+    // pouvait encore contenir les données du dernier utilisateur. Ici, on
+    // compare l'id de l'utilisateur qui se connecte à celui mémorisé lors de
+    // la dernière connexion sur CET appareil (lk_dernier_user_id, pas une
+    // donnée sensible en soi, juste une empreinte de comparaison) — si ça ne
+    // correspond pas, on purge avant de débloquer l'app, empêchant tout accès
+    // aux données de l'utilisateur précédent le temps d'un seul rendu.
     function debloquer(user) {
       if (dejaResolu) return; // évite une double résolution (ex: getUser() + submit concurrents)
       dejaResolu = true;
+      const dernierUserId = localStorage.getItem('lk_dernier_user_id');
+      if (dernierUserId && dernierUserId !== user.id) {
+        const theme = localStorage.getItem('lk_theme');
+        localStorage.clear();
+        if (theme) localStorage.setItem('lk_theme', theme);
+      }
+      localStorage.setItem('lk_dernier_user_id', user.id);
       ecranAuth.style.display = 'none';
       resolve(user);
     }
@@ -315,10 +333,37 @@ export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
 
 // ------------------------------------------------------------
 // Déconnexion — utilisable depuis renderSettings() par exemple.
+//
+// CORRECTIF SÉCURITÉ CRITIQUE (15/07/2026, signalé par Laurent — après
+// déconnexion/reconnexion sur le même appareil, un compte pouvait voir et
+// SUPPRIMER les plans d'un autre utilisateur). Cause racine : deconnecter()
+// ne faisait que supabase.auth.signOut(), sans jamais vider localStorage.
+// Toutes les données restaient donc en place après déconnexion — en
+// particulier lk_github_token/v2_gist_id, qui pointent vers UN Gist GitHub
+// précis, complètement indépendant de la session Supabase. Un compte B qui
+// se connecte ensuite sur ce même appareil, sans ses propres intégrations
+// GitHub configurées, hérite silencieusement du token/Gist du compte A
+// laissé en place — afficherPlansSauvegardes() (v2/index.html) bascule
+// automatiquement sur ce Gist dès que chargerPlansSupabase() renvoie une
+// liste vide pour le compte B, sans aucune vérification d'appartenance
+// (chargerPlans()/gist-sync.js lit purement localStorage, ignorant tout
+// scoping par utilisateur).
+//
+// Correctif : on vide tout localStorage à la déconnexion, à l'exception de
+// la préférence d'affichage (thème clair/sombre) qui n'est pas une donnée
+// personnelle et n'a aucune raison de forcer une re-sélection à chaque
+// connexion. C'est délibérément une purge large plutôt qu'une liste de clés
+// à retirer une par une : l'historique de ce projet montre plusieurs bugs
+// venant justement d'une clé oubliée dans ce genre de liste (cf. v2_gist_id
+// absent de CLES_INTEGRATIONS, §14 de l'inventaire) — un risque de sécurité
+// ne doit pas dépendre de l'exhaustivité d'une énumération manuelle.
 // ------------------------------------------------------------
 export async function deconnecter() {
   await supabaseReady;
   const { error } = await supabase.auth.signOut();
+  const theme = localStorage.getItem('lk_theme');
+  localStorage.clear();
+  if (theme) localStorage.setItem('lk_theme', theme);
   if (error) throw error;
 }
 
