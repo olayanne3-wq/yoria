@@ -108,14 +108,39 @@ function parserContenuEfOuLongue(contenu) {
  * pas de date explicite par séance (contrairement au PLAN v1 statique).
  */
 function traduirePlanVersFormatV1(plan) {
+  // BUG CORRIGÉ (15/07/2026, signalé par Laurent — dates de séances toutes
+  // décalées, ex. "mardi 16" affiché pour un 16 qui tombait un vendredi) :
+  // le calcul supposait implicitement que plan.dateDebut tombait un LUNDI
+  // (jourIndex 0 de JOUR_NOMS ajouté directement à dateDebut, sans vérifier
+  // le vrai jour de semaine de dateDebut). Rien ne garantit ça nulle part
+  // côté wizard (startDate/dateDebut = la date choisie/le jour de
+  // génération, sans contrainte de jour de semaine) — tous les modes
+  // étaient affectés (course, forme, grand-débutant), le décalage n'étant
+  // simplement remarqué que sur ce dernier.
+  //
+  // Décision avec Laurent : jourIndex (0-6, clé de semaine.assignment, cf.
+  // placerSemaine côté plan-generator.js) représente bien un vrai jour de
+  // semaine ISO (0=lundi ... 6=dimanche, cohérent avec la grille "L M M J V
+  // S D" du wizard) — PAS un simple décalage depuis dateDebut. Le calendrier
+  // est calé sur le LUNDI de la semaine de dateDebut, mais un plan peut
+  // démarrer n'importe quel jour : toute séance dont la date calculée tombe
+  // AVANT dateDebut est neutralisée en repos (la 1re semaine peut donc être
+  // incomplète — ex. généré un mercredi avec Lun/Mer/Ven cochés : la séance
+  // du lundi de cette semaine-là n'a pas lieu, le rythme normal reprend dès
+  // la semaine 2). Jamais de séance affichée dans le passé par rapport à la
+  // date de génération du plan.
   const dateDebut = new Date(plan.dateDebut + 'T00:00:00Z');
+  const jourSemaineISO = (dateDebut.getUTCDay() + 6) % 7; // 0=lundi ... 6=dimanche
+  const lundiDeLaSemaine = new Date(dateDebut);
+  lundiDeLaSemaine.setUTCDate(dateDebut.getUTCDate() - jourSemaineISO);
 
   return plan.semaines.map(semaine => {
     const sessions = JOUR_NOMS.map((jourNom, jourIndex) => {
-      const seance = semaine.assignment[jourIndex];
-      const date = new Date(dateDebut);
-      date.setUTCDate(dateDebut.getUTCDate() + (semaine.semaineNum - 1) * 7 + jourIndex);
+      const date = new Date(lundiDeLaSemaine);
+      date.setUTCDate(lundiDeLaSemaine.getUTCDate() + (semaine.semaineNum - 1) * 7 + jourIndex);
       const dateStr = date.toISOString().slice(0, 10);
+      const avantDebutDuPlan = date < dateDebut;
+      const seance = avantDebutDuPlan ? null : semaine.assignment[jourIndex];
 
       const type = seance ? typeV1DepuisSeanceV2(seance) : 'REPOS';
       // kmEstime réel du moteur, propagé pour que v1 puisse afficher un
