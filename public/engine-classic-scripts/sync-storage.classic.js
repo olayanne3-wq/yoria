@@ -344,6 +344,29 @@
       });
   }
 
+  async function chargerPlansSupabase(userId) {
+    await window.LkAuth.supabaseReady;
+    const supabase = window.LkAuth.supabase;
+    if (!userId) return [];
+    try {
+      const res = await supabase
+        .from('plans')
+        .select('id, nom, plan_brut, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (res.error) {
+        console.warn('chargerPlansSupabase a échoué :', res.error.message);
+        return [];
+      }
+      return (res.data || []).map(function (row) {
+        return Object.assign({}, row.plan_brut, { id: row.id, nom: row.nom || (row.plan_brut && row.plan_brut.nom) });
+      });
+    } catch (err) {
+      console.warn('chargerPlansSupabase a échoué :', err.message);
+      return [];
+    }
+  }
+
   async function assurerPlanExiste(userId, planId, planBrut) {
     if (!estUuidValide(planId)) return;
     await window.LkAuth.supabaseReady;
@@ -421,6 +444,7 @@
     synchroniserVersSupabase: synchroniserVersSupabase,
     migrerDonneesExistantes: migrerDonneesExistantes,
     assurerPlanExiste: assurerPlanExiste,
+    chargerPlansSupabase: chargerPlansSupabase,
     rejouerFileSync: rejouerFileSync,
     activerRealtime: activerRealtime
   };
