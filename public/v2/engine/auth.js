@@ -278,6 +278,131 @@ export async function deconnecter() {
 }
 
 // ------------------------------------------------------------
+// Écran d'onboarding profil — v2.8 (§17.7), affiché une seule fois
+// juste après la création de compte, avant le premier wizard course/
+// forme. Collecte les données qui ne sont plus jamais demandées dans
+// le wizard (année de naissance, FC max, niveau — cf. NIVEAU_MAP dans
+// v2/index.html) puisqu'elles vivent désormais uniquement dans le
+// profil coureur (Réglages), pas dans les paramètres d'un plan précis.
+//
+// Ne touche PAS directement à localStorage/Supabase : l'appelant
+// (index.html / v2/index.html) est responsable de fusionner le retour
+// dans profilCoureur et d'appeler sauvegarderProfilCoureur() — cf.
+// pattern déjà utilisé par monterEcranAuth (resolve(user), pas de
+// persistance interne au module).
+//
+// profilExistant : objet profilCoureur actuel (peut être partiellement
+// rempli si migré depuis l'ancien format, cf. migrerVersProfilCoureur).
+// Résout avec { anneeNaissance, fcMax, niveau } — à fusionner par
+// l'appelant, pas un profil complet (poids/taille/records restent
+// gérés ailleurs dans Réglages, pas dans cet onboarding minimal).
+// ------------------------------------------------------------
+export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
+  const hote = document.getElementById(conteneurId);
+  if (!hote) throw new Error(`monterEcranOnboarding: conteneur #${conteneurId} introuvable`);
+
+  return new Promise((resolve) => {
+    const NIVEAUX = [
+      { val: 'debutant', label: 'Débutant', desc: "Moins de 6 mois de course régulière" },
+      { val: 'intermediaire', label: 'Intermédiaire', desc: "Je cours depuis un moment, j'ai déjà couru un 10K" },
+      { val: 'confirme', label: 'Confirmé', desc: "Plusieurs courses, je connais mes allures" },
+    ];
+    let niveauChoisi = profilExistant.niveau || null;
+
+    hote.innerHTML = `
+      <style>
+      #ecran-onboarding {
+        position: fixed; inset: 0; z-index: 9999;
+        background: var(--bg); color: var(--text);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; box-sizing: border-box; overflow-y: auto;
+      }
+      #ecran-onboarding .carte { width: 100%; max-width: 400px; }
+      #ecran-onboarding .bandeau { text-align: center; margin-bottom: 24px; }
+      #ecran-onboarding .bandeau h1 { font-size: 1.25rem; margin: 0 0 6px; font-weight: 700; }
+      #ecran-onboarding .bandeau .sous-titre { color: var(--text-muted); font-size: 0.85rem; }
+      #ecran-onboarding label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted); }
+      #ecran-onboarding input {
+        width: 100%; padding: 11px 12px; margin-bottom: 16px; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--bg); color: var(--text);
+        font-size: 0.95rem; box-sizing: border-box;
+      }
+      #ecran-onboarding input:focus { outline: none; border-color: var(--accent); }
+      #ecran-onboarding .niveau-opt {
+        display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+        border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+        cursor: pointer; transition: border-color 0.15s, background 0.15s;
+      }
+      #ecran-onboarding .niveau-opt.actif { border-color: var(--accent); background: rgba(var(--accent-rgb),0.08); }
+      #ecran-onboarding .niveau-opt .titre { font-weight: 700; font-size: 0.9rem; }
+      #ecran-onboarding .niveau-opt .desc { font-size: 0.78rem; color: var(--text-muted); }
+      #ecran-onboarding .btn-principal {
+        width: 100%; padding: 12px; border-radius: 8px; border: none;
+        background: var(--accent); color: var(--bg); font-weight: 700;
+        font-size: 0.95rem; cursor: pointer; margin-top: 10px;
+      }
+      #ecran-onboarding .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
+      #ecran-onboarding .lien-secondaire {
+        margin-top: 12px; font-size: 0.82rem; text-align: center; color: var(--text-muted);
+        cursor: pointer; background: none; border: none; width: 100%;
+      }
+      #ecran-onboarding .lien-secondaire:hover { color: var(--accent); }
+      </style>
+      <div id="ecran-onboarding">
+        <div class="carte">
+          <div class="bandeau">
+            <h1>Ton profil</h1>
+            <div class="sous-titre">Ces infos servent à personnaliser tes plans — modifiables plus tard dans Réglages</div>
+          </div>
+          <label for="onb-annee">Année de naissance</label>
+          <input type="number" id="onb-annee" placeholder="1985" min="1920" max="2020" value="${profilExistant.anneeNaissance || ''}">
+          <label for="onb-fcmax">FC max (bpm)</label>
+          <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax && profilExistant.fcMax !== 181 ? profilExistant.fcMax : ''}">
+          <label>Ton niveau</label>
+          <div id="onb-niveaux"></div>
+          <button class="btn-principal" id="onb-valider" disabled>Valider</button>
+          <button class="lien-secondaire" id="onb-passer">Passer pour l'instant</button>
+        </div>
+      </div>
+    `;
+
+    const niveauxHost = hote.querySelector('#onb-niveaux');
+    const validerBtn = hote.querySelector('#onb-valider');
+
+    function rafraichirNiveaux() {
+      niveauxHost.innerHTML = '';
+      NIVEAUX.forEach(n => {
+        const opt = document.createElement('div');
+        opt.className = 'niveau-opt' + (niveauChoisi === n.val ? ' actif' : '');
+        opt.innerHTML = `<div><div class="titre">${n.label}</div><div class="desc">${n.desc}</div></div>`;
+        opt.addEventListener('click', () => {
+          niveauChoisi = n.val;
+          validerBtn.disabled = false;
+          rafraichirNiveaux();
+        });
+        niveauxHost.appendChild(opt);
+      });
+    }
+    rafraichirNiveaux();
+    if (niveauChoisi) validerBtn.disabled = false;
+
+    function terminer(avecNiveau) {
+      hote.querySelector('#ecran-onboarding').style.display = 'none';
+      const annee = parseInt(hote.querySelector('#onb-annee').value) || profilExistant.anneeNaissance || null;
+      const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
+      resolve({
+        anneeNaissance: annee,
+        fcMax: fcmax,
+        niveau: avecNiveau ? niveauChoisi : (profilExistant.niveau || null)
+      });
+    }
+
+    validerBtn.addEventListener('click', () => terminer(true));
+    hote.querySelector('#onb-passer').addEventListener('click', () => terminer(false));
+  });
+}
+
+// ------------------------------------------------------------
 // Récupère l'utilisateur actuellement connecté (ou null), sans
 // afficher l'écran d'auth — utile pour des vérifications ponctuelles.
 // ------------------------------------------------------------
