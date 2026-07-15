@@ -2,9 +2,15 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Rejoignez la bêta privée de Yoria, le coach running intelligent et adaptatif."
   >
 
   <title>Yoria — Bêta privée</title>
@@ -13,30 +19,378 @@
 </head>
 
 <body>
-  <main class="test-page">
-    <h1>Page bêta Yoria</h1>
+  <header class="header">
+    <div class="container nav">
+      <a class="logo" href="#accueil">
+        Yoria
+      </a>
 
-    <p>
-      La page est correctement installée.
-    </p>
+      <nav>
+        <a href="#fonctionnalites">Fonctionnalités</a>
+        <a href="#inscription">Bêta-testeurs</a>
+      </nav>
 
-    <div class="screenshots">
-      <img
-        src="/beta/assets/yoria-dashboard.jpg"
-        alt="Tableau de bord Yoria"
-      >
-
-      <img
-        src="/beta/assets/yoria-stats.jpg"
-        alt="Statistiques Yoria"
-      >
-
-      <img
-        src="/beta/assets/yoria-semaine.jpg"
-        alt="Semaine Yoria"
-      >
+      <a class="button button-small" href="#inscription">
+        Devenir bêta-testeur
+      </a>
     </div>
+  </header>
+
+  <main>
+    <section class="hero" id="accueil">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="pill">Bêta privée</span>
+
+          <h1>
+            Votre coach running intelligent et adaptatif
+          </h1>
+
+          <p>
+            Yoria adapte vos entraînements à votre niveau,
+            votre forme du moment et vos objectifs pour vous
+            aider à progresser durablement.
+          </p>
+
+          <a class="button" href="#inscription">
+            Je souhaite devenir bêta-testeur
+          </a>
+
+          <p class="beta-note">
+            Accès gratuit pendant toute la période de bêta.
+          </p>
+        </div>
+
+        <div class="screenshots">
+          <img
+            src="/beta/assets/yoria-dashboard.jpg"
+            alt="Tableau de bord réel de Yoria"
+          >
+
+          <img
+            src="/beta/assets/yoria-stats.jpg"
+            alt="Statistiques réelles de Yoria"
+          >
+
+          <img
+            src="/beta/assets/yoria-semaine.jpg"
+            alt="Écran semaine réel de Yoria"
+          >
+        </div>
+      </div>
+    </section>
+
+    <section
+      class="section"
+      id="fonctionnalites"
+    >
+      <div class="container">
+        <div class="section-heading">
+          <h2>
+            Tout ce qu’il vous faut pour atteindre vos objectifs
+          </h2>
+        </div>
+
+        <div class="feature-grid">
+          <article>
+            <h3>Plans personnalisés</h3>
+            <p>
+              Des séances adaptées à votre niveau,
+              vos disponibilités et votre objectif.
+            </p>
+          </article>
+
+          <article>
+            <h3>Suivi intelligent</h3>
+            <p>
+              Yoria suit votre progression et prend en compte
+              votre fatigue.
+            </p>
+          </article>
+
+          <article>
+            <h3>Synchronisation Strava</h3>
+            <p>
+              Importez vos sorties afin d’analyser
+              votre activité réelle.
+            </p>
+          </article>
+
+          <article>
+            <h3>Prévision de chrono</h3>
+            <p>
+              Suivez une estimation réaliste de votre niveau
+              et de votre potentiel.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section
+      class="section signup-section"
+      id="inscription"
+    >
+      <div class="container signup-card">
+        <div class="signup-heading">
+          <span class="pill">Places limitées</span>
+
+          <h2>
+            Rejoignez les premiers bêta-testeurs de Yoria
+          </h2>
+
+          <p>
+            Nous recherchons des coureurs de tous niveaux
+            afin de tester l’application en conditions réelles.
+          </p>
+        </div>
+
+        <form id="beta-form">
+          <div class="form-grid">
+            <label>
+              <span>Prénom *</span>
+
+              <input
+                type="text"
+                name="firstName"
+                autocomplete="given-name"
+                required
+              >
+            </label>
+
+            <label>
+              <span>Adresse e-mail *</span>
+
+              <input
+                type="email"
+                name="email"
+                autocomplete="email"
+                required
+              >
+            </label>
+
+            <fieldset>
+              <legend>Votre téléphone *</legend>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="platform"
+                  value="android"
+                  required
+                >
+
+                Android
+              </label>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="platform"
+                  value="iphone"
+                  required
+                >
+
+                iPhone
+              </label>
+            </fieldset>
+
+            <label>
+              <span>Niveau de course *</span>
+
+              <select name="runningLevel" required>
+                <option value="">
+                  Sélectionnez votre niveau
+                </option>
+
+                <option value="debutant">
+                  Débutant
+                </option>
+
+                <option value="intermediaire">
+                  Intermédiaire
+                </option>
+
+                <option value="confirme">
+                  Confirmé
+                </option>
+
+                <option value="competiteur">
+                  Compétiteur
+                </option>
+              </select>
+            </label>
+
+            <label>
+              <span>Nombre de sorties par semaine *</span>
+
+              <select name="runsPerWeek" required>
+                <option value="">
+                  Sélectionnez
+                </option>
+
+                <option value="1">1 sortie</option>
+                <option value="2">2 sorties</option>
+                <option value="3">3 sorties</option>
+                <option value="4">4 sorties</option>
+                <option value="5">5 sorties</option>
+                <option value="6">6 sorties</option>
+                <option value="7">7 sorties</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Distance favorite *</span>
+
+              <select name="favoriteDistance" required>
+                <option value="">
+                  Sélectionnez
+                </option>
+
+                <option value="5-km">5 km</option>
+                <option value="10-km">10 km</option>
+
+                <option value="semi-marathon">
+                  Semi-marathon
+                </option>
+
+                <option value="marathon">
+                  Marathon
+                </option>
+
+                <option value="trail">
+                  Trail
+                </option>
+
+                <option value="debutant">
+                  Je débute
+                </option>
+              </select>
+            </label>
+
+            <fieldset>
+              <legend>Utilisez-vous Strava ? *</legend>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="usesStrava"
+                  value="oui"
+                  required
+                >
+
+                Oui
+              </label>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="usesStrava"
+                  value="non"
+                  required
+                >
+
+                Non
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>
+                Acceptez-vous de répondre à un questionnaire
+                après quelques semaines ? *
+              </legend>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="acceptsFeedback"
+                  value="oui"
+                  required
+                >
+
+                Oui
+              </label>
+
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="acceptsFeedback"
+                  value="non"
+                  required
+                >
+
+                Non
+              </label>
+            </fieldset>
+
+            <label class="full-width">
+              <span>
+                Un mot pour nous
+                <small>(optionnel)</small>
+              </span>
+
+              <textarea
+                name="message"
+                rows="5"
+                maxlength="1500"
+                placeholder="Parlez-nous de vos objectifs ou de ce que vous attendez de Yoria."
+              ></textarea>
+            </label>
+          </div>
+
+          <div
+            class="honeypot"
+            aria-hidden="true"
+          >
+            <label>
+              Ne pas remplir ce champ
+
+              <input
+                type="text"
+                name="website"
+                tabindex="-1"
+                autocomplete="off"
+              >
+            </label>
+          </div>
+
+          <label class="consent">
+            <input
+              type="checkbox"
+              name="consent"
+              required
+            >
+
+            <span>
+              J’accepte que mes informations soient utilisées
+              pour être recontacté dans le cadre de la bêta Yoria.
+            </span>
+          </label>
+
+          <button
+            class="button submit-button"
+            type="submit"
+          >
+            Envoyer ma candidature
+          </button>
+
+          <p
+            id="form-status"
+            class="form-status"
+            aria-live="polite"
+          ></p>
+        </form>
+      </div>
+    </section>
   </main>
+
+  <footer>
+    <div class="container footer-content">
+      <strong>Yoria</strong>
+
+      <span>© 2026 Yoria</span>
+    </div>
+  </footer>
 
   <script src="/beta/script.js"></script>
 </body>
