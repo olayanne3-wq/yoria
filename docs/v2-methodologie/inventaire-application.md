@@ -17,7 +17,7 @@
 > compte ; **bug majeur corrigé** : Supabase était silencieusement absent du chemin de
 > sauvegarde principal (aucun plan ne se sauvegardait sans token GitHub, garde-fou
 > anti-chevauchement contourné) — voir §17 pour le détail complet, reste à faire en
-> §17.16 (paliers de durée continue, blocage séances futures, flèches de navigation,
+> §17.16 (paliers de durée continue, blocage séances futures,
 > suggestion de changement de niveau) ; **bug synchro Strava corrigé** — mismatch de
 > domaine Vercel après rebranding, callback domain Strava à resynchroniser si le domaine
 > change à nouveau, voir §16 ; chantier **marche-course / niveau grand-débutant** —
@@ -33,6 +33,9 @@
 > du coach (prénom, moments de journée, météo dynamique), voir §12 ; **bug TWA duplication
 > de tâches résolu**, voir §13 ; **rebranding Yoria** — nouveau nom, repo renommé
 > plan-10k → yoria).
+> **Navigation par flèches du wizard (17.6) implémentée** — bouton "Continuer"
+> en bas remplacé par des flèches ←/→ en haut sur le wizard course et le Mode
+> Forme (grand-débutant conservé tel quel, un seul écran), voir §19.
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -646,6 +649,7 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Harmonisation visuelle app/wizard (titre + aide dans le header) | ✅ Clos (13 juillet) |
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
+| Navigation par flèches wizard (17.6) | ✅ Clos (15 juillet) — voir §19 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 | **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
@@ -2060,8 +2064,7 @@ réapparaîtra.
   (`PALIERS_MARCHE_COURSE`) avec validation par seuil de séances
   automatique (`palierMarcheCourseFor`), pas la logique décidée en fin
   de session précédente (validation manuelle, coach encourageant).
-- **17.6** Navigation par flèches en haut du wizard (remplace le
-  bouton "Continuer" en bas) — pas commencé.
+- **17.6** ✅ Clos (15 juillet 2026) — voir §19.
 - **17.8** Suggestion automatique de changement de niveau (après
   plusieurs plans terminés, sur un jugement combinant difficulté/
   performance/volume/assiduité) — pas commencé, conception à affiner.
@@ -2220,3 +2223,52 @@ in fine indépendants l'un de l'autre. Retenu : quand un symptôme résiste à u
 correctif ciblé, vérifier les faits un par un directement en console (session réelle,
 requêtes réelles, valeurs réelles en base) plutôt que d'empiler des hypothèses
 successives sans les confirmer individuellement.
+
+## 19. Navigation par flèches dans le wizard (17.6, clos le 15/07/2026)
+
+**Demande** : remplacer le bouton "Continuer" en bas de chaque étape par des
+flèches ←/→ en haut, encadrant le texte "ÉTAPE N SUR X". Périmètre validé avec
+Laurent avant codage : les trois flux (wizard course, Mode Forme, grand-débutant)
+concernés en principe, mais le grand-débutant n'a en réalité qu'un seul écran
+sans étapes numérotées — laissé tel quel (bouton "Générer mon plan" en bas,
+inchangé) après clarification avec Laurent.
+
+**Implémenté** (`public/v2/index.html`) :
+
+- **Wizard course** (steps 1-9) et **Mode Forme** (steps 1-4) : nouveau bloc
+  `.step-nav` remplace l'ancien `.stepmeta` seul — deux boutons ronds
+  `.arrow-btn` (`backBtn`/`nextBtn` pour le wizard course,
+  `backBtnForme`/`nextBtnForme` pour le Mode Forme) encadrent le texte
+  "ÉTAPE N SUR X". Ancien `.footer` (bas d'écran, `position:absolute;
+  bottom:0`) retiré des deux flux.
+- `showStep(n)`/`showStepForme(n)` : la flèche arrière se masque via
+  `classList.toggle('hidden', n === 1)` (nouvelle classe CSS `.arrow-btn.hidden`,
+  `opacity:0; pointer-events:none`) au lieu de l'ancien `style.visibility`. La
+  flèche avant passe en `innerHTML = '→'` normalement, `'✓'` sur la dernière
+  étape (génération du plan) et sur l'écran résultats ("Terminer") — le libellé
+  textuel disparu est conservé en `aria-label`/`title` sur le bouton, pour ne
+  pas perdre l'information pour un lecteur d'écran ou au survol.
+- Logique de navigation (`nextStep`, `prevStep`, `nextStepForme`,
+  `prevStepForme`, y compris le saut conditionnel des étapes 3-5 pour le
+  grand-débutant côté wizard course) **inchangée** — seuls les éléments
+  déclencheurs (flèches au lieu de bouton texte) ont changé, mêmes `id`
+  réutilisés (`backBtn`/`nextBtn`/`backBtnForme`/`nextBtnForme`) donc aucun
+  `onclick` à modifier ailleurs dans le fichier.
+- CSS : `.arrow-btn` (rond, 34px, fond neutre pour ←, `--signal` pour →),
+  `.step-nav` (flex centré, encadre `.stepmeta`). Padding bas de `.content`
+  (130px, pensé pour l'ancien footer absolu) **laissé inchangé** —
+  partagé avec les écrans qui gardent un footer bas (choix de mode,
+  consultation de plans, grand-débutant), donc pas réduit pour ne pas
+  élargir le risque hors du périmètre demandé. Effet secondaire mineur :
+  léger vide en bas des écrans course/forme, purement cosmétique.
+- Vérifié : syntaxe JS valide (`node --check` sur le bloc `<script>`
+  principal, aucune régression).
+
+**Non couvert par ce chantier** : écran grand-débutant (`wizard-grand-debutant-contenu`),
+conservé avec son bouton bas "Générer mon plan" — décision explicite de
+Laurent, cet écran n'a pas de notion d'étapes à naviguer.
+
+**Reste à faire** : test réel sur l'app déployée (parcours complet wizard
+course et Mode Forme avec les nouvelles flèches, y compris le cas
+grand-débutant qui saute les steps 3-5 côté wizard course) — pas encore fait
+à la clôture de cette session.
