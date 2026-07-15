@@ -1648,14 +1648,19 @@
   // (v2_strava_*) pour ne pas interférer avec sa propre session Strava.
   // ===========================================================================
 
-  // ===========================================================================
-  // Intégration Strava — logique pure déplacée dans engine/strava.js.
-  // Ici : seulement les effets de bord (DOM, navigation, history) qui
-  // orchestrent ce module. Cf. engine/strava.js pour la doc complète.
-  // ===========================================================================
-
+  // BUG CORRIGÉ (15/07/2026, signalé par Laurent — bouton "Connecter Strava"
+  // ne déclenchait rien sur l'écran grand-débutant) : appelait
+  // Engine.urlConnexionStrava(), une fonction qui n'a jamais existé nulle
+  // part dans le codebase (ni dans v2/engine/strava.js, ni ailleurs) —
+  // résidu d'une refonte commencée puis jamais terminée. window.location.href
+  // = undefined échouait silencieusement, sans erreur visible. Affectait en
+  // réalité les TROIS boutons Strava du wizard (course, forme,
+  // grand-débutant), qui partagent tous cette même fonction — remarqué
+  // seulement sur ce dernier. Corrigé en revenant au lien direct vers
+  // l'endpoint serverless (même pattern que index.html, qui utilise déjà
+  // simplement href="/api/strava/auth").
   function connecterStrava() {
-    window.location.href = Engine.urlConnexionStrava();
+    window.location.href = '/api/strava/auth?state=v2';
   }
 
   // Efface les tokens Strava stockés et rafraîchit l'affichage pour
