@@ -9,6 +9,7 @@
     { "src": "/api/strava/(.*)", "dest": "/api/strava.js" },
     { "src": "/api/coach", "dest": "/api/coach.js" },
     { "src": "/api/weather", "dest": "/api/weather.js" },
+    { "src": "/api/delete-account", "dest": "/api/delete-account.js" },
     { "src": "/v2", "dest": "/public/v2/index.html" },
     { "src": "/v2/", "dest": "/public/v2/index.html" },
     { "src": "/(.*)", "dest": "/public/$1" }
