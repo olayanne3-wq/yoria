@@ -3071,6 +3071,26 @@
       current = (etapeSauvegardee >= 1 && etapeSauvegardee <= totalSteps) ? etapeSauvegardee : 1;
       showStep(current);
     } else {
+      // BUG CORRIGÉ (15/07/2026, remarqué par Laurent) : un grand-débutant
+      // qui choisit "Mode forme" depuis cet écran (pas via l'onboarding,
+      // cf. rediriger_si_onboarding_grand_debutant plus bas, qui ne
+      // couvre que la toute première sortie d'onboarding) tombait dans le
+      // flux Mode Forme générique à 4 étapes — dont l'étape 4 propose un
+      // accent VMA/Endurance/Polyvalent qui n'a strictement aucun sens
+      // pour ce profil (aucune notion de séance qualité différenciée en
+      // marche-course, cf. plan-forme.js/generatePlanFormeMarcheCourse).
+      // "Objectif course" était déjà grisé pour ce profil
+      // (bloquerCourseSiGrandDebutant), mais "Mode forme" restait un accès
+      // détourné vers le mauvais flux. Redirige maintenant vers l'écran
+      // dédié (jours + Strava uniquement), cohérent avec le chemin normal
+      // depuis l'onboarding.
+      let profilStocke;
+      try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+      if (profilStocke?.niveau === 'grand-debutant') {
+        document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+        renderDaysGrandDebutant();
+        return;
+      }
       document.getElementById('wizard-forme-contenu').style.display = 'block';
       renderDaysForme();
       showStepForme(currentForme);
