@@ -1,1 +1,33 @@
-
+const API="/api/beta-admin",S={items:[],id:null};
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const L={pending:"En attente",selected:"Sélectionné",invited:"Invité",active:"Actif",rejected:"Refusé"};
+const LV={debutant:"Débutant",intermediaire:"Intermédiaire",confirme:"Confirmé",competiteur:"Compétiteur"};
+const D={"5-km":"5 km","10-km":"10 km","semi-marathon":"Semi-marathon",marathon:"Marathon",trail:"Trail",debutant:"Je débute"};
+const P={android:"Android",iphone:"iPhone"};
+const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+const date=v=>v?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(v)):"—";
+const pct=(a,b)=>b?Math.round(a/b*100):0;
+async function req(o={}){const r=await fetch(API,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...o});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.message||"Erreur");e.status=r.status;throw e}return j}
+function auth(ok){$("#login").hidden=ok;$("#admin").hidden=!ok;$("#logout").hidden=!ok;$("#refresh").hidden=!ok}
+async function load(){ $("#loading").hidden=false;$("#error").hidden=true;try{const r=await req({method:"GET"});S.items=r.candidates||[];render()}catch(e){if(e.status===401)return auth(false);$("#error").textContent=e.message;$("#error").hidden=false}finally{$("#loading").hidden=true}}
+$("#login-form").addEventListener("submit",async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await req({method:"POST",body:JSON.stringify({action:"login",password:$("#password").value})});$("#login-form").reset();auth(true);load()}catch(x){$("#login-status").textContent=x.message}finally{b.disabled=false}});
+$("#logout").onclick=async()=>{try{await req({method:"POST",body:JSON.stringify({action:"logout"})})}finally{auth(false)}};
+$("#refresh").onclick=load;
+function card(c){return `<article class="candidate"><div><strong>${esc(c.first_name)}</strong><small>${esc(c.email)}</small><div class="chips"><span class="chip">${esc(P[c.platform]||c.platform)}</span><span class="chip">${esc(LV[c.running_level]||c.running_level)}</span><span class="badge ${esc(c.status)}">${esc(L[c.status]||c.status)}</span></div></div><button class="open" data-id="${esc(c.id)}">Voir</button></article>`}
+function render(){const n=S.items.length,cs=x=>S.items.filter(i=>i.status===x).length;["total","pending","selected","invited","active","rejected"].forEach(k=>$("#s-"+k).textContent=k==="total"?n:cs(k));
+$("#recent").innerHTML=S.items.slice(0,6).map(card).join("")||'<div class="empty">Aucune candidature.</div>';
+const a=S.items.filter(i=>i.platform==="android").length,ip=S.items.filter(i=>i.platform==="iphone").length,st=S.items.filter(i=>i.uses_strava).length,fb=S.items.filter(i=>i.accepts_feedback).length;
+$("#distribution").innerHTML=[["Android",pct(a,n)],["iPhone",pct(ip,n)],["Strava",pct(st,n)],["Questionnaire",pct(fb,n)]].map(x=>`<div><span>${x[0]}</span><strong>${x[1]} %</strong></div>`).join("");
+table();$("#selected-list").innerHTML=S.items.filter(i=>i.status==="selected").map(card).join("")||'<div class="empty">Aucun sélectionné.</div>';$("#invited-list").innerHTML=S.items.filter(i=>i.status==="invited").map(card).join("")||'<div class="empty">Aucun invité.</div>';stats()}
+function filtered(){const q=$("#search").value.toLowerCase(),s=$("#status-filter").value,p=$("#platform-filter").value;return S.items.filter(i=>(!q||i.first_name.toLowerCase().includes(q)||i.email.toLowerCase().includes(q))&&(s==="all"||i.status===s)&&(p==="all"||i.platform===p))}
+function table(){const x=filtered();$("#tbody").innerHTML=x.map(c=>`<tr><td><strong>${esc(c.first_name)}</strong><br><small>${esc(c.email)}</small></td><td>${esc(P[c.platform]||c.platform)}</td><td>${esc(LV[c.running_level]||c.running_level)}</td><td>${c.runs_per_week}</td><td>${esc(D[c.favorite_distance]||c.favorite_distance)}</td><td>${c.uses_strava?"Oui":"Non"}</td><td><span class="badge ${c.status}">${esc(L[c.status])}</span></td><td>${esc(date(c.created_at))}</td><td><button class="open" data-id="${c.id}">Voir</button></td></tr>`).join("");$("#empty").hidden=!!x.length}
+["search","status-filter","platform-filter"].forEach(id=>{$("#"+id).oninput=table;$("#"+id).onchange=table});
+function stats(){const group=(f)=>S.items.reduce((a,i)=>(a[i[f]]=(a[i[f]]||0)+1,a),{}),bar=(obj,labels)=>`<div class="bar-list">${Object.entries(obj).map(([k,v])=>`<div class="bar"><span>${esc(labels[k]||k)}</span><div class="track"><div class="fill" style="width:${pct(v,S.items.length)}%"></div></div><strong>${pct(v,S.items.length)}%</strong></div>`).join("")}</div>`;
+$("#statistics").innerHTML=`<article class="card"><h2>Plateformes</h2>${bar(group("platform"),P)}</article><article class="card"><h2>Niveaux</h2>${bar(group("running_level"),LV)}</article><article class="card"><h2>Distances</h2>${bar(group("favorite_distance"),D)}</article><article class="card"><h2>Engagement</h2>${bar({strava:S.items.filter(i=>i.uses_strava).length,feedback:S.items.filter(i=>i.accepts_feedback).length},{strava:"Strava",feedback:"Questionnaire"})}</article>`}
+function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions">${["selected","invited","active","rejected"].map(s=>`<button data-status="${s}">${L[s]}</button>`).join("")}</div>`;$("#modal").hidden=false}
+function close(){ $("#modal").hidden=true;S.id=null }
+document.addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(b)return open(b.dataset.id);if(e.target.closest("[data-close]"))return close();const a=e.target.closest("[data-status]");if(a&&S.id)update(a.dataset.status)});
+async function update(status){try{const r=await req({method:"PATCH",body:JSON.stringify({id:S.id,status})});const i=S.items.findIndex(x=>x.id===S.id);S.items[i]=r.candidate;render();open(S.id)}catch(e){alert(e.message)}}
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",statistics:"Statistiques"};
+$$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
+(async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
