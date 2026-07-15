@@ -21,7 +21,18 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.8", title:"Grand débutant, plans multiples & fiabilité Supabase", current:true, notes:[
+      { ver:"v2.9", title:"Navigation du wizard, sécurité des comptes & Strava réparé", current:true, notes:[
+        "🧭 Navigation par flèches en haut du wizard (course et Mode Forme), à la place du bouton \"Continuer\" en bas",
+        "🎯 Prochain palier marche-course affiché en permanence sur le dashboard, avec bouton pour passer au palier suivant dès qu'il est débloqué",
+        "🏃 Paliers marche-course revus en durée de course continue (5 à 30 min), validation manuelle par le coureur",
+        "⛔ Impossible de valider une séance dont la date n'est pas encore arrivée, tous modes confondus",
+        "🔐 Correctif de sécurité important : déconnexion nettoyant désormais toutes les données locales, pour éviter qu'un compte n'hérite des plans d'un précédent utilisateur sur le même appareil",
+        "🗓️ Écran \"Aucun plan en cours\" clair quand un compte n'a plus de plan, plutôt qu'un plan de démonstration trompeur",
+        "🐛 Dates de séances corrigées — un plan pouvait démarrer n'importe quel jour de la semaine sans que les dates affichées suivent correctement",
+        "🐛 Connexion Strava réparée sur le wizard (bouton, validation du retour, et sauvegarde du plan qui en dépendait) — cassée depuis un moment suite à un fichier manquant",
+        "🐛 Un grand débutant n'est plus redirigé vers le mauvais parcours de création de plan (accent VMA/Endurance/Polyvalent, non pertinent pour ce profil)",
+      ]},
+      { ver:"v2.8", title:"Grand débutant, plans multiples & fiabilité Supabase", current:false, notes:[
         "🚶 Nouveau niveau \"Je n'ai jamais couru\" : séances marche-course progressives, rattachées au Mode Forme",
         "👤 Niveau et profil déplacés dans Réglages — plus jamais redemandés à chaque nouveau plan",
         "✨ Écran d'accueil du wizard : consulter un plan existant ou en créer un nouveau, clairement séparés",
