@@ -3015,6 +3015,7 @@
       console.error(err);
       return;
     }
+    sessionStorage.removeItem('v2_onboarding_grand_debutant'); // flow terminé, cf. rediriger_si_onboarding_grand_debutant
     plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-grand-debutant-' + Date.now());
     plan.statuses = plan.statuses || {};
     plan.profilOrigine = profil;
@@ -3162,9 +3163,22 @@
   // choisir (Objectif course est de toute façon grisé pour lui, cf.
   // bloquerCourseSiGrandDebutant plus bas — mais autant lui éviter cet
   // écran intermédiaire).
+  //
+  // BUG corrigé le 15/07/2026 : le paramètre ?onboarding=grand-debutant
+  // seul ne suffisait pas — capterRetourStravaOAuth() nettoie l'URL
+  // (history.replaceState) puis force un window.location.reload() au
+  // retour du flow Strava (cf. plus haut, contournement d'un bug de rendu
+  // Android/PWA). Ce reload perdait le paramètre, donc cliquer "Connecter
+  // Strava" depuis l'écran dédié grand-débutant renvoyait ensuite vers le
+  // choix-mode-contenu classique. sessionStorage survit au reload (contrairement
+  // à l'URL une fois nettoyée) — persisté dès l'affichage de l'écran, lu ici
+  // en plus du paramètre d'URL, retiré seulement une fois le plan généré
+  // (cf. genererPlanGrandDebutantUI) pour ne pas re-déclencher indéfiniment.
   (function rediriger_si_onboarding_grand_debutant() {
-    const vientDeOnboarding = new URLSearchParams(window.location.search).get('onboarding') === 'grand-debutant';
-    if (!vientDeOnboarding) return;
+    const vientDeOnboardingUrl = new URLSearchParams(window.location.search).get('onboarding') === 'grand-debutant';
+    const vientDeOnboardingSession = sessionStorage.getItem('v2_onboarding_grand_debutant') === 'true';
+    if (!vientDeOnboardingUrl && !vientDeOnboardingSession) return;
+    sessionStorage.setItem('v2_onboarding_grand_debutant', 'true');
     window.history.replaceState({}, document.title, window.location.pathname); // nettoie l'URL
     document.getElementById('choix-mode-contenu').style.display = 'none';
     document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
