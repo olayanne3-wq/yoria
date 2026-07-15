@@ -24,6 +24,7 @@
 // ============================================================
 
 import { supabase, supabaseReady } from './auth.js';
+import { trouverPlanEnConflit } from './gist-sync.js';
 
 // Clés globales (non préfixées par plan) à synchroniser avec la table
 // `integrations` plutôt que `profils_coureur` ou `plan_donnees` —
@@ -512,6 +513,30 @@ export async function assurerPlanExiste(userId, planId, planBrut) {
     }
     if (existant) return; // déjà là, rien à faire
 
+    // Garde-fou anti-chevauchement — porté depuis gist-sync.js le
+    // 15/07/2026 (v2.8). Jusqu'ici, cette vérification n'existait que côté
+    // sauvegarderPlan() (Gist) : depuis que Supabase est devenu le
+    // mécanisme de sauvegarde PRINCIPAL (même jour, correctif "Supabase
+    // devient le mécanisme de sauvegarde principal"), elle était
+    // silencieusement contournée pour tout nouveau plan créé via
+    // assurerPlanExiste — pas spécifique au grand-débutant, un trou pour
+    // tous les modes (course, forme, grand-débutant). Même règle
+    // qu'avant : un plan Forme sans dateCloture bloque tout nouveau plan
+    // (course ou forme) tant qu'il n'est pas clôturé — cf.
+    // dateFinPeriodeActive()/trouverPlanEnConflit() dans gist-sync.js pour
+    // le détail des règles.
+    if (planBrut?.dateDebut) {
+      const plansExistants = await chargerPlansSupabase(userId);
+      const dateFinDuNouveauPlan = planBrut.mode === 'forme' ? (planBrut.dateCloture || null) : planBrut.dateCourse;
+      const conflit = trouverPlanEnConflit(plansExistants, planBrut.dateDebut, dateFinDuNouveauPlan, planId);
+      if (conflit) {
+        const nomConflit = conflit.nom || (conflit.mode === 'forme' ? 'Plan forme' : `${conflit.distance || '?'} — ${conflit.objectif || '?'}`);
+        const finConflit = conflit.mode === 'forme' ? (conflit.dateCloture || 'sans date de fin') : conflit.dateCourse;
+        const finNouveau = dateFinDuNouveauPlan || 'sans date de fin';
+        throw new Error(`Ce plan (${planBrut.dateDebut} → ${finNouveau}) chevauche un plan déjà actif : "${nomConflit}" (${conflit.dateDebut} → ${finConflit}). Un seul plan peut être actif à la fois — clôture ou supprime le plan existant, ou choisis d'autres dates.`);
+      }
+    }
+
     const nom = planBrut?.nom || `${planBrut?.distance || ''} — ${planBrut?.objectif || ''}`.trim() || 'Plan';
     const { error: erreurInsertion } = await supabase.from('plans').insert({
       id: planId,
@@ -523,6 +548,10 @@ export async function assurerPlanExiste(userId, planId, planBrut) {
       console.warn('Création de la ligne plans échouée :', erreurInsertion.message);
     }
   } catch (err) {
+    // Re-lance si c'est notre propre erreur de conflit (message déjà
+    // clair pour l'utilisateur) — les autres erreurs (réseau, etc.)
+    // restent en best-effort silencieux comme avant.
+    if (err.message?.includes('chevauche un plan déjà actif')) throw err;
     console.warn('assurerPlanExiste a échoué :', err.message);
   }
 }
