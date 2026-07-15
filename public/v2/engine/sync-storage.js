@@ -485,17 +485,44 @@ export async function chargerPlansSupabase(userId) {
 }
 
 // ------------------------------------------------------------
-// Clôture un plan Forme déjà existant côté Supabase — v2.8, 15/07/2026.
+// Met à jour un plan Forme déjà existant côté Supabase — v2.8, 15/07/2026.
 // assurerPlanExiste() ne fait jamais de mise à jour (juste "créer si
-// absent"), donc insuffisant pour fixer dateCloture sur un plan déjà en
-// base. Utilisé notamment par la bannière de transition grand-débutant
-// ("🏆 Tu cours en continu !", index.html) : sans cette fonction, le clic
-// sur "Configurer mon prochain plan" ne clôturait jamais le plan
-// grand-débutant en cours, qui restait donc "actif indéfiniment" —
-// bloquant la création du nouveau plan par le garde-fou anti-chevauchement
-// (assurerPlanExiste, réactivé le même jour) qu'on est justement censé
-// pouvoir franchir à ce moment précis.
+// absent"), donc insuffisant pour modifier un plan déjà en base (clôture,
+// renommage). Remplace intégralement plan_brut (pas de merge partiel —
+// l'appelant doit fournir l'objet plan complet et à jour) ; met aussi à
+// jour la colonne `nom` dénormalisée si planBrut.nom est fourni, pour
+// rester cohérente avec ce que chargerPlansSupabase() lit en priorité.
+//
+// Utilisée notamment par la bannière de transition grand-débutant ("🏆 Tu
+// cours en continu !", index.html) : sans cette fonction, le clic sur
+// "Configurer mon prochain plan" ne clôturait jamais le plan grand-
+// débutant en cours, qui restait donc "actif indéfiniment" — bloquant la
+// création du nouveau plan par le garde-fou anti-chevauchement
+// (assurerPlanExiste, réactivé le même jour). Également utilisée par la
+// clôture manuelle depuis Réglages (index.html), qui renomme aussi le
+// plan si son nom semblait auto-généré (cf. nommerPlanForme, v2/index.html).
 // ------------------------------------------------------------
+export async function mettreAJourPlanSupabase(planId, planBrutComplet) {
+  await supabaseReady;
+  if (!estUuidValide(planId)) return;
+  try {
+    const payload = { plan_brut: planBrutComplet };
+    if (planBrutComplet?.nom) payload.nom = planBrutComplet.nom;
+    const { error } = await supabase.from('plans').update(payload).eq('id', planId);
+    if (error) {
+      console.warn('Mise à jour du plan échouée :', error.message);
+    }
+  } catch (err) {
+    console.warn('mettreAJourPlanSupabase a échoué :', err.message);
+  }
+}
+
+// Conservée pour compatibilité : clôture seule (pas de renommage), utilisée
+// par la bannière grand-débutant où il n'y a pas de nom particulier à
+// synchroniser (le nom auto-généré à la création reste correct — il ne
+// mentionne la date de clôture que si generatePlanForme la connaît déjà
+// à ce moment-là, ce qui n'est pas le cas ici puisqu'elle est décidée
+// après coup). Repose sur mettreAJourPlanSupabase() pour l'écriture.
 export async function cloturerPlanSupabase(planId, dateCloture) {
   await supabaseReady;
   if (!estUuidValide(planId)) return;
