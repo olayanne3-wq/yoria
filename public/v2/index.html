@@ -158,13 +158,48 @@
 
   .stepmeta{
     display:flex;
-    justify-content:space-between;
+    justify-content:center;
     align-items:baseline;
+    gap:6px;
     padding:12px 20px 0 20px;
     font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;
   }
   .stepmeta .num{ font-size:12px; color:var(--signal); letter-spacing:.06em; }
   .stepmeta .total{ font-size:12px; color:rgba(var(--text-rgb),0.4); }
+
+  /* Navigation par flèches en haut — remplace le footer bas (17.6,
+     15/07/2026). Les flèches encadrent le stepmeta (ÉTAPE N SUR X) plutôt
+     que d'être une ligne séparée, pour rester compact en haut d'écran. */
+  .step-nav{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    padding:14px 20px 0 20px;
+  }
+  .step-nav .stepmeta{ padding:0; flex:0 0 auto; }
+  .arrow-btn{
+    width:34px; height:34px;
+    border-radius:50%;
+    border:none;
+    background:rgba(var(--text-rgb),0.07);
+    color:var(--paper);
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    flex:0 0 auto;
+    transition:opacity .15s;
+  }
+  .arrow-btn.next{
+    background:var(--signal);
+    color:var(--ink);
+  }
+  .arrow-btn:disabled,
+  .arrow-btn.hidden{
+    opacity:0;
+    pointer-events:none;
+  }
 
   .content{
     flex:1;
@@ -829,9 +864,13 @@
   ============================================================ -->
   <div id="wizard-forme-contenu" style="display:none;">
     <div class="track" id="trackForme"></div>
-    <div class="stepmeta">
-      <span class="num" id="stepNumForme">ÉTAPE 1</span>
-      <span class="total">SUR 4</span>
+    <div class="step-nav">
+      <button class="arrow-btn back" id="backBtnForme" onclick="prevStepForme()" aria-label="Étape précédente">←</button>
+      <div class="stepmeta">
+        <span class="num" id="stepNumForme">ÉTAPE 1</span>
+        <span class="total">SUR 4</span>
+      </div>
+      <button class="arrow-btn next" id="nextBtnForme" onclick="nextStepForme()" aria-label="Étape suivante">→</button>
     </div>
 
     <div class="content">
@@ -941,11 +980,6 @@
       </div>
 
     </div>
-
-    <div class="footer">
-      <button class="btn btn-back" id="backBtnForme" onclick="prevStepForme()">←</button>
-      <button class="btn btn-next" id="nextBtnForme" onclick="nextStepForme()">Continuer</button>
-    </div>
   </div>
 
   <!-- ============================================================
@@ -985,9 +1019,13 @@
 
   <div id="wizard-course-contenu" style="display:none;">
   <div class="track" id="track"></div>
-  <div class="stepmeta">
-    <span class="num" id="stepNum">ÉTAPE 1</span>
-    <span class="total">SUR 9</span>
+  <div class="step-nav">
+    <button class="arrow-btn back" id="backBtn" onclick="prevStep()" aria-label="Étape précédente">←</button>
+    <div class="stepmeta">
+      <span class="num" id="stepNum">ÉTAPE 1</span>
+      <span class="total">SUR 9</span>
+    </div>
+    <button class="arrow-btn next" id="nextBtn" onclick="nextStep()" aria-label="Étape suivante">→</button>
   </div>
 
   <div class="content">
@@ -1345,11 +1383,6 @@
       <div id="resWarnings"></div>
     </div>
 
-  </div>
-
-  <div class="footer">
-    <button class="btn btn-back" id="backBtn" onclick="prevStep()">←</button>
-    <button class="btn btn-next" id="nextBtn" onclick="nextStep()">Continuer</button>
   </div>
   </div>
 
@@ -2387,7 +2420,9 @@
     document.getElementById('wizard-course-contenu').style.display = 'block';
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
-    document.getElementById('nextBtn').textContent = 'Terminer';
+    document.getElementById('nextBtn').innerHTML = '✓';
+    document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
+    document.getElementById('nextBtn').title = 'Terminer';
   }
 
   async function renommerPlanUI(id) {
@@ -2468,7 +2503,9 @@
     showingResults = true;
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
-    document.getElementById('nextBtn').textContent = 'Terminer';
+    document.getElementById('nextBtn').innerHTML = '✓';
+    document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
+    document.getElementById('nextBtn').title = 'Terminer';
   }
 
   function updatePaceHelper(){
@@ -2608,8 +2645,12 @@
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     document.querySelector(`.screen[data-step="${n}"]`).classList.add('active');
     document.getElementById('stepNum').textContent = 'ÉTAPE ' + n;
-    document.getElementById('backBtn').style.visibility = n === 1 ? 'hidden' : 'visible';
-    document.getElementById('nextBtn').textContent = n === totalSteps ? 'Générer le plan' : 'Continuer';
+    const backBtn = document.getElementById('backBtn');
+    backBtn.classList.toggle('hidden', n === 1);
+    const nextBtn = document.getElementById('nextBtn');
+    nextBtn.innerHTML = n === totalSteps ? '✓' : '→';
+    nextBtn.setAttribute('aria-label', n === totalSteps ? 'Générer le plan' : 'Étape suivante');
+    nextBtn.title = n === totalSteps ? 'Générer le plan' : 'Continuer';
     if (n === 6) {
       // Marche-course : pas de "jour de course" à proprement parler, juste
       // une échéance de fin de bloc — libellés adaptés, infos course
@@ -3055,8 +3096,12 @@
     document.querySelectorAll('#wizard-forme-contenu .screen').forEach(s => s.classList.remove('active'));
     document.querySelector(`#wizard-forme-contenu .screen[data-step-forme="${n}"]`).classList.add('active');
     document.getElementById('stepNumForme').textContent = 'ÉTAPE ' + n;
-    document.getElementById('backBtnForme').style.visibility = n === 1 ? 'hidden' : 'visible';
-    document.getElementById('nextBtnForme').textContent = n === totalStepsForme ? 'Générer le plan' : 'Continuer';
+    const backBtnForme = document.getElementById('backBtnForme');
+    backBtnForme.classList.toggle('hidden', n === 1);
+    const nextBtnForme = document.getElementById('nextBtnForme');
+    nextBtnForme.innerHTML = n === totalStepsForme ? '✓' : '→';
+    nextBtnForme.setAttribute('aria-label', n === totalStepsForme ? 'Générer le plan' : 'Étape suivante');
+    nextBtnForme.title = n === totalStepsForme ? 'Générer le plan' : 'Continuer';
     if (n === 1) {
       // Grand débutant (v2.8, §17.9) : pas d'objectif/estimation de temps —
       // le champ de référence n'a pas de sens tant qu'aucune course continue
@@ -3214,7 +3259,9 @@
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
     document.getElementById('wizard-course-contenu').style.display = 'block';
-    document.getElementById('nextBtn').textContent = 'Terminer';
+    document.getElementById('nextBtn').innerHTML = '✓';
+    document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
+    document.getElementById('nextBtn').title = 'Terminer';
   }
 
   function toggleManualVolumeForme(){
@@ -3357,7 +3404,9 @@
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
     document.getElementById('wizard-course-contenu').style.display = 'block';
-    document.getElementById('nextBtn').textContent = 'Terminer';
+    document.getElementById('nextBtn').innerHTML = '✓';
+    document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
+    document.getElementById('nextBtn').title = 'Terminer';
   }
 
   // v2.8 (15/07/2026) : accueil-wizard-contenu (Consulter/Créer) affiché
