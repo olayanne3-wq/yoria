@@ -1,43 +1,20 @@
 # Inventaire de l'application "Yoria"
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
-> sans re-parcourir tout le repo. Mis à jour au 15 juillet 2026 (**bug Strava résolu** —
-> access_token invalidé après reconnexion Supabase, non détecté par ensureFreshToken()
-> qui ne vérifie que l'expiration locale ; **bug sélection du plan actif corrigé** —
-> l'app prenait le plan le plus récemment créé plutôt que la course la plus proche
-> quand plusieurs plans sont actifs en parallèle ; **bug onboarding en boucle résolu** —
-> niveau:null traité comme "jamais renseigné", redéclenchait l'écran à l'infini ; le
-> bouton "Passer pour l'instant" de l'onboarding a été retiré, le choix du niveau est
-> désormais obligatoire ; voir §18 pour le détail complet ; **site "beta" ajouté au
-> repo** (public/beta/, api/beta.js, routes dédiées) par Laurent, indépendant de l'app
-> principale, à ne jamais toucher lors des mises à jour de Yoria — voir §18.1 ; **v2.8
-> implémentée en
-> grande partie** — grand-débutant rattaché au Mode Forme, écran dédié + onboarding,
-> écran d'accueil Consulter/Créer, nommage automatique des plans Forme, suppression de
-> compte ; **bug majeur corrigé** : Supabase était silencieusement absent du chemin de
-> sauvegarde principal (aucun plan ne se sauvegardait sans token GitHub, garde-fou
-> anti-chevauchement contourné) — voir §17 pour le détail complet, reste à faire en
-> §17.16 (paliers de durée continue, blocage séances futures,
-> suggestion de changement de niveau) ; **bug synchro Strava corrigé** — mismatch de
-> domaine Vercel après rebranding, callback domain Strava à resynchroniser si le domaine
-> change à nouveau, voir §16 ; chantier **marche-course / niveau grand-débutant** —
-> moteur, pont v1, wizard et dashboard initiaux, puis refondus par v2.8 (§17.1) ; **bug
-> POIDS_STATUT corrigé au passage** (l'adaptation dynamique était silencieusement cassée
-> depuis un moment), voir §15.5 ; bug v2_gist_id résolu, voir §14 ; chantier ACWR
-> toujours en cours ;
-> harmonisation visuelle app/wizard ; badge décharge onglet Semaines ; **v2.5 publiée** —
-> authentification Supabase, migration rétroactive, sync temps réel, wizard protégé,
-> nettoyage Réglages, variables d'env Vercel, file d'attente de sync ; **publication
-> Play Store en cours**, voir §11 ; **Mode Forme (v2.6) câblé de bout en bout** — wizard,
-> dashboard, coach adapté, clôture permanente avec garde-fou anti-chevauchement, fiabilité
-> du coach (prénom, moments de journée, météo dynamique), voir §12 ; **bug TWA duplication
-> de tâches résolu**, voir §13 ; **rebranding Yoria** — nouveau nom, repo renommé
-> plan-10k → yoria).
-> **Navigation par flèches du wizard (17.6) implémentée** — bouton "Continuer"
-> en bas remplacé par des flèches ←/→ en haut sur le wizard course et le Mode
-> Forme (grand-débutant conservé tel quel, un seul écran), voir §19.
-> **Blocage des séances futures (17.4) implémenté** — un statut de séance
-> (✅/❌/⚠️) n'est plus modifiable avant le jour J, tous modes, voir §20.
+> sans re-parcourir tout le repo. Mis à jour au 15 juillet 2026.
+>
+> **État courant (résumé)** : v2.9 tout juste clos — voir §21 pour le détail complet
+> de cette dernière session (paliers marche-course en durée continue + validation
+> manuelle, carte de progression permanente au dashboard, correctif dates de séances,
+> **correctif de sécurité critique** sur la déconnexion entre comptes, écran "Aucun
+> plan en cours", correctif de redirection grand-débutant, et **reconstruction du
+> module client Strava** qui n'existait en réalité jamais). v2.8 (§17-§18) avait
+> traité le niveau grand-débutant/marche-course, la fiabilité Supabase (garde-fou
+> anti-chevauchement, sauvegarde), l'écran d'accueil Consulter/Créer, et plusieurs
+> bugs de synchro/onboarding. Le rebranding Yoria (§13-§14) et l'authentification
+> Supabase (§8bis, v2.5) sont clos et stables. Publication Play Store en piste de
+> test interne (§11). Site "beta" indépendant à ne jamais toucher (§18.1).
+>
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -653,6 +630,13 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
 | Navigation par flèches wizard (17.6) | ✅ Clos (15 juillet) — voir §19 |
 | Blocage validation séances futures (17.4) | ✅ Clos (15 juillet) — voir §20 |
+| Paliers marche-course en durée continue + validation manuelle (17.5) | ✅ Clos (15 juillet) — voir §21 |
+| Prochain palier affiché en permanence au dashboard | ✅ Clos (15 juillet) — voir §21 |
+| Correctif dates de séances (calendrier ne suppose plus lundi) | ✅ Clos (15 juillet) — voir §21 |
+| Correctif sécurité : purge localStorage à la déconnexion | ✅ Clos (15 juillet) — voir §21 |
+| Écran "Aucun plan en cours" (plan de repli marqué explicitement) | ✅ Clos (15 juillet) — voir §21 |
+| Grand débutant redirigé vers le mauvais flux (accent) | ✅ Clos (15 juillet) — voir §21 |
+| Module client Strava manquant (wizard) | ✅ Clos (15 juillet) — voir §21 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 | **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
@@ -2319,3 +2303,231 @@ suffisant pour ce cas marginal.
 semaine, boutons bien désactivés ; séance du jour même veille au soir,
 toujours validable ; cas d'une séance validée puis déplacée dans le futur,
 bouton "—" toujours actif) — pas encore fait à la clôture de cette session.
+
+## 21. v2.9 — 17.5, correctifs sécurité et fiabilité (15/07/2026, session ultérieure)
+
+Suite directe de la session v2.8 (§17-§20). Plusieurs bugs remontés par
+Laurent en testant les correctifs précédents en conditions réelles, certains
+de gravité élevée (sécurité). Chronologie : 17.5 → correctif dates → bug
+sécurité déconnexion → écran vide → redirection grand-débutant → module
+Strava manquant.
+
+### 21.1 Paliers marche-course en durée continue (17.5) + prochain palier au dashboard
+
+Refonte demandée par Laurent : remplacer le système de paliers en ratio
+course/marche (ex. "3min course / 1min30 marche") par des paliers de durée
+de course **continue**, avec validation manuelle du coureur plutôt
+qu'automatique par seuil de séances.
+
+- **Nouveaux paliers** (`PALIERS_MARCHE_COURSE`, `plan-generator.js` +
+  classic) : 7 paliers, 5→8→12→16→20→25→30 min de course continue, plus
+  rapprochés en début de progression. Échauffement/retour au calme en
+  marche calculés dynamiquement (`DUREE_CIBLE_MARCHE_COURSE_MIN` -
+  `courseMin`, réparti de chaque côté, minimum 5min chacun) plutôt que fixes.
+- **Validation manuelle** (`palierMarcheCourseFor`) : une seule séance "✅"
+  au palier courant suffit à débloquer le bouton "Palier suivant" — plus de
+  seuil de nombre de séances (`SEANCES_MIN_PAR_PALIER` retiré). Le passage
+  reste toujours une action volontaire, jamais automatique.
+- **Carte permanente "Progression marche-course"** ajoutée au dashboard
+  (`index.html`, `prochainPalierEl`), même esprit que `heroPred`
+  (objectif/estimation du mode course) : palier actuel, palier suivant avec
+  badge "🎉 Débloqué" si validé, bouton direct pour passer au palier suivant
+  sans attendre la bannière ponctuelle (`progressionMarcheCourseEl`, qui
+  reste aussi affichée en complément).
+- **Bug corrigé au passage** : le bouton "Palier suivant" (bannière) lisait
+  `window.__PLAN_BRUT__.profilOrigine`/`paramsOrigine` et appelait
+  `generatePlan()` — ces champs n'existent PAS sur un plan grand-débutant
+  (généré par `generatePlanFormeMarcheCourse`, qui ne stocke ni profil ni
+  params d'origine, cf. §17.1). Le bouton plantait donc systématiquement en
+  pratique. Nouvelle fonction `changerPalierGrandDebutant(nouveauPalierId)`
+  (`index.html`) qui reconstruit correctement profil/params à partir des
+  données réellement disponibles (jours déduits de
+  `plan.semaines[0].assignment`, reste lu depuis `lk_profil_coureur`),
+  utilise `generatePlanForme` (nécessite `plan-forme.classic.js`, **ajouté
+  au chargement de `index.html`**, absent jusqu'ici), et sauvegarde via le
+  même pattern Supabase-prioritaire que le reste de l'app.
+
+### 21.2 Correctif dates de séances — le calendrier ne suppose plus lundi
+
+**Symptôme signalé** : dates de séances toutes décalées (ex. "mardi 16"
+affiché pour un 16 qui tombait un vendredi), repéré sur un plan
+grand-débutant mais touchant en réalité tous les modes.
+
+**Cause** : `traduirePlanVersFormatV1()` (`v1-bridge.js` + classic)
+calculait chaque date en ajoutant directement `jourIndex` (0-6) à
+`plan.dateDebut`, en supposant implicitement que `jourIndex 0` = lundi de
+CETTE date précise — vrai seulement si `dateDebut` tombe elle-même un
+lundi. Rien, nulle part côté wizard, ne garantit ça (`dateDebut` = date
+choisie ou date du jour de génération, sans contrainte de jour de semaine).
+
+**Correctif, décidé avec Laurent** : un plan peut démarrer n'importe quel
+jour de la semaine. Le calendrier se cale sur le vrai LUNDI de la semaine de
+`dateDebut` ; toute séance dont la date calculée tombe AVANT `dateDebut` est
+neutralisée en repos — la première semaine peut donc être incomplète (jours
+passés sautés), le rythme normal reprend dès la semaine 2. Jamais de séance
+affichée dans le passé par rapport à la génération du plan.
+
+Testé manuellement (3 cas : démarrage vendredi, lundi, dimanche) — dates et
+labels de jour cohérents dans les trois. Corrigé dans `v1-bridge.js` et sa
+copie classic, gardées strictement identiques (vérifié par diff).
+
+### 21.3 CORRECTIF SÉCURITÉ CRITIQUE — fuite de données entre comptes
+
+**Symptôme signalé par Laurent, gravité élevée** : après déconnexion/
+reconnexion sur le même appareil, un compte pouvait voir ET supprimer les
+plans d'un autre utilisateur.
+
+**Cause racine** : `deconnecter()` (`auth.js`/`auth.classic.js`) ne faisait
+que `supabase.auth.signOut()` — ne vidait jamais `localStorage`. Or
+`lk_github_token`/`v2_gist_id` (pointant vers un Gist GitHub précis) sont
+complètement indépendants de la session Supabase. Un compte B se
+connectant ensuite sur le même appareil, sans ses propres intégrations
+GitHub configurées, héritait silencieusement du token/Gist du compte A
+laissé en place — `afficherPlansSauvegardes()` (`v2/index.html`) bascule
+automatiquement sur ce Gist dès que `chargerPlansSupabase()` renvoie une
+liste vide, sans aucune vérification d'appartenance
+(`chargerPlans()`/`gist-sync.js` lit purement `localStorage`, ignorant tout
+scoping par utilisateur).
+
+**Correctif, deux barrières** :
+1. `deconnecter()` vide maintenant tout `localStorage` (sauf `lk_theme`,
+   préférence d'affichage non personnelle) — purge large plutôt qu'une
+   liste de clés à retirer une par une, choix délibéré : l'historique de ce
+   projet montre plusieurs bugs venant justement d'une clé oubliée dans ce
+   genre de liste (cf. `v2_gist_id` absent de `CLES_INTEGRATIONS`, §14).
+2. Barrière supplémentaire dans `debloquer(user)` (point de passage unique
+   de toute connexion réussie, `auth.js`/`auth.classic.js`) : compare l'id
+   de l'utilisateur qui se connecte à celui de la dernière connexion connue
+   sur cet appareil (`lk_dernier_user_id`) — purge automatique en cas de
+   changement, même si la déconnexion précédente n'est pas passée par le
+   bouton explicite (session expirée, etc.).
+
+Corrigé dans les deux versions (`auth.js` et `auth.classic.js`). **Nécessite
+une déconnexion pour prendre effet** sur un appareil déjà affecté (la
+barrière ne s'active qu'au moment de `debloquer(user)`, donc tant qu'une
+session reste active sans repasser par l'écran de connexion, l'ancien
+`localStorage` pollué persiste) — confirmé fonctionnel par Laurent après
+déconnexion/reconnexion.
+
+### 21.4 Écran "Aucun plan en cours" — le plan de repli factice ne s'affiche plus comme un vrai plan
+
+**Symptôme signalé, découlant directement de 21.3** : après la purge de
+`localStorage`, plus aucun plan dans la liste, mais un "plan réminiscent"
+persistait à l'affichage.
+
+**Cause** : ce n'était pas une fuite résiduelle mais un comportement
+existant révélé par le nouvel état "0 plan" (désormais légitime après une
+purge) : `window.__PLAN_PRET__` (`index.html`) génère automatiquement un
+plan factice codé en dur (paramètres historiques de Laurent, "10 km
+Gem'Aubagne") dès que Supabase ET Gist sont tous deux vides, pour ne jamais
+laisser un écran cassé — mais ce plan s'affichait tel quel comme un vrai
+plan actif, trompeur.
+
+**Correctif** :
+- Ce plan de repli est marqué `estPlanRepli: true`.
+- `renderDashboard()` détecte ce marqueur en tout début de fonction et
+  affiche un vrai état vide ("🗓️ Aucun plan en cours" + bouton "Créer un
+  plan") au lieu du contenu factice.
+- Garde-fou global dans `render()` (orchestrateur principal) : tant
+  qu'aucun vrai plan n'existe, toute navigation (Semaines, Stats, Course)
+  retombe sur cet état vide — seul Paramètres reste accessible (ex. pour se
+  déconnecter). Une nouvelle variable `vueEffective` (au lieu de `view`
+  directement) porte ce court-circuit à travers header/titre/contenu/nav
+  active, pour un affichage cohérent partout.
+
+### 21.5 Grand débutant redirigé vers le mauvais flux (question d'accent)
+
+**Symptôme signalé** : un profil grand-débutant se voyait proposer un choix
+d'accent (VMA/Endurance/Polyvalent) — non pertinent pour ce niveau, aucune
+notion de séance qualité différenciée en marche-course.
+
+**Cause** : l'écran dédié grand-débutant (jours + Strava uniquement,
+`wizard-grand-debutant-contenu`, §17.9) n'était atteint automatiquement que
+lors de la toute première sortie d'onboarding
+(`rediriger_si_onboarding_grand_debutant`). Un grand-débutant revenant plus
+tard sur `/v2` et cliquant lui-même sur "Mode forme" depuis l'écran de
+choix (`choisirMode('forme')` → `validerChoixMode()`) tombait dans le flux
+Mode Forme générique à 4 étapes, dont l'étape accent. "Objectif course"
+était déjà grisé pour ce profil (`bloquerCourseSiGrandDebutant`), mais
+"Mode forme" restait un accès détourné vers le mauvais flux.
+
+**Correctif** : `validerChoixMode()` vérifie maintenant `lk_profil_coureur`
+et redirige vers l'écran dédié si le niveau est grand-débutant, quel que
+soit le point d'entrée — cohérent avec le chemin normal depuis
+l'onboarding.
+
+**Bug annexe découvert et corrigé dans la foulée** : le marqueur
+`sessionStorage` qui permet à l'écran grand-débutant de survivre au reload
+forcé par `capterRetourStravaOAuth()` (contournement d'un bug de rendu
+Android/PWA après retour d'une navigation externe) n'était posé que par
+`rediriger_si_onboarding_grand_debutant()` — donc seulement pour le tout
+premier passage. Un grand-débutant atteignant cet écran par un autre
+chemin (ex. via le correctif ci-dessus) perdait tout au premier clic
+"Connecter Strava" (reload → retour à l'accueil du wizard). Corrigé :
+`renderDaysGrandDebutant()` (appelée par tous les chemins d'entrée réels)
+pose désormais ce marqueur systématiquement, plus seulement depuis
+l'onboarding.
+
+### 21.6 CORRECTIF MAJEUR — module client Strava manquant
+
+**Symptôme final signalé** : bouton Strava du wizard ne déclenchait rien,
+puis après un premier correctif du clic, la connexion "ne se validait pas"
+et le plan généré ne se sauvegardait pas.
+
+**Cause racine, découverte par recherche exhaustive dans le repo** :
+`public/v2/engine/strava.js` — censé être le module client Strava du
+wizard — contenait en réalité une **copie accidentelle du code serverless**
+(`api/strava.js`, le handler Vercel lui-même : routes `/auth`, `/callback`,
+`/refresh`, `/activities`). Le vrai module client, avec les fonctions que
+tout le wizard appelle (`Engine.urlConnexionStrava`,
+`extraireTokensDepuisUrl`, `setStravaTokens`, `getStravaTokens`,
+`clearStravaTokens`, `assurerTokenStravaValide`, `recupererVolumeStrava`),
+**n'existait nulle part** — confirmé par recherche GitHub exhaustive sur
+chacun de ces noms, zéro résultat.
+
+Chaque appel levait une `TypeError` non catchée, interrompant le script en
+plein milieu de son exécution :
+- Le clic "Connecter Strava" ne faisait rien (`urlConnexionStrava`
+  inexistante, corrigé une première fois le 15/07 par un lien direct vers
+  `/api/strava/auth?state=v2`, sans savoir encore que le reste de la chaîne
+  était cassé).
+- Au retour du callback OAuth, `capterRetourStravaOAuth()` plantait sur
+  `extraireTokensDepuisUrl` inexistante — la connexion "ne se validait
+  jamais", aucun token stocké.
+- Cette erreur interrompant l'exécution du script AVANT le code de
+  sauvegarde du plan (plus loin dans le même bloc `<script type="module">`)
+  explique pourquoi la sauvegarde échouait aussi, sans lien apparent avec
+  Strava au premier abord.
+
+**Correctif** : reconstruction complète du module
+(`public/v2/engine/strava.js`), en s'appuyant sur `test-strava.mjs` — un
+fichier de tests déjà présent dans le repo, jamais exécutable faute du vrai
+fichier, qui documentait précisément l'API attendue (preuve qu'un vrai
+module a existé à un moment donné, perdu ou écrasé par erreur). Toutes les
+fonctions reconstruites : `urlConnexionStrava`, `extraireTokensDepuisUrl`,
+`setStravaTokens`/`getStravaTokens`/`clearStravaTokens` (clés `v2_strava_*`
+dédiées, distinctes de `lk_strava_*` utilisées par v1),
+`assurerTokenStravaValide` (rafraîchissement si expiré, même logique que
+`ensureFreshToken()` côté v1), `calculerMedianeVolumeHebdo` (semaine ISO,
+cumul multi-sorties/semaine, activités non-Run ignorées),
+`recupererVolumeStrava` (8 semaines d'historique). **Tous les cas de
+`test-strava.mjs` passent.**
+
+Aucune copie `.classic.js` de ce module n'existe (`index.html`/v1 gère
+Strava indépendamment, code inline `ensureFreshToken`/`syncStrava`) — pas
+de duplication à faire.
+
+### 21.7 Reste à faire
+
+- Tests réels supplémentaires sur l'app déployée : bouton "Palier suivant"
+  (carte permanente ET bannière) en conditions réelles, parcours Strava
+  complet (connexion → retour → génération → sauvegarde) sur les trois
+  flux (course, forme, grand-débutant).
+- Fichier de test formel pour les nouveaux paliers marche-course (durée
+  continue) — les tests actuels restent manuels/scripts non committés.
+- Vérifier qu'aucune autre fonction `Engine.*` référencée dans
+  `v2/index.html` ne pointe vers un module incomplet similaire à
+  `strava.js` avant cette session — un audit ponctuel (grep de tous les
+  `Engine.xxx` contre les exports réels de chaque module `v2/engine/*.js`)
+  n'a pas été fait de façon exhaustive au-delà de Strava dans cette
+  session.
