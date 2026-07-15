@@ -5204,10 +5204,40 @@ function renderSettings() {
       if (!confirm(`Clôturer définitivement ce plan au ${dateAffichee} ?\n\nCette action est IRRÉVERSIBLE : le plan deviendra figé (lecture seule, plus de synchro Strava, plus aucune modification possible).`)) return;
 
       window.__PLAN_BRUT__.dateCloture = val;
+
+      // Renommage automatique (v2.8, 15/07/2026, demandé par Laurent) — si
+      // le nom actuel semble auto-généré par le wizard (cf. nommerPlanForme,
+      // v2/index.html), on le met à jour pour refléter la nouvelle date de
+      // clôture. Ne touche PAS à un nom que Laurent aurait volontairement
+      // personnalisé lui-même (via ✏️ Renommer) — seul un préfixe reconnu
+      // déclenche la mise à jour, jamais un nom quelconque.
+      const nomActuel = window.__PLAN_BRUT__.nom || '';
+      const estNomAutoGenere = /^(Mode forme|Marche-course) —/.test(nomActuel);
+      if (estNomAutoGenere) {
+        const fmt = (iso) => new Date(iso+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"});
+        const label = window.__PLAN_BRUT__.sousMode === 'marche-course' ? 'Marche-course' : 'Mode forme';
+        window.__PLAN_BRUT__.nom = `${label} — ${fmt(window.__PLAN_BRUT__.dateDebut)} au ${fmt(val)}`;
+      }
+
       msgEl.textContent = "Sauvegarde…";
       msgEl.style.color = "var(--text-muted)";
       try {
-        await sauvegarderPlan(window.__PLAN_BRUT__);
+        // Supabase d'abord (v2.8, 15/07/2026) — sauvegarderPlan() (Gist)
+        // seule ne suffit plus depuis que Laurent a retiré son token
+        // GitHub ; sans ce correctif, une clôture manuelle depuis
+        // Réglages ne persisterait nulle part si aucun token n'est
+        // configuré, comme pour tout autre plan avant les correctifs de
+        // cette session.
+        if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && window.__PLAN_BRUT__.id) {
+          await window.LkSync.mettreAJourPlanSupabase(window.__PLAN_BRUT__.id, window.__PLAN_BRUT__);
+        }
+        if (getGithubToken && getGithubToken()) {
+          try {
+            await sauvegarderPlan(window.__PLAN_BRUT__);
+          } catch (eGist) {
+            console.warn('Sauvegarde Gist échouée (Supabase OK, non bloquant) :', eGist.message);
+          }
+        }
         msgEl.textContent = "✅ Plan clôturé. Tu peux maintenant planifier un plan course à partir du lendemain.";
         msgEl.style.color = "var(--accent2)";
         render();
