@@ -2053,7 +2053,25 @@
   async function afficherPlansSauvegardes() {
     const conteneur = document.getElementById('resPlansSauvegardes');
     if (!conteneur) return;
-    const plans = await chargerPlans();
+    // BUG corrigé le 15/07/2026 : cette fonction utilisait encore
+    // chargerPlans() (Gist) seul, jamais mise à jour lors du basculement
+    // vers Supabase comme mécanisme principal (cf. nextStep()/index.html,
+    // même correctif ce jour) — la liste "plans sauvegardés" en haut du
+    // choix de mode restait donc vide malgré un plan bien sauvegardé côté
+    // Supabase, renvoyant l'utilisateur vers "Quel est ton objectif ?"
+    // comme si aucun plan n'existait. Même priorité que le dashboard :
+    // Supabase d'abord, Gist en repli si un token est encore configuré.
+    let plans = [];
+    try {
+      if (window.__UTILISATEUR__?.id && window.LkSync) {
+        plans = await window.LkSync.chargerPlansSupabase(window.__UTILISATEUR__.id);
+      }
+    } catch (e) {
+      console.warn('Chargement des plans (Supabase) échoué :', e.message);
+    }
+    if (plans.length === 0) {
+      try { plans = await chargerPlans(); } catch (e) { /* pas de Gist configuré, pas grave */ }
+    }
     if (!plans.length) { conteneur.innerHTML = ''; return; }
 
     const lignes = plans
