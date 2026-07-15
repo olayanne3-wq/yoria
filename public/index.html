@@ -4858,19 +4858,22 @@ function renderSettings() {
   );
 
   // ── Niveau du coureur (v2.8, retiré du wizard — §17.7) ────────────────
-  // Choix à 3 valeurs plutôt qu'un input libre : cohérent avec les 3
-  // niveaux du moteur (debutant/intermediaire/confirme, cf. NIVEAU_MAP
-  // dans v2/index.html). "grand-debutant" volontairement absent ici —
-  // rattaché au Mode Forme (v2.8, §17.1), pas un choix de ce sélecteur.
-  const NIVEAUX_LABELS = { debutant: "Débutant", intermediaire: "Intermédiaire", confirme: "Confirmé" };
+  // "Grand débutant" (v2.8, §17.9 — correction du 14/07/2026 : ce n'est
+  // PAS un choix du wizard Mode Forme, comme envisagé un temps, mais bien
+  // une valeur de ce sélecteur de niveau, au même titre que les 3 autres.
+  // Un profil "grand-debutant" ne peut déclencher qu'un plan Mode Forme
+  // (le wizard "Objectif course" doit rester inaccessible/inadapté pour
+  // ce niveau — à traiter au moment de router vers generatePlanMarcheCourse
+  // via plan-forme.js, cf. §17.1).
+  const NIVEAUX_LABELS = { "grand-debutant": "Je n'ai jamais couru", debutant: "Débutant", intermediaire: "Intermédiaire", confirme: "Confirmé" };
   const niveauSection = el("div", {style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏃 Niveau"),
     card(
-      el("div",{style:{display:"flex",gap:"8px"}},
+      el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}},
         ...Object.entries(NIVEAUX_LABELS).map(([val, lbl]) => {
           const actif = profilCoureur.niveau === val;
           return el("button",{id:"niveau-btn-"+val, style:{
-            flex:"1",padding:"10px",borderRadius:"8px",cursor:"pointer",fontSize:"14px",fontWeight:"700",
+            padding:"10px 6px",borderRadius:"8px",cursor:"pointer",fontSize:"13px",fontWeight:"700",
             border: actif ? "1px solid var(--accent)" : "1px solid var(--border)",
             background: actif ? "rgba(var(--accent-rgb),0.13)" : "transparent",
             color: actif ? "var(--accent)" : "var(--text-muted)"
