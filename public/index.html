@@ -192,14 +192,32 @@ input[type=text], input[type=number], input[type=password] {
     let planBrut = null;
     let plansDisponibles = [];
 
+    // Supabase d'abord (v2.8, 15/07/2026) — Gist n'est plus le système
+    // principal depuis que Laurent a retiré le token GitHub ; chargerPlans()
+    // (Gist) sans token retourne toujours [] silencieusement, laissant tout
+    // nouveau plan introuvable au retour sur le dashboard, quel que soit le
+    // wizard utilisé pour le créer. Gist reste tenté en repli SEULEMENT si
+    // un token est encore configuré (compatibilité ascendante, au cas où
+    // Laurent le rétablirait plus tard) et que Supabase n'a rien retourné.
     try {
-      plansDisponibles = await chargerPlans();
-      if (plansDisponibles.length > 0) {
-        planBrut = idPlanChoisi ? plansDisponibles.find(p => p.id === idPlanChoisi) : null;
-        if (!planBrut) planBrut = plansDisponibles[0]; // repli sur le premier plan disponible
+      if (window.__UTILISATEUR__?.id) {
+        plansDisponibles = await LkSync.chargerPlansSupabase(window.__UTILISATEUR__.id);
       }
     } catch (e) {
-      console.warn('Chargement des plans depuis le Gist échoué, génération par défaut :', e.message);
+      console.warn('Chargement des plans depuis Supabase échoué :', e.message);
+    }
+
+    if (plansDisponibles.length === 0) {
+      try {
+        plansDisponibles = await chargerPlans();
+      } catch (e) {
+        console.warn('Chargement des plans depuis le Gist échoué, génération par défaut :', e.message);
+      }
+    }
+
+    if (plansDisponibles.length > 0) {
+      planBrut = idPlanChoisi ? plansDisponibles.find(p => p.id === idPlanChoisi) : null;
+      if (!planBrut) planBrut = plansDisponibles[0]; // repli sur le premier plan disponible
     }
 
     if (!planBrut) {
