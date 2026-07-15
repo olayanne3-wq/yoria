@@ -2953,8 +2953,14 @@ function renderBoutonStructureAProgrammer(structure) {
 // 8 juillet 2026 pour aussi l'utiliser sur la carte "Aujourd'hui" du
 // dashboard (Laurent signale qu'il fallait aller dans le détail de semaine
 // juste pour valider la séance du jour, pourtant déjà affichée).
-function renderStatusRow(uid) {
+function renderStatusRow(uid, dateSeance) {
   const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap",marginTop:"4px"}});
+  // Blocage séances futures (17.4, 15/07/2026) — un statut (fait/raté/adapté)
+  // n'a de sens que pour une séance déjà passée ou en cours (aujourd'hui).
+  // "—" (annuler) reste toujours cliquable : si une séance a été validée par
+  // erreur puis que sa date est déplacée dans le futur (déplacement de
+  // séance), il faut pouvoir revenir à "non renseigné" sans être bloqué.
+  const estFuture = dateSeance && dateSeance > today();
   const boutons = [];
   const majApparenceBoutons = () => {
     const cur = statuses[uid]||"—";
@@ -2968,9 +2974,12 @@ function renderStatusRow(uid) {
   };
   SOPTS.forEach(opt=>{
     const cur=statuses[uid]||"—";
-    const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"var(--border-soft)",border:`1px solid ${cur===opt?SCOLORS[opt]:"var(--border)"}`,borderRadius:"6px",padding:"5px 10px",cursor:"pointer",color:cur===opt?SCOLORS[opt]:"var(--text-muted)",fontSize:"15px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
+    const desactive = estFuture && opt!=="—";
+    const b=el("button",{style:{background:cur===opt?SCOLORS[opt]+"33":"var(--border-soft)",border:`1px solid ${cur===opt?SCOLORS[opt]:"var(--border)"}`,borderRadius:"6px",padding:"5px 10px",cursor:desactive?"not-allowed":"pointer",color:cur===opt?SCOLORS[opt]:"var(--text-muted)",fontSize:"15px",fontWeight:cur===opt?"700":"400",opacity:desactive?"0.35":"1"}},opt==="—"?"–":opt);
+    if (desactive) b.disabled = true;
     boutons.push({ b, opt });
     b.addEventListener("click",avecRetourTactile(()=>{
+      if (estFuture && opt!=="—") return;
       statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses);
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
@@ -2985,6 +2994,9 @@ function renderStatusRow(uid) {
     }));
     statusRow.appendChild(b);
   });
+  if (estFuture) {
+    statusRow.appendChild(el("div",{style:{width:"100%",fontSize:"12px",color:"var(--text-muted)",marginTop:"2px"}},"📅 Séance à venir — disponible le jour J"));
+  }
   return statusRow;
 }
 
@@ -3297,7 +3309,7 @@ function renderWeekDetail(weekNum) {
           fontSize:"13px"
         }}, (statuses[uid]==="❌"?"❌ ":"⚠️ ")+reason));
       }
-      const statusRow=renderStatusRow(uid);
+      const statusRow=renderStatusRow(uid, s.date);
       card.appendChild(statusRow);
       // Saisie/correction manuelle (docs/source-donnees-seances.md) — même
       // bloc que sur la carte du jour, pour pouvoir corriger une séance
