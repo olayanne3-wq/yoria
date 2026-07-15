@@ -21,7 +21,19 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.7", title:"Yoria — nouvelle identité et thème clair/sombre", current:true, notes:[
+      { ver:"v2.8", title:"Grand débutant, plans multiples & fiabilité Supabase", current:true, notes:[
+        "🚶 Nouveau niveau \"Je n'ai jamais couru\" : séances marche-course progressives, rattachées au Mode Forme",
+        "👤 Niveau et profil déplacés dans Réglages — plus jamais redemandés à chaque nouveau plan",
+        "✨ Écran d'accueil du wizard : consulter un plan existant ou en créer un nouveau, clairement séparés",
+        "🎉 Progression de palier marche-course avec validation manuelle, puis transition vers un plan débutant classique",
+        "🏷️ Nom automatique des plans Mode Forme (avec dates), toujours synchronisé — plus de renommage manuel pour ce type",
+        "🔐 Option de suppression de compte, depuis l'écran de connexion",
+        "🐛 Sauvegarde des plans reposant désormais sur Supabase plutôt que sur un token GitHub — la création de plan ne dépendait plus de rien de fonctionnel après la suppression volontaire du token",
+        "🐛 Garde-fou anti-chevauchement (un seul plan actif à la fois) réactivé, silencieusement contourné depuis le passage à Supabase",
+        "🐛 Adaptation dynamique (bannière de séances ratées) réparée — cassée depuis un moment sans jamais se déclencher",
+        "🐛 Synchro Strava corrigée après le changement de domaine lié au rebranding",
+      ]},
+      { ver:"v2.7", title:"Yoria — nouvelle identité et thème clair/sombre", current:false, notes:[
         "🎨 Nouveau nom et nouvelle identité visuelle : Run by Léa devient Yoria",
         "☀️🌙 Choix du thème clair ou sombre, dans Paramètres",
         "🏷️ Badges de séance recolorés par intensité (VMA/Test/Course, Seuil/Allure course, EF/Longue)",
