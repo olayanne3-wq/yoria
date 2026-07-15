@@ -1206,60 +1206,54 @@ const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150
 // voir compterSeancesValideesPalier et le garde-fou de §analyserAdaptations.
 // ---------------------------------------------------------------------------
 
+// Refonte 17.5 (15/07/2026) : paliers exprimés en durée de course CONTINUE
+// (5→30min), plus de ratio course/marche à rallonger. Chaque palier reste
+// encadré d'échauffement/retour au calme en marche. Décision avec Laurent :
+// 7 paliers, plus rapprochés en début de progression (5-8-12-16-20-25-30)
+// pour ne pas décourager au démarrage, écarts plus larges ensuite une fois
+// la dynamique de course installée.
 const PALIERS_MARCHE_COURSE = [
-  { id: 0, courseSec: 60,  marcheSec: 90,  label: '1min course / 1min30 marche' },
-  { id: 1, courseSec: 90,  marcheSec: 120, label: '1min30 course / 2min marche' },
-  { id: 2, courseSec: 180, marcheSec: 90,  label: '3min course / 1min30 marche' },
-  { id: 3, courseSec: 300, marcheSec: 120, label: '5min course / 2min marche' },
-  { id: 4, courseSec: 480, marcheSec: 120, label: '8min course / 2min marche' },
-  { id: 5, courseSec: 1200, marcheSec: 0,  label: '20min course continue' },
-  { id: 6, courseSec: 1800, marcheSec: 0,  label: '30min course continue (transition)' }
+  { id: 0, courseMin: 5,  label: '5min de course continue' },
+  { id: 1, courseMin: 8,  label: '8min de course continue' },
+  { id: 2, courseMin: 12, label: '12min de course continue' },
+  { id: 3, courseMin: 16, label: '16min de course continue' },
+  { id: 4, courseMin: 20, label: '20min de course continue' },
+  { id: 5, courseMin: 25, label: '25min de course continue' },
+  { id: 6, courseMin: 30, label: '30min de course continue (transition)' }
 ];
 
-// Nombre de séances réussies au palier courant avant de proposer le suivant.
-// Volontairement bas (2) : la progression reste soumise à la confirmation du
-// coureur (via le statut de la séance), pas automatique dès ce seuil atteint —
-// cf. analyserAdaptations pour la logique de recul/maintien si ça se passe mal.
-const SEANCES_MIN_PAR_PALIER = 2;
-
 // Durée totale cible de séance, stable sur tout le programme (§ principe
-// "une seule variable à la fois") — le nombre de répétitions du cycle
-// course/marche s'ajuste pour tenir dans cette fenêtre.
+// "une seule variable à la fois") — le temps de marche d'échauffement/retour
+// au calme se réduit mécaniquement à mesure que la course continue s'allonge,
+// jusqu'à un minimum de 5min de chaque côté (jamais supprimé, toujours utile
+// avant/après un effort).
 const DUREE_CIBLE_MARCHE_COURSE_MIN = 25;
+const DUREE_MIN_ECHAUFFEMENT_RETOUR_MIN = 5;
 
 /**
- * Détermine le palier courant à partir du nombre de séances marche-course
- * déjà validées avec succès (statut "✅", cf. SOPTS côté app) DEPUIS le
- * dernier changement de palier. Le compteur est fourni par l'appelant
- * (dérivé des statuses du plan, même logique que nbApparitionsParSousType).
+ * Détermine si le coureur PEUT passer au palier suivant — validation
+ * manuelle (17.5, 15/07/2026) : plus de seuil de nombre de séances, une
+ * seule séance validée ("✅") au palier courant suffit à débloquer le bouton
+ * côté dashboard. Le passage lui-même reste toujours une action volontaire
+ * du coureur (bouton), jamais automatique.
  */
 function palierMarcheCourseFor(seancesValideesPalierCourant, palierActuelId = 0) {
   const palier = PALIERS_MARCHE_COURSE[Math.min(palierActuelId, PALIERS_MARCHE_COURSE.length - 1)];
-  const pretPourSuivant = seancesValideesPalierCourant >= SEANCES_MIN_PAR_PALIER
+  const pretPourSuivant = seancesValideesPalierCourant >= 1
     && palierActuelId < PALIERS_MARCHE_COURSE.length - 1;
   return { palier, pretPourSuivant };
 }
 
 function genererContenuMarcheCourse({ palierId = 0 }) {
   const palier = PALIERS_MARCHE_COURSE[Math.min(palierId, PALIERS_MARCHE_COURSE.length - 1)];
-
-  if (palier.marcheSec === 0) {
-    const dureeMin = Math.round(palier.courseSec / 60);
-    return {
-      contenu: `Échauffement marche 5min + ${dureeMin}min de course continue + retour au calme marche 5min`,
-      kmEstime: null, // pas d'estimation fiable tant que l'allure grand-débutant n'est pas établie
-      palierLabel: palier.label
-    };
-  }
-
-  const cycleSec = palier.courseSec + palier.marcheSec;
-  const nbCycles = Math.max(1, Math.round((DUREE_CIBLE_MARCHE_COURSE_MIN * 60) / cycleSec));
-  const dureeCourseMin = Math.round(palier.courseSec / 60 * 10) / 10;
-  const dureeMarcheMin = Math.round(palier.marcheSec / 60 * 10) / 10;
+  const dureeEchauffementRetour = Math.max(
+    DUREE_MIN_ECHAUFFEMENT_RETOUR_MIN,
+    Math.round((DUREE_CIBLE_MARCHE_COURSE_MIN - palier.courseMin) / 2)
+  );
 
   return {
-    contenu: `Échauffement marche 5min + ${nbCycles} × (${dureeCourseMin}min course / ${dureeMarcheMin}min marche) + retour au calme marche 5min`,
-    kmEstime: null,
+    contenu: `Échauffement marche ${dureeEchauffementRetour}min + ${palier.courseMin}min de course continue + retour au calme marche ${dureeEchauffementRetour}min`,
+    kmEstime: null, // pas d'estimation fiable tant que l'allure grand-débutant n'est pas établie
     palierLabel: palier.label
   };
 }
@@ -2014,12 +2008,13 @@ const POIDS_STATUT = { '❌': 1, '⚠️': 0.5, '✅': 0 };
 const GARDE_FOU_SEMAINES_MARCHE_COURSE = 12;
 
 /**
- * Détermine, à partir des statuts enregistrés, si le coureur est prêt à
- * passer au palier suivant. Compte les séances "✅" au palier courant
- * (profil.palierMarcheCourse) parmi les semaines déjà vécues du plan ; une
- * séance "❌" ou "⚠️" ne fait pas reculer le palier mais ne compte
- * pas non plus comme validation (cohérent avec "pas de saut brutal", et on
- * ne pénalise pas un grand débutant qui a eu une mauvaise semaine).
+ * Détermine, à partir des statuts enregistrés, si le coureur PEUT passer au
+ * palier suivant (17.5, 15/07/2026 : validation manuelle — une seule séance
+ * "✅" au palier courant suffit à débloquer le bouton côté dashboard, le
+ * passage lui-même reste toujours une action volontaire, jamais automatique).
+ * Compte les séances "✅" au palier courant (plan.palierMarcheCourse) parmi
+ * les semaines déjà vécues du plan ; une séance "❌" ou "⚠️" ne fait pas
+ * reculer le palier mais ne compte pas non plus comme validation.
  */
 function analyserProgressionMarcheCourse(plan) {
   // v2.8 (§17.1) : le plan grand-débutant est désormais généré par
