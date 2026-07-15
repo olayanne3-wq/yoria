@@ -907,6 +907,41 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       Écran dédié grand débutant — v2.8 (§17.9), ajouté le 14/07/2026.
+       Volontairement minimal : ni volume actuel, ni temps de référence,
+       ni accent — aucun de ces champs n'a de sens pour ce profil. Juste
+       les jours disponibles et une invitation à connecter Strava (pour
+       préparer la récupération des séances marche-course programmées sur
+       la montre, cf. §17.3, pas encore câblé à ce stade). Affiché
+       automatiquement après l'onboarding si profil.niveau ===
+       'grand-debutant' (cf. juste avant `choix-mode-contenu` plus bas),
+       sans passer par l'écran de choix course/forme — un grand débutant
+       ne peut de toute façon déclencher qu'un plan Forme (§17.9).
+  ============================================================ -->
+  <div id="wizard-grand-debutant-contenu" style="display:none;">
+    <div class="content" style="padding-top:8px;">
+      <span class="eyebrow">C'est parti</span>
+      <h1>Quels jours tu peux courir&nbsp;?</h1>
+      <p class="sub">Pas besoin d'autre chose pour démarrer — le plan s'adapte à ton rythme au fil des séances.</p>
+      <div class="count-badge">● <span id="dayCountGrandDebutant">3</span> séances / semaine</div>
+      <div class="days-grid" id="daysGridGrandDebutant"></div>
+
+      <div class="block-label" style="margin-top:24px;">Strava (optionnel)</div>
+      <p class="sub" style="margin-top:0; margin-bottom:10px;">Si tu as un compte Strava, connecte-le — tes séances marche-course pourront être programmées directement sur ta montre et suivies automatiquement.</p>
+      <div class="strava-card" id="stravaConnexionBlocGrandDebutant">
+        <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
+      </div>
+      <div class="strava-card" id="stravaConnecteBlocGrandDebutant" style="display:none;">
+        <div class="strava-head"><span class="strava-badge">📡 Strava connecté</span></div>
+        <span class="alt-toggle" onclick="deconnecterStrava()" style="opacity:0.6;">Déconnecter</span>
+      </div>
+    </div>
+    <div class="footer">
+      <button class="btn btn-next" style="width:100%;" onclick="genererPlanGrandDebutantUI()">Générer mon plan</button>
+    </div>
+  </div>
+
   <div id="wizard-course-contenu" style="display:none;">
   <div class="track" id="track"></div>
   <div class="stepmeta">
@@ -2923,6 +2958,78 @@
     document.getElementById('dayCountForme').textContent = n;
   }
 
+  // ── Écran dédié grand débutant — v2.8 (§17.9) ──────────────────────────
+  function renderDaysGrandDebutant() {
+    const days = ['L','M','M','J','V','S','D'];
+    const selectedDefault = [1,3,5];
+    const grid = document.getElementById('daysGridGrandDebutant');
+    grid.innerHTML = '';
+    days.forEach((d,i)=>{
+      const el = document.createElement('div');
+      el.className = 'day' + (selectedDefault.includes(i) ? ' selected' : '');
+      el.dataset.dayIndex = i;
+      el.innerHTML = `<span class="d">${d}</span><span>●</span>`;
+      el.onclick = () => { el.classList.toggle('selected'); updateDayCountGrandDebutant(); };
+      grid.appendChild(el);
+    });
+    updateDayCountGrandDebutant();
+    rafraichirBlocStravaGrandDebutant();
+  }
+
+  function updateDayCountGrandDebutant() {
+    const n = document.querySelectorAll('#daysGridGrandDebutant .day.selected').length;
+    document.getElementById('dayCountGrandDebutant').textContent = n;
+  }
+
+  function rafraichirBlocStravaGrandDebutant() {
+    if (!window.Engine) return; // pas encore chargé, l'appel via engineReady réessaiera
+    const { accessToken } = Engine.getStravaTokens();
+    document.getElementById('stravaConnexionBlocGrandDebutant').style.display = accessToken ? 'none' : '';
+    document.getElementById('stravaConnecteBlocGrandDebutant').style.display = accessToken ? '' : 'none';
+  }
+
+  function genererPlanGrandDebutantUI() {
+    const joursDisponibles = [...document.querySelectorAll('#daysGridGrandDebutant .day.selected')]
+      .map(el => parseInt(el.dataset.dayIndex));
+
+    let profilStocke;
+    try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+
+    const profil = {
+      niveau: 'grand-debutant',
+      anneeNaissance: profilStocke?.anneeNaissance || undefined,
+      fcMaxConnue: profilStocke?.fcMax || undefined,
+      joursDisponiblesHabituels: joursDisponibles,
+      renforcementMusculaire: false,
+      palierMarcheCourse: 0
+    };
+    const params = {
+      dateDebut: new Date().toISOString().slice(0,10)
+    };
+
+    let plan;
+    try {
+      plan = Engine.generatePlanForme(profil, params);
+    } catch (err) {
+      alert("Erreur de génération : " + err.message);
+      console.error(err);
+      return;
+    }
+    plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-grand-debutant-' + Date.now());
+    plan.statuses = plan.statuses || {};
+    plan.profilOrigine = profil;
+    plan.paramsOrigine = params;
+    dernierPlanFormeGenere = plan;
+    dernierPlanGenere = plan;
+    renderResults(plan);
+    showingResults = true;
+    document.getElementById('wizard-grand-debutant-contenu').style.display = 'none';
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelector('.screen[data-step="10"]').classList.add('active');
+    document.getElementById('wizard-course-contenu').style.display = 'block';
+    document.getElementById('nextBtn').textContent = 'Terminer';
+  }
+
   function toggleManualVolumeForme(){
     const strava = document.getElementById('stravaCardForme');
     const manual = document.getElementById('manualVolumeForme');
@@ -3048,6 +3155,21 @@
   }
 
   document.getElementById('choix-mode-contenu').style.display = 'block';
+
+  // Redirection directe depuis l'onboarding (v2.8, §17.9) — cf. index.html,
+  // juste après monterEcranOnboarding(). Court-circuite complètement
+  // choix-mode-contenu : un grand débutant fraîchement inscrit n'a rien à y
+  // choisir (Objectif course est de toute façon grisé pour lui, cf.
+  // bloquerCourseSiGrandDebutant plus bas — mais autant lui éviter cet
+  // écran intermédiaire).
+  (function rediriger_si_onboarding_grand_debutant() {
+    const vientDeOnboarding = new URLSearchParams(window.location.search).get('onboarding') === 'grand-debutant';
+    if (!vientDeOnboarding) return;
+    window.history.replaceState({}, document.title, window.location.pathname); // nettoie l'URL
+    document.getElementById('choix-mode-contenu').style.display = 'none';
+    document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+    renderDaysGrandDebutant();
+  })();
 
   // Grand débutant (v2.8, §17.9) : le profil (Réglages), pas le wizard,
   // détermine ce niveau — un profil grand-débutant ne peut déclencher
