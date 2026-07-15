@@ -1,128 +1,166 @@
-export default async function handler(req, res) {
-  const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
-  const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
+/**
+ * strava.js (module client)
+ * Intégration Strava côté wizard v2 — Yoria
+ *
+ * RECONSTRUIT LE 15/07/2026 (signalé par Laurent — bouton Strava du wizard
+ * ne déclenchait rien, puis après correctif du clic, la connexion "ne se
+ * validait pas" et le plan généré ne se sauvegardait pas). Diagnostic :
+ * public/v2/engine/strava.js contenait en réalité une COPIE ACCIDENTELLE du
+ * code serverless (api/strava.js, handler Vercel), pas le module client
+ * attendu par v2/index.html (Engine.urlConnexionStrava,
+ * Engine.extraireTokensDepuisUrl, Engine.setStravaTokens,
+ * Engine.getStravaTokens, Engine.clearStravaTokens,
+ * Engine.assurerTokenStravaValide, Engine.recupererVolumeStrava — aucune de
+ * ces fonctions n'existait nulle part dans le repo, confirmé par recherche
+ * exhaustive). Chaque appel levait une TypeError non catchée, interrompant
+ * le script en cours d'exécution — d'où la validation Strava qui échouait
+ * silencieusement ET la sauvegarde de plan qui s'arrêtait net juste après
+ * (même script, exécution stoppée avant d'atteindre le code de sauvegarde).
+ *
+ * Reconstruit à partir de la spécification documentée dans
+ * test-strava.mjs (déjà présent dans le repo, jamais exécutable faute du
+ * vrai fichier) et du comportement déjà éprouvé côté public/index.html (v1,
+ * ensureFreshToken/syncStrava) — mêmes principes, clés localStorage
+ * distinctes (v2_strava_*) pour ne jamais interférer avec la session
+ * Strava de v1.
+ *
+ * Module pur pour la logique de calcul (calculerMedianeVolumeHebdo) et les
+ * accès storage (get/set/clearStravaTokens) — storage injectable pour
+ * rester testable hors navigateur, même convention que gist-sync.js.
+ * urlConnexionStrava/assurerTokenStravaValide/recupererVolumeStrava
+ * touchent le réseau ou window.location, non testables en isolation de la
+ * même façon.
+ */
 
-  const host = req.headers?.host || req.headers?.["x-forwarded-host"];
-  const BASE_URL = `https://${host}`;
-  const REDIRECT_URI = `${BASE_URL}/api/strava/callback`;
+const REFRESH_MARGIN_SECONDS = 60;
 
-  // Extraire le path après /api/strava
-  const path = (req.url || "")
-    .replace(/^\/api\/strava/, "")
-    .split("?")[0] || "/";
+// ---------------------------------------------------------------------------
+// Construction de l'URL de connexion — redirige vers l'endpoint serverless
+// existant (api/strava.js, route /auth), avec state=v2 pour que le callback
+// revienne sur /v2 plutôt que sur / (v1). Cf. api/strava.js ligne
+// `const destination = req.query?.state === "v2" ? "/v2" : "/";`.
+// ---------------------------------------------------------------------------
+export function urlConnexionStrava() {
+  return '/api/strava/auth?state=v2';
+}
 
-  // ── /auth ────────────────────────────────────────────────────────────────
-  if (path === "/auth" || path === "/" || path === "") {
-    const state = req.query?.state || "";
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      response_type: "code",
-      scope: "activity:read_all",
-      ...(state ? { state } : {}),
-    });
-    return res.redirect(302, `https://www.strava.com/oauth/authorize?${params}`);
-  }
+// ---------------------------------------------------------------------------
+// Extraction des tokens depuis les query params de l'URL au retour du
+// callback OAuth (access_token/refresh_token/expires_at, ajoutés par
+// api/strava.js). Retourne null si access_token absent (pas un retour
+// Strava valide) — cf. test-strava.mjs pour le contrat exact attendu.
+// ---------------------------------------------------------------------------
+export function extraireTokensDepuisUrl(search) {
+  const params = new URLSearchParams(search);
+  const accessToken = params.get('access_token');
+  if (!accessToken) return null;
+  return {
+    accessToken,
+    refreshToken: params.get('refresh_token'),
+    expiresAt: params.get('expires_at')
+  };
+}
 
-  // ── /callback ────────────────────────────────────────────────────────────
-  if (path === "/callback") {
-    const code = req.query?.code;
-    console.log(`[strava callback] code reçu: ${code?.slice(0,8)}... | state: ${req.query?.state || 'aucun'} | ${new Date().toISOString()}`);
-    if (!code) return res.status(400).json({ error: "No code" });
+// ---------------------------------------------------------------------------
+// Stockage des tokens — clés v2_strava_* dédiées (distinctes de
+// lk_strava_* utilisées par v1), pour ne jamais interférer avec la session
+// Strava de l'app principale même si les deux sont ouvertes sur le même
+// appareil.
+// ---------------------------------------------------------------------------
+export function setStravaTokens({ accessToken, refreshToken, expiresAt }, storage = localStorage) {
+  if (accessToken) storage.setItem('v2_strava_token', accessToken);
+  if (refreshToken) storage.setItem('v2_strava_refresh', refreshToken);
+  if (expiresAt) storage.setItem('v2_strava_expires', String(expiresAt));
+}
 
-    const resp = await fetch("https://www.strava.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        code,
-        grant_type: "authorization_code",
-      }),
+export function getStravaTokens(storage = localStorage) {
+  return {
+    accessToken: storage.getItem('v2_strava_token') || null,
+    refreshToken: storage.getItem('v2_strava_refresh') || null,
+    expiresAt: parseInt(storage.getItem('v2_strava_expires') || '0', 10)
+  };
+}
+
+export function clearStravaTokens(storage = localStorage) {
+  storage.removeItem('v2_strava_token');
+  storage.removeItem('v2_strava_refresh');
+  storage.setItem('v2_strava_expires', '0');
+}
+
+// ---------------------------------------------------------------------------
+// Rafraîchissement du token si expiré (même logique que ensureFreshToken()
+// côté v1, index.html) — retourne l'access_token valide, ou null si pas de
+// connexion Strava/rafraîchissement impossible. C'est cette fonction que le
+// wizard appelle pour savoir s'il doit afficher le bouton "Connecter
+// Strava" ou le bloc de volume déjà connecté.
+// ---------------------------------------------------------------------------
+export async function assurerTokenStravaValide(storage = localStorage) {
+  const { accessToken, refreshToken, expiresAt } = getStravaTokens(storage);
+  if (!accessToken) return null;
+  if (Date.now() / 1000 < expiresAt - REFRESH_MARGIN_SECONDS) return accessToken;
+  if (!refreshToken) return null;
+  try {
+    const resp = await fetch('/api/strava/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
     });
     const data = await resp.json();
-    if (data.errors) return res.status(400).json({ error: data.message, details: data.errors, state_recu: req.query?.state || null });
+    if (!data.access_token) return null;
+    setStravaTokens({ accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at }, storage);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
 
-    const params = new URLSearchParams({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: data.expires_at,
-    });
-    const destination = req.query?.state === "v2" ? "/v2" : "/";
-    return res.redirect(302, `${BASE_URL}${destination}?${params}`);
+// ---------------------------------------------------------------------------
+// Médiane du volume hebdomadaire (km) à partir d'activités Strava brutes —
+// utilisée pour pré-remplir "combien tu cours actuellement" dans le wizard.
+// Semaine ISO (lundi-dimanche), seules les activités type 'Run' comptent,
+// plusieurs sorties la même semaine se cumulent. Cf. test-strava.mjs pour
+// les 5 cas de référence.
+// ---------------------------------------------------------------------------
+export function calculerMedianeVolumeHebdo(activites) {
+  const runs = activites.filter(a => a.type === 'Run');
+  if (runs.length === 0) return null;
+
+  const volumeParSemaine = new Map();
+  for (const run of runs) {
+    const date = new Date(run.start_date_local.slice(0, 10) + 'T00:00:00Z');
+    const jourISO = (date.getUTCDay() + 6) % 7; // 0=lundi ... 6=dimanche
+    const lundi = new Date(date);
+    lundi.setUTCDate(date.getUTCDate() - jourISO);
+    const cleSemaine = lundi.toISOString().slice(0, 10);
+    volumeParSemaine.set(cleSemaine, (volumeParSemaine.get(cleSemaine) || 0) + run.distance);
   }
 
-  // ── /refresh ─────────────────────────────────────────────────────────────
-  if (path === "/refresh") {
-    const { refresh_token } = req.body || {};
-    const resp = await fetch("https://www.strava.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        refresh_token,
-        grant_type: "refresh_token",
-      }),
-    });
-    const data = await resp.json();
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    return res.status(200).json(data);
-  }
+  const volumesKm = [...volumeParSemaine.values()].map(m => m / 1000).sort((a, b) => a - b);
+  const milieu = Math.floor(volumesKm.length / 2);
+  const mediane = volumesKm.length % 2 !== 0
+    ? volumesKm[milieu]
+    : (volumesKm[milieu - 1] + volumesKm[milieu]) / 2;
 
-  // ── /activities ──────────────────────────────────────────────────────────
-  if (path === "/activities") {
-    const token = req.query?.token;
-    if (!token) return res.status(401).json({ error: "No token" });
+  return Math.round(mediane);
+}
 
-    const intervalDatesParam = req.query?.interval_dates;
-    const INTERVAL_DATES = intervalDatesParam ? intervalDatesParam.split(",") : [];
-    const planStartParam = req.query?.plan_start;
-    const after = Math.floor(new Date((planStartParam || "2026-06-22") + "T00:00:00Z").getTime() / 1000);
-
-    const resp = await fetch(
-      `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=100`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const activities = await resp.json();
-
-    if (!Array.isArray(activities)) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Cache-Control", "no-store, max-age=0");
-      return res.status(200).json(activities);
+// ---------------------------------------------------------------------------
+// Récupère les activités des 8 dernières semaines et calcule la médiane de
+// volume hebdo — appelée par chargerVolumeStrava()/chargerVolumeStravaForme()
+// dans v2/index.html une fois un token valide obtenu.
+// ---------------------------------------------------------------------------
+export async function recupererVolumeStrava(accessToken) {
+  try {
+    const huitSemainesAvant = new Date();
+    huitSemainesAvant.setDate(huitSemainesAvant.getDate() - 8 * 7);
+    const planStart = huitSemainesAvant.toISOString().slice(0, 10);
+    const resp = await fetch(`/api/strava/activities?token=${accessToken}&plan_start=${planStart}`);
+    const activites = await resp.json();
+    if (!Array.isArray(activites)) {
+      return { mediane: null, erreur: activites?.error || 'Réponse Strava invalide' };
     }
-
-    const enriched = await Promise.all(activities.map(async (act) => {
-      const dateLocal = act.start_date_local?.slice(0, 10);
-      if (act.type === "Run" && INTERVAL_DATES.includes(dateLocal)) {
-        try {
-          const actId = act.id_str || act.id;
-          const lapsResp = await fetch(
-            `https://www.strava.com/api/v3/activities/${actId}/laps`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          const laps = await lapsResp.json();
-          return { ...act, laps: Array.isArray(laps) ? laps : [] };
-        } catch {
-          return { ...act, laps: [] };
-        }
-      }
-      return act;
-    }));
-
-    // Cache-Control: no-store — cette route dépend des dernières activités
-    // Strava de l'utilisateur, elle ne doit jamais être servie depuis un
-    // cache (navigateur ou CDN Vercel). Sans cet en-tête, une requête
-    // identique (mêmes query params token/interval_dates/plan_start) peut
-    // recevoir un 304 Not Modified sans corps, ce que le client interprète
-    // à tort comme une erreur ("❌ Erreur Strava") faute de tableau JSON à
-    // parser. Bug découvert le 15 juillet 2026 : la synchro échouait après
-    // une séance fraîchement enregistrée alors que l'activité existait bien
-    // côté Strava.
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Cache-Control", "no-store, max-age=0");
-    return res.status(200).json(enriched);
+    return { mediane: calculerMedianeVolumeHebdo(activites), erreur: null };
+  } catch (e) {
+    return { mediane: null, erreur: e.message };
   }
-
-  return res.status(404).send("Not found");
 }
