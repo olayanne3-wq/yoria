@@ -106,6 +106,33 @@ input[type=text], input[type=number], input[type=password] {
     // production du 13 juillet 2026, inventaire §8bis.
     await LkSync.migrerDonneesExistantes(user.id, null);
     await LkSync.precharger(user.id, null);
+
+    // Onboarding profil (v2.8, §17.7) — affiché une seule fois si le
+    // niveau n'a jamais été renseigné (nouveau compte, ou compte existant
+    // migré avant l'ajout de ce champ). Utilise directement localStorage
+    // ici : profilCoureur/migrerVersProfilCoureur() ne sont définis que
+    // plus loin dans ce fichier (après ce script), donc on ne peut pas
+    // encore s'appuyer dessus à ce stade du chargement.
+    const profilBrut = JSON.parse(localStorage.getItem('lk_profil_coureur') || 'null');
+    if (!profilBrut || !profilBrut.niveau) {
+      const complement = await LkAuth.monterEcranOnboarding('ecran-auth-hote', profilBrut || {});
+      const profilMisAJour = Object.assign(
+        { prenom: "", nom: "", poids: null, taille: null, fcMax: 181, pps: "", records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
+        profilBrut || {},
+        complement
+      );
+      localStorage.setItem('lk_profil_coureur', JSON.stringify(profilMisAJour));
+      // save() n'est pas encore défini à ce stade du chargement (plus loin
+      // dans ce fichier) — on reproduit ici le même geste de sync que
+      // save() fait pour toute autre clé (cf. définition de save(), plus
+      // bas), pour que l'onboarding ne reste pas local à cet appareil.
+      try {
+        LkSync.synchroniserVersSupabase(user.id, null, 'lk_profil_coureur', profilMisAJour);
+      } catch (e) {
+        console.warn('Synchronisation profil onboarding non déclenchée :', e.message);
+      }
+    }
+
     return user;
   });
 </script>
@@ -482,6 +509,7 @@ function migrerVersProfilCoureur() {
   const profil = {
     prenom: "", nom: "",
     anneeNaissance: null,
+    niveau: null, // 'debutant'|'intermediaire'|'confirme' — v2.8, retire du wizard (§17.7)
     poids: ancienPoids, taille: ancienneTaille, fcMax: ancienneFcMax ?? 181,
     pps: ancienPps,
     records: { "5K": null, "10K": null, "Semi": null, "Marathon": null }
@@ -4829,6 +4857,34 @@ function renderSettings() {
     })(),
   );
 
+  // ── Niveau du coureur (v2.8, retiré du wizard — §17.7) ────────────────
+  // Choix à 3 valeurs plutôt qu'un input libre : cohérent avec les 3
+  // niveaux du moteur (debutant/intermediaire/confirme, cf. NIVEAU_MAP
+  // dans v2/index.html). "grand-debutant" volontairement absent ici —
+  // rattaché au Mode Forme (v2.8, §17.1), pas un choix de ce sélecteur.
+  const NIVEAUX_LABELS = { debutant: "Débutant", intermediaire: "Intermédiaire", confirme: "Confirmé" };
+  const niveauSection = el("div", {style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"🏃 Niveau"),
+    card(
+      el("div",{style:{display:"flex",gap:"8px"}},
+        ...Object.entries(NIVEAUX_LABELS).map(([val, lbl]) => {
+          const actif = profilCoureur.niveau === val;
+          return el("button",{id:"niveau-btn-"+val, style:{
+            flex:"1",padding:"10px",borderRadius:"8px",cursor:"pointer",fontSize:"14px",fontWeight:"700",
+            border: actif ? "1px solid var(--accent)" : "1px solid var(--border)",
+            background: actif ? "rgba(var(--accent-rgb),0.13)" : "transparent",
+            color: actif ? "var(--accent)" : "var(--text-muted)"
+          }, onClick: ()=>{
+            profilCoureur.niveau = val;
+            sauvegarderProfilCoureur();
+            render();
+          }}, lbl);
+        })
+      )
+    )
+  );
+
+
   // ── Records personnels par distance (v2.3, 12 juillet 2026) ──────────────
   // Un temps de référence par distance, mémorisé une fois pour toutes dans
   // profilCoureur.records — le wizard n'a plus besoin de le redemander à
@@ -5138,7 +5194,7 @@ function renderSettings() {
     accountSection,
     themeSection,
     formeClotureSection,
-    profileSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection,
+    profileSection, niveauSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection,
     el("div",{style:{marginBottom:"24px"}}, stravaSection),
     githubToken ? qrSection : null,
     versionSection
