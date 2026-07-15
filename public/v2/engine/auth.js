@@ -303,6 +303,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
 
   return new Promise((resolve) => {
     const NIVEAUX = [
+      { val: 'grand-debutant', label: "Je n'ai jamais couru", desc: "Je marche, ou je découvre — pas encore capable de courir en continu" },
       { val: 'debutant', label: 'Débutant', desc: "Moins de 6 mois de course régulière" },
       { val: 'intermediaire', label: 'Intermédiaire', desc: "Je cours depuis un moment, j'ai déjà couru un 10K" },
       { val: 'confirme', label: 'Confirmé', desc: "Plusieurs courses, je connais mes allures" },
