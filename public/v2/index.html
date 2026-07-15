@@ -773,9 +773,9 @@
           <div><div class="label">Consulter un plan existant</div><div class="desc" id="accueilNbPlansDesc">Voir mes plans déjà créés</div></div>
           <div class="check"></div>
         </div>
-        <div class="opt" onclick="ouvrirChoixModeDepuisAccueil()">
+        <div class="opt" id="accueilCreerNouveauPlan" onclick="ouvrirChoixModeDepuisAccueil()">
           <div class="ico">✨</div>
-          <div><div class="label">Créer un nouveau plan</div><div class="desc">Objectif course ou mode forme</div></div>
+          <div><div class="label">Créer un nouveau plan</div><div class="desc" id="accueilCreerNouveauPlanDesc">Objectif course ou mode forme</div></div>
           <div class="check"></div>
         </div>
       </div>
@@ -2104,6 +2104,28 @@
       } else {
         const desc = document.getElementById('accueilNbPlansDesc');
         if (desc) desc.textContent = `${plans.length} plan${plans.length > 1 ? 's' : ''} déjà créé${plans.length > 1 ? 's' : ''}`;
+
+        // v2.8 (15/07/2026) : un profil grand-débutant ne peut avoir qu'un
+        // seul plan actif à la fois — bloque complètement "Créer un
+        // nouveau plan" (pas juste un 2e plan grand-débutant : aucun
+        // nouveau plan du tout, course ou forme, tant que celui-ci est en
+        // cours). Décision de Laurent : créer un autre plan en parallèle
+        // n'a pas de sens tant que la progression marche-course n'est pas
+        // terminée (cf. §17.9, transition vers debutant au dernier palier
+        // — c'est CE moment-là qui doit débloquer un nouveau plan, pas
+        // avant).
+        let profilStocke;
+        try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+        if (profilStocke?.niveau === 'grand-debutant') {
+          const carte = document.getElementById('accueilCreerNouveauPlan');
+          const descCreer = document.getElementById('accueilCreerNouveauPlanDesc');
+          if (carte) {
+            carte.style.opacity = '0.4';
+            carte.style.pointerEvents = 'none';
+            carte.onclick = null;
+          }
+          if (descCreer) descCreer.textContent = 'Termine ton plan actuel avant d\'en créer un nouveau';
+        }
       }
     }
   }
