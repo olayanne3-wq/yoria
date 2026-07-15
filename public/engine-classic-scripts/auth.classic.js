@@ -158,9 +158,23 @@
         }
       });
 
+      // CORRECTIF SÉCURITÉ (15/07/2026) — deuxième barrière en plus du
+      // nettoyage fait par deconnecter() : couvre le cas où une session
+      // change/expire sans passer explicitement par le bouton de
+      // déconnexion. Compare l'id de l'utilisateur qui se connecte à celui
+      // mémorisé lors de la dernière connexion sur CET appareil
+      // (lk_dernier_user_id) — si ça ne correspond pas, purge avant de
+      // débloquer l'app.
       function debloquer(user) {
         if (dejaResolu) return;
         dejaResolu = true;
+        var dernierUserId = localStorage.getItem('lk_dernier_user_id');
+        if (dernierUserId && dernierUserId !== user.id) {
+          var theme = localStorage.getItem('lk_theme');
+          localStorage.clear();
+          if (theme) localStorage.setItem('lk_theme', theme);
+        }
+        localStorage.setItem('lk_dernier_user_id', user.id);
         ecranAuth.style.display = 'none';
         resolve(user);
       }
@@ -351,9 +365,24 @@
     });
   }
 
+  // CORRECTIF SÉCURITÉ CRITIQUE (15/07/2026, signalé par Laurent — après
+  // déconnexion/reconnexion sur le même appareil, un compte pouvait voir et
+  // SUPPRIMER les plans d'un autre utilisateur). Cause racine : deconnecter()
+  // ne faisait que supabase.auth.signOut(), sans jamais vider localStorage.
+  // lk_github_token/v2_gist_id pointent vers UN Gist GitHub précis,
+  // complètement indépendant de la session Supabase — un compte B qui se
+  // connecte ensuite sur ce même appareil hérite silencieusement du
+  // token/Gist du compte A laissé en place. Correctif : purge large de
+  // localStorage à la déconnexion (sauf lk_theme, préférence d'affichage
+  // non personnelle) — voir aussi la barrière équivalente dans debloquer()
+  // ci-dessus (couvre le cas où deconnecter() n'a pas été appelée
+  // explicitement).
   async function deconnecter() {
     await supabaseReady;
     const res = await supabase.auth.signOut();
+    const theme = localStorage.getItem('lk_theme');
+    localStorage.clear();
+    if (theme) localStorage.setItem('lk_theme', theme);
     if (res.error) throw res.error;
   }
 
