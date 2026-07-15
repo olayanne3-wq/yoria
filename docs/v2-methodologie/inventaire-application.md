@@ -36,6 +36,8 @@
 > **Navigation par flèches du wizard (17.6) implémentée** — bouton "Continuer"
 > en bas remplacé par des flèches ←/→ en haut sur le wizard course et le Mode
 > Forme (grand-débutant conservé tel quel, un seul écran), voir §19.
+> **Blocage des séances futures (17.4) implémenté** — un statut de séance
+> (✅/❌/⚠️) n'est plus modifiable avant le jour J, tous modes, voir §20.
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
 >
@@ -650,6 +652,7 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Badge "Décharge" dans l'onglet Semaines (`renderWeeks`) | ✅ Clos (13 juillet) |
 | Rework présentation wizard | 🔜 À revalider avec Laurent |
 | Navigation par flèches wizard (17.6) | ✅ Clos (15 juillet) — voir §19 |
+| Blocage validation séances futures (17.4) | ✅ Clos (15 juillet) — voir §20 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 | **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
@@ -2056,8 +2059,7 @@ réapparaîtra.
 
 ### 17.16 Reste à faire (v2.8, prochaine session)
 
-- **17.4** Blocage de validation des séances futures (tous modes) —
-  pas commencé.
+- **17.4** ✅ Clos (15 juillet 2026) — voir §20.
 - **17.5** Refonte des objectifs marche-course en paliers de durée
   continue (5→30min), validation manuelle par le coureur — le moteur
   utilise encore l'ancien système de ratio course/marche
@@ -2272,3 +2274,48 @@ Laurent, cet écran n'a pas de notion d'étapes à naviguer.
 course et Mode Forme avec les nouvelles flèches, y compris le cas
 grand-débutant qui saute les steps 3-5 côté wizard course) — pas encore fait
 à la clôture de cette session.
+
+## 20. Blocage de validation des séances futures (17.4, clos le 15/07/2026)
+
+**Demande** : empêcher la validation d'une séance (statuts ✅/❌/⚠️) tant que sa
+date n'est pas encore atteinte, tous modes confondus (course, forme,
+marche-course).
+
+**Implémenté** (`public/index.html`, `renderStatusRow`) :
+
+- `renderStatusRow(uid, dateSeance)` — nouveau second paramètre optionnel
+  (rétrocompatible : le premier appel, carte "séance du jour", ne le passe
+  pas car `s.date` y vaut toujours aujourd'hui par construction).
+- Comparaison `dateSeance > today()` (helper déjà existant) pour déterminer
+  si la séance est future.
+- Si future : les boutons ✅/❌/⚠️ sont grisés (`opacity:0.35`), `disabled`,
+  curseur `not-allowed`, et leur listener de clic est court-circuité (garde
+  redondante en plus de `disabled`, pour робustesse si le style venait à
+  changer). Un texte "📅 Séance à venir — disponible le jour J" apparaît
+  sous la rangée de boutons.
+- Le bouton "—" (annuler/remettre à zéro) **reste toujours actif**, même sur
+  une séance future — nécessaire si une séance déjà validée est ensuite
+  déplacée vers une date future (déplacement de séance), pour ne pas rester
+  bloqué avec un statut qu'on ne peut plus retirer.
+- Un seul point d'écriture de `statuses[uid]` dans tout le fichier (dans
+  `renderStatusRow` elle-même) — aucun autre chemin de contournement à
+  corriger. Un seul mécanisme de statut partagé par tous les modes (course,
+  forme, marche-course), donc ce correctif les couvre tous sans code
+  spécifique par mode.
+- Deuxième appel (`renderWeekDetail`, vue détail de semaine — le seul
+  endroit où une séance future est affichable/cliquable) mis à jour pour
+  passer `s.date`.
+
+**Vérifié** : syntaxe JS valide (`node --check` sur le bloc `<script>`
+principal).
+
+**Non couvert par ce chantier** : aucun message d'erreur bloquant côté
+`showSessionMenu`/déplacement de séance si un déplacement place une séance
+déjà validée dans le futur — le statut reste affiché tel quel jusqu'à ce que
+l'utilisateur le réinitialise manuellement via "—", comportement jugé
+suffisant pour ce cas marginal.
+
+**Reste à faire** : test réel sur l'app déployée (séance future dans la vue
+semaine, boutons bien désactivés ; séance du jour même veille au soir,
+toujours validable ; cas d'une séance validée puis déplacée dans le futur,
+bouton "—" toujours actif) — pas encore fait à la clôture de cette session.
