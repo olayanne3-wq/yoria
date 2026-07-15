@@ -131,6 +131,17 @@ input[type=text], input[type=number], input[type=password] {
       } catch (e) {
         console.warn('Synchronisation profil onboarding non déclenchée :', e.message);
       }
+
+      // Grand débutant (v2.8, §17.9) : redirection directe vers l'écran
+      // dédié du wizard (jours + Strava, cf. v2/index.html), sans passer
+      // par le dashboard ni l'écran de choix course/forme. On ne fait ça
+      // qu'à la sortie immédiate de l'onboarding — un grand débutant qui
+      // revient plus tard sur /v2 (ex. pour changer de plan) retombe sur
+      // le comportement normal du wizard, pas cette redirection forcée.
+      if (profilMisAJour.niveau === 'grand-debutant') {
+        window.location.href = '/v2?onboarding=grand-debutant';
+        return new Promise(() => {}); // ne résout jamais : on quitte la page
+      }
     }
 
     return user;
