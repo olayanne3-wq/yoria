@@ -1,20 +1,78 @@
 {
   "version": 2,
   "builds": [
-    { "src": "public/**", "use": "@vercel/static", "config": { "distDir": "public" } },
-    { "src": "api/*.js", "use": "@vercel/node" }
+    {
+      "src": "public/**",
+      "use": "@vercel/static",
+      "config": {
+        "distDir": "public"
+      }
+    },
+    {
+      "src": "api/*.js",
+      "use": "@vercel/node"
+    }
   ],
   "routes": [
-    { "src": "/api/config", "dest": "/api/config.js" },
-    { "src": "/api/beta", "dest": "/api/beta.js" },
-    { "src": "/api/strava/(.*)", "dest": "/api/strava.js" },
-    { "src": "/api/coach", "dest": "/api/coach.js" },
-    { "src": "/api/weather", "dest": "/api/weather.js" },
-    { "src": "/api/delete-account", "dest": "/api/delete-account.js" },
-    { "src": "/v2", "dest": "/public/v2/index.html" },
-    { "src": "/v2/", "dest": "/public/v2/index.html" },
-    { "src": "/beta", "dest": "/public/beta/index.html" },
-    { "src": "/beta/", "dest": "/public/beta/index.html" },
-    { "src": "/(.*)", "dest": "/public/$1" }
+    {
+      "src": "/api/config",
+      "dest": "/api/config.js"
+    },
+    {
+      "src": "/api/beta",
+      "dest": "/api/beta.js"
+    },
+    {
+      "src": "/api/beta-admin",
+      "dest": "/api/beta-admin.js"
+    },
+    {
+      "src": "/api/strava/(.*)",
+      "dest": "/api/strava.js"
+    },
+    {
+      "src": "/api/coach",
+      "dest": "/api/coach.js"
+    },
+    {
+      "src": "/api/weather",
+      "dest": "/api/weather.js"
+    },
+    {
+      "src": "/api/delete-account",
+      "dest": "/api/delete-account.js"
+    },
+
+    {
+      "src": "/v2",
+      "dest": "/public/v2/index.html"
+    },
+    {
+      "src": "/v2/",
+      "dest": "/public/v2/index.html"
+    },
+
+    {
+      "src": "/beta",
+      "dest": "/public/beta/index.html"
+    },
+    {
+      "src": "/beta/",
+      "dest": "/public/beta/index.html"
+    },
+
+    {
+      "src": "/beta-admin",
+      "dest": "/public/beta-admin/index.html"
+    },
+    {
+      "src": "/beta-admin/",
+      "dest": "/public/beta-admin/index.html"
+    },
+
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
   ]
 }
