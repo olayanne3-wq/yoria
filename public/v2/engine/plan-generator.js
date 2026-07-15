@@ -1674,68 +1674,21 @@ function differencierEF({ assignment, kmParEF }) {
 }
 
 // ---------------------------------------------------------------------------
-// Plan dédié grand débutant (marche-course) — pas de phases Construction/
-// Spécifique/Affûtage (qui supposent une allure course/Riegel dont ce public
-// n'a pas encore besoin), pas de sortie longue, pas de séance qualité. Le
-// plan est une simple répétition du palier courant sur toutes les semaines
-// disponibles ; la progression de palier est pilotée séparément (côté app,
-// via analyserProgressionMarcheCourse) et ne régénère PAS tout le plan à
-// chaque palier — seul le contenu affiché change, cf. genererContenuMarcheCourse.
+// Grand débutant (marche-course) : le chemin de génération de plan a été
+// déplacé dans plan-forme.js (generatePlanFormeMarcheCourse) le 14/07/2026
+// — v2.8, §17.1, correction du choix initial de rattacher ce niveau au plan
+// course. Restent ici, réutilisés par plan-forme.js : nbQualiteFor,
+// placerSemaine (cas grand-debutant), PALIERS_MARCHE_COURSE,
+// genererContenuMarcheCourse, palierMarcheCourseFor,
+// analyserProgressionMarcheCourse — briques indépendantes de la notion de
+// plan course, pas de duplication à faire.
 // ---------------------------------------------------------------------------
-
-function generatePlanMarcheCourse(profil, params) {
-  const debut = new Date(params.dateDebut);
-  const course = new Date(params.dateCourse);
-  const totalJours = Math.round((course - debut) / 86400000);
-  const totalSemaines = Math.max(1, Math.round(totalJours / 7));
-  const warnings = [];
-
-  if (totalJours < 0) {
-    warnings.push({ code: 'DATE_INVALIDE', message: "La date de course doit être après le début du plan." });
-    return { semaines: [], warnings, profilOrigine: profil, paramsOrigine: params, statuses: {}, mode: 'marche-course', dateDebut: params.dateDebut };
-  }
-
-  const palierId = profil.palierMarcheCourse ?? 0;
-  const semaines = [];
-  for (let s = 1; s <= totalSemaines; s++) {
-    const { assignment, warnings: warningsPlacement } = placerSemaine({
-      joursDisponibles: profil.joursDisponiblesHabituels,
-      niveau: 'grand-debutant',
-      renforcementActif: false
-    });
-    for (const seance of Object.values(assignment)) {
-      if (seance.type === 'marche-course') {
-        const { contenu, kmEstime, palierLabel } = genererContenuMarcheCourse({ palierId });
-        seance.contenu = contenu;
-        seance.kmEstime = kmEstime;
-        seance.palierLabel = palierLabel;
-      }
-    }
-    warningsPlacement.forEach(w => warnings.push({ ...w, message: `S${s} : ${w.message}` }));
-    semaines.push({ semaineNum: s, phase: 'MarcheCourse', assignment, estDechargeSemaine: false });
-  }
-
-  return {
-    semaines,
-    warnings,
-    profilOrigine: profil,
-    paramsOrigine: params,
-    statuses: {},
-    mode: 'marche-course',
-    palierMarcheCourse: palierId,
-    dateDebut: params.dateDebut
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Orchestrateur — assemble tout en un Plan conforme au schéma (section 9)
 // ---------------------------------------------------------------------------
 
 export function generatePlan(profil, params) {
-  if (profil.niveau === 'grand-debutant') {
-    return generatePlanMarcheCourse(profil, params);
-  }
-
   const distanceKm = KM_BY_DISTANCE[params.distance];
   const refTimeSeconds = parseTimeToSeconds(params.tempsReference);
   const objectifTimeSeconds = parseTimeToSeconds(params.objectif);
@@ -2065,9 +2018,14 @@ export const GARDE_FOU_SEMAINES_MARCHE_COURSE = 12;
  * ne pénalise pas un grand débutant qui a eu une mauvaise semaine).
  */
 export function analyserProgressionMarcheCourse(plan) {
-  if (plan.profilOrigine?.niveau !== 'grand-debutant') return null;
+  // v2.8 (§17.1) : le plan grand-débutant est désormais généré par
+  // generatePlanFormeMarcheCourse (plan-forme.js), qui expose
+  // mode:'forme', sousMode:'marche-course', palierMarcheCourse à la racine
+  // du plan — pas de profilOrigine (contrairement à l'ancien
+  // generatePlanMarcheCourse, retiré le 14/07/2026).
+  if (plan.mode !== 'forme' || plan.sousMode !== 'marche-course') return null;
 
-  const palierId = plan.profilOrigine?.palierMarcheCourse ?? 0;
+  const palierId = plan.palierMarcheCourse ?? 0;
   let seancesValidees = 0;
   let totalSeancesSuivies = 0;
   let premiereSeanceSemaine = null;
