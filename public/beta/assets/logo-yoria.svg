@@ -1,30 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Yoria</title>
-  <desc id="desc">Logo Yoria, lettre Y stylisée évoquant un parcours de course.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="background" x1="56" y1="40" x2="456" y2="472" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8B5CEC"/>
-      <stop offset="1" stop-color="#5B2AC4"/>
+    <linearGradient id="g1" x1="100" y1="80" x2="260" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E4ED8"/>
+      <stop offset="1" stop-color="#2E8CF0"/>
     </linearGradient>
-    <linearGradient id="mark" x1="155" y1="133" x2="342" y2="407" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#EDE6FF"/>
+    <linearGradient id="g2" x1="420" y1="80" x2="250" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C7B8"/>
+      <stop offset="1" stop-color="#75E4D8"/>
     </linearGradient>
   </defs>
-
-  <rect x="32" y="32" width="448" height="448" rx="118" fill="url(#background)"/>
-
-  <path
-    d="M126 137h62l68 105 68-105h62l-84 145v93c0 28-20 50-46 50s-46-22-46-50v-93L126 137Z"
-    fill="url(#mark)"
-  />
-
-  <path
-    d="M133 359c42-29 83-35 118-12 35 23 74 23 128-4"
-    fill="none"
-    stroke="#CFC1FF"
-    stroke-width="17"
-    stroke-linecap="round"
-    opacity=".9"
-  />
+  <path d="M92 92 C184 104, 232 154, 256 230 C270 276, 264 342, 246 420"
+        fill="none" stroke="url(#g1)" stroke-width="42" stroke-linecap="round"/>
+  <path d="M420 92 C328 104, 280 154, 256 230 C242 276, 248 342, 266 420"
+        fill="none" stroke="url(#g2)" stroke-width="42" stroke-linecap="round"/>
 </svg>
