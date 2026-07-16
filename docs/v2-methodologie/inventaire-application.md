@@ -74,8 +74,7 @@ yoria/
 â”‚       â”œâ”€â”€ notes-pratiques.md
 â”‚       â”œâ”€â”€ reperes-qualitatifs.md
 â”‚       â”œâ”€â”€ fiche-store.md            # Textes de fiche Play Store (titre, description, mots-clés)
-â”‚       â”œâ”€â”€ source-donnees-seances.md
-â”‚       â””â”€â”€ privacy.html              # Doublon de public/privacy.html — à clarifier
+â”‚       â””â”€â”€ source-donnees-seances.md
 â”œâ”€â”€ public/
 │   ├── index.html                 # App principale (dashboard) — sert le plan v2, ~300K
 │   ├── manifest.json, sw.js, icônes  # PWA v1 (racine)
