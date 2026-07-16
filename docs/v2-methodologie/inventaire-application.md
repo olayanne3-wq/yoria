@@ -664,6 +664,7 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Domaine personnalisé yoria.run | ✅ Clos (15 juillet) — voir §22 |
 | Nettoyage identité complet (plus de Léa/plan-10k) | ✅ Clos (16 juillet) — voir §23 |
 | Migration Android/TWA vers yoria.run | ✅ Clos (16 juillet) — voir §22.2 |
+| Bug intermittent écran d'accueil wizard (course async) | ✅ Clos (16 juillet) — voir §24 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 | **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
@@ -2882,3 +2883,48 @@ extrait d'`index.html`) effectuée avant push — aucune régression.
   intentionnellement inchangé (un `.aab` étant déjà uploadé sur Play
   Console, le changer impliquerait une republication complète) — décision
   confirmée à nouveau lors de la migration §22.2.
+
+## 24. Bug intermittent corrigé : mauvais écran d'accueil du wizard (16/07/2026)
+
+**Symptôme signalé par Laurent** : avec un seul plan actif (ex. plan
+grand-débutant), cliquer sur "Configurer un plan" affichait tantôt "Que
+veux-tu faire ?" (écran d'accueil normal, `accueil-wizard-contenu`) tantôt
+directement "Quel est ton objectif ?" (`choix-mode-contenu`, comme si
+aucun plan n'existait) — comportement intermittent, sans lien apparent
+avec une action précise de l'utilisateur.
+
+**Cause** : `initialiserApresChargementEngine()` (`v2/index.html`)
+décide entre les deux écrans en interrogeant
+`window.__UTILISATEUR__?.id` pour appeler `chargerPlansSupabase()`. Or
+`window.__UTILISATEUR__` est peuplé de façon **asynchrone** par
+`window.__AUTH_PRET__` (`LkAuth.monterEcranAuth()`, tout en haut du
+fichier), sans aucune dépendance avec `engineReady` (l'événement qui
+déclenche `initialiserApresChargementEngine()`) — une pure course entre
+deux processus parallèles, dont l'issue dépend de la vitesse relative de
+chacun à chaque chargement de page. Si l'authentification Supabase mettait
+plus de temps à se résoudre que le chargement du moteur, le check
+`window.__UTILISATEUR__?.id` échouait silencieusement (`undefined`),
+`chargerPlansSupabase()` n'était jamais appelée, et le repli sur
+`chargerPlans()` (Gist v1) retournait aussi `[]` faute de token GitHub
+configuré — d'où le faux "aucun plan" intermittent. Bug de la même famille
+que celui déjà corrigé côté `index.html` le 13 juillet 2026
+(`window.__PLAN_PRET__` vs `window.__AUTH_PRET__`, cf. §8bis) — jamais
+répliqué à l'époque côté wizard (`v2/index.html`), qui a son propre
+mécanisme d'auth séparé.
+
+**Correctif** : ajout d'un `await window.__AUTH_PRET__` explicite en tout
+début de `initialiserApresChargementEngine()`, avant toute logique
+dépendant de `window.__UTILISATEUR__`. Try/catch autour de l'attente
+(si l'auth échoue complètement, `__UTILISATEUR__` reste `undefined` et le
+comportement de repli existant — écran "Quel est ton objectif ?" — reste
+correct dans ce cas, cohérent avec un utilisateur non connecté).
+
+**Non touché** : `afficherPlansSauvegardes()` (fonction séparée, utilisée
+par l'écran de consultation dédié) fait le même genre d'appel
+`chargerPlansSupabase()`, mais elle n'est déclenchée que par un clic
+utilisateur explicite (`ouvrirConsultationPlans()`) — largement après que
+`window.__AUTH_PRET__` ait eu le temps de se résoudre dans tous les cas
+réalistes, donc pas de risque de course identique.
+
+**Validé en conditions réelles** par Laurent — plusieurs rechargements
+successifs de page, toujours le bon écran d'accueil affiché.
