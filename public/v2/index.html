@@ -2125,7 +2125,6 @@
     // chargerVolumeStrava() (appel réseau) juste avant, il serait interrompu
     // ou gaspillé inutilement.
     const rechargementEnCours = capterRetourStravaOAuth();
-    console.log('[DEBUG] rechargementEnCours=', rechargementEnCours);
     if (rechargementEnCours) return;
     chargerVolumeStrava();
     // BUG corrigé le 15/07/2026 : rafraichirBlocStravaGrandDebutant() n'était
@@ -2159,19 +2158,15 @@
     // en réalité lu que dans validerChoixMode(), jamais automatiquement au
     // chargement de la page.
     const etapeWizardCourseAuReload = parseInt(sessionStorage.getItem('v2_wizard_step') || '0', 10);
-    console.log('[DEBUG] etapeWizardCourseAuReload=', etapeWizardCourseAuReload, 'totalSteps=', totalSteps, 'accueilDisplay=', document.getElementById('accueil-wizard-contenu')?.style.display);
     if (etapeWizardCourseAuReload >= 1 && etapeWizardCourseAuReload <= totalSteps
         && document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
-      console.log('[DEBUG] condition matchee, restauration en cours');
       document.getElementById('accueil-wizard-contenu').style.display = 'none';
       document.getElementById('choix-mode-contenu').style.display = 'none';
       document.getElementById('wizard-course-contenu').style.display = 'block';
       current = etapeWizardCourseAuReload;
       showStep(current);
-      console.log('[DEBUG] restauration terminee, wizard-course-contenu=', document.getElementById('wizard-course-contenu').style.display);
       return;
     }
-    console.log('[DEBUG] condition NON matchee, comportement par defaut');
 
     if (document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
       let plans = [];
