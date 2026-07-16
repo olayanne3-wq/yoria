@@ -2119,6 +2119,23 @@
   // avec un garde-fou (window.Engine déjà présent) au cas où l'événement
   // serait déjà passé avant la pose de ce listener.
   async function initialiserApresChargementEngine() {
+    // 16 juillet 2026 : window.__UTILISATEUR__ est peuplé de façon
+    // asynchrone par window.__AUTH_PRET__ (LkAuth.monterEcranAuth(),
+    // plus haut dans ce fichier), sans dépendance avec engineReady qui
+    // déclenche cette fonction — une course entre les deux, symétrique à
+    // celle déjà corrigée côté index.html (window.__PLAN_PRET__ vs
+    // window.__AUTH_PRET__, cf. inventaire §8bis). Résultat observé par
+    // Laurent : avec un seul plan actif, le wizard affichait tantôt
+    // "Que veux-tu faire ?" (accueil, cas normal) tantôt "Quel est ton
+    // objectif ?" (choix-mode-contenu, comme si aucun plan n'existait) —
+    // selon que window.__UTILISATEUR__.id était déjà renseigné ou non au
+    // moment du check plus bas (chargerPlansSupabase() sautée si
+    // __UTILISATEUR__ pas encore prêt, et chargerPlans() en repli Gist
+    // v1 retournait aussi [] faute de token GitHub configuré). Corrigé en
+    // attendant explicitement cette promesse avant toute logique qui en
+    // dépend.
+    if (window.__AUTH_PRET__) { try { await window.__AUTH_PRET__; } catch (e) { /* pas grave, __UTILISATEUR__ restera undefined */ } }
+
     const existant = getGithubToken();
     const champ = document.getElementById('githubTokenInput');
     if (existant && champ) champ.value = existant;
