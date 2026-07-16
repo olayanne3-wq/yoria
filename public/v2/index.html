@@ -932,6 +932,11 @@
           <span class="ico">ℹ️</span>
           <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
         </div>
+
+        <div class="flag" id="stravaAuthInvalideFlagForme" style="display:none; margin-top:16px; flex-direction:column; align-items:flex-start; gap:10px;">
+          <span style="display:flex; align-items:center; gap:8px;"><span class="ico">⚠️</span><span>Connexion Strava expirée.</span></span>
+          <button class="btn-mini" onclick="connecterStrava()">🔄 Reconnecter Strava</button>
+        </div>
       </div>
 
       <!-- FORME STEP 3: Disponibilité -->
@@ -1128,6 +1133,11 @@
       <div class="flag" id="noStravaFlag" style="display:none; margin-top:16px;">
         <span class="ico">ℹ️</span>
         <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
+      </div>
+
+      <div class="flag" id="stravaAuthInvalideFlag" style="display:none; margin-top:16px; flex-direction:column; align-items:flex-start; gap:10px;">
+        <span style="display:flex; align-items:center; gap:8px;"><span class="ico">⚠️</span><span>Connexion Strava expirée.</span></span>
+        <button class="btn-mini" onclick="connecterStrava()">🔄 Reconnecter Strava</button>
       </div>
     </div>
 
@@ -1699,6 +1709,7 @@
     const blocConnexion = document.getElementById('stravaConnexionBloc');
     const blocValeur = document.getElementById('stravaCard');
     const flag = document.getElementById('noStravaFlag');
+    const flagAuthInvalide = document.getElementById('stravaAuthInvalideFlag');
 
     const accessToken = await Engine.assurerTokenStravaValide();
     if (!accessToken) {
@@ -1709,9 +1720,18 @@
 
     blocConnexion.style.display = 'none';
     blocValeur.style.display = 'block';
+    flag.style.display = 'none';
+    flagAuthInvalide.style.display = 'none';
 
-    const { mediane, erreur } = await Engine.recupererVolumeStrava(accessToken);
-    if (erreur) {
+    const { mediane, erreur, authInvalide } = await Engine.recupererVolumeStrava(accessToken);
+    if (authInvalide) {
+      // 16 juillet 2026 : token invalide côté Strava (distinct d'un simple
+      // historique insuffisant) — proposer une reconnexion directe plutôt
+      // que de basculer silencieusement en saisie manuelle sans expliquer
+      // pourquoi. Même piste que côté v1 (index.html), cf. inventaire §18.2.
+      flagAuthInvalide.style.display = 'flex';
+      toggleManualVolume();
+    } else if (erreur) {
       console.warn('Chargement du volume Strava échoué :', erreur);
       flag.style.display = 'flex';
       toggleManualVolume();
@@ -3328,6 +3348,7 @@
     const blocConnexion = document.getElementById('stravaConnexionBlocForme');
     const blocValeur = document.getElementById('stravaCardForme');
     const flag = document.getElementById('noStravaFlagForme');
+    const flagAuthInvalide = document.getElementById('stravaAuthInvalideFlagForme');
     if (!blocConnexion || !blocValeur) return; // flux Forme pas encore affiché
 
     const accessToken = await Engine.assurerTokenStravaValide();
@@ -3338,9 +3359,15 @@
     }
     blocConnexion.style.display = 'none';
     blocValeur.style.display = 'block';
+    flag.style.display = 'none';
+    flagAuthInvalide.style.display = 'none';
 
-    const { mediane, erreur } = await Engine.recupererVolumeStrava(accessToken);
-    if (erreur || mediane === null) {
+    const { mediane, erreur, authInvalide } = await Engine.recupererVolumeStrava(accessToken);
+    if (authInvalide) {
+      // 16 juillet 2026 : même piste que côté wizard course, cf. ci-dessus.
+      flagAuthInvalide.style.display = 'flex';
+      toggleManualVolumeForme();
+    } else if (erreur || mediane === null) {
       flag.style.display = 'flex';
       toggleManualVolumeForme();
     } else {
