@@ -2185,6 +2185,27 @@ Strava" (réutilise `connecterStrava()` déjà existant). Pas de fichier de test
 isolation dans `test-strava.mjs` (comme documenté dans les commentaires du
 fichier lui-même).
 
+**Bug supplémentaire trouvé et corrigé en testant le wizard (16/07/2026)** —
+après clic sur "Reconnecter Strava" en pleine étape 3 du wizard course,
+l'utilisateur retombait sur l'écran d'accueil "Que veux-tu faire ?"
+(`choix-mode-contenu`) au lieu de reprendre à l'étape où il était.
+Diagnostic : `initialiserApresChargementEngine()` (`v2/index.html`) a bien
+un mécanisme de persistance d'étape (`sessionStorage.v2_wizard_step`), mais
+il n'était lu que dans `validerChoixMode()` — jamais automatiquement au
+chargement de la page après le `window.location.reload()` forcé par
+`capterRetourStravaOAuth()`. Corrigé en ajoutant un court-circuit en tout
+début de la logique d'affichage par défaut : si une étape de wizard course
+valide est trouvée en `sessionStorage` et que l'écran d'accueil est
+affiché, bascule directement vers `wizard-course-contenu` à la bonne étape
+plutôt que de laisser le comportement par défaut (accueil/choix de mode)
+prendre la main. Diagnostic mené par ajout temporaire de `console.log` de
+traçage (retirés une fois le correctif confirmé fonctionnel) — un premier
+test après le simple push du correctif semblait ne rien changer, mais un
+second test après un nouveau push (même sans changement fonctionnel,
+seulement l'ajout des logs) a montré le comportement correct : probable
+cache Vercel/navigateur qui servait encore une version antérieure du
+fichier lors du tout premier test.
+
 **Deux ajustements testés en conditions réelles le même jour** (côté v1,
 `index.html`, après validation manuelle du bouton "Reconnecter Strava" via
 révocation volontaire de l'accès sur strava.com/settings/apps) :
