@@ -2252,10 +2252,6 @@ function renderDashboard() {
         sexe: window.profilCoureur && window.profilCoureur.sexe ? window.profilCoureur.sexe : 'autre',
       });
       const engagementState = DecisionEngineEngagement.calculerEngagementState(samples, {});
-      // ⚠️ PATCH TEMPORAIRE DE TEST (16/07/2026) — force une fatigue élevée
-      // factice pour valider visuellement l'affichage de la carte. À RETIRER
-      // après le test, cf. mémoire de session.
-      runnerState.fatigue = 78;
       resultatMoteur = DecisionEngineRules.evaluerRegles({ runnerState, engagementState, activitySamples: samples });
     } catch (err) {
       console.warn("Moteur de décision : erreur de calcul, carte masquée par sécurité.", err.message);
@@ -2285,7 +2281,7 @@ function renderDashboard() {
 
     const texteApercu = estInformative
       ? decision.justification
-      : decision.justification + ` (${cibleInfo.seance.type}, ${cibleInfo.seance.kmEstime}→${Math.round(cibleInfo.seance.kmEstime * (1 + decision.ampleurPourcent / 100) * 10) / 10}km)`;
+      : decision.justification + ` (${cibleInfo.seance.type}, ${Math.round(cibleInfo.seance.kmEstime * 10) / 10}→${Math.round(cibleInfo.seance.kmEstime * (1 + decision.ampleurPourcent / 100) * 10) / 10}km)`;
 
     return el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
       el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}},
