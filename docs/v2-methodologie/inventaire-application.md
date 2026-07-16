@@ -217,7 +217,8 @@ Fonctions de rendu principales (`render*`) :
 - `lk_profil_coureur` — structure unifiée du profil (voir §6)
 - `lk_weight`, `lk_height`, `lk_fc_max`, `lk_pps` — anciennes clés, migrées en douceur
   vers `lk_profil_coureur` au premier chargement (aucune perte de données)
-- `lk_github_token`, `lk_gist_id` — sync GitHub Gist
+- `lk_github_token` — sync GitHub Gist (`lk_gist_id` retiré le 16 juillet
+  2026, résidu mort de l'ancien backup v1, cf. §23bis)
 - `lk_strava_token`, `lk_strava_refresh`, `lk_strava_expires`, `lk_strava_activities`
 - `lk_last_sync`
 
@@ -1627,6 +1628,20 @@ existante, inchangée) alors qu'il ne sert plus à rien pour l'affichage réel
 publication Play Store. Candidat à un futur nettoyage (retirer lk_gist_id
 de la synchronisation, voire supprimer le Gist backup v1 lui-même côté
 GitHub) lors d'une session dédiée au nettoyage technique, pas urgent.
+
+**Nettoyé le 16 juillet 2026** — confirmé résidu mort : `lk_gist_id`
+(variable `gistId`, `index.html`) était stocké mais jamais réellement
+consommé par la logique fonctionnelle des plans (`gist-sync.js`, aucune
+référence). Retiré de trois endroits : `index.html` (variable `gistId`
+supprimée, paramètre URL `?gist=` toujours ignoré silencieusement pour ne
+pas casser un ancien lien déjà partagé) ; `CLES_INTEGRATIONS` et les 3
+fonctions de sync (`migrerDonneesExistantes`, `precharger`,
+`synchroniserVersSupabase`) dans `sync-storage.js`/`sync-storage.classic.js`
+(synchronisées, aucun oubli). La colonne `gist_id` reste en base côté
+Supabase (non supprimée) mais n'est plus jamais lue ni écrite — dette
+technique résiduelle minime et sans risque, pas de raison de supprimer la
+colonne elle-même. Le Gist backup v1 lui-même (côté GitHub) n'a pas été
+supprimé — hors périmètre de ce nettoyage, aucune urgence.
 
 Statut : corrigé et validé en conditions réelles sur le téléphone
 Android (app Play Store, déconnexion/reconnexion), après un second correctif
