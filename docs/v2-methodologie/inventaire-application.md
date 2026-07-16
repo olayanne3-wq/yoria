@@ -2206,6 +2206,42 @@ seulement l'ajout des logs) a montré le comportement correct : probable
 cache Vercel/navigateur qui servait encore une version antérieure du
 fichier lors du tout premier test.
 
+**Couverture étendue au Mode Forme et au grand-débutant (16/07/2026,
+même jour)** — vérification demandée par Laurent après validation du
+wizard course : les trois correctifs Strava n'étaient pas symétriques
+entre les trois flux du wizard.
+
+- **Restauration d'étape Mode Forme** : `showStepForme()` persiste
+  désormais l'étape courante en `sessionStorage.v2_wizard_step_forme`
+  (clé distincte de `v2_wizard_step`, wizard course — jamais confondues),
+  même mécanisme de court-circuit dans `initialiserApresChargementEngine()`
+  que pour le wizard course. Avant ce correctif, le mode Forme n'avait
+  simplement aucun mécanisme de persistance d'étape (flux volontairement
+  plus court, jugé "moins gênant à recommencer" à l'origine) — mais un
+  retour Strava en pleine étape reste tout aussi gênant à recommencer que
+  côté course.
+- **Grand-débutant, vérification réelle du token (pas juste sa présence)**
+  — `rafraichirBlocStravaGrandDebutant()` se contentait jusqu'ici de
+  vérifier si un token existait en `localStorage`, jamais sa validité
+  réelle côté Strava (contrairement aux wizards course/Forme, qui
+  appellent `recupererVolumeStrava()`). Un token périmé restait donc
+  affiché comme "connecté" ici, sans que l'utilisateur le découvre avant
+  la vraie synchro (plus tard, une fois le plan créé). Corrigé en
+  appelant `Engine.assurerTokenStravaValide()` (déjà existant) plutôt que
+  `getStravaTokens()` seule, avec un nouveau bloc `flag`
+  (`stravaAuthInvalideFlagGrandDebutant`) + bouton "🔄 Reconnecter Strava"
+  si le rafraîchissement échoue. **Couverture volontairement partielle** :
+  `assurerTokenStravaValide()` ne fait un appel réseau que si le token est
+  expiré selon sa date locale (`expiresAt`) — un token révoqué côté
+  Strava mais encore dans sa fenêtre de validité locale (exactement le
+  scénario testé aujourd'hui via révocation manuelle sur
+  strava.com/settings/apps) ne serait donc pas détecté par ce correctif
+  précis. Un vrai appel de test aurait nécessité une requête réseau
+  supplémentaire à chaque affichage de cet écran (flux qui n'en faisait
+  aucun jusqu'ici) — jugé disproportionné par Laurent pour ce cas, décision
+  explicite de garder cette couverture partielle plutôt que d'alourdir ce
+  flux.
+
 **Deux ajustements testés en conditions réelles le même jour** (côté v1,
 `index.html`, après validation manuelle du bouton "Reconnecter Strava" via
 révocation volontaire de l'accès sur strava.com/settings/apps) :
