@@ -1005,7 +1005,7 @@ let coachMsg = load(clePourPlan("lk_coach_msg"), null);
 let coachDate = load(clePourPlan("lk_coach_date"), "");
 if (coachDate !== today()) { coachMsg = null; } // forcer le fetch si nouveau jour
 
-// Conseil de Léa dédié à l'onglet Course — distinct du coach quotidien
+// Conseil de Yoria dédié à l'onglet Course — distinct du coach quotidien
 // ci-dessus. Remplace le 11 juillet 2026 un texte codé en dur qui ne
 // faisait que reformuler mécaniquement les mêmes segments déjà affichés
 // dans splitsCard (aucun vrai appel IA, aucune valeur ajoutée par rapport
@@ -1083,14 +1083,14 @@ async function fetchCoachMsg() {
   }).slice(0,3).map(s=>s.type+' '+s.session).join(', ');
 
   // Prénom du coureur (13 juillet 2026) — sans lui, l'IA a tendance à
-  // confondre le prénom de la coach (Léa, personnage du produit) avec
-  // celui de l'utilisateur, ex. "Bravo Léa !" adressé à Laurent. Fourni
+  // confondre le prénom du coach (Yoria, personnage du produit) avec
+  // celui de l'utilisateur, ex. "Bravo Yoria !" adressé à Laurent. Fourni
   // seulement s'il est renseigné dans le profil (Paramètres) ; sinon
-  // instruction explicite de ne jamais utiliser "Léa" pour s'adresser au
+  // instruction explicite de ne jamais utiliser "Yoria" pour s'adresser au
   // coureur, seulement pour se présenter elle-même.
   const prenomCoureur = profilCoureur.prenom?.trim();
 
-  const prompt = `Tu es Léa, coach running.${prenomCoureur ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureur} — utilise son prénom pour t'adresser à lui, jamais "Léa" (qui est TON propre prénom, pas le sien).` : ' Ne t\'adresse jamais au coureur par "Léa" — c\'est ton propre prénom, pas le sien ; utilise "tu" sans prénom si tu ne connais pas le sien.'}${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
+  const prompt = `Tu es Yoria, coach running.${prenomCoureur ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureur} — utilise son prénom pour t'adresser à lui, jamais "Yoria" (qui est TON propre prénom, pas le sien).` : ' Ne t\'adresse jamais au coureur par "Yoria" — c\'est ton propre prénom, pas le sien ; utilise "tu" sans prénom si tu ne connais pas le sien.'}${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
 ${ESTMODEFORME ? '' : `Estimation actuelle : ${predNow.timeStr} (${gapStr}).`}
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
 ${sessionDone ? `Séance ${sessType} déjà terminée aujourd'hui — statut ${todaySessionStatus}.${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
@@ -1134,7 +1134,7 @@ Réponds uniquement avec le message, sans guillemets.`;
     console.warn("Coach indisponible:", e.message);
     if (!coachMsg) {
       // Message de secours si jamais aucun message n\'a pu être chargé
-      coachMsg = "🤖 Léa fait une pause — réessaie dans quelques instants.";
+      coachMsg = "🤖 Yoria fait une pause — réessaie dans quelques instants.";
       coachDate = t;
       render();
     }
@@ -1146,7 +1146,7 @@ if (!coachMsg || coachDate !== today()) {
   setTimeout(fetchCoachMsg, 2000);
 }
 
-// Conseil de Léa dédié à la course — vraie valeur ajoutée par rapport aux
+// Conseil de Yoria dédié à la course — vraie valeur ajoutée par rapport aux
 // segments déjà affichés dans splitsCard (pas juste reformuler les mêmes
 // chiffres) : contexte sur l'écart entre l'estimation actuelle et
 // l'objectif, la météo prévue le jour J si connue, le nombre de jours
@@ -1157,11 +1157,11 @@ async function fetchCoachRaceMsg(notesSegments) {
   const predNow = currentPred || predict10K();
   const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l'objectif" : '+'+fmtTime(predNow.gap)+" de l'objectif";
   // cf. fetchCoachMsg() plus haut pour le contexte de ce correctif (13
-  // juillet 2026) — évite que l'IA confonde le prénom de la coach (Léa)
+  // juillet 2026) — évite que l'IA confonde le prénom du coach (Yoria)
   // avec celui du coureur.
   const prenomCoureurRace = profilCoureur.prenom?.trim();
 
-  const prompt = `Tu es Léa, coach running qui prépare ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION}.${prenomCoureurRace ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureurRace} — utilise son prénom, jamais "Léa" (qui est TON propre prénom).` : ' Ne t\'adresse jamais au coureur par "Léa" — c\'est ton propre prénom, pas le sien.'}
+  const prompt = `Tu es Yoria, coach running qui prépare ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION}.${prenomCoureurRace ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureurRace} — utilise son prénom, jamais "Yoria" (qui est TON propre prénom).` : ' Ne t\'adresse jamais au coureur par "Yoria" — c\'est ton propre prénom, pas le sien.'}
 Objectif : ${fmtTime(raceGoalTime)}. Estimation actuelle : ${predNow.timeStr} (${gapStr}).
 J-${cd} avant la course.
 Stratégie de course déjà affichée à l'utilisateur (ne la répète pas, ne redonne pas les allures/km déjà visibles) : ${notesSegments.join(' puis ')}.
@@ -4517,11 +4517,11 @@ function renderCourse() {
   }
 
   const coachRaceEl = el("div",{style:{marginBottom:"12px"}},
-    el("div",{class:"label"},"🤖 Conseil de Léa pour la course"),
+    el("div",{class:"label"},"🤖 Conseil de Yoria pour la course"),
     el("div",{style:{background:"var(--border-soft)",borderRadius:"10px",padding:"14px",display:"flex",gap:"10px"}},
       el("span",{style:{fontSize:"20px",flexShrink:"0"}},"🤖"),
       el("div",{style:{color:"var(--text2)",fontSize:"14px",lineHeight:"1.6",flex:"1"}},
-        coachRaceMsg || "Léa réfléchit à un conseil pour ta course…"
+        coachRaceMsg || "Yoria réfléchit à un conseil pour ta course…"
       ),
       el("button",{style:{background:"none",border:"none",color:"var(--text-muted)",fontSize:"16px",cursor:"pointer",flexShrink:"0"},
         feedback:true,
@@ -4943,7 +4943,7 @@ function exportPdfResultats() {
 function renderHelp() {
   const sections = [
     { icon:"⚡", color:"var(--accent)", title:"Dashboard",
-      text:"Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Léa selon ta progression." },
+      text:"Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Yoria selon ta progression." },
     { icon:"📅", color:"var(--accent)", title:"Semaines",
       text:"Le detail de chaque semaine. Tape sur une seance pour la valider (reussie, adaptee ou ratee). Appui long (~1 sec) pour acceder au menu : deplacer vers un jour repos, supprimer ou restaurer. Une seance deplacee peut revenir a sa place en la deplacant de nouveau vers son jour original." },
     { icon:"📊", color:"var(--accent)", title:"Stats",
@@ -4964,7 +4964,7 @@ function renderHelp() {
 
   const faqItems = [
     { q:"Comment fonctionne l\'estimation de temps ?",
-      a:"Léa combine tes performances sur les séances VMA, SPEC et SEUIL pour calculer une estimation de ton temps probable sur 10K, avec une fourchette de confiance qui se resserre au fil des semaines." },
+      a:"Yoria combine tes performances sur les séances VMA, SPEC et SEUIL pour calculer une estimation de ton temps probable sur 10K, avec une fourchette de confiance qui se resserre au fil des semaines." },
     { q:"Qu\'est-ce que l\'Indice d\'Économie (IE) ?",
       a:"L\'IE compare ta FC réelle à ta FC théorique pour une allure donnée. Un score supérieur à 100 signifie que tu cours plus économiquement qu\'attendu — ton cœur travaille moins pour la même vitesse." },
     { q:"Pourquoi mes données ont disparu sur un nouvel appareil ?",
@@ -5301,7 +5301,7 @@ function renderSettings() {
     runByLeaIcon(40, 10),
     el("div",{},
       el("div",{style:{color:"var(--text)",fontSize:"16px",fontWeight:"800"}},"Yoria"),
-      el("div",{class:"muted",style:{fontSize:"14px"}},VERSIONS[0].ver+" · plan-10k-alpha.vercel.app")
+      el("div",{class:"muted",style:{fontSize:"14px"}},VERSIONS[0].ver+" · yoria.run")
     )
   );
 
