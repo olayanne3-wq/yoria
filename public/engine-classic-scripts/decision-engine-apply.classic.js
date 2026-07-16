@@ -65,6 +65,20 @@
   // à venir (jourIndex dont la date calendaire réelle est >= aujourd'hui),
   // avec leur date reconstruite — même logique que traduirePlanVersFormatV1
   // (v1-bridge.classic.js) pour ne jamais diverger sur le calcul de date.
+  //
+  // CORRECTIF (16/07/2026, vérifié en console sur les vraies données de
+  // Laurent) : les clés de semaine.assignment vont de '1' (mardi) à '6'
+  // (dimanche) — le lundi (indice ISO 0) n'a JAMAIS de clé dans assignment,
+  // contrairement à ce que documentait v1-bridge.classic.js en commentaire
+  // (JOUR_NOMS commence à 'Lun' pour jourIndex 0). L'indice ISO du jour de
+  // semaine (0=lundi...6=dimanche) doit donc être décalé de +1 pour retrouver
+  // la vraie clé de assignment (jourIndexAssignment = jourIndexISO). En
+  // pratique : jourIndexISO 0 (lundi) n'a pas de clé -> jour absent, considéré
+  // comme repos implicite comme avant. jourIndexISO 1 (mardi) -> clé '1'.
+  // jourIndexISO 6 (dimanche) -> clé '6'. Donc la clé assignment = jourIndexISO
+  // directement (pas besoin de +1 en fait, la boucle ci-dessous itère déjà
+  // sur jourIndexISO 0-6 et va simplement ne rien trouver pour 0, ce qui est
+  // le comportement correct).
   // --------------------------------------------------------------------------
   function reconstruireJoursAvenirDeLaSemaine(planBrut, semaine, dateReference) {
     const dateDebut = new Date(planBrut.dateDebut + 'T00:00:00Z');
