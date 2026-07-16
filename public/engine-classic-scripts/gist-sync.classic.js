@@ -1,6 +1,6 @@
 /**
  * gist-sync.js
- * Persistence des plans via GitHub Gist — Run by Léa v2.0
+ * Persistence des plans via GitHub Gist — Yoria v2.0
  *
  * Module pur (aucune dépendance DOM) — testable en isolation.
  * Réutilise le même token GitHub que v1 ("lk_github_token", clé partagée
@@ -89,7 +89,7 @@ async function ecrireListePlans(plans, storage = localStorage) {
     throw new Error("Aucun token GitHub renseigné — impossible de sauvegarder.");
   }
   const body = {
-    description: 'Run by Léa v2 — plans sauvegardés',
+    description: 'Yoria v2 — plans sauvegardés',
     public: false,
     files: { [GIST_FILENAME]: { content: JSON.stringify({ plans }, null, 2) } }
   };
