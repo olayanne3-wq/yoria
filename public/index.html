@@ -744,6 +744,12 @@ setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
     save("lk_strava_refresh", stravaRefresh);
     save("lk_strava_expires", stravaExpires);
     window.history.replaceState({}, "", "/");
+    // 16 juillet 2026 : lance la synchro automatiquement après une
+    // (re)connexion Strava réussie — évite d'avoir à cliquer une seconde
+    // fois sur "Synchroniser avec Strava" juste après avoir cliqué
+    // "Reconnecter Strava" (cf. bouton stravaAuthInvalide plus haut).
+    // setTimeout léger pour laisser le premier render() s'exécuter avant.
+    setTimeout(syncStrava, 300);
   }
 })();
 
