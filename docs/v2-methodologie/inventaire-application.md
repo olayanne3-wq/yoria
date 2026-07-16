@@ -2165,6 +2165,26 @@ surpris l'utilisateur et risqué une boucle en cas d'échec répété non lié a
 précis (laisse le temps de cliquer), contrairement aux autres messages
 succès/erreur qui gardent ce comportement.
 
+**Même correctif étendu au wizard (16/07/2026)** — `public/v2/engine/strava.js`
+(module client séparé de v1, cf. §21.6) a exactement le même point faible :
+`assurerTokenStravaValide()` ne vérifie que l'expiration locale, jamais la
+validité réelle côté Strava. Mais le symptôme y était différent et plus
+sournois : `recupererVolumeStrava()` retournait déjà un objet `{ mediane,
+erreur }` en cas d'échec, sans jamais distinguer le cas "token invalide" du
+reste — le wizard basculait donc **silencieusement** vers la saisie manuelle
+du volume (`toggleManualVolume()`/`toggleManualVolumeForme()`) sans que
+l'utilisateur comprenne pourquoi sa connexion Strava avait cessé de
+fonctionner. Corrigé : `recupererVolumeStrava()` retourne désormais aussi
+`authInvalide` (même détection `errors[].field === "access_token"` que côté
+v1) ; `chargerVolumeStrava()` et `chargerVolumeStravaForme()`
+(`public/v2/index.html`) l'utilisent pour afficher un nouveau flag dédié
+(`stravaAuthInvalideFlag`/`stravaAuthInvalideFlagForme`, distinct du flag
+générique "Pas d'historique Strava suffisant") avec un bouton "🔄 Reconnecter
+Strava" (réutilise `connecterStrava()` déjà existant). Pas de fichier de test
+à mettre à jour — `recupererVolumeStrava()` touche le réseau, non testée en
+isolation dans `test-strava.mjs` (comme documenté dans les commentaires du
+fichier lui-même).
+
 ### 18.3 Bug résolu : sélection du plan actif au démarrage
 
 **Contexte découvert en diagnostiquant 18.4** (onboarding en boucle) : Laurent a
