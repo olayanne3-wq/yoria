@@ -1,6 +1,6 @@
 /**
  * changelog.classic.js
- * Historique des versions affiché dans Paramètres (Run by Léa)
+ * Historique des versions affiché dans Paramètres (Yoria)
  *
  * Extrait de index.html le 13 juillet 2026 (était un tableau const VERSIONS
  * en dur au milieu de renderSettings()) — séparé pour alléger index.html
@@ -45,7 +45,7 @@ const VERSIONS = [
         "🐛 Synchro Strava corrigée après le changement de domaine lié au rebranding",
       ]},
       { ver:"v2.7", title:"Yoria — nouvelle identité et thème clair/sombre", current:false, notes:[
-        "🎨 Nouveau nom et nouvelle identité visuelle : Run by Léa devient Yoria",
+        "🎨 Nouveau nom et nouvelle identité visuelle : Yoria devient Yoria",
         "☀️🌙 Choix du thème clair ou sombre, dans Paramètres",
         "🏷️ Badges de séance recolorés par intensité (VMA/Test/Course, Seuil/Allure course, EF/Longue)",
         "🐛 Correctifs d'affichage et de navigation liés au changement de thème",
@@ -133,8 +133,8 @@ const VERSIONS = [
         "📐 Labels en majuscules + chiffres tabulaires",
         "📊 Barres de progression avec gradient",
       ]},
-      { ver:"v1.8.15", title:"Run by Léa & courbes IE", current:false, notes:[
-        "🏷️ Renommage en Run by Léa",
+      { ver:"v1.8.15", title:"Yoria & courbes IE", current:false, notes:[
+        "🏷️ Renommage en Yoria",
         "🎨 Nouvelle icône runner",
         "📊 Courbes IE + Cadence dans Stats",
         "⚙️ Paramètres simplifiés",
