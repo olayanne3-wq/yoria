@@ -1,6 +1,6 @@
 /**
  * pdf-export.js
- * Export PDF du plan d'entraînement — Run by Léa v2.0
+ * Export PDF du plan d'entraînement — Yoria v2.0
  *
  * Dépend de la librairie externe jsPDF + jspdf-autotable, chargée via
  * <script src="..."> dans le <head> du document (pas un import ES) et
@@ -84,7 +84,7 @@ const LOGO_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAA
     doc.setFontSize(16);
     doc.setFont(undefined, 'bold');
     doc.setTextColor(20);
-    doc.text('Run by Léa — Plan d\'entraînement', marge + 18, y + 9);
+    doc.text('Yoria — Plan d\'entraînement', marge + 18, y + 9);
     y += 18;
     texte(`Distance : ${plan.distance}  |  Objectif : ${plan.objectif}  |  Durée : ${plan.dureeSemaines} semaines`, 10);
     texte(`Du ${formatDateFR(plan.dateDebut)} au ${formatDateFR(plan.dateCourse)}`, 10);
