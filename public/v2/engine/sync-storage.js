@@ -1,5 +1,5 @@
 // ============================================================
-// Run by Léa — Synchronisation localStorage ↔ Supabase
+// Yoria — Synchronisation localStorage ↔ Supabase
 // Source de vérité : public/v2/engine/sync-storage.js
 // Copie non-module dérivée : public/engine-classic-scripts/sync-storage.classic.js
 // Chantier v2.5 migration, démarré le 13 juillet 2026.
