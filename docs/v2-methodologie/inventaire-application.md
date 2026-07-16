@@ -1,7 +1,7 @@
 # Inventaire de l'application "Yoria"
 
 > Vue d'ensemble de référence — à relire en début de session pour retrouver le contexte
-> sans re-parcourir tout le repo. Mis à jour au 15 juillet 2026.
+> sans re-parcourir tout le repo. Mis à jour au 16 juillet 2026.
 >
 > **État courant (résumé)** : v2.9 tout juste clos — voir §21 pour le détail complet
 > de cette dernière session (paliers marche-course en durée continue + validation
@@ -14,9 +14,14 @@
 > bugs de synchro/onboarding. Le rebranding Yoria (§13-§14) et l'authentification
 > Supabase (§8bis, v2.5) sont clos et stables. Publication Play Store en piste de
 > test interne (§11). Site "beta" indépendant à ne jamais toucher (§18.1).
-> **Domaine personnalisé yoria.run** actif et opérationnel (§22) — Vercel,
-> Supabase et Strava tous alignés dessus ; reste juste la config Android/TWA
-> à refaire avant la publication Play Store définitive (§22.2).
+> **Domaine principal yoria.run** actif et opérationnel (§22) — Vercel (projet
+> renommé `yoria` le 16/07), Supabase et Strava tous alignés dessus ; reste juste
+> la config Android/TWA à refaire avant la publication Play Store définitive (§22.2).
+> **Nettoyage identité complet le 16/07** (§23) : plus aucune trace de "Run by Léa"
+> ou `plan-10k` dans le code fonctionnel — le persona du coach IA s'appelle
+> désormais Yoria (prompts, UI), headers de fichiers corrigés, doc dédupliquée.
+> Seuls le package Android (`app.vercel.plan_10k_alpha.twa`) et `assetlinks.json`
+> restent intentionnellement inchangés (identifiant permanent Play Store).
 >
 > Pour l'historique des décisions et le "pourquoi", voir les autres docs de ce dossier
 > (bibliotheque-seances.md, convergence-v1-v2.md, etc.) et les mémoires de session.
@@ -30,8 +35,10 @@
 
 **Yoria** (anciennement "Run by Léa", renommée le 14 juillet 2026 — voir §13)
 — PWA coach running, génère des plans d'entraînement adaptatifs.
-Déployée sur Vercel : `plan-10k-alpha.vercel.app` (domaine inchangé au
-rebranding). Repo GitHub : `olayanne3-wq/yoria`.
+Déployée sur Vercel : domaine principal **`yoria.run`** (domaine personnalisé
+actif depuis le 15 juillet 2026, voir §22 ; `yoria-running.vercel.app` et
+`plan-10k-alpha.vercel.app` redirigent tous deux en 308 vers `yoria.run`).
+Projet Vercel renommé `yoria` (16 juillet 2026). Repo GitHub : `olayanne3-wq/yoria`.
 Stack : vanilla HTML/CSS/JS, hosting statique Vercel, API serverless dans `/api/`.
 Utilisateur principal actuel : Laurent, qui prépare un Semi le 1er novembre 2026.
 
@@ -597,7 +604,8 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
   supplémentaire ; à ajouter si besoin réel constaté).
 - **Version affichée passée à v2.5, bandeau rendu dynamique** — entrée
   ajoutée en tête de `VERSIONS` dans `index.html`. Le bandeau header
-  (`el("div",...)` juste avant `"· plan-10k-alpha.vercel.app"`)
+  (`el("div",...)` juste avant `"· plan-10k-alpha.vercel.app"` à l'époque —
+  affiche désormais `"· yoria.run"`, corrigé le 16 juillet 2026)
   affichait un numéro figé en dur, retrouvé bloqué sur `v1.8.15` alors
   que l'app était déjà en v2.3 — oublié à chaque mise à jour depuis
   plusieurs versions. Corrigé en sortant `const VERSIONS` de
@@ -641,6 +649,7 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Grand débutant redirigé vers le mauvais flux (accent) | ✅ Clos (15 juillet) — voir §21 |
 | Module client Strava manquant (wizard) | ✅ Clos (15 juillet) — voir §21 |
 | Domaine personnalisé yoria.run | ✅ Clos (15 juillet) — voir §22 |
+| Nettoyage identité complet (plus de Léa/plan-10k) | ✅ Clos (16 juillet) — voir §23 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
 | **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
@@ -759,8 +768,12 @@ l'app s'est ouverte correctement en plein écran avec la bonne icône.
 plusieurs réinstallations manuelles, vérifier via ADB quelle version/
 fingerprint est réellement installée avant de chercher ailleurs.
 
-**Package Android** : `app.vercel.plan_10k_alpha.twa`
-**Domaine associé** : `plan-10k-alpha.vercel.app`
+**Package Android** : `app.vercel.plan_10k_alpha.twa` (identifiant permanent,
+volontairement inchangé même après le passage à `yoria.run` — le changer
+casserait toute mise à jour future de l'app publiée, cf. §22.2)
+**Domaine associé** : `yoria-running.vercel.app` (pas encore migré vers
+`yoria.run` côté config Android/TWA — reste à faire avant la publication
+Play Store définitive, cf. §22.2)
 
 **Assets store préparés** :
 - Icône source : `public/icon.svg` (silhouette coureur orange, déjà en prod)
@@ -2544,12 +2557,18 @@ avant tout changement de config externe : recherche exhaustive de domaines
 en dur dans le code (`grep` sur tous les fichiers `index.html`/`v2/index.html`,
 manifests PWA, `assetlinks.json`).
 
-**Résultat de l'audit** : le changement de domaine est presque entièrement
-une affaire de configuration externe (Vercel/Strava/Supabase), pas de code.
-Une seule mention en dur trouvée et corrigée (texte affiché en Paramètres,
-`index.html`, cosmétique) — tout le reste (manifests PWA, routes internes)
-utilise des chemins relatifs, donc suit automatiquement n'importe quel
-domaine.
+**Résultat de l'audit initial (15/07)** : le changement de domaine est
+presque entièrement une affaire de configuration externe
+(Vercel/Strava/Supabase), pas de code. Une seule mention en dur trouvée et
+corrigée à ce moment-là (texte affiché en Paramètres, `index.html`,
+cosmétique) — tout le reste (manifests PWA, routes internes) utilise des
+chemins relatifs, donc suit automatiquement n'importe quel domaine.
+
+**Correction (16/07/2026)** : cet audit initial était incomplet. Un audit
+plus large mené le 16 juillet (déclenché par la demande de retirer toute
+mention de "Run by Léa"/`plan-10k`) a trouvé une vingtaine d'occurrences
+supplémentaires de `plan-10k-alpha.vercel.app` réparties dans le code (pas
+seulement la doc) — voir §23 pour le détail complet de ce nettoyage.
 
 ### 22.1 Fait
 
@@ -2589,3 +2608,88 @@ explicitement.
   redirige maintenant vers `yoria.run` en 308), mais l'app Android devra
   être régénérée/republiée avec le nouveau domaine avant la publication
   Play Store définitive.
+
+## 23. Nettoyage identité complet — plus de "Run by Léa"/plan-10k (16/07/2026)
+
+Demande de Laurent : ne plus laisser aucune trace de "Run by Léa" ou
+`plan-10k` dans le code — Yoria doit être utilisé partout, y compris le
+**persona du coach IA** lui-même (pas seulement le nom de l'app).
+
+### 23.1 Audit mené avant modification
+
+Repo entier téléchargé et grepé (94 fichiers texte) pour distinguer les
+mentions à corriger des mentions légitimes à garder :
+
+- **Headers de commentaire "Run by Léa"** dans 13 fichiers de code
+  (`api/config.js`, les 6 `engine-classic-scripts/*.classic.js`, leurs 6
+  équivalents `v2/engine/*.js`) — cosmétique, sans risque.
+- **Persona coach "Léa"** dans `public/index.html` (17 occurrences) —
+  prompts envoyés à l'IA (`Tu es Léa, coach running...`), labels UI,
+  messages d'attente, commentaires expliquant pourquoi ne pas confondre le
+  prénom du coach avec celui du coureur.
+- **Domaine `plan-10k-alpha.vercel.app`** encore en dur dans le texte
+  affiché en Paramètres (`index.html`, ligne ~5304) — pas corrigé lors du
+  passage à `yoria.run` du 15/07 malgré ce qu'affirmait alors §22.1.
+- **`assetlinks.json`** (`plan_10k`) et **package Android**
+  (`app.vercel.plan_10k_alpha.twa`) — **volontairement exclus**, cf. §23.2.
+- **Doublon de doc** : `docs/v2-methodologie/inventaire.md` (1628 lignes,
+  version périmée arrêtée au 14/07) coexistait avec
+  `inventaire-application.md` (la vraie source à jour) — résidu.
+- **9 fichiers placeholders vides** `docs/{architecture,beta,changelog,
+  legal,marketing,moteur,playstore,roadmap,sessions}/x` — origine inconnue,
+  probable erreur de manipulation GitHub antérieure.
+
+### 23.2 Décision : ce qui reste intentionnellement inchangé
+
+- **`app.vercel.plan_10k_alpha.twa`** (applicationId Android) — identifiant
+  **permanent** d'une app une fois publiée sur Play Store (même en piste de
+  test interne). Le changer équivaudrait à créer une app totalement
+  différente aux yeux de Google : perte de l'historique, des testeurs
+  enregistrés, republication complète nécessaire. Laissé tel quel, decision
+  actée avec Laurent.
+- **`public/.well-known/assetlinks.json`** — lié au keystore/fingerprint
+  Android existant, pas au nom du produit. Non touché.
+- **Nom de dossier local** `runbylea-android-v3` (machine Windows de
+  Laurent, hors repo) — cosmétique, aucun impact, non renommé (pas
+  d'intérêt à le faire).
+- **Sections narratives/historiques de cet inventaire** (§8bis, §12.5,
+  §13-14, §16-22, diagnostics de bugs passés) — décrivent fidèlement l'état
+  du code à un moment donné où "Léa"/`plan-10k` étaient encore les noms en
+  vigueur ; laissées telles quelles pour la valeur documentaire, non
+  réécrites rétroactivement.
+
+### 23.3 Corrections appliquées
+
+**Persona coach → Yoria** (`public/index.html`) — le coach s'appelle
+désormais Yoria dans :
+- Les deux prompts envoyés à l'IA (`fetchCoachMsg`, `fetchCoachRaceMsg`) :
+  `Tu es Yoria, coach running...`, avec l'instruction anti-confusion mise à
+  jour (`jamais "Yoria" — c'est ton propre prénom, pas le sien`).
+- Les labels UI : "🤖 Conseil de Yoria pour la course", "Yoria réfléchit à
+  un conseil…", "🤖 Yoria fait une pause — réessaie…", texte d'aide
+  ("...les conseils personnalisés de Yoria selon ta progression").
+- Les commentaires de code explicatifs (mécanisme anti-confusion de
+  prénom, inchangé dans sa logique, juste renommé).
+
+**Domaine** (`public/index.html`) : texte affiché en Paramètres corrigé en
+`"vX.Y · yoria.run"` (n'avait en réalité jamais été fait au 15/07, malgré
+l'ancienne affirmation en §22.1).
+
+**Headers de commentaire** (13 fichiers, cf. liste §23.1) : `Run by Léa` →
+`Yoria` en première ligne de chaque fichier.
+
+**Docs** : suppression de `docs/v2-methodologie/inventaire.md` (doublon
+périmé) et des 9 fichiers placeholders `docs/*/x`.
+
+Vérification syntaxique (`node --check` sur le bloc `<script>` principal
+extrait d'`index.html`) effectuée avant push — aucune régression.
+
+### 23.4 Reste à faire
+
+- **Android/TWA** (§22.2, inchangé) : toujours calé sur
+  `yoria-running.vercel.app`, à migrer vers `yoria.run` avant publication
+  Play Store définitive — indépendant de ce nettoyage d'identité.
+- Si Laurent veut un jour aussi renommer `runbylea-android-v3` (dossier
+  local Windows) ou changer l'`applicationId` Android : décision à part,
+  impliquant une republication Play Store complète — non fait ici par choix
+  explicite.
