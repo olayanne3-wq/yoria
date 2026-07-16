@@ -497,6 +497,7 @@ let stravaToken = load("lk_strava_token", null);
 let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
 let stravaActivities = load("lk_strava_activities", []);
+window.stravaActivities = stravaActivities; // exposition pour scripts externes (moteur de décision)
 let syncing = false;
 let syncMsg = "";
 let stravaAuthInvalide = false; // 16 juillet 2026 : détecte un access_token
@@ -5265,7 +5266,7 @@ function renderSettings() {
             onClick:()=>{ if(!syncing) syncStrava(); }
           },syncing?"⏳ "+syncMsg:"🔄 Synchroniser avec Strava"),
           el("button",{style:{background:"none",border:"none",color:"var(--text2)",fontSize:"14px",cursor:"pointer",padding:"0",marginTop:"12px",paddingTop:"12px",borderTop:"1px solid var(--border)"},
-            onClick:()=>{ stravaToken=null;stravaRefresh=null;stravaExpires=0;stravaActivities=[];save("lk_strava_token",null);save("lk_strava_refresh",null);save("lk_strava_expires",0);save("lk_strava_activities",[]);render(); }
+            onClick:()=>{ stravaToken=null;stravaRefresh=null;stravaExpires=0;stravaActivities=[];window.stravaActivities=[];save("lk_strava_token",null);save("lk_strava_refresh",null);save("lk_strava_expires",0);save("lk_strava_activities",[]);render(); }
           },"🔓 Déconnecter Strava")
         )
       :el("a",{href:"/api/strava/auth",style:{display:"block",background:"rgba(var(--warn-rgb),0.13)",border:"1px solid rgba(var(--warn-rgb),0.33)",borderRadius:"10px",padding:"12px 16px",color:"var(--warn)",fontWeight:"700",fontSize:"15px",textAlign:"center",textDecoration:"none"}},"🔗 Connecter Strava")
@@ -5605,7 +5606,7 @@ async function syncStrava() {
     const activities = await resp.json();
     if (Array.isArray(activities)) {
       const runs = activities.filter(a => a.type === "Run" || a.sport_type === "Run");
-      stravaActivities=runs; save("lk_strava_activities",runs);
+      stravaActivities=runs; window.stravaActivities=runs; save("lk_strava_activities",runs);
       matchActivitiesToPlan(activities);
       lastSyncTime = Date.now();
 
