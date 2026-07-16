@@ -667,7 +667,7 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
 | Bug intermittent écran d'accueil wizard (course async) | ✅ Clos (16 juillet) — voir §24 |
 | v2.5 authentification Supabase | ✅ **Publiée** (13 juillet) — auth, migration rétroactive, wizard protégé, sync temps réel (Realtime), file d'attente, variables d'env Vercel, Réglages nettoyés |
 | v2.5 commercialisation (Stripe) | 🔜 Non commencé |
-| **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — voir §11 pour le détail complet |
+| **Publication Play Store (TWA)** | 🟡 **En cours** (13 juillet) — compte développeur vérifié le 16/07, voir §11 pour le détail complet |
 
 ## 10. Principes transverses à retenir
 
@@ -827,12 +827,21 @@ faire dans Play Console, jamais automatique.
 - ✅ Textes de fiche store rédigés
 - ✅ Feature graphic composé et validé (version horizontale)
 - 🔜 Captures d'écran (à prendre directement sur le téléphone, pas encore fait)
-- ðŸ”œ Classification du contenu (questionnaire Play Console, pas encore rempli)
-- ðŸ”œ Data Safety form (guide fourni, pas encore rempli dans Play Console)
+- 🔜 Classification du contenu (questionnaire Play Console, pas encore rempli)
+- 🔜 Data Safety form (guide fourni, pas encore rempli dans Play Console)
 - 🔜 Création de l'app dans Play Console + upload du `.aab` (bloqué en
   attente de la validation du compte développeur)
 - 🔜 Test en piste interne — **c'est la piste retenue, pas de passage en
   production prévu pour l'instant** (cf. décision de diffusion ci-dessus)
+
+**Mise à jour 16/07/2026** : **vérification du compte développeur validée**
+— confirmation Google reçue ("Toutes vos applis ont bien été enregistrées
+pour répondre aux exigences de validation des développeurs Android"), le
+package `app.vercel.plan_10k_alpha.twa` est bien enregistré. Le blocage
+qui empêchait de continuer sur Play Console est donc levé. Restent à
+faire, tous encore ouverts à cette date : captures d'écran, classification
+du contenu, Data Safety form, création de l'app dans Play Console et
+upload du `.aab`.
 - 🔜 **Après première publication uniquement** : remplacer le fingerprint
   dans `assetlinks.json` par celui de Play App Signing (Release > Setup >
   App Integrity dans Play Console) — différent du fingerprint local actuel,
