@@ -1,6 +1,6 @@
 /**
  * plan-forme.js
- * Moteur de génération de plan — Mode Forme (Run by Léa v2.6)
+ * Moteur de génération de plan — Mode Forme (Yoria v2.6)
  *
  * Mode alternatif au plan course (plan-generator.js) : pas de date de fin,
  * pas de phases Construction/Spécifique/Affûtage, pas de séance test/course.
