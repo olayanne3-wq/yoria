@@ -2146,6 +2146,28 @@
     // choix-mode-contenu (rien à consulter pour un tout nouveau compte).
     // Ne s'applique pas si un autre écran a déjà pris la main entre-temps
     // (grand-débutant, retour Strava…).
+    //
+    // 16 juillet 2026 : AVANT ce comportement par défaut, vérifier si une
+    // étape de wizard course était sauvegardée en sessionStorage — signe
+    // qu'on revient d'un window.location.reload() forcé par
+    // capterRetourStravaOAuth() (ex: clic sur "Reconnecter Strava" en
+    // pleine étape 3, cf. inventaire §18.2). Sans ce court-circuit,
+    // l'utilisateur retombait sur l'écran d'accueil (Consulter/Créer) après
+    // le rechargement plutôt que de reprendre où il en était — le
+    // mécanisme de restauration existant (etapeSauvegardee, plus bas) n'est
+    // en réalité lu que dans validerChoixMode(), jamais automatiquement au
+    // chargement de la page.
+    const etapeWizardCourseAuReload = parseInt(sessionStorage.getItem('v2_wizard_step') || '0', 10);
+    if (etapeWizardCourseAuReload >= 1 && etapeWizardCourseAuReload <= totalSteps
+        && document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
+      document.getElementById('accueil-wizard-contenu').style.display = 'none';
+      document.getElementById('choix-mode-contenu').style.display = 'none';
+      document.getElementById('wizard-course-contenu').style.display = 'block';
+      current = etapeWizardCourseAuReload;
+      showStep(current);
+      return;
+    }
+
     if (document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
       let plans = [];
       try {
