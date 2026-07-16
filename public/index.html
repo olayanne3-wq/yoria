@@ -485,7 +485,8 @@ let dataSource = load(clePourPlan("lk_data_source"), "strava");
 let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 // Mémorise le dernier lien de synchro généré, pour le bouton "Copier le
 // lien" (section "Configurer sur un autre appareil", unifié le 11 juillet
-// 2026 pour synchroniser token + lk_gist_id + v2_gist_id en un seul lien).
+// 2026 pour synchroniser token + gistV2 en un seul lien — lk_gist_id
+// retiré le 16 juillet 2026, résidu mort, cf. plus bas).
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
@@ -507,20 +508,24 @@ let lastSyncTime = load("lk_last_sync", 0);
 let githubToken = load("lk_github_token", "");
 
 // URL params lus après déclarations
-let gistId = load("lk_gist_id", "");
+// 16 juillet 2026 : gistId/lk_gist_id retiré — résidu mort de l'ancien
+// système de backup v1 (plan10k_backup.json), déjà nettoyé du reste du
+// code (commit 7c9f0cb, cf. inventaire §10) mais cette variable était
+// restée stockée sans jamais être consommée nulle part (aucune référence
+// dans gist-sync.js, le vrai moteur de synchro plans). Le paramètre URL
+// ?gist= reste lu ci-dessous pour ne pas casser un ancien lien déjà
+// partagé par Laurent, mais il n'est plus stocké : ignoré silencieusement.
 
-// Récupérer token + gistId (+ gistV2, unifié le 11 juillet 2026 — Laurent
-// a demandé qu'un seul lien synchronise tout, plutôt que deux mécanismes
-// séparés dans deux fichiers différents) depuis l\'URL si présent
+// Récupérer token + gistV2 (unifié le 11 juillet 2026 — Laurent a demandé
+// qu'un seul lien synchronise tout, plutôt que deux mécanismes séparés
+// dans deux fichiers différents) depuis l'URL si présent
 (function() {
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get("token");
-  const urlGist = params.get("gist");
   const urlGistV2 = params.get("gistV2");
   if (urlToken) { githubToken = urlToken; save("lk_github_token", githubToken); }
-  if (urlGist) { gistId = urlGist; save("lk_gist_id", gistId); }
   if (urlGistV2 && typeof setV2GistId === "function") { setV2GistId(urlGistV2); }
-  if (urlToken || urlGist || urlGistV2) { window.history.replaceState({}, "", window.location.pathname); }
+  if (urlToken || urlGistV2 || params.get("gist")) { window.history.replaceState({}, "", window.location.pathname); }
 })();
 let predHistory = load(clePourPlan("lk_pred_history"), []); // [{date, time, confidence}]
 
