@@ -21,7 +21,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.10", title:"Moteur de décision — unification ACWR, coach connecté, garde-fous", current:true, notes:[
+      { ver:"v2.11", title:"Module 2 du moteur (analyse de séance) & garde-fous anti-régénération", current:true, notes:[
+        "🧠 Nouveau module du moteur de décision : chaque séance de qualité (VMA/Seuil/Spec/Test) réalisée est comparée à ce qui était prévu (allure, FC, répétitions dans la cible), visible dans un bloc de test dédié en bas de Stats",
+        "🎯 Catalogue de règles du moteur étoffé : ACWR élevé, tendance de fatigue en hausse sur plusieurs jours, séances planifiées ratées coup sur coup — le moteur se déclenche désormais sur des situations qu'il ne détectait pas avant",
+        "🛡️ Garde-fou important : aucune régénération ou adaptation de plan ne peut plus modifier rétroactivement une séance déjà passée, quel que soit le mécanisme déclencheur",
+        "🐛 Le calcul de charge d'entraînement sur les séances en durée (type 30-30) est corrigé — il ignorait silencieusement ce format et faussait l'analyse de volume",
+      ]},
+      { ver:"v2.10", title:"Moteur de décision — unification ACWR, coach connecté, garde-fous", current:false, notes:[
         "🧠 Le coach IA du dashboard lit maintenant l'état réel du moteur de décision (fatigue, risque, dernière proposition) au lieu d'un calcul de charge séparé — le message ne peut plus contredire la carte de proposition affichée au même moment",
         "📊 Le graphique de charge d'entraînement (ACWR) utilise désormais le même calcul que le moteur de décision — plus de risque d'affichage incohérent entre le graphique et une proposition d'ajustement",
         "🛡️ Deux garde-fous ajoutés au moteur : une réduction de charge individuelle ne peut jamais dépasser -30%, et le cumul de réductions sur 14 jours glissants est plafonné à 25% — le moteur refuse d'appliquer une décision qui dépasserait ces limites",
