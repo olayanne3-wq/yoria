@@ -468,7 +468,10 @@ function computePhases({ dateDebut, dateCourse, distance, niveau, ampleurObjecti
   const debut = new Date(dateDebut);
   const course = new Date(dateCourse);
   const totalJours = Math.round((course - debut) / 86400000);
-  const totalSemaines = Math.max(1, Math.round(totalJours / 7));
+  // ceil (pas round) : garantit que dateCourse tombe TOUJOURS dans la
+  // dernière semaine générée, jamais après — cf. sync-storage.js pour le
+  // détail complet (bug trouvé le 17/07/2026).
+  const totalSemaines = Math.max(1, Math.ceil(totalJours / 7));
 
   const warnings = [];
   if (totalJours < 0) {
@@ -1404,20 +1407,26 @@ function genererContenuRace({ distance, alluresSec }) {
  * Remplace la séance du jour de course (date == dateCourse) par une vraie
  * séance de course, avec stratégie de segments par distance. Mute le plan
  * en place. Silencieux si le jour de course ne tombe sur aucune séance du
- * plan (ne devrait pas arriver en pratique, computePhases cale la durée du
- * plan sur dateCourse, mais pas de garde-fou bloquant par prudence).
+ * plan.
+ *
+ * Cible le jour ISO exact de dateCourse dans la dernière semaine — cf.
+ * sync-storage.js pour le détail complet (bug trouvé le 17/07/2026).
  */
 function placerSeanceCourse(plan, alluresSec) {
   const derniereSemaine = plan.semaines[plan.semaines.length - 1];
   if (!derniereSemaine) return;
 
-  // Le jour de course est toujours le dernier jour du plan (dimanche de la
-  // dernière semaine, cf. computePhases qui cale la durée totale sur
-  // dateCourse) — pas besoin de comparer des dates jour par jour, plus
-  // simple et robuste que de reconstruire la date de chaque jour de la
-  // semaine à partir de dateDebut.
-  const jours = Object.entries(derniereSemaine.assignment);
-  const [, dernierJour] = jours[jours.length - 1];
+  const jsDay = new Date(plan.dateCourse + 'T00:00:00').getDay();
+  const jourCourseISO = (jsDay + 6) % 7;
+
+  let dernierJour = derniereSemaine.assignment[jourCourseISO];
+
+  if (!dernierJour) {
+    const jours = Object.entries(derniereSemaine.assignment);
+    const derniere = jours[jours.length - 1];
+    if (!derniere) return;
+    dernierJour = derniere[1];
+  }
   if (!dernierJour) return;
 
   const { sousType, contenu, kmEstime } = genererContenuRace({ distance: plan.distance, alluresSec });
