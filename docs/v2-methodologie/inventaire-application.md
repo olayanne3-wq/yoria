@@ -3854,3 +3854,117 @@ jour — les données sont disponibles mais inertes tant qu'une nouvelle règle
 n'est pas conçue et codée pour s'appuyer dessus (ex. une règle qui réagirait
 à `SignalTendance` type `FATIGUE_CROISSANTE` ou `CHARGE_CROISSANTE_RAPIDE`
 du Module 4, ou à `ecartVolumePourcent`/`seancesManquees` du Module 3).
+
+## 33. Chantier RPE unifié (17/07/2026, même session)
+
+### 33.1 Remarque de Laurent : le RPE était invisible pour la plupart des séances
+
+Laurent a fait remarquer que le RPE n'était demandé que dans le formulaire
+de saisie manuelle d'allure (`renderStatusRow`, cas "pas de Strava ou
+correction manuelle") — jamais pour une séance validée normalement (Strava
+trouvé, simple clic ✅/⚠️/❌), qui représente la grande majorité des
+séances en pratique.
+
+### 33.2 Bug trouvé en creusant : `sessionNotes[uid+'_rpe']` n'a jamais existé
+
+En cherchant à corriger ça, découverte que les wrappers Module 1
+(`calculerEtatMoteurDecision`/`obtenirRatioACWRActuel`/
+`obtenirHistoriqueACWR`) et les wrappers Modules 2/3 codés plus tôt dans
+cette même session lisaient tous `sessionNotes[uid + '_rpe']` — une clé
+**qui n'a jamais été écrite nulle part dans le code**. Erreur de ma part :
+j'avais halluciné cette clé en pensant qu'elle existait, sans vérifier. Le
+vrai stockage du RPE était `manualPerf[uid].rpe`, une clé différente,
+elle-même limitée au formulaire de saisie manuelle (cf. §33.1). Résultat
+avant correction : `ressentiRPE` était toujours `undefined` en pratique,
+peu importe ce que le coureur avait saisi.
+
+### 33.3 Décisions actées avec Laurent
+
+1. **Nouvelle clé unifiée `sessionRpe[uid]`** (stockage `lk_session_rpe`)
+   — remplace les deux clés incohérentes. `manualPerf[uid].rpe` reste lu en
+   repli pour compat ascendante (anciennes saisies), mais n'est plus jamais
+   écrit par le nouveau sélecteur.
+2. **RPE remonté au niveau du statut** : sélecteur ajouté directement dans
+   `renderStatusRow()`, visible dès qu'un statut réel (✅/⚠️/❌) est posé —
+   pas seulement en saisie manuelle. Repos (`😴`) et non renseigné (`—`)
+   exclus (noter un ressenti n'a pas de sens sur ces deux cas).
+3. **Échelle repensée : 5 niveaux plutôt que 3 ou 10**. Le contrat théorique
+   du moteur attend une échelle CR-10 de Borg (`SeanceRealisee.ressentiRPE:
+   number; // 1-10`, doc archi §3.1) — mais demander à un coureur amateur
+   de noter précisément sur 10 est peu fiable en pratique (la littérature
+   citée dans le doc archi §5.2 note elle-même une validité/fiabilité
+   moindre chez les sujets non entraînés sans les ancrages verbaux précis
+   de l'échelle CR-10 originale). L'ancien sélecteur à 3 niveaux (saisie
+   manuelle seule) était à l'inverse trop grossier — ne distinguait pas
+   "modérément dur" de "très dur". Compromis retenu : `RPE_OPTIONS`, 5
+   niveaux visuels simples (🙂 Facile=2, 😐 Modéré=4, 😓 Difficile=6, 😣
+   Très difficile=8, 🥵 Maximal=10), mappés directement sur l'échelle CR-10
+   pour le calcul — le coureur ne voit jamais le chiffre lui-même, jamais
+   de conversion approximative a posteriori.
+4. **Le Module 1 (fatigue/ACWR, affiché partout dans l'app) doit aussi
+   bénéficier du RPE**, pas seulement les Modules 2/3 — décision prise
+   après réflexion sur la cohérence : sans ça, deux modules du même moteur
+   auraient regardé des signaux différents pour la même séance.
+5. **Pondération TRIMP par RPE plutôt que remplacement** : quand une FC est
+   disponible, un RPE élevé amplifie légèrement le TRIMP calculé (jamais ne
+   le remplace, jamais ne l'abaisse) — les deux échelles (TRIMP et sRPE) ne
+   sont pas dans la même unité, les mélanger directement serait une erreur
+   (cf. §5.1 doc archi).
+
+### 33.4 Implémentation
+
+**`index.html`** :
+- `sessionRpe` déclarée (`load(clePourPlan("lk_session_rpe"), {})`), juste
+  après `sessionNotes`.
+- `RPE_OPTIONS` (constante partagée, 5 niveaux → valeurs CR-10 2/4/6/8/10),
+  déclarée juste après `SOPTS`/`SCOLORS`.
+- Sélecteur RPE ajouté dans `renderStatusRow()` (nouveau bloc, visible si
+  statut ∈ {✅,⚠️,❌}) et dans le formulaire de saisie manuelle (migré de
+  l'ancien `rpeOpts` à 3 niveaux vers `RPE_OPTIONS`, écrit désormais dans
+  `sessionRpe` au lieu de `manualPerf[uid].rpe`).
+- `adapterHistoriqueAvecRpe(stravaActivitiesListe, provenanceDeclaree)` —
+  nouvelle fonction : reproduit la boucle de
+  `DecisionEngineAdapter.adapterHistoriqueComplet()` mais fait la
+  correspondance date d'activité → uid de séance du plan (via
+  `ALL_SESSIONS`) → RPE (`sessionRpe` puis repli `manualPerf`) avant
+  d'appeler `adapterActiviteStrava()` directement avec ce RPE. Choix
+  d'implémentation suivant la recommandation discutée avec Laurent :
+  modifier l'appelant plutôt que
+  `DecisionEngineAdapter.adapterHistoriqueComplet()` elle-même — cette
+  dernière ne peut structurellement pas faire cette correspondance (elle ne
+  reçoit que des activités Strava brutes, sans notion de séance du plan),
+  et son principe ("ne jamais inventer une correspondance sans qu'on la lui
+  donne explicitement") reste respecté.
+- `obtenirRatioACWRActuel()`, `obtenirHistoriqueACWR()`,
+  `calculerEtatMoteurDecision()` : les 3 appelants de
+  `adapterHistoriqueComplet()` identifiés dans le code, tous remplacés par
+  `adapterHistoriqueAvecRpe()`.
+- Deux wrappers corrigés pour lire `sessionRpe[uid]` (avec repli
+  `manualPerf[uid].rpe`) au lieu de la clé fantôme
+  `sessionNotes[uid+'_rpe']` : `analyserSemaineActuelle()` (Module 3, §30)
+  et `analyserSeanceQualite()` (Module 2, §27 — celui-ci avait le même bug
+  latent, présent avant même cette session).
+
+**`decision-engine-runner-state.classic.js`** (Module 1) et
+**`decision-engine-week-analysis.classic.js`** (Module 3) : ajout de
+`SEUIL_RPE_AMPLIFICATION = 8` et `FACTEUR_AMPLIFICATION_RPE_ELEVE = 1.12`
+(dupliquées dans les deux fichiers, cohérent avec le principe déjà établi
+qu'aucun module du moteur ne dépend d'un autre script du moteur). Dans
+`calculerChargeSeance()`/`calculerChargeSeanceRealisee()`, quand le TRIMP
+est calculé (FC disponible) et que `ressentiRPE >= 8`, la charge finale est
+multipliée par 1.12. Aucun effet si RPE absent ou < 8. Valeurs choisies à
+dire d'expert, même limite déjà assumée pour les coefficients d'intensité
+du Module 3 (§30.5/§30.8) — à recalibrer une fois croisées avec plus de
+données réelles.
+
+**Testé** : `calculerChargeSeance()` avec FC identique, RPE 4 (sous seuil,
+aucun effet) vs RPE 9 (au-dessus, ×1.120 exactement) — comportement
+conforme.
+
+### 33.5 Fichiers modifiés
+
+`public/index.html`,
+`public/engine-classic-scripts/decision-engine-runner-state.classic.js`,
+`public/engine-classic-scripts/decision-engine-week-analysis.classic.js`.
+Aucun fichier `.classic.js` équivalent pour la partie UI d'`index.html`
+(dashboard v1 uniquement).
