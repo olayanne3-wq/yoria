@@ -21,7 +21,16 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.11", title:"Module 2 du moteur (analyse de séance) & garde-fous anti-régénération", current:true, notes:[
+      { ver:"v2.12", title:"Historique de plan figé, Modules 3 & 4 du moteur, RPE unifié", current:true, notes:[
+        "🗂️ Chaque plan créé garde désormais une copie figée de sa version d'origine, séparée de la version que le moteur ajuste au fil du temps — utile pour comparer où on en est par rapport au plan initial",
+        "🧠 Deux nouveaux modules du moteur de décision : bilan hebdomadaire complet (volume, séances réussies/manquées, charge, récupération estimée) et détection de tendances sur plusieurs semaines — tous deux consultables dans un bloc de test en bas de Stats",
+        "😓 Le ressenti (RPE) se note maintenant directement sur chaque séance validée, pas seulement en cas de correction manuelle — 5 niveaux simples (🙂 à 🥵) qui alimentent vraiment le calcul de fatigue et de charge, ce qui n'était pas le cas avant malgré la saisie existante",
+        "📊 Le bilan hebdomadaire de la semaine (faites/partielles/manquées, minutes réelles vs prévues) réapparaît sur le dashboard — il existait dans le code mais ne s'affichait jamais",
+        "🐛 Une course prévue un jour donné pouvait se retrouver placée jusqu'à une semaine plus tôt dans le calendrier généré, selon la date de départ du plan — corrigé",
+        "🏷️ Le statut de séance \"Adaptée\" (⚠️) est renommé \"Partiel\", pour ne pas se confondre avec les futurs ajustements automatiques du moteur",
+        "🐛 Le total de minutes planifiées du bilan de semaine ignorait les séances de fractionné (formats en secondes) et sous-comptait fortement certaines semaines",
+      ]},
+      { ver:"v2.11", title:"Module 2 du moteur (analyse de séance) & garde-fous anti-régénération", current:false, notes:[
         "🧠 Nouveau module du moteur de décision : chaque séance de qualité (VMA/Seuil/Spec/Test) réalisée est comparée à ce qui était prévu (allure, FC, répétitions dans la cible), visible dans un bloc de test dédié en bas de Stats",
         "🎯 Catalogue de règles du moteur étoffé : ACWR élevé, tendance de fatigue en hausse sur plusieurs jours, séances planifiées ratées coup sur coup — le moteur se déclenche désormais sur des situations qu'il ne détectait pas avant",
         "🛡️ Garde-fou important : aucune régénération ou adaptation de plan ne peut plus modifier rétroactivement une séance déjà passée, quel que soit le mécanisme déclencheur",
