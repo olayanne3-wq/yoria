@@ -85,6 +85,7 @@ input[type=text], input[type=number], input[type=password] {
 <script src="/engine-classic-scripts/decision-engine-adapter.classic.js"></script>  
 <script src="/engine-classic-scripts/decision-engine-runner-state.classic.js"></script>
 <script src="/engine-classic-scripts/decision-engine-engagement.classic.js"></script>
+<script src="/engine-classic-scripts/decision-engine-session-analysis.classic.js"></script>
 <script src="/engine-classic-scripts/decision-engine-rules.classic.js"></script>
 <script src="/engine-classic-scripts/decision-engine-apply.classic.js"></script>
 <script>
@@ -1402,6 +1403,51 @@ function fcStatus(type, avgHr) {
   if (avgHr < zone.min - 5 || avgHr > zone.max + 5) return "🔴";
   return "🟡";
 }
+
+// ── Branchement Module 2 (SessionAnalyzer) — 17/07/2026 ────────────────────
+// Pour une séance qualité (VMA/SPEC/SEUIL/TEST) prévue à une date donnée,
+// retrouve l'activité Strava du même jour et produit un SessionAnalysis via
+// DecisionEngineSessionAnalysis. Périmètre restreint aux séances qualité,
+// cf. en-tête de decision-engine-session-analysis.classic.js (décision
+// Laurent 17/07/2026). Construit les inputs attendus par le module
+// (allureMoyenneSec en nombre, pas une string) à partir de SESSION_TARGETS/
+// FC_ZONES déjà définis ci-dessus et de stravaActivities. Retourne null si
+// le module n'est pas chargé, si la séance n'est pas une séance qualité, ou
+// si aucune activité Strava ne correspond à cette date (séance non réalisée
+// ou non synchronisée).
+function analyserSeanceQualite(seance) {
+  if (typeof DecisionEngineSessionAnalysis === 'undefined') return null;
+  if (!seance || !seance.date || !seance.type) return null;
+  if (DecisionEngineSessionAnalysis.TYPES_QUALITE.indexOf(seance.type) === -1) return null;
+
+  const activite = (stravaActivities || []).find(a => a.start_date_local?.slice(0, 10) === seance.date);
+  if (!activite) return null;
+
+  const allureMoyenneSec = activite.average_speed ? Math.round(1000 / activite.average_speed) : null;
+
+  const seanceRealisee = {
+    seanceId: seance.uid,
+    distanceKm: activite.distance != null ? Math.round(activite.distance / 100) / 10 : null,
+    allureMoyenneSec,
+    fcMoyenne: activite.average_heartrate || undefined,
+    ressentiRPE: (sessionNotes && sessionNotes[seance.uid + '_rpe']) || undefined, // repli propre si jamais saisi
+  };
+
+  const ciblesSeance = {
+    type: seance.type,
+    distancePrevueKm: seance.km || seance.distanceKm || undefined,
+    allureCible: SESSION_TARGETS[seance.type],
+    zoneFC: FC_ZONES[seance.type],
+  };
+
+  try {
+    return DecisionEngineSessionAnalysis.analyser(seanceRealisee, ciblesSeance);
+  } catch (err) {
+    console.warn("SessionAnalyzer (Module 2) : erreur de calcul.", err.message);
+    return null;
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
