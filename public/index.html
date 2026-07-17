@@ -6206,6 +6206,19 @@ if (missingFns.length > 0) {
 // cf. inventaire §8bis.
 render();
 
+// Bloque le bandeau natif de Chrome proposant "Installer l'application"
+// (17/07/2026, cf. inventaire — chantier UX identifié après un bug de
+// double-icône chez Laurent). Ce bandeau crée un raccourci PWA distinct de
+// la TWA installée depuis le Play Store, visuellement proche mais qui
+// s'ouvre en mode navigateur (barre Partager/⋮) au lieu du plein écran —
+// confusion constatée y compris en cliquant simplement sur le lien du Play
+// Store, donc probable pour tout futur testeur, pas seulement Laurent.
+// La TWA Play Store reste la seule voie d'installation prévue pour cette
+// app — jamais de PWA Chrome installée en parallèle.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+});
+
 if ('serviceWorker' in navigator) {
   // Mécanisme de mise à jour forcée (demandé par Laurent le 8 juillet 2026)
   // — un ancien service worker (installé avant une mise à jour) peut rester
