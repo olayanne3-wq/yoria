@@ -585,8 +585,17 @@ function adapterHistoriqueAvecRpe(stravaActivitiesListe, provenanceDeclaree) {
   (typeof ALL_SESSIONS !== 'undefined' ? ALL_SESSIONS : []).forEach(s => {
     if (s.date) uidParDate[s.date] = s.uid;
   });
-  return activites
+  const samplesStrava = activites
     .filter(a => a.type === 'Run')
+    .filter(a => {
+      // Exclusion Strava si saisie manuelle (17/07/2026, décision explicite :
+      // une saisie manuelle signale souvent une donnée Strava corrompue ou
+      // absente ce jour-là, elle ne doit jamais coexister avec Strava dans
+      // le moteur — cohérent avec getStravaRunSiPasManuel() côté UI).
+      const dateActivite = a.start_date_local ? a.start_date_local.slice(0, 10) : null;
+      const uid = dateActivite ? uidParDate[dateActivite] : null;
+      return !(uid && manualPerf[uid]);
+    })
     .map(a => {
       const dateActivite = a.start_date_local ? a.start_date_local.slice(0, 10) : null;
       const uid = dateActivite ? uidParDate[dateActivite] : null;
@@ -596,6 +605,35 @@ function adapterHistoriqueAvecRpe(stravaActivitiesListe, provenanceDeclaree) {
       return DecisionEngineAdapter.adapterActiviteStrava(a, provenanceDeclaree, rpeSaisi);
     })
     .filter(sample => sample.date !== null);
+
+  // Séances à saisie manuelle (17/07/2026) : Strava exclu ci-dessus, mais la
+  // séance ne doit pas disparaître du moteur pour autant — reconstruction
+  // d'un objet Strava-like synthétique à partir de manualPerf, passé par le
+  // même adaptateur pour ne jamais dupliquer la logique de conversion.
+  const uidsAvecSaisieManuelle = Object.keys(manualPerf).filter(uid => manualPerf[uid]);
+  const samplesManuels = (typeof ALL_SESSIONS !== 'undefined' ? ALL_SESSIONS : [])
+    .filter(s => uidsAvecSaisieManuelle.includes(s.uid))
+    .map(s => {
+      const mp = manualPerf[s.uid];
+      if (!mp.average_speed) return null;
+      const dureeSec = mp.dureeSaisieMin ? mp.dureeSaisieMin * 60
+        : (mp.distance && mp.average_speed ? mp.distance / mp.average_speed : null);
+      if (!dureeSec) return null;
+      const rpeSaisi = sessionRpe[s.uid] || mp.rpe || null;
+      const activiteSynthetique = {
+        id: s.uid,
+        start_date_local: s.date + "T12:00:00",
+        distance: mp.distance || (mp.average_speed * dureeSec),
+        moving_time: dureeSec,
+        average_speed: mp.average_speed,
+        average_heartrate: mp.average_heartrate || undefined,
+        type: 'Run',
+      };
+      return DecisionEngineAdapter.adapterActiviteStrava(activiteSynthetique, 'manuel', rpeSaisi);
+    })
+    .filter(sample => sample && sample.date !== null);
+
+  return [...samplesStrava, ...samplesManuels];
 }
 
 function obtenirRatioACWRActuel() {
@@ -1424,7 +1462,7 @@ async function fetchCoachMsg() {
   const isEveOfKeySession = !!tomorrowKeySess;
 
   // Données Strava de la séance du jour si terminée
-  const todayStravaRun = sessionDone ? stravaActivities.find(r=>r.start_date_local?.slice(0,10)===t) : null;
+  const todayStravaRun = sessionDone ? getStravaRunSiPasManuel(t, todaySessObj?.uid) : null;
   const todayEffortLaps = todayStravaRun ? getLapsAffichage(todayStravaRun, todaySessObj?.structureIntervalles) : [];
   const todayAvgPace = todayEffortLaps.length > 0
     ? fmtPace(todayEffortLaps.reduce((s,l)=>s+l.average_speed,0)/todayEffortLaps.length)+"/km"
@@ -3078,7 +3116,7 @@ function renderDashboard() {
         const uid2=s.uid;
         const status2=statuses[uid2];
         const isDone = status2==="✅"||status2==="⚠️"||status2==="❌";
-        const stravaRun2 = stravaActivities.find(r=>r.start_date_local?.slice(0,10)===s.date);
+        const stravaRun2 = getStravaRunSiPasManuel(s.date, uid2);
         const effortLaps2 = stravaRun2 ? getLapsAffichage(stravaRun2, s.structureIntervalles) : [];
         const statusColor = status2==="✅"?"var(--accent2)":status2==="⚠️"?"var(--warn)":status2==="❌"?"var(--warn)":st.color;
         const statusColorSoft = status2==="✅"?"rgba(var(--accent2-rgb),":status2==="⚠️"?"rgba(var(--warn-rgb),":status2==="❌"?"rgba(var(--warn-rgb),":st.colorSoft;
@@ -3933,12 +3971,35 @@ function renderManualPerfRow(uid, s, stravaRun) {
     const hrInput = el("input",{type:"number",placeholder:"165",value:cur.average_heartrate||"",
       style:{width:"100%",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"6px",padding:"6px 8px",color:"var(--text)",fontSize:"14px",textAlign:"center"}});
 
+    // Durée totale RÉELLE de la séance (17/07/2026) — distincte de la durée
+    // prévue au plan (échauffement+effort+récup+RAC). Sert à dériver la
+    // distance totale (échauffement/RAC/récup à l'allure EF du coureur,
+    // cf. distanceTotaleAvecRecup) plutôt que de se limiter aux seuls blocs
+    // d'effort structurés comme le faisait distanceEffortStructure() seule.
+    // Pré-remplissage avec la durée prévue au plan comme point de départ
+    // ajustable, cohérent avec le même principe déjà appliqué à l'allure.
+    const dureePrevueSec = (structureIntervalles=>{
+      if (!structureIntervalles) return null;
+      const nbSeries = structureIntervalles.nbSeries || 1;
+      let total = (structureIntervalles.echauffementSec||0) + (structureIntervalles.retourCalmeSec||0);
+      structureIntervalles.blocs.forEach(b=>{ total += ((b.dureeEffortSec||0)+(b.dureeRecupSec||0))*(b.repetitions||1)*nbSeries; });
+      return total;
+    })(s.structureIntervalles);
+    const dureeInput = el("input",{type:"number",placeholder:"31",
+      value: cur.dureeSaisieMin || (dureePrevueSec ? Math.round(dureePrevueSec/60) : ""),
+      style:{width:"100%",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"6px",padding:"6px 8px",color:"var(--text)",fontSize:"14px",textAlign:"center"}});
+
     formWrap.appendChild(el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginBottom:"10px"}},
       stravaRun ? "Strava a une activité ce jour-là — ta saisie primera dessus si tu valides." :
         "Pas de donnée Strava ce jour-là. Ajuste l'allure ci-dessous si besoin."));
 
     formWrap.appendChild(el("div",{style:{fontSize:"11px",color:"var(--text-muted)",textAlign:"center",marginBottom:"4px"}},"Allure effort"));
     formWrap.appendChild(paceStepper);
+    if (s.structureIntervalles) {
+      formWrap.appendChild(el("div",{style:{marginTop:"12px"}},
+        el("div",{style:{fontSize:"11px",color:"var(--text-muted)",marginBottom:"4px"}},"Durée totale de la séance (min)"),dureeInput
+      ));
+    }
     formWrap.appendChild(el("div",{style:{marginTop:"12px"}},
       el("div",{style:{fontSize:"11px",color:"var(--text-muted)",marginBottom:"4px"}},"FC moyenne (optionnel)"),hrInput
     ));
@@ -3952,8 +4013,15 @@ function renderManualPerfRow(uid, s, stravaRun) {
     saveBtn.addEventListener("click", avecRetourTactile(()=>{
       const speed = 1000/paceSec;
       const hr = hrInput.value ? parseFloat(hrInput.value) : null;
-      const distance = s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null;
-      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr };
+      const dureeSaisieMin = s.structureIntervalles && dureeInput.value ? parseFloat(dureeInput.value) : null;
+      // Distance dérivée de la durée totale RÉELLE saisie (échauffement +
+      // effort + récup à l'allure EF + RAC) quand elle est renseignée —
+      // repli sur l'ancien calcul (blocs d'effort seuls, sans échauffement
+      // ni récup ni RAC) si le coureur laisse le champ durée vide.
+      const distance = dureeSaisieMin
+        ? distanceTotaleAvecRecup(s.structureIntervalles, dureeSaisieMin*60, window.__PLAN_BRUT__?.allures?.E)
+        : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null);
+      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null };
       save(clePourPlan("lk_manual_perf"), manualPerf);
       rebuildPredHistory();
       expanded = false;
@@ -4007,6 +4075,70 @@ function renderManualPerfRow(uid, s, stravaRun) {
 // analyserSeanceQualite() (Module 2) affichait systématiquement "Volume non
 // disponible" pour ces séances. Ajout du calcul distance = (durée/allure)
 // quand distanceM est absent mais dureeEffortSec + allure sont présents.
+// Distance totale d'une séance de qualité à partir d'une durée totale RÉELLE
+// saisie par le coureur (pas les durées prévues au plan), en répartissant le
+// temps entre : blocs d'effort (allure du bloc, connue), récup entre
+// répétitions (allure EF du coureur, __PLAN_BRUT__.allures.E — décision
+// actée le 17/07/2026, test de validation sur une vraie séance VMA du
+// coureur : écart de 5m sur 5202m réels), et tout le reste du temps saisi
+// (échauffement + retour au calme) également à l'allure EF. Volontairement
+// distinct de distanceEffortStructure() (qui ne calcule QUE les blocs
+// d'effort, jamais utilisée seule pour une distance totale de séance).
+function distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFStr) {
+  if (!structureIntervalles?.blocs?.length || !dureeTotaleSec) return null;
+  const nettoye = (allureEFStr||"6:10/km").replace('/km','').trim();
+  const parts = nettoye.split(':').map(Number);
+  const allureEFSec = (parts.length===2 && !parts.some(isNaN)) ? parts[0]*60+parts[1] : 370;
+
+  const nbSeries = structureIntervalles.nbSeries || 1;
+  let distanceEffort = 0, dureeEffortSeuleSec = 0, dureeRecupSeuleSec = 0;
+  for (let serie=0; serie<nbSeries; serie++) {
+    structureIntervalles.blocs.forEach(bloc=>{
+      const reps = bloc.repetitions || 1;
+      if (bloc.dureeEffortSec && bloc.allure) {
+        const n2 = bloc.allure.replace('/km','').trim();
+        const p2 = n2.split(':').map(Number);
+        if (p2.length===2 && !p2.some(isNaN)) {
+          const allureBlocSec = p2[0]*60+p2[1];
+          if (allureBlocSec>0) distanceEffort += (bloc.dureeEffortSec/allureBlocSec)*1000*reps;
+        }
+        dureeEffortSeuleSec += bloc.dureeEffortSec*reps;
+      } else if (bloc.distanceM) {
+        distanceEffort += bloc.distanceM*reps;
+        // Distance connue mais pas de durée associée pour ce bloc — la récup
+        // liée reste comptée dans le "reste" ci-dessous (approximation
+        // acceptée, cas rare : la plupart des blocs qualité sont en durée,
+        // pas en distance fixe, cf. §5.2 doc archi et bug corrigé §27 inventaire).
+      }
+      if (bloc.dureeRecupSec) dureeRecupSeuleSec += bloc.dureeRecupSec*reps;
+    });
+  }
+  // Récup entre répétitions à l'allure EF (demande explicite du 17/07/2026,
+  // plutôt que de l'ignorer comme le faisait l'ancien distanceEffortStructure).
+  const distanceRecup = (dureeRecupSeuleSec/allureEFSec)*1000;
+
+  const dureeResteSec = Math.max(0, dureeTotaleSec - dureeEffortSeuleSec - dureeRecupSeuleSec);
+  const distanceReste = (dureeResteSec/allureEFSec)*1000; // échauffement + retour au calme
+
+  return Math.round(distanceEffort + distanceRecup + distanceReste) || null;
+}
+
+// Retourne l'activité Strava du jour correspondant à une séance, SAUF si
+// une saisie manuelle existe déjà pour cette séance (manualPerf[uid]) — dans
+// ce cas Strava est totalement ignoré, quelle que soit l'utilisation en aval
+// (prédicteur, moteur de décision, affichage détail séance). Décision du
+// 17/07/2026 : une saisie manuelle signale souvent une donnée Strava
+// corrompue ou absente ce jour-là, elle ne doit jamais coexister avec
+// Strava — remplace le principe précédent ("la saisie manuelle prime
+// dessus") par une vraie exclusion. Point d'entrée UNIQUE à utiliser partout
+// où on cherche l'activité Strava d'une séance par date — ne jamais
+// réintroduire un stravaActivities.find(...) direct par date de séance.
+function getStravaRunSiPasManuel(date, uid, activites) {
+  if (uid && manualPerf[uid]) return null;
+  const source = activites || stravaActivities;
+  return source.find(a => a.start_date_local?.slice(0,10) === date) || null;
+}
+
 function distanceEffortStructure(structureIntervalles) {
   if (!structureIntervalles?.blocs?.length) return null;
   const nbSeries = structureIntervalles.nbSeries || 1;
@@ -4051,7 +4183,7 @@ function renderWeekDetail(weekNum) {
     if (!effSess) return null;
     const isToday=s.date===today(), isPast=s.date<today();
     const st=STYPES[effSess.type]||STYPES.REPOS;
-    const stravaRun=weekRuns.find(r=>r.start_date_local?.slice(0,10)===s.date);
+    const stravaRun=getStravaRunSiPasManuel(s.date, uid, weekRuns);
     const effortLaps=stravaRun?getLapsAffichage(stravaRun, effSess.structureIntervalles):[];
 
     // Seance masquee
@@ -4437,7 +4569,7 @@ function renderStats() {
   intensiveTypes.forEach(type => {
     const sessions = ALL_SESSIONS.filter(s=>s.type===type&&s.date<=today());
     const points = sessions.map(s => {
-      const run = stravaActivities.find(a=>a.start_date_local?.slice(0,10)===s.date);
+      const run = getStravaRunSiPasManuel(s.date, s.uid);
       if (!run) return null;
       const laps = getLapsAffichage(run, s.structureIntervalles);
       if (!laps.length) return null;
@@ -5706,7 +5838,7 @@ function exportPdfRecap() {
       const uid=wk.week+"-"+i;
       const eff=getEffectiveSession(wk,i)||s;
       const st=statuses[uid]||"-";
-      const strava=stravaActivities.find(a=>a.start_date_local&&a.start_date_local.slice(0,10)===s.date);
+      const strava=getStravaRunSiPasManuel(s.date, uid);
       let line=s.date+" | "+eff.type+" | "+eff.session.slice(0,35)+" | "+st;
       if(strava){
         const km=Math.round(strava.distance/100)/10;
