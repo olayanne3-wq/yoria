@@ -468,7 +468,7 @@ export async function chargerPlansSupabase(userId) {
   if (!userId) return [];
   try {
     const { data, error } = await supabase
-      .from('plans')
+      .from('plans_actif')
       .select('id, nom, plan_brut, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -511,7 +511,7 @@ export async function mettreAJourPlanSupabase(planId, planBrutComplet) {
   try {
     const payload = { plan_brut: planBrutComplet };
     if (planBrutComplet?.nom) payload.nom = planBrutComplet.nom;
-    const { error } = await supabase.from('plans').update(payload).eq('id', planId);
+    const { error } = await supabase.from('plans_actif').update(payload).eq('id', planId);
     if (error) {
       console.warn('Mise à jour du plan échouée :', error.message);
     }
@@ -531,7 +531,7 @@ export async function cloturerPlanSupabase(planId, dateCloture) {
   if (!estUuidValide(planId)) return;
   try {
     const { data: existant, error: erreurLecture } = await supabase
-      .from('plans')
+      .from('plans_actif')
       .select('plan_brut')
       .eq('id', planId)
       .maybeSingle();
@@ -541,7 +541,7 @@ export async function cloturerPlanSupabase(planId, dateCloture) {
     }
     const planBrutMisAJour = { ...existant.plan_brut, dateCloture };
     const { error: erreurUpdate } = await supabase
-      .from('plans')
+      .from('plans_actif')
       .update({ plan_brut: planBrutMisAJour })
       .eq('id', planId);
     if (erreurUpdate) {
@@ -570,7 +570,7 @@ export async function assurerPlanExiste(userId, planId, planBrut) {
 
   try {
     const { data: existant, error: erreurLecture } = await supabase
-      .from('plans')
+      .from('plans_actif')
       .select('id')
       .eq('id', planId)
       .maybeSingle();
@@ -606,14 +606,24 @@ export async function assurerPlanExiste(userId, planId, planBrut) {
     }
 
     const nom = planBrut?.nom || `${planBrut?.distance || ''} — ${planBrut?.objectif || ''}`.trim() || 'Plan';
-    const { error: erreurInsertion } = await supabase.from('plans').insert({
+    const ligne = {
       id: planId,
       user_id: userId,
       nom,
       plan_brut: planBrut || {},
-    });
+    };
+    // Création dans les 2 tables : plans_original (copie figée, jamais
+    // modifiée ensuite — sert d'audit/comparaison) et plans_actif (version
+    // vivante, modifiée par le moteur/décalage de date). Décision du
+    // 17/07/2026 : les deux copies sont identiques au moment de la
+    // création par le wizard.
+    const { error: erreurInsertionOriginal } = await supabase.from('plans_original').insert(ligne);
+    if (erreurInsertionOriginal) {
+      console.warn('Création de la ligne plans_original échouée :', erreurInsertionOriginal.message);
+    }
+    const { error: erreurInsertion } = await supabase.from('plans_actif').insert(ligne);
     if (erreurInsertion) {
-      console.warn('Création de la ligne plans échouée :', erreurInsertion.message);
+      console.warn('Création de la ligne plans_actif échouée :', erreurInsertion.message);
     }
   } catch (err) {
     // Re-lance si c'est notre propre erreur de conflit (message déjà
