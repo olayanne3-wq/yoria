@@ -26,7 +26,24 @@
   // --------------------------------------------------------------------------
   // Calcul de la charge d'UNE séance (TRIMP de Banister si FC dispo, sRPE de
   // Foster sinon, proxy durée seule en dernier recours) — cf. §5.1 doc archi
+  //
+  // Pondération TRIMP par RPE (17/07/2026, chantier "RPE unifié" avec
+  // Laurent) : avant ce chantier, dès qu'une FC était disponible, le RPE
+  // (même saisi) était totalement ignoré — deux séances à FC identique
+  // recevaient la même charge, peu importe le ressenti réel du coureur
+  // (fatigue mentale, chaleur, mauvais sommeil...). Décision actée : léger
+  // ajustement plutôt que remplacement ou moyenne brute des deux échelles
+  // (TRIMP et sRPE ne sont pas dans la même unité, cf. §5.1 doc archi — les
+  // mélanger directement serait une erreur). Seuil retenu : RPE ≥ 8 (sur
+  // l'échelle CR-10, cf. RPE_OPTIONS index.html — "très difficile"/
+  // "maximal") amplifie le TRIMP de 12%, sinon aucun ajustement. Valeur de
+  // seuil et facteur choisis à dire d'expert (même limite déjà assumée pour
+  // les coefficients d'intensité du Module 3, cf. inventaire §30.5/§30.8) —
+  // à recalibrer une fois croisé avec plus de données réelles.
   // --------------------------------------------------------------------------
+  const SEUIL_RPE_AMPLIFICATION = 8;
+  const FACTEUR_AMPLIFICATION_RPE_ELEVE = 1.12;
+
   function calculerChargeSeance(sample, fcMaxReference, fcReposReference, sexe) {
     if (sample.fcMoyenne !== undefined && fcMaxReference && fcReposReference
         && fcMaxReference > fcReposReference) {
@@ -38,7 +55,15 @@
         ? [(0.64 + 0.86) / 2, (1.92 + 1.67) / 2]
         : [a, b];
       const facteurPonderation = aFinal * Math.exp(bFinal * fcReserveBornee);
-      const valeur = sample.dureeMin * fcReserveBornee * facteurPonderation;
+      let valeur = sample.dureeMin * fcReserveBornee * facteurPonderation;
+      // Ajustement RPE — ne s'applique que si un RPE élevé est renseigné en
+      // plus de la FC (le cas normal, FC seule sans RPE, n'est jamais
+      // affecté). N'abaisse jamais la charge (un RPE bas avec FC normale
+      // n'est pas un signal fiable de sous-effort — la FC reste la mesure
+      // principale, le RPE ne fait qu'ajouter un signal d'alerte en plus).
+      if (sample.ressentiRPE !== undefined && sample.ressentiRPE !== null && sample.ressentiRPE >= SEUIL_RPE_AMPLIFICATION) {
+        valeur *= FACTEUR_AMPLIFICATION_RPE_ELEVE;
+      }
       return { valeur, methode: 'trimp', confiance: 85 };
     }
     if (sample.ressentiRPE !== undefined && sample.ressentiRPE !== null) {
