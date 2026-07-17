@@ -417,6 +417,29 @@ const STYPES = {
 const SOPTS=["—","✅","❌","⚠️","😴"];
 const SCOLORS={"—":"var(--text-muted)","✅":"var(--accent2)","❌":"var(--warn)","⚠️":"var(--warn)","😴":"var(--accent)"};
 
+// RPE unifié, 5 niveaux — 17/07/2026 (chantier "RPE unifié", décision avec
+// Laurent). Le contrat théorique du moteur (SeanceRealisee.ressentiRPE, cf.
+// doc archi §3.1) attend une échelle CR-10 de Borg (1-10) — mais demander à
+// un coureur amateur de noter précisément sur 10 est peu fiable en pratique
+// (la littérature elle-même note une validité/fiabilité moindre chez les
+// sujets non entraînés sur cette échelle sans ses ancrages verbaux précis).
+// 3 niveaux (ancien sélecteur, saisie manuelle uniquement) était à
+// l'inverse trop grossier — ne distinguait pas "modérément dur" de "très
+// dur". Compromis retenu : 5 niveaux visuels simples côté UI, mappés
+// directement sur l'échelle CR-10 pour le calcul (jamais de conversion
+// approximative a posteriori, le coureur ne voit jamais le chiffre CR-10
+// lui-même). Utilisé à la fois dans renderStatusRow() (nouveau, séance déjà
+// cochée quelle que soit son origine) et le formulaire de saisie manuelle
+// d'allure (ancien emplacement, mis à jour pour rester cohérent — un seul
+// système de RPE dans toute l'app).
+const RPE_OPTIONS = [
+  {v:2, e:"🙂", label:"Facile"},
+  {v:4, e:"😐", label:"Modéré"},
+  {v:6, e:"😓", label:"Difficile"},
+  {v:8, e:"😣", label:"Très difficile"},
+  {v:10, e:"🥵", label:"Maximal"},
+];
+
 // ── Allures de référence (sec/km) ──
 // EF : 6:20/km = 380 s/km
 // Longue : 6:20/km = 380 s/km
@@ -500,6 +523,17 @@ let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
 let notesList = load(clePourPlan("lk_notes"), []);
 let sessionNotes = load(clePourPlan("lk_session_notes"), {}); // {uid: "texte"}
+// RPE unifié — 17/07/2026 (chantier "remonter le RPE au statut de séance",
+// suite à la remarque de Laurent). Avant : le RPE n'existait QUE dans le
+// formulaire de saisie manuelle d'allure (manualPerf[uid].rpe), donc
+// invisible pour toute séance validée normalement (Strava trouvé, simple
+// clic ✅/⚠️/❌) — la grande majorité des séances en pratique. sessionRpe
+// est la nouvelle source de vérité unique, saisie directement dans
+// renderStatusRow() (cf. plus bas) quel que soit le statut/l'origine de la
+// séance. manualPerf[uid].rpe reste lu en repli pour compat ascendante
+// (anciennes saisies manuelles déjà enregistrées avant ce chantier), mais
+// n'est plus jamais écrit par le nouveau sélecteur.
+let sessionRpe = load(clePourPlan("lk_session_rpe"), {}); // {uid: 1|2|3}
 let stravaToken = load("lk_strava_token", null);
 let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
@@ -523,11 +557,52 @@ function optionsRunnerStateActuel() {
     sexe: window.profilCoureur && window.profilCoureur.sexe ? window.profilCoureur.sexe : 'autre',
   };
 }
+
+// ── Adaptateur avec RPE — 17/07/2026 (chantier "RPE unifié") ──────────────
+// DecisionEngineAdapter.adapterHistoriqueComplet() ne peuple jamais
+// ressentiRPE, volontairement (commentaire du module : "mieux vaut ne rien
+// inventer qu'associer un RPE à la mauvaise séance" — cette fonction ne
+// reçoit que des activités Strava brutes, sans notion de séance du plan/
+// uid, donc pas de correspondance possible en interne). Recommandation
+// suivie le 17/07/2026 : faire cette correspondance ici, côté appelant
+// (index.html connaît à la fois stravaActivities ET ALL_SESSIONS/
+// sessionRpe/manualPerf), plutôt que de modifier la signature du module —
+// respecte le principe du module tout en le rendant réellement exploitable.
+// Remplace adapterHistoriqueComplet(stravaActivities, {}, ...) dans les 3
+// appelants qui en avaient besoin (ACWR consigne coach, ACWR graphique,
+// calculerEtatMoteurDecision) — la correspondance ressentiRPE est
+// désormais présente pour toute activité dont la date correspond à une
+// séance du plan avec un RPE renseigné (sessionRpe en priorité, repli sur
+// manualPerf pour compat ascendante, cf. déclaration de sessionRpe plus
+// haut dans ce fichier).
+function adapterHistoriqueAvecRpe(stravaActivitiesListe, provenanceDeclaree) {
+  if (typeof DecisionEngineAdapter === 'undefined') return [];
+  const activites = stravaActivitiesListe || [];
+  // Index date -> uid (une seule séance par jour dans ce plan, cohérent
+  // avec le reste de l'app qui indexe déjà les activités par date sans
+  // gérer plusieurs séances le même jour)
+  const uidParDate = {};
+  (typeof ALL_SESSIONS !== 'undefined' ? ALL_SESSIONS : []).forEach(s => {
+    if (s.date) uidParDate[s.date] = s.uid;
+  });
+  return activites
+    .filter(a => a.type === 'Run')
+    .map(a => {
+      const dateActivite = a.start_date_local ? a.start_date_local.slice(0, 10) : null;
+      const uid = dateActivite ? uidParDate[dateActivite] : null;
+      const rpeSaisi = uid
+        ? (sessionRpe[uid] || (manualPerf[uid] && manualPerf[uid].rpe) || null)
+        : null;
+      return DecisionEngineAdapter.adapterActiviteStrava(a, provenanceDeclaree, rpeSaisi);
+    })
+    .filter(sample => sample.date !== null);
+}
+
 function obtenirRatioACWRActuel() {
   if (typeof DecisionEngineAdapter === 'undefined' || typeof DecisionEngineRunnerState === 'undefined') return null;
   if (!stravaActivities || !stravaActivities.length) return null;
   try {
-    const samples = DecisionEngineAdapter.adapterHistoriqueComplet(stravaActivities, {}, "strava_gratuit");
+    const samples = adapterHistoriqueAvecRpe(stravaActivities, "strava_gratuit");
     const runnerState = DecisionEngineRunnerState.calculerRunnerState(samples, optionsRunnerStateActuel());
     return runnerState.charge.ratio;
   } catch (err) {
@@ -539,7 +614,7 @@ function obtenirHistoriqueACWR() {
   if (typeof DecisionEngineAdapter === 'undefined' || typeof DecisionEngineRunnerState === 'undefined') return null;
   if (!stravaActivities || !stravaActivities.length) return null;
   try {
-    const samples = DecisionEngineAdapter.adapterHistoriqueComplet(stravaActivities, {}, "strava_gratuit");
+    const samples = adapterHistoriqueAvecRpe(stravaActivities, "strava_gratuit");
     return DecisionEngineRunnerState.calculerHistoriqueCharge(samples, optionsRunnerStateActuel());
   } catch (err) {
     console.warn("ACWR (graphique) : erreur de calcul.", err.message);
@@ -606,11 +681,17 @@ function obtenirSeancesPlanifieesManquees() {
 // ce cas weekAnalysis/trendAnalysis restent simplement null dans l'input,
 // comme sessionAnalysis l'est déjà pour EngineInput (cf. doc archi, champ
 // optionnel "absent si pas de séance récente à évaluer").
+//
+// RPE unifié (17/07/2026, même chantier) : adapterHistoriqueAvecRpe()
+// remplace adapterHistoriqueComplet() ici — le Module 1 (fatigue/ACWR)
+// bénéficie désormais du RPE saisi via renderStatusRow(), plus seulement
+// TRIMP sur FC. Cohérent avec la même correction appliquée à
+// obtenirRatioACWRActuel()/obtenirHistoriqueACWR() juste au-dessus.
 function calculerEtatMoteurDecision() {
   if (typeof DecisionEngineAdapter === 'undefined' || typeof DecisionEngineRunnerState === 'undefined'
       || typeof DecisionEngineEngagement === 'undefined' || typeof DecisionEngineRules === 'undefined') return null;
   try {
-    const samples = DecisionEngineAdapter.adapterHistoriqueComplet(window.stravaActivities || [], {}, "strava_gratuit");
+    const samples = adapterHistoriqueAvecRpe(window.stravaActivities || [], "strava_gratuit");
     const runnerState = DecisionEngineRunnerState.calculerRunnerState(samples, optionsRunnerStateActuel());
     const engagementState = DecisionEngineEngagement.calculerEngagementState(samples, {});
     const weekAnalysis = typeof analyserSemaineActuelle === 'function' ? analyserSemaineActuelle(currentWeek()) : null;
@@ -1196,7 +1277,13 @@ function analyserSemaineActuelle(weekNum, semainePrecedenteAnalyse) {
         dureeMin: Math.round(activite.moving_time / 60),
         allureMoyenneMinKm: fmtPace(activite.average_speed),
         fcMoyenne: activite.average_heartrate || undefined,
-        ressentiRPE: (sessionNotes && sessionNotes[s.uid + '_rpe']) || undefined,
+        // Corrigé le 17/07/2026 : sessionNotes[uid+'_rpe'] n'a jamais existé
+        // nulle part dans le code (clé inventée par erreur lors du codage
+        // initial de ce wrapper) — sessionRpe[uid] est la vraie source
+        // depuis le chantier "RPE unifié" du même jour (cf. déclaration plus
+        // haut). Repli sur manualPerf[uid].rpe pour les saisies manuelles
+        // antérieures à ce chantier.
+        ressentiRPE: sessionRpe[s.uid] || (manualPerf[s.uid] && manualPerf[s.uid].rpe) || undefined,
       };
     })
     .filter(Boolean);
@@ -1643,7 +1730,12 @@ function analyserSeanceQualite(seance) {
     seanceId: seance.uid,
     allureMoyenneSec,
     fcMoyenne: fcMoyenneEffort,
-    ressentiRPE: (sessionNotes && sessionNotes[seance.uid + '_rpe']) || undefined, // repli propre si jamais saisi
+    // Corrigé le 17/07/2026 : sessionNotes[uid+'_rpe'] n'a jamais existé
+    // (même bug que analyserSemaineActuelle, cf. commentaire équivalent
+    // plus haut dans ce fichier) — sessionRpe[uid] est la vraie source
+    // depuis le chantier "RPE unifié" du même jour, repli sur
+    // manualPerf[uid].rpe pour compat ascendante.
+    ressentiRPE: sessionRpe[seance.uid] || (manualPerf[seance.uid] && manualPerf[seance.uid].rpe) || undefined,
     lapsEffort,
     targetReps,
   };
@@ -3729,6 +3821,36 @@ function renderStatusRow(uid, dateSeance) {
   if (estFuture) {
     statusRow.appendChild(el("div",{style:{width:"100%",fontSize:"12px",color:"var(--text-muted)",marginTop:"2px"}},"📅 Séance à venir — disponible le jour J"));
   }
+  // Sélecteur RPE unifié — 17/07/2026, cf. déclaration de sessionRpe et
+  // RPE_OPTIONS plus haut. Visible uniquement si un statut "la séance a eu
+  // lieu" est déjà posé (✅/⚠️/❌) — noter un ressenti n'a pas de sens sur
+  // "—" (non renseigné) ni "😴" (repos/sauté, aucun effort à ressentir).
+  const statutActuel = statuses[uid] || "—";
+  if (["✅", "⚠️", "❌"].indexOf(statutActuel) !== -1) {
+    let rpeValStatut = sessionRpe[uid] || null;
+    const rpeRowStatut = el("div",{style:{display:"flex",gap:"4px",width:"100%",marginTop:"6px",flexWrap:"wrap"}});
+    const rebuildRpeStatut = () => {
+      rpeRowStatut.innerHTML = "";
+      rpeRowStatut.appendChild(el("div",{style:{fontSize:"11px",color:"var(--text-muted)",display:"flex",alignItems:"center",marginRight:"2px",width:"100%"}},"Ressenti"));
+      RPE_OPTIONS.forEach(o=>{
+        const rb = el("button",{title:o.label,style:{
+          padding:"4px 8px",fontSize:"15px",cursor:"pointer",
+          background:rpeValStatut===o.v?"rgba(var(--warn-rgb),0.13)":"var(--border-soft)",
+          border:`1px solid ${rpeValStatut===o.v?"var(--warn)":"var(--border)"}`,borderRadius:"6px"
+        }}, o.e);
+        rb.addEventListener("click", avecRetourTactile((e)=>{
+          e.stopPropagation();
+          rpeValStatut = rpeValStatut===o.v ? null : o.v;
+          sessionRpe[uid] = rpeValStatut;
+          save(clePourPlan("lk_session_rpe"), sessionRpe);
+          rebuildRpeStatut();
+        }));
+        rpeRowStatut.appendChild(rb);
+      });
+    };
+    rebuildRpeStatut();
+    statusRow.appendChild(rpeRowStatut);
+  }
   return statusRow;
 }
 
@@ -3804,18 +3926,27 @@ function renderManualPerfRow(uid, s, stravaRun) {
 
     const hrInput = el("input",{type:"number",placeholder:"165",value:cur.average_heartrate||"",
       style:{width:"100%",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"6px",padding:"6px 8px",color:"var(--text)",fontSize:"14px",textAlign:"center"}});
-    const rpeOpts = [{v:1,e:"🙂"},{v:2,e:"😐"},{v:3,e:"😓"}];
-    let rpeVal = cur.rpe || null;
-    const rpeRow = el("div",{style:{display:"flex",gap:"6px"}});
+    // RPE_OPTIONS (5 niveaux, échelle CR-10) — 17/07/2026, cf. déclaration
+    // en tête de fichier. Écrit désormais dans sessionRpe (source unifiée,
+    // partagée avec renderStatusRow), plus dans manualPerf[uid].rpe — mais
+    // repli en lecture sur manualPerf[uid].rpe pour une saisie antérieure à
+    // ce chantier (cur.rpe) au premier rendu du formulaire.
+    let rpeVal = sessionRpe[uid] || cur.rpe || null;
+    const rpeRow = el("div",{style:{display:"flex",gap:"4px",flexWrap:"wrap"}});
     const rebuildRpe = () => {
       rpeRow.innerHTML = "";
-      rpeOpts.forEach(o=>{
-        const b = el("button",{type:"button",style:{
-          flex:"1",padding:"6px 0",fontSize:"16px",
+      RPE_OPTIONS.forEach(o=>{
+        const b = el("button",{type:"button",title:o.label,style:{
+          flex:"1",padding:"6px 0",fontSize:"16px",minWidth:"38px",
           background:rpeVal===o.v?"rgba(var(--warn-rgb),0.13)":"var(--bg)",
           border:`1px solid ${rpeVal===o.v?"var(--warn)":"var(--border)"}`,borderRadius:"6px",cursor:"pointer"
         }}, o.e);
-        b.addEventListener("click",()=>{ rpeVal = rpeVal===o.v?null:o.v; rebuildRpe(); });
+        b.addEventListener("click",()=>{
+          rpeVal = rpeVal===o.v?null:o.v;
+          sessionRpe[uid] = rpeVal;
+          save(clePourPlan("lk_session_rpe"), sessionRpe);
+          rebuildRpe();
+        });
         rpeRow.appendChild(b);
       });
     };
@@ -3839,7 +3970,10 @@ function renderManualPerfRow(uid, s, stravaRun) {
       const speed = 1000/paceSec;
       const hr = hrInput.value ? parseFloat(hrInput.value) : null;
       const distance = s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null;
-      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, rpe: rpeVal };
+      // rpe retiré d'ici (17/07/2026) : déjà écrit dans sessionRpe à chaque
+      // clic sur RPE_OPTIONS ci-dessus, plus besoin de le dupliquer dans
+      // manualPerf — évite une seconde source qui pourrait diverger.
+      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr };
       save(clePourPlan("lk_manual_perf"), manualPerf);
       rebuildPredHistory();
       expanded = false;
