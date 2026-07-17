@@ -593,6 +593,19 @@ function obtenirSeancesPlanifieesManquees() {
 // Retourne { runnerState, engagementState, decision } ou null si les scripts
 // du moteur ne sont pas chargés, pas d'activités, ou erreur de calcul —
 // jamais d'exception qui remonterait au dashboard.
+//
+// weekAnalysis/trendAnalysis (Modules 3/4) branchés dans l'input du 17/07/2026
+// (session ultérieure) — décision explicite de Laurent : uniquement ajouter
+// ces données à l'input, AUCUNE nouvelle règle ne les consomme pour
+// l'instant (cf. inventaire §32). evaluerRegles() ignore silencieusement
+// tout champ qu'aucune règle actuelle ne lit — aucun risque de régression
+// sur les décisions déjà produites par les 6 règles existantes.
+// analyserSemaineActuelle()/analyserTendance() (déclarées plus bas dans ce
+// fichier, hoisting JS standard donc accessibles ici sans souci d'ordre)
+// peuvent retourner null (pas assez de semaines, script non chargé) — dans
+// ce cas weekAnalysis/trendAnalysis restent simplement null dans l'input,
+// comme sessionAnalysis l'est déjà pour EngineInput (cf. doc archi, champ
+// optionnel "absent si pas de séance récente à évaluer").
 function calculerEtatMoteurDecision() {
   if (typeof DecisionEngineAdapter === 'undefined' || typeof DecisionEngineRunnerState === 'undefined'
       || typeof DecisionEngineEngagement === 'undefined' || typeof DecisionEngineRules === 'undefined') return null;
@@ -600,14 +613,18 @@ function calculerEtatMoteurDecision() {
     const samples = DecisionEngineAdapter.adapterHistoriqueComplet(window.stravaActivities || [], {}, "strava_gratuit");
     const runnerState = DecisionEngineRunnerState.calculerRunnerState(samples, optionsRunnerStateActuel());
     const engagementState = DecisionEngineEngagement.calculerEngagementState(samples, {});
+    const weekAnalysis = typeof analyserSemaineActuelle === 'function' ? analyserSemaineActuelle(currentWeek()) : null;
+    const trendAnalysis = typeof analyserTendance === 'function' ? analyserTendance(6) : null;
     const resultatMoteur = DecisionEngineRules.evaluerRegles({
       runnerState,
       engagementState,
       activitySamples: samples,
       coureurOptions: optionsRunnerStateActuel(),
       seancesPlanifieesManquees: obtenirSeancesPlanifieesManquees(),
+      weekAnalysis,
+      trendAnalysis,
     });
-    return { runnerState, engagementState, decision: resultatMoteur ? resultatMoteur.decision : null };
+    return { runnerState, engagementState, weekAnalysis, trendAnalysis, decision: resultatMoteur ? resultatMoteur.decision : null };
   } catch (err) {
     console.warn("Moteur de décision : erreur de calcul.", err.message);
     return null;
