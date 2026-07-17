@@ -2353,7 +2353,13 @@ function renderDashboard() {
           onClick:()=>{
             const resultat = DecisionEngineApply.appliquerDecisionAuPlan(window.__PLAN_BRUT__, decision, new Date().toISOString());
             if (!resultat.succes) {
-              console.warn("Application de la décision du moteur échouée :", resultat.raison);
+              console.warn("Application de la décision du moteur refusée :", resultat.raison);
+              // Garde-fou §10.2 : un refus (ex. plafond de réduction cumulée
+              // atteint) doit rester visible au coureur, jamais un clic
+              // silencieux sans effet apparent — cf. principe "sécurité
+              // avant performance", qui s'applique aussi à la clarté de
+              // l'information donnée, pas seulement à la protection physique.
+              alert("Cet ajustement n'a pas pu être appliqué : " + resultat.raison);
               return;
             }
             window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
