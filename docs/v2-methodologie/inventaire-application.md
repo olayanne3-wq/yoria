@@ -3595,3 +3595,67 @@ Créé : `public/engine-classic-scripts/decision-engine-week-analysis.classic.js
 Modifié : `public/index.html` (chargement du script, wrapper
 `analyserSemaineActuelle()`, bloc de test Stats, 2 corrections de bugs
 trouvés en testant).
+
+### 30.8 Vérification en conditions réelles sur données Laurent (17/07/2026, même session)
+
+Testé sur la semaine 2 réelle de Laurent (4 séances passées : EF 7km, VMA
+5×30-30s, EF récup 5.5km, SEUIL 3×6min) : `recuperationEstimee` affichait
+75/100. Laurent a remarqué, à raison, que ça semblait bas alors qu'il avait
+suivi le plan tel que prévu.
+
+**Investigation par calcul manuel** (charge prévue vs charge réalisée sur
+les 4 vraies séances, via console navigateur) : les **durées** en minutes
+sont quasi identiques (159 min prévu vs 162 min réel, écart de 3 min
+seulement) — le volume n'est pas en cause. Mais la **charge TRIMP réalisée**
+(calculée sur FC réelle, ~271) dépasse largement la **charge prévue
+forfaitaire** (coefficient × durée, ~195) — ratio 1.39, d'où le score à 75
+plutôt que ~100.
+
+**Cause identifiée** : limite structurelle de l'approche
+"coefficient × durée" pour estimer une charge PRÉVUE. Le TRIMP réel est
+exponentiel selon la réserve FC (`a × exp(b × fcReserve)`, cf. §5.1 doc
+archi) — un coefficient fixe par type de séance ne peut pas capturer cette
+non-linéarité, et sous-estime structurellement la charge des séances
+intenses (VMA/SEUIL) par rapport à ce qu'un vrai TRIMP donnerait sur FC
+réelle. Aucune FC prévisionnelle n'existe pour une séance qui n'a pas
+encore eu lieu, donc un vrai TRIMP prévisionnel est structurellement
+impossible à calculer à l'avance — l'approximation par coefficient reste la
+seule option disponible.
+
+**Décision actée avec Laurent** : ne pas sur-calibrer les coefficients sur
+ce seul échantillon (un point de données n'est pas "plus de données",
+risque de sur-corriger dans l'autre sens sur une semaine différente).
+Coefficients laissés inchangés pour l'instant (§30.5) — à revisiter une
+fois plusieurs semaines de données réelles accumulées, idéalement avec des
+mix qualité/EF variés.
+
+**Limite à garder en tête** : `recuperationEstimee` sera structurellement
+optimiste (score élevé signifiant faussement "beaucoup de récupération
+disponible") sur toute semaine contenant des séances de qualité, tant que
+les coefficients n'auront pas été recalibrés sur un échantillon plus large.
+
+### 30.9 Bug distinct trouvé en creusant : `weeklyReport()` sous-comptait `plannedMin`
+
+En creusant le désaccord, Laurent a remarqué que le "Bilan semaine"
+(§29.7, bloc `bilanEl` réactivé plus tôt dans la même session) affichait
+192 min de planifié sur la semaine — anormalement bas pour 6 séances dont 2
+de qualité. Fausse piste pour le 75/100 (`weeklyReport()` et
+`analyserSemaineActuelle()` sont deux fonctions indépendantes, qui ne
+partagent aucun calcul), mais un vrai bug distinct trouvé au passage.
+
+**Cause** : `weeklyReport()` calculait `plannedMin` en reparsant le texte
+libre de chaque séance par regex (`/\d+\s*min/` sur `s.session`, `/\d+'/`
+sur `s.warmup`/`s.cooldown`) — exactement le même type de bug déjà corrigé
+sur `weekStats()` le 7 juillet 2026 (cf. §7bis/7quater : "l'ancien parsing
+par regex ne gérait pas les formats N×Xmin, sous-comptant fortement les
+séances qualité"), mais jamais appliqué à `weeklyReport()`. Sur le format
+`"5×30s-30s"` (secondes, pas minutes) d'une séance VMA, la regex ne matche
+strictement rien — la séance entière (30 min réelles) contribuait 0 minute
+au total.
+
+**Corrigé** : `weeklyReport()` utilise désormais `kmEstime × EF_PACE`
+(6.33 min/km), exactement le même calcul que `weekStats()` — plus de
+reparsing de texte libre. Sur la semaine 2 de Laurent, `plannedMin` passe
+de 192 min (sous-compté) à 269 min (cohérent avec le volume réel du plan).
+
+**Fichier modifié** : `public/index.html` uniquement.
