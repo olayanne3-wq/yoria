@@ -78,12 +78,40 @@ async function chargerPlans(storage = localStorage) {
   }
 }
 
-// Écrit la liste complète des plans dans le Gist v2 (toujours un PATCH sur
-// le même Gist si il existe déjà — le Gist lui-même n'est jamais supprimé,
-// seul son contenu est mis à jour). Utilisée par sauvegarde, suppression et
-// renommage : ces trois opérations ne sont que des variations sur la même
-// écriture "liste de plans -> Gist".
-async function ecrireListePlans(plans, storage = localStorage) {
+// Charge la copie figée des plans (audit/comparaison, jamais modifiée après
+// création — cf. chantier séparation original/actif du 17/07/2026). Simple
+// lecture, contrairement à chargerPlans() : pas de migration d'id, la copie
+// est faite après coup sur des plans qui en ont déjà un.
+async function chargerPlansOriginal(storage = localStorage) {
+  const token = getGithubToken(storage);
+  const gistId = getV2GistId(storage);
+  if (!token || !gistId) return [];
+  try {
+    const resp = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: { Authorization: 'token ' + token }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    const raw = data.files[GIST_FILENAME] && data.files[GIST_FILENAME].content;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return parsed.plansOriginal || [];
+  } catch (e) {
+    console.warn('chargerPlansOriginal a échoué :', e.message);
+    return [];
+  }
+}
+
+// Ajoute une copie figée d'un plan à plansOriginal — appelée une seule fois,
+// à la création du plan par le wizard, en miroir de assurerPlanExiste() côté
+// Supabase. N'écrase jamais une entrée existante (un original ne change
+// plus jamais) : si un plan avec cet id est déjà dans plansOriginal, ne fait
+// rien.
+async function ajouterPlanOriginal(plan, storage = localStorage) {
+  const plansOriginalExistants = await chargerPlansOriginal(storage);
+  if (plansOriginalExistants.some(function (p) { return p.id === plan.id; })) return;
+  const plansActif = await chargerPlans(storage);
+  const nouveauxPlansOriginal = plansOriginalExistants.concat([Object.assign({}, plan, { sauvegardeLe: new Date().toISOString() })]);
   const token = getGithubToken(storage);
   if (!token) {
     throw new Error("Aucun token GitHub renseigné — impossible de sauvegarder.");
@@ -91,7 +119,42 @@ async function ecrireListePlans(plans, storage = localStorage) {
   const body = {
     description: 'Yoria v2 — plans sauvegardés',
     public: false,
-    files: { [GIST_FILENAME]: { content: JSON.stringify({ plans }, null, 2) } }
+    files: { [GIST_FILENAME]: { content: JSON.stringify({ plans: plansActif, plansOriginal: nouveauxPlansOriginal }, null, 2) } }
+  };
+  const gistId = getV2GistId(storage);
+  const url = gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists';
+  const method = gistId ? 'PATCH' : 'POST';
+  const resp = await fetch(url, {
+    method: method,
+    headers: { Authorization: 'token ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const data = await resp.json();
+  setV2GistId(data.id, storage);
+  return data.id;
+}
+
+// Écrit la liste complète des plans actifs dans le Gist v2 (toujours un
+// PATCH sur le même Gist si il existe déjà — le Gist lui-même n'est jamais
+// supprimé, seul son contenu est mis à jour). Utilisée par sauvegarde,
+// suppression et renommage : ces trois opérations ne sont que des
+// variations sur la même écriture "liste de plans -> Gist".
+//
+// Préserve plansOriginal (17/07/2026, chantier séparation original/actif) :
+// cette fonction ne touche jamais la copie figée, donc on doit la relire et
+// la réinjecter telle quelle à chaque écriture, sinon elle serait perdue au
+// premier appel suivant (le body remplace tout le contenu du fichier Gist).
+async function ecrireListePlans(plans, storage = localStorage) {
+  const token = getGithubToken(storage);
+  if (!token) {
+    throw new Error("Aucun token GitHub renseigné — impossible de sauvegarder.");
+  }
+  const plansOriginal = await chargerPlansOriginal(storage);
+  const body = {
+    description: 'Yoria v2 — plans sauvegardés',
+    public: false,
+    files: { [GIST_FILENAME]: { content: JSON.stringify({ plans: plans, plansOriginal: plansOriginal }, null, 2) } }
   };
   const gistId = getV2GistId(storage);
   const url = gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists';
