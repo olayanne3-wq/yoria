@@ -42,6 +42,52 @@
   'use strict';
 
   // --------------------------------------------------------------------------
+  // Charge PRÉVUE d'une séance (avant qu'elle ait eu lieu) — TSS-like fait
+  // maison, cf. §5.1 doc archi pour la même limite déjà assumée sur la
+  // constante de normalisation TRIMP/sRPE ("à ajuster une fois qu'on aura
+  // plus de données réelles"). Décision actée avec Laurent le 17/07/2026 :
+  // coefficientIntensite(type) x dureeEstimeeMin, plutôt que reprendre
+  // kmEstime tel quel comme proxy — un simple volume ne distinguerait pas
+  // une séance de qualité d'une EF de même distance, alors que
+  // chargeTotaleSemaine (charge RÉALISÉE, calculée via TRIMP/sRPE plus haut
+  // dans ce fichier) fait déjà cette distinction. Sans pondération par
+  // intensité ici, recuperationEstimee comparerait des choses non
+  // comparables.
+  //
+  // Coefficients calibrés à dire d'expert (pas de données réelles pour les
+  // calibrer autrement à ce stade, comme pour normaliserCharge() côté
+  // Module 1) — à ajuster une fois croisés avec l'historique réel de
+  // Laurent. Base 1.0 = EF (séance de référence).
+  const COEFFICIENT_INTENSITE_PAR_TYPE = {
+    EF: 1.0,
+    LONGUE: 1.15,   // durée longue, intensité modérée — un peu plus exigeant que l'EF pur
+    VMA: 1.5,
+    SEUIL: 1.45,
+    SPEC: 1.5,
+    TEST: 1.4,
+    REPOS: 0,
+  };
+  const COEFFICIENT_INTENSITE_DEFAUT = 1.0; // repli si type inconnu — traité comme EF plutôt que 0 (évite de sous-estimer silencieusement)
+
+  // dureeEstimeeMin : à défaut d'une vraie durée prévue par séance (le
+  // générateur ne produit que kmEstime, pas de durée explicite en dehors de
+  // ce module), estimée depuis kmEstime via l'allure EF de référence — même
+  // repli que weekStats()/EF_PACE dans index.html (6.33 min/km), pour rester
+  // cohérent avec l'estimation déjà utilisée ailleurs dans l'app plutôt que
+  // d'inventer une deuxième conversion km→min incompatible.
+  const ALLURE_EF_MIN_PAR_KM = 6.33;
+
+  function calculerChargePrevueSeance(seancePrevue) {
+    if (!seancePrevue || seancePrevue.type === 'repos') return 0;
+    const typeNormalise = String(seancePrevue.type || '').toUpperCase();
+    const coefficient = COEFFICIENT_INTENSITE_PAR_TYPE.hasOwnProperty(typeNormalise)
+      ? COEFFICIENT_INTENSITE_PAR_TYPE[typeNormalise]
+      : COEFFICIENT_INTENSITE_DEFAUT;
+    const dureeEstimeeMin = (seancePrevue.volumePrevuKm || 0) * ALLURE_EF_MIN_PAR_KM;
+    return Math.round(dureeEstimeeMin * coefficient * 10) / 10;
+  }
+
+  // --------------------------------------------------------------------------
   // Charge d'une séance réalisée — réutilise exactement la même logique que
   // le Module 1 (TRIMP si FC dispo, sRPE sinon, proxy durée en dernier
   // recours) plutôt que d'inventer une deuxième notion de "charge"
@@ -122,9 +168,15 @@
     // dépasse largement suggère l'inverse. Volontairement grossier, à
     // affiner une fois croisé avec des données réelles (même prudence que
     // la normalisation de charge du Module 1, cf. §5.1 doc archi).
+    //
+    // chargePrevueSemaine : priorité à planSemaine.chargePrevue si
+    // explicitement fournie par l'appelant (rétrocompatible avec un futur
+    // calcul différent), sinon calculée ici en sommant
+    // calculerChargePrevueSeance() sur chaque séance prévue de la semaine
+    // (chantier du 17/07/2026, cf. en-tête de fichier).
     const chargePrevueSemaine = planSemaine && typeof planSemaine.chargePrevue === 'number'
       ? planSemaine.chargePrevue
-      : null;
+      : (prevues.length ? Math.round(prevues.reduce((s, p) => s + calculerChargePrevueSeance(p), 0) * 10) / 10 : null);
     let recuperationEstimee = 50; // valeur neutre si pas de référence de charge prévue
     if (chargePrevueSemaine && chargePrevueSemaine > 0) {
       const ratioCharge = chargeTotaleSemaine / chargePrevueSemaine;
@@ -160,6 +212,7 @@
   global.DecisionEngineWeekAnalysis = {
     analyser,
     calculerChargeSeanceRealisee, // exposée pour tests unitaires isolés
+    calculerChargePrevueSeance,
     estSeanceARealiser,
   };
 
