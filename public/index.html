@@ -544,6 +544,44 @@ function obtenirHistoriqueACWR() {
   }
 }
 
+// ── Séances planifiées ratées consécutives, pour R-070 du RuleEngine ───────
+// (17/07/2026). Contrairement à DecisionEngineEngagement.regulariteRecente
+// (qui compare l'historique Strava réalisé à une fréquence habituelle sans
+// connaître le plan), cette fonction lit directement le PLAN et les statuts
+// ✅/⚠️/❌ (ALL_SESSIONS/statuses, déjà existants dans index.html) pour
+// détecter un enchaînement précis de séances PRÉVUES et RATÉES — un signal
+// que le RuleEngine ne peut pas calculer lui-même car il ne connaît que
+// runnerState/engagementState/activitySamples, jamais __PLAN_BRUT__/statuses
+// (isolation volontaire du moteur vis-à-vis du plan, cf. decision-engine-rules
+// §"Ce module ne modifie AUCUNE donnée"). Le résultat est calculé ici et
+// simplement transmis en input à evaluerRegles(), sans que le module R-070
+// lui-même ait besoin d'accéder au plan.
+function obtenirSeancesPlanifieesManquees() {
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  // Séances passées (date <= aujourd'hui), triées chronologiquement, avec un
+  // statut déjà renseigné (les séances futures n'ont jamais de statut) —
+  // ignore les séances non encore échues pour ne jamais compter un "à venir"
+  // comme une séance manquée.
+  const seancesPassees = ALL_SESSIONS
+    .filter(s => s.date && s.date <= aujourdhui)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (seancesPassees.length < 2) {
+    return { nbConsecutivesRatees: 0, dernieresSeances: [] };
+  }
+
+  // Les 2 dernières séances passées, dans l'ordre chronologique
+  const deuxDernieres = seancesPassees.slice(-2);
+  const statutsRecents = deuxDernieres.map(s => ({ date: s.date, type: s.type, statut: statuses[s.uid] || '—' }));
+
+  const toutesRatees = statutsRecents.every(s => s.statut === '❌');
+
+  return {
+    nbConsecutivesRatees: toutesRatees ? 2 : 0,
+    dernieresSeances: statutsRecents,
+  };
+}
+
 // ── État complet du moteur de décision, calcul unique partagé (§9.1 doc ────
 // intégration : "le coach IA devient un habillage du moteur, jamais un
 // second décideur") — utilisé à la fois par moteurDecisionEl (carte de
@@ -559,7 +597,13 @@ function calculerEtatMoteurDecision() {
     const samples = DecisionEngineAdapter.adapterHistoriqueComplet(window.stravaActivities || [], {}, "strava_gratuit");
     const runnerState = DecisionEngineRunnerState.calculerRunnerState(samples, optionsRunnerStateActuel());
     const engagementState = DecisionEngineEngagement.calculerEngagementState(samples, {});
-    const resultatMoteur = DecisionEngineRules.evaluerRegles({ runnerState, engagementState, activitySamples: samples, coureurOptions: optionsRunnerStateActuel() });
+    const resultatMoteur = DecisionEngineRules.evaluerRegles({
+      runnerState,
+      engagementState,
+      activitySamples: samples,
+      coureurOptions: optionsRunnerStateActuel(),
+      seancesPlanifieesManquees: obtenirSeancesPlanifieesManquees(),
+    });
     return { runnerState, engagementState, decision: resultatMoteur ? resultatMoteur.decision : null };
   } catch (err) {
     console.warn("Moteur de décision : erreur de calcul.", err.message);
