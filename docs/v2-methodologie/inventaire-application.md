@@ -3302,6 +3302,31 @@ future fonctionnalité qui modifierait le contenu d'un plan déjà en place
 même principe explicitement — ce n'est pas un garde-fou générique/transverse
 appliqué automatiquement à toute écriture sur `plan.semaines`.
 
+### 27.4 Idée notée, pas conçue ni codée : cochage automatique du statut "Partiel"
+
+**Idée évoquée le 17/07/2026** : coder un déclenchement automatique du
+statut coureur `⚠️ Partiel` (cf. §29 pour le renommage "Adaptée" →
+"Partiel") à partir du `scoreReussite`/`reussite` produit par le Module 2
+(`SessionAnalyzer`), plutôt que d'attendre le clic manuel du coureur.
+
+**Points à trancher avant de concevoir ce chantier** (aucun acté à ce jour) :
+- Le Module 2 ne couvre que les séances de qualité (VMA/SPEC/SEUIL/TEST,
+  cf. §27.1) — un tel automatisme ne pourrait donc cocher `Partiel`
+  automatiquement que sur ces types-là, jamais sur EF/LONGUE/RECUP.
+- Seuil de déclenchement à définir (`scoreReussite` en dessous de quelle
+  valeur ? le champ `reussite` du Module 2 utilise déjà un seuil à 60,
+  cf. §27.1 — réutiliser ce même seuil ou en définir un différent
+  spécifiquement pour ce cas ?).
+- Tension avec le principe "rien n'est automatique en V1" (§7.1 doc
+  intégration) — ce principe s'applique explicitement aux *décisions du
+  moteur sur le plan à venir*, pas aux statuts rétrospectifs du coureur,
+  mais l'esprit de prudence mérite d'être re-questionné avant de coder un
+  automatisme qui modifierait un jugement que le coureur pose habituellement
+  lui-même après coup.
+- Doit-il rester silencieux (juste coché) ou notifier le coureur que le
+  statut a été posé automatiquement, pour éviter toute confusion avec un
+  clic qu'il n'a pas fait ?
+
 ## 28. Wizard — deux bugs de navigation trouvés et corrigés (17/07/2026, suite de session)
 
 ### 28.1 Bug corrigé : la flèche retour depuis une consultation menait à une régénération non désirée
