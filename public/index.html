@@ -2938,6 +2938,30 @@ function renderDashboard() {
               })()
             ):null
           ):null,
+          // ── Bloc de test Module 2 (SessionAnalyzer) — 17/07/2026 ──────────
+          // Distinct de l'affichage manuel ci-dessus (qui ne passe pas par le
+          // moteur), pour valider concrètement DecisionEngineSessionAnalysis/
+          // analyserSeanceQualite() sur de vraies séances. Repose sur ses
+          // PROPRES calculs (getLapsAffichage pondéré par distance côté
+          // analyserSeanceQualite) — peut légèrement différer des chiffres
+          // ci-dessus (ex. moyenne non pondérée pour "allure intervalles").
+          // N'affiche rien si le module retourne null (séance non qualité,
+          // pas d'activité Strava, ou laps non isolables).
+          isDone ? (() => {
+            const analyse = analyserSeanceQualite(s);
+            if (!analyse) return null;
+            const couleurScore = analyse.scoreReussite >= 80 ? "var(--accent2)" : analyse.scoreReussite >= 60 ? "var(--warn)" : "var(--warn)";
+            return el("div",{style:{background:"rgba(var(--accent-rgb),0.06)",border:"1px solid rgba(var(--accent-rgb),0.18)",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
+              el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
+                el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},"🧪 Module 2 · SessionAnalyzer"),
+                el("span",{style:{color:couleurScore,fontSize:"14px",fontWeight:"700"}},analyse.scoreReussite+"/100"+(analyse.reussite?" · réussie":""))
+              ),
+              el("div",{style:{fontSize:"13px",color:"var(--text2)",marginBottom:"4px"}},"Allure : "+analyse.derive.allure.commentaire),
+              el("div",{style:{fontSize:"13px",color:"var(--text2)",marginBottom:"4px"}},"FC : "+analyse.derive.frequenceCardiaque.commentaire),
+              el("div",{style:{fontSize:"13px",color:"var(--text2)",marginBottom:analyse.alertes.length?"4px":"0"}},"Difficulté ressentie : "+analyse.difficulteRessentie),
+              analyse.alertes.length ? el("div",{style:{fontSize:"13px",color:"var(--warn)"}},"⚠ "+analyse.alertes.map(a=>a.code).join(", ")) : null
+            );
+          })() : null,
           // Prochaine séance
           nextSess?el("div",{style:{borderTop:"1px solid var(--border)",paddingTop:"10px",marginTop:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"},
             onClick:()=>{ selectedWeek=nextSess.week; setView("weekDetail"); }
