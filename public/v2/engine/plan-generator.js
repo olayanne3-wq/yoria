@@ -2090,6 +2090,35 @@ export function appliquerAdaptations(plan) {
     const semaine = plan.semaines.find(s => s.semaineNum === semaineNum);
     if (!semaine) continue;
 
+    // ── Garde-fou : ne jamais adapter une semaine déjà entièrement passée
+    // (17/07/2026, demande explicite de Laurent, même principe que le
+    // garde-fou côté changerPalierGrandDebutant dans index.html). Cas limite
+    // possible : la proposition d'adaptation a été ignorée plusieurs
+    // semaines de suite, ou appliquée en retard, et la "semaine suivante"
+    // ciblée par analyserAdaptations() se trouve être déjà terminée au
+    // moment du clic. Toutes ses séances ont alors déjà eu lieu — leur
+    // contenu ne doit plus changer rétroactivement (trompeur pour l'analyse
+    // a posteriori, dont le Module 2 du moteur de décision qui compare une
+    // séance réalisée à ce que le plan affirme avoir été prévu ce jour-là).
+    if (plan.dateDebut) {
+      const debutPlan = new Date(plan.dateDebut + 'T00:00:00Z');
+      const aujourdhui = new Date();
+      const aujourdhuiStr = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate())).toISOString().slice(0, 10);
+      const datesJoursSemaine = Object.keys(semaine.assignment || {}).map(jourIndex => {
+        const d = new Date(debutPlan);
+        d.setUTCDate(debutPlan.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
+        return d.toISOString().slice(0, 10);
+      });
+      const toutesPassees = datesJoursSemaine.length > 0 && datesJoursSemaine.every(d => d < aujourdhuiStr);
+      if (toutesPassees) {
+        nouveauxWarnings.push({
+          code: 'ADAPTATION_IGNOREE_SEMAINE_PASSEE',
+          message: `S${semaineNum} : adaptation suggérée mais ignorée, cette semaine est déjà entièrement passée.`
+        });
+        continue;
+      }
+    }
+
     if (dejaDecharge) {
       semaine.estAdaptee = true;
       nouveauxWarnings.push({
