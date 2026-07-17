@@ -3023,3 +3023,143 @@ contournement par `apksigner.jar` déjà documenté) **puis**
 automatiquement par Bubblewrap dans cette configuration) **puis**
 `jarsigner` pour le signer. Ne pas réutiliser `apksigner.jar` sur le
 `.aab`, ça échoue systématiquement.
+
+## 26. Moteur de décision — ACWR unifié, coach connecté, garde-fous, profil enrichi (17/07/2026)
+
+Suite directe de la session du 16/07/2026 (§11 doc intégration moteur de
+décision) — traite les points 1 à 4 de la liste "prochaines étapes
+logiques" (§11.7 doc intégration).
+
+### 26.1 Unification de la source de vérité sur la charge (§9.3 doc intégration)
+
+`calculerACWR(stravaActivities)` et `kmParJour()` (volume brut en km,
+`plan-generator.classic.js` et `plan-generator.js`) **retirées**. Remplacées
+par `DecisionEngineRunnerState.calculerHistoriqueCharge()`, nouvelle
+fonction ajoutée à `decision-engine-runner-state.classic.js` qui reproduit
+le calcul jour-par-jour de `calculerCharge()` (TRIMP/sRPE pondéré, pas du
+volume brut) sur une fenêtre glissante — même moteur que celui utilisé pour
+les décisions.
+
+Deux nouveaux helpers dans `index.html` (`optionsRunnerStateActuel()`,
+`obtenirRatioACWRActuel()`, `obtenirHistoriqueACWR()`) centralisent l'appel
+au moteur pour le graphique dashboard ET la consigne de ton du coach — un
+seul point de calcul, jamais deux exécutions séparées qui pourraient
+diverger.
+
+**Effet visible** : l'axe Y du graphique 1 (charge aiguë vs chronique)
+affiche désormais des unités TRIMP/sRPE (ex. 777/389/0) au lieu de km bruts
+(ex. 45/22/0) — changement d'échelle attendu, validé visuellement par
+Laurent. Le ratio ACWR (graphique 2, seuils 0.8/1.3/1.5) reste inchangé,
+sans unité.
+
+### 26.2 Coach IA branché sur le moteur (§9.1 doc intégration)
+
+Nouveau helper commun `calculerEtatMoteurDecision()` (`index.html`, retourne
+`{ runnerState, engagementState, decision }`), réutilisé par `moteurDecisionEl`
+(carte de proposition, refactorisée pour ne plus dupliquer le calcul) et par
+`fetchCoachMsg()`.
+
+`consigneChargeInterne` (prompt du coach) ne recalcule plus un ratio ACWR
+informel séparé — elle lit `RunnerState.fatigue`/`.risque`, et si une
+`EngineDecision` du jour existe (`reduire_charge`, `alerter_blessure_potentielle`,
+`alerter_risque_decrochage`), le prompt en est informé explicitement pour
+ne jamais contredire la carte de proposition affichée au même moment. Le
+coach peut commenter la décision, jamais en produire une différente à
+partir de son propre calcul — conforme au principe du doc archi ("les
+modèles d'IA ne doivent jamais prendre les décisions d'entraînement").
+
+`repos_complet`/`demarrer_taper` ne sont pas encore produits par le
+catalogue actuel (3 règles seulement) — seuls les 3 types réels sont gérés
+dans la consigne coach pour l'instant.
+
+### 26.3 Deux garde-fous ajoutés (§10.2 doc intégration)
+
+**Borne dure individuelle** (`decision-engine-rules.classic.js`) : nouvelle
+constante `BORNE_AMPLEUR_MAX_POURCENT = 30`, exposée globalement
+(`DecisionEngineRules.BORNE_AMPLEUR_MAX_POURCENT`). Dans `evaluerRegles()`,
+`ampleurPourcent` de la décision gagnante est plafonné à -30% si une règle
+en produirait plus (protection contre un seuil mal calibré ou une erreur de
+frappe dans une constante) — un `console.warn` signale le plafonnement,
+jamais silencieux.
+
+**Plafond cumulé sur 14 jours glissants** (`decision-engine-apply.classic.js`) :
+nouveau journal `planBrut.historiqueReductionsMoteur` (tableau
+`{regleId, ampleurPourcent, appliqueLe}`), alimenté à chaque application
+réussie d'une décision `reduire_charge`. Nouvelle fonction
+`calculerReductionCumulee()` calcule le cumul des réductions déjà
+appliquées sur la fenêtre glissante ; `appliquerDecisionAuPlan()` refuse
+d'appliquer une nouvelle décision si le cumul dépasserait 25% — retourne
+`{succes: false, raison: '...'}` sans toucher au plan.
+
+Le journal est stocké directement sur `planBrut` (pas dans une clé
+localStorage séparée) : il persiste automatiquement via `sauvegarderPlan()`
+(déjà appelée après chaque application réussie), sans code de persistance
+dédié à ajouter.
+
+**Effet visible côté UI** : si le garde-fou refuse une application (clic
+sur "Appliquer" dans la carte de proposition), un `alert()` explique la
+raison au coureur — avant ce correctif, le refus n'était logué qu'en
+console, sans aucun retour visuel (bug potentiel corrigé au passage, pas
+encore observé en usage réel puisque le catalogue n'a produit aucune
+décision `reduire_charge` jusqu'ici sur les données de Laurent).
+
+### 26.4 Champs profil `fcRepos` et `sexe` (§11.7 point 4 doc intégration)
+
+Deux nouveaux champs optionnels dans `profilCoureur` :
+- **`fcRepos`** (number, bpm) : ajouté au tableau du formulaire Réglages, à
+  côté de FC max (`inp-fcrepos`).
+- **`sexe`** (`'homme'|'femme'|'autre'`) : nouvelle section dédiée en
+  Réglages (boutons toggle, même pattern visuel que le sélecteur de
+  niveau), placée juste après "Niveau".
+
+Les deux champs sont également disponibles à l'**onboarding**
+(`auth.classic.js`, `monterEcranOnboarding()`) — ajoutés le 17/07/2026 à la
+demande de Laurent, après un premier passage où ils n'étaient présents
+qu'en Réglages. **Point de vigilance appliqué** : le bug de redéclenchement
+infini corrigé le 15/07/2026 (niveau `null` traité comme "jamais renseigné",
+bouton "Passer" retiré) impose que ces deux nouveaux champs restent
+strictement **optionnels** et ne touchent jamais à `validerBtn.disabled` —
+seul `niveauChoisi` contrôle la validation de l'écran, vérifié explicitement
+(un seul re-clic sur une option sexe la désélectionne, comportement normal
+d'un champ optionnel, sans effet sur le bouton Valider).
+
+`optionsRunnerStateActuel()` (§26.1) lit désormais les vraies valeurs de
+`profilCoureur.fcRepos`/`.sexe` au lieu des valeurs d'exemple (55 / 'autre'
+en dur) utilisées depuis le 16/07/2026. Tant que ces champs ne sont pas
+renseignés, le moteur garde un repli propre déjà existant (sRPE si pas de
+FC repos, moyenne des constantes TRIMP si sexe non renseigné) — purement
+additif, aucune régression pour les profils non mis à jour.
+
+### 26.5 Bug corrigé : message du coach figé après validation d'une séance
+
+**Symptôme signalé par Laurent** : le coach continuait de parler de la
+séance de qualité de mercredi (VMA) comme "clé de demain" alors qu'il avait
+déjà validé son EF du jeudi. Cause : `fetchCoachMsg()` ne régénère le
+message qu'une fois par jour (`coachDate === today() && coachMsg` bloque
+tout refetch), et rien ne réinitialisait ce cache quand le statut d'une
+séance changeait en cours de journée — le message restait figé sur l'état
+du tout premier chargement du dashboard.
+
+**Corrigé** (`index.html`, fonction générique `statusRow` utilisée pour
+tous les boutons de statut ✅/⚠️/❌) : quand le statut de la séance **du
+jour précis** (`dateSeance === today()`) change, le cache coach
+(`coachMsg`/`coachDate`, mémoire ET localStorage) est invalidé et
+`fetchCoachMsg()` relancé. Ne concerne que la séance du jour — corriger le
+statut d'une séance passée ne redéclenche jamais d'appel coach inutile.
+
+### 26.6 Régression détectée, non corrigée : barre TWA Android réapparue
+
+Le symptôme déjà diagnostiqué et corrigé le 16/07/2026 (§22.2 — barre
+Partager/⋮ visible sur la TWA installée au lieu du plein écran habituel)
+est **réapparu**. Reconfirmé le 17/07 : `yoria-running.vercel.app/.well-known/assetlinks.json`
+répond toujours `308` vers `yoria.run` (comportement normal, documenté en
+§22.1 — redirection Vercel volontaire), et `yoria.run/.well-known/assetlinks.json`
+répond bien `200`. Rien n'a changé côté serveur depuis le 16/07 — la
+régression est donc côté app installée (build/vérification Android), pas
+côté code du repo. Cause exacte non confirmée à ce stade (réinstallation
+d'un ancien `.aab`/`.apk` ? invalidation de la vérification Android pour
+une autre raison ?). Prochaine étape : reconfirmer avec
+`adb shell pm get-app-links app.vercel.plan_10k_alpha.twa` si `yoria.run`
+est toujours listé `verified` ; si non, réinstaller le build déjà signé et
+validé le 16/07/2026 (procédure complète documentée en §22.2, pas besoin
+de repartir de zéro).
