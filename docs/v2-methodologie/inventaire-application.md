@@ -4027,3 +4027,114 @@ rafraîchissement forcé. Diagnostic en cours au moment de la pause :
 **Prochaine étape** : vérifier l'affichage une fois un nouveau déploiement
 confirmé passé (attendre le reset du quota, ou un déploiement automatique
 déclenché par un futur push).
+
+## 34. Saisie manuelle : bouton Annuler, durée totale réelle, exclusion Strava (17/07/2026, session ultérieure)
+
+Session de planification (pas de code au départ, quota Vercel dépassé),
+finalement débloquée en cours de session (quota reset) — 3 chantiers livrés
+et poussés sur `main`, tous dans `public/index.html` uniquement.
+
+### 34.1 Bouton "✕ Annuler" (`renderManualPerfRow`)
+
+Remplace l'ancien bouton 🗑️ (visible seulement si `hasManualNow()`) par un
+bouton **toujours visible**, avec un comportement plus large que la simple
+suppression :
+- Supprime `manualPerf[uid]`
+- **Décoche aussi le statut de la séance** (`delete statuses[uid]`) —
+  demande explicite de Laurent : après suppression d'une saisie manuelle,
+  le statut ✅/⚠️/❌ ne doit pas référencer une donnée qui vient d'être
+  effacée
+- `render()` immédiat pour refléter le statut décoché
+- Relance `syncStrava()` pour retrouver l'activité Strava du jour si elle
+  existe — décision actée : si Strava n'a toujours rien ce jour-là (pas
+  encore synchronisé, ou vraiment aucune activité), la séance reste
+  volontairement à `—`, au coureur de décider quoi faire ensuite plutôt que
+  de forcer une resaisie immédiate.
+
+### 34.2 Durée totale réelle → distance dérivée pour séances de qualité
+
+**Problème identifié** : `distanceEffortStructure()` (existant) ne calcule
+que la distance des blocs d'effort structurés — échauffement, récup entre
+répétitions et retour au calme totalement absents du volume d'une séance
+qualité saisie manuellement. Sous-estimation systématique du volume réel,
+avec impact direct sur charge/TRIMP/ACWR pour toute séance qualité saisie
+manuellement.
+
+**Solution retenue et validée sur une vraie donnée** : nouveau champ
+**durée totale de la séance (min)**, saisi par le coureur (pas dérivé du
+plan), visible uniquement pour les séances structurées. Nouvelle fonction
+`distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFStr)` :
+- Distance des blocs d'effort : allure du bloc (comme l'existant)
+- Distance de la récup entre répétitions : **allure EF du coureur**
+  (`window.__PLAN_BRUT__.allures.E`) — décision explicite de Laurent
+  (auparavant la récup n'était comptée nulle part)
+- Distance du reste du temps saisi (échauffement + retour au calme) :
+  également à l'allure EF
+
+**Test de validation** (avant codage, sur la vraie séance VMA du coureur du
+15/07/2026, "VMA 5×30-30") : durée réelle Strava 1858s, distance réelle
+Strava 5202.4m. Calcul avec la méthode retenue (allure EF `6:10/km` du
+plan) : 581m (effort) + 324m (récup) + 4292m (reste) = **5197m**, écart de
+**5m** avec la réalité. Validé avant implémentation.
+
+Repli propre si le champ durée est laissé vide : ancien comportement
+(`distanceEffortStructure`, blocs d'effort seuls) — non-régression pour
+qui n'utilise pas le nouveau champ.
+
+`manualPerf[uid]` gagne un nouveau champ `dureeSaisieMin`, pré-rempli à la
+durée prévue au plan (échauffement+effort+récup+RAC) comme point de départ
+ajustable, cohérent avec le principe déjà appliqué à l'allure.
+
+### 34.3 Exclusion Strava quand une saisie manuelle existe
+
+**Décision de Laurent, plus large que "la saisie manuelle prime"** (formule
+de l'ancien commentaire du code, doc intégration §3.1) : une vraie
+**exclusion**, pas une simple priorité — Strava ne doit plus être visible
+ni utilisé nulle part pour une séance ayant une saisie manuelle, ni dans
+l'UI ni dans le moteur de décision. Motivation : une saisie manuelle
+signale souvent que la donnée Strava du jour est corrompue ou absente.
+
+**Nouvelle fonction centrale** `getStravaRunSiPasManuel(date, uid, activites?)`
+— point d'entrée unique pour chercher l'activité Strava d'une séance par
+date, retourne `null` si `manualPerf[uid]` existe. Remplace 5 sites
+identifiés dans le code qui faisaient chacun leur propre
+`stravaActivities.find(...)` par date sans jamais vérifier `manualPerf` :
+1. `todayStravaRun` (résumé du jour, dashboard)
+2. `stravaRun2` (carte du jour)
+3. `stravaRun` (détail semaine)
+4. `run` (courbes IE/cadence, onglet Stats)
+5. `strava` (export PDF)
+
+**Côté moteur de décision** (`adapterHistoriqueAvecRpe()`, point d'entrée
+unique déjà partagé par Modules 1/2/3 et le coach IA, cf. §26.1/§26.2) :
+même exclusion appliquée à la liste d'activités transmise au moteur — mais
+avec un point de vigilance supplémentaire identifié en codant : **exclure
+Strava sans rien remettre à la place ferait disparaître la séance
+entièrement du moteur**, pas seulement "moins précise". Corrigé : chaque
+`manualPerf[uid]` est désormais reconstruit en objet Strava-like
+synthétique (distance, `moving_time` dérivé de `dureeSaisieMin` ou
+distance/allure en repli, `average_heartrate`, `provenance: 'manuel'`) et
+repassé par le même `DecisionEngineAdapter.adapterActiviteStrava()` que les
+vraies activités Strava — pas de duplication de la logique de conversion,
+juste une source d'entrée différente.
+
+**Fichier modifié** : `public/index.html` uniquement — le moteur
+(`decision-engine-*.classic.js`) n'a pas eu besoin d'être touché, toute la
+logique d'exclusion/substitution vit dans l'adaptateur côté `index.html`
+qui appelle le moteur, pas dans le moteur lui-même.
+
+### 34.4 Non vérifié visuellement à ce jour
+
+Poussé sur `main` (2 commits : bouton Annuler seul, puis durée+exclusion
+Strava ensemble), syntaxe validée (`node --check`) avant chaque push, mais
+**aucun des 3 chantiers n'a encore été confirmé visuellement** par Laurent
+en conditions réelles — session terminée juste après le second push.
+
+**Prochaine étape** : vérifier une fois le déploiement Vercel confirmé
+passé :
+1. Bouton Annuler supprime bien la saisie + décoche le statut + relance la
+   synchro
+2. Champ durée totale apparaît bien sur une séance qualité, distance
+   dérivée cohérente
+3. Une activité Strava n'apparaît plus nulle part (UI + coach IA + ACWR
+   affiché) si une saisie manuelle existe pour ce jour
