@@ -96,10 +96,20 @@
   // dépendre d'aucun autre script du moteur.
   //
   // fcMaxReference/fcReposReference/sexe : mêmes paramètres et mêmes limites
-  // que le Module 1 — fcReposReference tourne encore avec une valeur
-  // d'exemple tant que ce champ n'existe pas dans profilCoureur (cf. §26.3
-  // inventaire, Option A retenue temporairement).
+  // que le Module 1 — lus depuis profilCoureur via optionsRunnerStateActuel()
+  // côté index.html (fcRepos/sexe existent réellement depuis le 17/07/2026,
+  // note obsolète sur une valeur d'exemple corrigée le même jour).
+  //
+  // Pondération RPE (17/07/2026, même chantier que Module 1) : réplique
+  // exactement le même ajustement que calculerChargeSeance()
+  // (decision-engine-runner-state.classic.js) — RPE ≥ 8 amplifie le TRIMP
+  // de 12%, jamais d'abaissement. Constantes dupliquées ici volontairement
+  // (SEUIL_RPE_AMPLIFICATION/FACTEUR_AMPLIFICATION_RPE_ELEVE), cohérent
+  // avec le principe déjà établi de ne dépendre d'aucun autre script.
   // --------------------------------------------------------------------------
+  const SEUIL_RPE_AMPLIFICATION = 8;
+  const FACTEUR_AMPLIFICATION_RPE_ELEVE = 1.12;
+
   function calculerChargeSeanceRealisee(seance, fcMaxReference, fcReposReference, sexe) {
     if (seance.fcMoyenne !== undefined && seance.fcMoyenne !== null
         && fcMaxReference && fcReposReference && fcMaxReference > fcReposReference) {
@@ -110,7 +120,11 @@
         ? [(0.64 + 0.86) / 2, (1.92 + 1.67) / 2]
         : [a, b];
       const facteurPonderation = aFinal * Math.exp(bFinal * fcReserveBornee);
-      return seance.dureeMin * fcReserveBornee * facteurPonderation; // TRIMP, échelle "standard"
+      let valeur = seance.dureeMin * fcReserveBornee * facteurPonderation; // TRIMP, échelle "standard"
+      if (seance.ressentiRPE !== undefined && seance.ressentiRPE !== null && seance.ressentiRPE >= SEUIL_RPE_AMPLIFICATION) {
+        valeur *= FACTEUR_AMPLIFICATION_RPE_ELEVE;
+      }
+      return valeur;
     }
     if (seance.ressentiRPE !== undefined && seance.ressentiRPE !== null) {
       return (seance.dureeMin * seance.ressentiRPE) / 6; // sRPE ramené approx. à l'échelle TRIMP
