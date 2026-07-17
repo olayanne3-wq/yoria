@@ -468,7 +468,14 @@ export function computePhases({ dateDebut, dateCourse, distance, niveau, ampleur
   const debut = new Date(dateDebut);
   const course = new Date(dateCourse);
   const totalJours = Math.round((course - debut) / 86400000);
-  const totalSemaines = Math.max(1, Math.round(totalJours / 7));
+  // ceil (pas round) : garantit que dateCourse tombe TOUJOURS dans la
+  // dernière semaine générée, jamais après. Avec round, un totalJours non
+  // multiple de 7 pouvait arrondir vers le bas et faire terminer le plan
+  // avant la vraie date de course (bug trouvé le 17/07/2026 : semi prévu
+  // le 04/04/2027, plan se terminait le 28/03/2027, -7 jours). Le calcul
+  // exact du jour de course DANS cette dernière semaine reste fait par
+  // placerSeanceCourse (index ISO du jour, pas juste "le dernier jour").
+  const totalSemaines = Math.max(1, Math.ceil(totalJours / 7));
 
   const warnings = [];
   if (totalJours < 0) {
@@ -1404,20 +1411,46 @@ export function genererContenuRace({ distance, alluresSec }) {
  * Remplace la séance du jour de course (date == dateCourse) par une vraie
  * séance de course, avec stratégie de segments par distance. Mute le plan
  * en place. Silencieux si le jour de course ne tombe sur aucune séance du
- * plan (ne devrait pas arriver en pratique, computePhases cale la durée du
- * plan sur dateCourse, mais pas de garde-fou bloquant par prudence).
+ * plan.
+ *
+ * Cible le jour ISO exact de dateCourse dans la dernière semaine (pas
+ * systématiquement "le dernier jour de la semaine") — correctif du
+ * 17/07/2026. Avant : supposait que dateCourse tombait toujours un
+ * dimanche (dernier index de assignment), ce qui n'est vrai QUE si
+ * totalJours est un multiple exact de 7 depuis dateDebut. Sinon, la
+ * "vraie" position de dateCourse dans la semaine ne correspondait pas au
+ * dernier jour généré — bug découvert le 17/07/2026 (semi prévu le
+ * 04/04/2027, un dimanche, mais le plan plaçait la course une semaine
+ * trop tôt car totalSemaines avait arrondi vers le bas, cf. computePhases).
+ * Combiné au passage de computePhases en ceil (jamais de sous-dimension),
+ * la dernière semaine générée contient TOUJOURS dateCourse quelque part ;
+ * ce calcul trouve précisément où.
  */
 export function placerSeanceCourse(plan, alluresSec) {
   const derniereSemaine = plan.semaines[plan.semaines.length - 1];
   if (!derniereSemaine) return;
 
-  // Le jour de course est toujours le dernier jour du plan (dimanche de la
-  // dernière semaine, cf. computePhases qui cale la durée totale sur
-  // dateCourse) — pas besoin de comparer des dates jour par jour, plus
-  // simple et robuste que de reconstruire la date de chaque jour de la
-  // semaine à partir de dateDebut.
-  const jours = Object.entries(derniereSemaine.assignment);
-  const [, dernierJour] = jours[jours.length - 1];
+  // Jour ISO de dateCourse (0=lundi...6=dimanche) — clés assignment vont
+  // de 1 (mardi) à 6 (dimanche), lundi (0) absent (repos implicite, cf.
+  // mémoire séances). getDay() JS renvoie 0=dimanche...6=samedi, converti
+  // ici en 0=lundi...6=dimanche pour matcher les clés assignment.
+  const jsDay = new Date(plan.dateCourse + 'T00:00:00').getDay();
+  const jourCourseISO = (jsDay + 6) % 7;
+
+  let dernierJour = derniereSemaine.assignment[jourCourseISO];
+  let jourCourseNum = jourCourseISO;
+
+  // Garde-fou : si dateCourse tombe un lundi (jourCourseISO === 0), aucune
+  // clé n'existe dans assignment (lundi toujours repos implicite). Cas
+  // limite non géré avant, repli sur l'ancien comportement (dernier jour
+  // généré) plutôt que de silencieusement ne rien faire.
+  if (!dernierJour) {
+    const jours = Object.entries(derniereSemaine.assignment);
+    const derniere = jours[jours.length - 1];
+    if (!derniere) return;
+    jourCourseNum = Number(derniere[0]);
+    dernierJour = derniere[1];
+  }
   if (!dernierJour) return;
 
   const { sousType, contenu, kmEstime } = genererContenuRace({ distance: plan.distance, alluresSec });
