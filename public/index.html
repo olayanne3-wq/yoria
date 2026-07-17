@@ -1474,8 +1474,18 @@ function analyserSeanceQualite(seance) {
   // distancePrevueKm : distance d'effort attendue par la structure du plan
   // (distanceEffortStructure, déjà utilisée ailleurs §3575/3613), pas le
   // volume total de la séance (qui inclut échauffement/récup/retour au calme).
-  const distancePrevueEffortKm = seance.structureIntervalles
+  // CORRECTIF (17/07/2026, trouvé en testant le bloc Stats avec Laurent) :
+  // distanceEffortStructure() retourne des MÈTRES (bloc.distanceM * reps,
+  // jamais divisé), alors que ciblesSeance.distancePrevueKm attend des KM —
+  // sans la division par 1000, le volume prévu était ~1000x trop grand,
+  // rendant analyserEcartVolume() systématiquement hors zone (dansLaZone
+  // toujours false), quel que soit le volume réellement couru. Explique
+  // pourquoi "Volume : ..." semblait ne jamais s'extraire correctement.
+  const distancePrevueEffortM = seance.structureIntervalles
     ? distanceEffortStructure(seance.structureIntervalles)
+    : null;
+  const distancePrevueEffortKm = distancePrevueEffortM
+    ? Math.round(distancePrevueEffortM) / 1000
     : (seance.km || seance.distanceKm || undefined);
 
   const ciblesSeance = {
