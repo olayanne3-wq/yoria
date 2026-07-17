@@ -3693,3 +3693,105 @@ réelle sur séances de qualité). Le problème est bien la calibration des
 coefficients, pas le découpage temporel. Confirme la décision déjà actée en
 §30.8 : pas de changement de code pour l'instant, ni sur les coefficients
 ni sur le découpage semaine calendaire/fenêtre glissante.
+
+## 31. Moteur de décision — Module 4 (TrendAnalyzer) livré (17/07/2026, même session)
+
+### 31.1 Décision de conception
+
+Contrat théorique (`analyser(historiqueSemaines: WeekAnalysis[],
+fenetreSemaines: number)`) a un vide identique à celui déjà comblé pour le
+Module 3 : `pointsDeSuivi[].fatigue` vient de `RunnerState` (Module 1), pas
+de `WeekAnalysis` (Module 3), et la signature théorique ne prévoit aucun
+moyen de le fournir. Comblé avec un paramètre séparé
+`historiqueRunnerStates: RunnerState[]`, aligné par INDEX avec
+`historiqueSemaines[]` (même semaine, même position, même ordre
+chronologique) — jamais fusionné dans `WeekAnalysis` lui-même. Mêmes
+raisons que pour le Module 3 (§30.1) : cohérence avec le pattern déjà
+choisi, `WeekAnalysis` reste un contrat stable utilisé ailleurs
+(`EngineInput.weekAnalysis`).
+
+Fonction pure, aucune dépendance à un autre script du moteur — même
+philosophie que les Modules 1/2/3/5.
+
+### 31.2 Fichier créé : `decision-engine-trend-analysis.classic.js`
+
+Expose `DecisionEngineTrendAnalysis.analyserAvecEtatCoureur(historiqueSemaines,
+historiqueRunnerStates, fenetreSemaines)` (fonction à utiliser en pratique)
+et `analyser(historiqueSemaines, fenetreSemaines)` (version dégradée sans
+`RunnerState`, conforme à la signature théorique stricte, `fatigue` toujours
+`null` dans ce cas — cf. §4 doc archi, principe de dégradation propre).
+
+5 détecteurs de signaux, conformes au tableau du doc archi :
+`3_SEMAINES_REUSSIES` (taux de réussite ≥90% sur 3 semaines),
+`CHARGE_CROISSANTE_RAPIDE` (hausse >15% sur 2 transitions consécutives),
+`SEANCES_MANQUEES_REPETEES` (≥2 semaines sur 3 avec ≥2 séances manquées),
+`FATIGUE_CROISSANTE` (croissance stricte sur 3 points), `STAGNATION_VOLUME`
+(volume quasi stable ±5% sur 4+ semaines). Chaque détecteur est une
+fonction indépendante et testable isolément, exposée sur
+`DecisionEngineTrendAnalysis` (cf. doc archi : "règles de détection simples
+et nommées, elles-mêmes testables indépendamment").
+
+`tendanceGenerale` déduite par table de règles simple
+(`deduireTendanceGenerale`) : priorité aux signaux négatifs
+(fatigue/charge) sur les positifs en cas de conflit — cohérent avec le
+principe "sécurité avant performance" déjà appliqué au Module 5 (cf. §26
+inventaire).
+
+Testé unitairement sur 2 scénarios simulés (progression avec charge en
+hausse contrôlée, dégradation avec fatigue croissante + séances manquées)
+avant intégration — comportement conforme dans les deux cas.
+
+### 31.3 Chargé dans `index.html`, wrapper `analyserTendance()`
+
+Script chargé après le Module 3 (avant Module 5/RuleEngine). Wrapper
+`analyserTendance(fenetreSemaines)` : boucle sur les semaines déjà
+commencées du plan (semaine courante incluse, futures exclues), chaîne les
+appels à `analyserSemaineActuelle()` (Module 3, `semainePrecedente`
+correctement propagée sur toute la fenêtre) pour construire
+`historiqueSemaines[]`, et appelle
+`DecisionEngineRunnerState.calculerRunnerState()` avec `dateReference` calée
+sur le dernier jour de chaque semaine pour construire
+`historiqueRunnerStates[]` en parallèle, aligné par index.
+
+Retourne `null` si moins de 3 semaines exploitables (tous les détecteurs
+ont un minimum de 3 semaines).
+
+**Bloc de test ajouté** dans l'onglet Stats, même pattern que les tests
+Modules 2/3 : fenêtre fixe à 6 semaines (pas de sélecteur — cohérent avec
+les autres blocs de test). Affiche tendance générale, signaux détectés,
+points de suivi (fatigue/volume/taux de réussite par semaine).
+
+**Vérifié sur les données réelles de Laurent** (2 semaines de plan actuel
+au moment du test) : message "pas assez de semaines exploitables (minimum
+3)" affiché proprement, sans crash — comportement attendu, pas encore
+assez d'historique.
+
+### 31.4 Bug annexe corrigé au passage : `fcRepos` en dur dans le Module 3
+
+En préparant l'intégration du Module 4, découvert que le wrapper
+`analyserSemaineActuelle()` (Module 3, §30) utilisait encore
+`fcRepos = 55` en dur, alors que `profilCoureur.fcRepos` existe réellement
+(champ Paramètres ajouté le même jour, §11.7 point 4, lu par
+`optionsRunnerStateActuel()` utilisée ailleurs dans l'app pour l'ACWR).
+Erreur de ma part lors du codage initial du Module 3, basée sur une mémoire
+de session qui ne reflétait plus l'état réel du code au moment où je l'ai
+écrit. Corrigé : `analyserSemaineActuelle()` utilise désormais
+`optionsRunnerStateActuel()`, même source que le reste du moteur (ACWR,
+RunnerState) — plus de duplication de la logique de repli fcMax/fcRepos/sexe.
+
+### 31.5 Vérification incidente : champs profil `fcRepos` et `sexe` déjà tous les deux fonctionnels
+
+En cherchant à combler "les champs profil manquants (fcRepos, sexe)"
+identifiés dans une mémoire de session antérieure comme non codés, vérifié
+que les **deux champs sont en réalité déjà entièrement implémentés** :
+saisie dans Paramètres (`profileSection` pour FC repos, `sexeSection`
+dédiée avec 3 boutons Homme/Femme/Autre pour sexe), sauvegarde
+(`sauvegarderProfilCoureur()`), et lecture par le moteur via
+`optionsRunnerStateActuel()`. Les deux sections sont bien montées dans le
+DOM (`profileSection, niveauSection, sexeSection, recordsSection...`), pas
+du code mort comme le "Bilan semaine" l'était (§29.7).
+
+Aucun code à écrire — mémoire de session obsolète, chantier déjà réalisé
+lors d'une session antérieure non entièrement reflétée dans le contexte de
+mémoire disponible en début de cette session. Aucune modification de
+fichier pour ce point.
