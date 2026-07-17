@@ -496,3 +496,49 @@ Par ordre de dépendance, ce qui reste du §11.7 initial :
 2. **Modules non commencés** du catalogue complet (§7 doc archi) : surentraînement combiné, progression, taper irrégulier, objectif à risque — à reprendre une fois les 3 règles actuelles éprouvées sur un usage réel prolongé (cf. §7.2), et une fois les modules 2/3/4 (SessionAnalysis/WeekAnalysis/TrendAnalysis) codés pour les règles qui en dépendraient.
 
 Hors périmètre moteur de décision, mais lié à ce jour de session : réinstaller le build TWA déjà signé et validé le 16/07/2026 pour corriger la régression du §12.6 (procédure complète en inventaire §22.2, pas besoin de repartir de zéro).
+
+## 13. État d'implémentation réel (17 juillet 2026, suite de session)
+
+Suite directe du §12 — nouvelle session le même jour, qui reprend le point 2 de la liste de fin de §12 : catalogue de règles étoffé et Module 2 (SessionAnalyzer) livré. Détail complet de la conception (dont le contrat révisé de `SessionAnalysis`) en doc archi §3.3/§6/§7 (sections mises à jour le 17/07/2026).
+
+### 13.1 Catalogue de règles — 3 nouvelles règles
+
+Ajoutées à `decision-engine-rules.classic.js`, catalogue passé de 3 à 6 règles :
+
+- **R-050 ACWR élevé** (sécurité, priorité 85) — lit `runnerState.charge.ratio` déjà calculé par le Module 1, seuils 1.3 (→ -15%)/1.5 (→ -25%) conformes au doc archi §5.2. Placée juste sous R-024s (fatigue, 90) pour laisser primer le message fatigue en cas de double déclenchement, mais se déclenche seule quand le ratio dépasse le seuil sans que la fatigue linéaire ait franchi 75 (les deux mappings ne sont pas parfaitement alignés).
+- **R-060 Tendance fatigue en hausse** (sécurité, priorité 80) — rappelle `calculerRunnerState()` à 3 dates de référence (J, J-4, J-7, même principe que `calculerHistoriqueCharge()` déjà existant), se déclenche si croissance stricte + écart ≥8 points + aucun point n'a franchi 75 (sinon R-024s aurait déjà matché). **Bug trouvé et corrigé le jour même** : la première version ne recevait jamais `coureurOptions` (fcMax/fcRepos/sexe) depuis `evaluerRegles()`, donc ne pouvait jamais réellement se déclencher — corrigé en passant `optionsRunnerStateActuel()` en plus de `runnerState`/`engagementState` dans l'appel côté `calculerEtatMoteurDecision()`.
+- **R-070 Séances planifiées ratées consécutives** (engagement, priorité 55) — signal plus direct que R-040 : 2 séances *prévues au plan* marquées ❌ d'affilée, pas juste une baisse de régularité globale sur 14j. Calculée en dehors du RuleEngine (nouvelle fonction `obtenirSeancesPlanifieesManquees()` côté `index.html`, lit `ALL_SESSIONS`/`statuses`) puis transmise en input à `evaluerRegles()` — le RuleEngine reste isolé du plan, cf. principe déjà en place pour les autres règles.
+
+### 13.2 Module 2 (SessionAnalyzer) — livré, testé, corrigé en profondeur
+
+Nouveau fichier `decision-engine-session-analysis.classic.js`. Détail de conception, contrat révisé, et 3 bugs trouvés/corrigés le jour même : cf. doc archi §6 Module 2 (section réécrite le 17/07/2026 avec l'état d'implémentation réel).
+
+**Résumé des 3 bugs trouvés en testant avec Laurent, avant tout usage prolongé** :
+1. Comparaison initiale sur la vitesse moyenne de toute l'activité (échauffement + effort + récup + retour au calme confondus) → corrigé pour utiliser `getLapsAffichage()`, qui isole les vrais laps d'effort.
+2. `distanceEffortStructure()` (fonction déjà existante, réutilisée) retourne des mètres, pas des km — conversion par 1000 manquante côté appelant.
+3. `distanceEffortStructure()` ne lisait que `bloc.distanceM`, ignorant les blocs définis en durée (`dureeEffortSec` + `allure`, ex. "5×30s-30s" — protocole VMA très courant) → volume prévu toujours `null` pour ce type de séance. Fonction corrigée pour calculer la distance depuis durée/allure quand `distanceM` est absent (bénéficie aussi aux autres appelants existants de cette fonction, ligne ~1980/3630 index.html).
+
+**UI de test** : bloc "🧪 Test Module 2" ajouté en bas de l'onglet Stats — menu déroulant listant toutes les séances qualité passées avec statut renseigné, affiche le `SessionAnalysis` complet de la séance choisie. Bug trouvé et corrigé : `select.value` doit être forcé explicitement en JS après construction du DOM, l'attribut HTML `selected` posé sur les `<option>` ne suffit pas à faire refléter la sélection après un re-render de l'app.
+
+### 13.3 Garde-fous anti-régénération rétroactive des séances passées
+
+**Origine** : en testant le Module 2, Laurent a remarqué qu'une séance déjà réalisée (10/07/2026) affichait un contenu différent ("4×30-30" au lieu de "2×8×30-30" initial) — changement rétroactif trompeur pour toute analyse a posteriori, dont le Module 2 lui-même (qui compare une séance réalisée à ce que le plan affirme avoir été prévu ce jour-là).
+
+**Cause identifiée** : un bouton UI "rattraper les structures d'intervalles" existait dans Réglages avant le 13/07/2026 (retiré depuis, cf. inventaire §"regenererStructuresIntervallesUI"), qui appelait `regenererStructuresIntervalles()` — cette fonction du moteur attribuait une structure fraîchement calculée à toute séance qui n'en avait pas encore, **y compris les séances déjà passées**, sans aucun garde-fou de date à l'époque.
+
+**3 mécanismes identifiés qui modifient un plan existant en place**, tous corrigés avec le même principe (vérifier la date avant de toucher au contenu, ignorer silencieusement si déjà passée) :
+
+1. `changerPalierGrandDebutant()` (`index.html`) — seul point de régénération *complète* du plan trouvé. Pour chaque semaine du nouveau plan généré, si TOUTES ses séances sont déjà passées, la semaine est remplacée par celle de l'ancien plan (fusion semaine par semaine, pas jour par jour).
+2. `appliquerAdaptations()` (`plan-generator.classic.js` + `public/v2/engine/plan-generator.js`, synchronisées) — mécanisme "Adaptation suggérée". Ne cible normalement que la semaine suivante une semaine déjà notée (rarement déjà passée par construction), mais cas limite si la proposition est ignorée plusieurs semaines ou appliquée en retard. Nouveau code d'avertissement `ADAPTATION_IGNOREE_SEMAINE_PASSEE`.
+3. `regenererStructuresIntervalles()` (mêmes deux fichiers) — la cause identifiée ci-dessus. Le bouton UI n'existe plus, mais la fonction restait appelable manuellement depuis le moteur.
+
+**Vérifié séparément, aucun risque supplémentaire trouvé** : `genererBlocSuivant()` (`plan-forme.js`/`.classic.js`, extension du cycle glissant Mode Forme) ne modifie jamais le plan précédent en place — ajoute seulement un nouveau bloc à la suite. Pas encore branché à une UI dans `index.html` à ce jour. **Point de vigilance pour plus tard** : vérifier au moment de son branchement futur que la fusion avec le plan existant ne touche que les semaines à venir.
+
+**Limite connue** : ces 3 garde-fous couvrent tous les mécanismes de modification de plan existant identifiés dans le code au 17/07/2026. Ce n'est pas un garde-fou générique/transverse appliqué automatiquement à toute écriture sur `plan.semaines` — toute future fonctionnalité modifiant un plan déjà en place (ex. futur "adapter mon plan suite à une blessure") devra implémenter le même principe explicitement.
+
+### 13.4 Prochaines étapes logiques
+
+1. **§13.1 point R-070** — pas encore observé se déclencher en conditions réelles (comme les autres règles avant elle).
+2. **Modules 3/4** (WeekAnalyzer/TrendAnalyzer) — toujours non codés ; R-060 (§13.1) contourne partiellement ce manque en rappelant directement le Module 1 à plusieurs dates plutôt que de consommer un vrai historique persisté.
+3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité — toujours reporté, `reduire_charge` ne cible toujours que EF/LONGUE/RECUP.
+4. **Reste du catalogue théorique** (doc archi §7) — signaux combinés de surentraînement, taper irrégulier, objectif à risque, plaisir déclaré, etc. — nécessitent pour la plupart les Modules 3/4 ou GoalFeasibility, non codés.
