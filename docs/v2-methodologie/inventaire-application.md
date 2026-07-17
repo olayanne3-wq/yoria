@@ -3795,3 +3795,62 @@ Aucun code à écrire — mémoire de session obsolète, chantier déjà réalis
 lors d'une session antérieure non entièrement reflétée dans le contexte de
 mémoire disponible en début de cette session. Aucune modification de
 fichier pour ce point.
+
+## 32. Moteur de décision — weekAnalysis/trendAnalysis branchés dans l'input du RuleEngine (17/07/2026, même session)
+
+### 32.1 Décision explicite de Laurent
+
+Brancher uniquement les données (`weekAnalysis`, `trendAnalysis`) dans
+l'objet passé à `DecisionEngineRules.evaluerRegles()` — **aucune nouvelle
+règle créée** pour les consommer. Décision volontaire : les Modules 3/4
+restent disponibles pour une future règle sans attendre qu'elle soit
+conçue maintenant.
+
+### 32.2 État réel du RuleEngine avant ce branchement
+
+Vérifié que le vrai catalogue de règles implémenté (6 règles :
+`evaluerPicDeSeance`, `evaluerFatigueElevee`, `evaluerACWRElevee`,
+`evaluerTendanceFatigue`, `evaluerSeancesManqueesConsecutives`,
+`evaluerDesengagementPrecoce`) prend un objet `input` différent du contrat
+théorique `EngineInput` du doc archi — `runnerState`/`engagementState`/
+`activitySamples`/`coureurOptions`/`seancesPlanifieesManquees`, sans
+`weekAnalysis`/`trendAnalysis`/`goalFeasibility`/`sessionAnalysis`. Le
+catalogue a grandi (R-060 tendance fatigue, R-070 séances manquées
+consécutives) depuis les 3 règles de démarrage notées dans une mémoire de
+session antérieure — cohérent avec le premier vrai déclenchement observé
+en conditions réelles pendant cette session (R-060, cf. §31.3 note
+adjacente sur la tendance fatigue vue par Laurent).
+
+`evaluerRegles()` n'itère jamais génériquement sur les clés de son objet
+`input` — confirmé avant modification, donc ajouter des champs
+supplémentaires ne peut rien casser dans les règles existantes.
+
+### 32.3 Modification
+
+`calculerEtatMoteurDecision()` (`index.html`, fonction centrale déjà
+partagée entre la carte de proposition et le prompt du coach IA, cf. §9.1
+doc intégration) calcule désormais `weekAnalysis` (via
+`analyserSemaineActuelle(currentWeek())`) et `trendAnalysis` (via
+`analyserTendance(6)`), et les ajoute à l'objet transmis à
+`evaluerRegles()`. Les deux peuvent être `null` (pas assez de semaines,
+script non chargé) sans casser le calcul — même principe que
+`sessionAnalysis` optionnel dans le contrat théorique `EngineInput`.
+
+Point de vigilance vérifié avant modification : `analyserSemaineActuelle`/
+`analyserTendance`/`currentWeek` sont déclarées plus bas dans le fichier
+que `calculerEtatMoteurDecision` — sans conséquence grâce au hoisting
+standard des déclarations `function` en JavaScript (accessibles dans toute
+la portée du script dès son exécution, indépendamment de l'ordre
+d'écriture), tant que `calculerEtatMoteurDecision()` n'est appelée qu'après
+le chargement complet du script (déjà le cas : appelée en réaction à un
+rendu/événement, jamais immédiatement).
+
+**Fichier modifié** : `public/index.html` uniquement.
+
+### 32.4 Reste à faire (non commencé)
+
+Aucune règle du Module 5 ne consomme `weekAnalysis`/`trendAnalysis` à ce
+jour — les données sont disponibles mais inertes tant qu'une nouvelle règle
+n'est pas conçue et codée pour s'appuyer dessus (ex. une règle qui réagirait
+à `SignalTendance` type `FATIGUE_CROISSANTE` ou `CHARGE_CROISSANTE_RAPIDE`
+du Module 4, ou à `ecartVolumePourcent`/`seancesManquees` du Module 3).
