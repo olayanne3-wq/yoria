@@ -2241,17 +2241,40 @@ function regenererStructuresIntervalles(plan) {
 
   let nbMisesAJour = 0;
   const nbApparitionsParSousType = {};
+  // Garde-fou (17/07/2026, demande explicite de Laurent) : calculé une seule
+  // fois avant la boucle, pour comparer chaque date de séance sans recalculer
+  // "aujourd'hui" à chaque itération.
+  const debutPlanGF = plan.dateDebut ? new Date(plan.dateDebut + 'T00:00:00Z') : null;
+  const aujourdhuiGF = new Date();
+  const aujourdhuiStrGF = new Date(Date.UTC(aujourdhuiGF.getFullYear(), aujourdhuiGF.getMonth(), aujourdhuiGF.getDate())).toISOString().slice(0, 10);
+
   for (const semaine of plan.semaines) {
     const phaseInfo = bornesPhases.find(b => b.nom === semaine.phase && semaine.semaineNum > b.debut && semaine.semaineNum <= b.fin);
     const semaineDansPhase = phaseInfo ? semaine.semaineNum - phaseInfo.debut - 1 : 0;
 
-    for (const seance of Object.values(semaine.assignment)) {
+    for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
       if (seance.type !== 'qualite') continue;
       // Compte l'apparition AVANT le "continue" ci-dessous, pour rester
       // cohérent même sur les séances déjà pourvues d'une structure —
       // sinon le compteur se désynchroniserait de l'historique réel du plan
       if (seance.sousType) nbApparitionsParSousType[seance.sousType] = (nbApparitionsParSousType[seance.sousType] ?? 0) + 1;
       if (seance.structureIntervalles) continue; // déjà présente, rien à faire
+
+      // ── Garde-fou : ne jamais attribuer une nouvelle structure à une
+      // séance déjà passée (17/07/2026, cause identifiée d'un changement
+      // rétroactif observé par Laurent — cf. discussion "je ne comprends pas
+      // comment cette séance a pu être changée dans le plan"). Avant ce
+      // correctif, une séance passée sans structureIntervalles (ex. créée
+      // avant le 8 juillet 2026) recevait silencieusement une structure
+      // fraîchement calculée, potentiellement très différente de ce qui
+      // avait réellement été couru et affiché à l'époque — trompeur pour
+      // toute analyse a posteriori (Module 2 du moteur de décision compris).
+      if (debutPlanGF) {
+        const dateSeanceGF = new Date(debutPlanGF);
+        dateSeanceGF.setUTCDate(debutPlanGF.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
+        const dateSeanceStrGF = dateSeanceGF.toISOString().slice(0, 10);
+        if (dateSeanceStrGF < aujourdhuiStrGF) continue; // séance déjà passée, jamais touchée
+      }
 
       // La séance test (estTest: true) utilise genererContenuTest(), pas
       // genererContenuQualite() — traitée séparément, sinon le garde-fou
