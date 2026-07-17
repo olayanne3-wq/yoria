@@ -3351,8 +3351,22 @@ function renderStatusRow(uid, dateSeance) {
       // complet (qui déclenchera le repli de la carte via isDoneSession)
       // après le délai — seul le repli est retardé, pas le reste de l'app.
       majApparenceBoutons();
-      if (opt==="✅"||opt==="⚠️") { setTimeout(render, 2500); }
-      else { render(); }
+      // Bug corrigé le 17/07/2026 (signalé par Laurent) : le message coach
+      // restait figé sur la description de la séance générée au premier
+      // chargement du jour (coachDate===today() empêche tout refetch, cf.
+      // fetchCoachMsg), même après avoir marqué la séance du jour comme
+      // faite plus tard dans la journée — le coach continuait de parler
+      // d'une séance déjà validée, ou de la séance clé du lendemain calculée
+      // avant validation. Ne concerne QUE la séance d'AUJOURD'HUI (dateSeance
+      // === today()) — corriger le statut d'une séance passée ne doit pas
+      // redéclencher un appel coach inutile.
+      if (dateSeance === today()) {
+        coachMsg = null; coachDate = "";
+        save(clePourPlan("lk_coach_msg"), null);
+        save(clePourPlan("lk_coach_date"), "");
+      }
+      if (opt==="✅"||opt==="⚠️") { setTimeout(()=>{ render(); fetchCoachMsg(); }, 2500); }
+      else { render(); if (dateSeance === today()) fetchCoachMsg(); }
     }));
     statusRow.appendChild(b);
   });
