@@ -21,10 +21,11 @@
 // Décision actée avec Laurent le 16/07/2026 : "on avance vite, on itère" —
 // ce RuleEngine sera enrichi une fois les modules 2/3/4 codés, pas avant.
 //
-// Catalogue (ajout R-050 le 17/07/2026, cf. note ci-dessous) :
+// Catalogue (ajouts R-050 et R-060 le 17/07/2026, cf. notes ci-dessous) :
 //   R-006  Pic de séance unique          (sécurité)
 //   R-024s Fatigue élevée basique        (sécurité, version simplifiée)
-//   R-050  ACWR élevé                    (sécurité, nouvelle règle 17/07)
+//   R-050  ACWR élevé                    (sécurité, ajoutée 17/07)
+//   R-060  Tendance fatigue en hausse    (sécurité, ajoutée 17/07)
 //   R-040  Désengagement précoce         (engagement)
 //
 // Ce module ne modifie AUCUNE donnée. Il retourne au maximum UNE décision
@@ -183,6 +184,76 @@
   }
 
   // --------------------------------------------------------------------------
+  // R-060 — Tendance fatigue en hausse (sécurité) — ajoutée le 17/07/2026
+  // Complète R-024s (seuil ponctuel fatigue>=75) : capte une fatigue qui monte
+  // progressivement sur 3 mesures consécutives sans jamais franchir le seuil
+  // dur de R-024s. Ne recalcule rien de nouveau — rappelle calculerRunnerState
+  // du Module 1 à 3 dates de référence différentes (aujourd'hui, J-4, J-7),
+  // même principe que calculerHistoriqueCharge() qui fait déjà ça pour le
+  // graphique ACWR. Nécessite DecisionEngineRunnerState.calculerRunnerState
+  // et les mêmes paramètres coureur (fcMax/fcRepos/sexe) que le Module 1.
+  //
+  // Se déclenche seulement si les 3 points sont strictement croissants ET si
+  // aucun des 3 n'atteint 75 (sinon R-024s aurait déjà matché en priorité, cf.
+  // évaluerRegles ci-dessous qui garde la priorité la plus haute).
+  // --------------------------------------------------------------------------
+  function evaluerTendanceFatigue(activitySamples, dateReference, coureurOptions) {
+    if (!Array.isArray(activitySamples) || activitySamples.length === 0) return null;
+    if (!global.DecisionEngineRunnerState || typeof global.DecisionEngineRunnerState.calculerRunnerState !== 'function') {
+      return null; // Module 1 non chargé, rien à faire
+    }
+
+    const opts = coureurOptions || {};
+    const dateRef = new Date(dateReference);
+    const joursMs = 24 * 60 * 60 * 1000;
+
+    // 3 points : J (aujourd'hui), J-4, J-7 — espacement volontairement inégal
+    // pour capter une tendance sur ~1 semaine sans se limiter à un pas fixe
+    const dates = [0, 4, 7].map(decalage => new Date(dateRef.getTime() - decalage * joursMs));
+
+    const points = dates.map(d => {
+      const rs = global.DecisionEngineRunnerState.calculerRunnerState(activitySamples, {
+        dateReference: d.toISOString(),
+        fcMaxReference: opts.fcMaxReference,
+        fcReposReference: opts.fcReposReference,
+        sexe: opts.sexe,
+      });
+      return { date: d.toISOString().slice(0, 10), fatigue: rs.fatigue, confiance: rs.confiance };
+    });
+
+    // Les 3 points doivent être exploitables (fatigue calculable)
+    if (points.some(p => p.fatigue === null || p.fatigue === undefined)) return null;
+
+    const [fJ, fJ4, fJ7] = points.map(p => p.fatigue);
+
+    // Tendance strictement croissante en remontant dans le temps : J7 < J4 < J
+    const croissanceStricte = fJ7 < fJ4 && fJ4 < fJ;
+    if (!croissanceStricte) return null;
+
+    // Si un point a déjà franchi le seuil dur, R-024s couvre déjà le cas —
+    // R-060 ne sert qu'à capter la montée AVANT ce seuil
+    if (fJ >= 75 || fJ4 >= 75 || fJ7 >= 75) return null;
+
+    // Écart minimal pour ne pas réagir à du bruit (±1-2 points sans
+    // signification) : au moins 8 points de fatigue entre J-7 et J
+    const ecartTotal = fJ - fJ7;
+    if (ecartTotal < 8) return null;
+
+    const confianceMoyenne = Math.round((points[0].confiance + points[1].confiance + points[2].confiance) / 3);
+
+    return {
+      id: 'R-060',
+      libelle: 'Tendance fatigue en hausse',
+      categorie: 'securite',
+      priorite: 80, // sécurité, sous R-050 (85) : signal plus précoce donc moins urgent que les seuils déjà franchis
+      type: 'alerter_tendance_fatigue',
+      justification: `Fatigue en hausse continue sur les 7 derniers jours : ${fJ7} → ${fJ4} → ${fJ}. Aucun seuil critique franchi, mais la tendance mérite une vigilance avant la prochaine séance de qualité.`,
+      confianceMax: Math.min(confianceMoyenne, 65),
+      donnees: { pointsFatigue: points, ecartTotal },
+    };
+  }
+
+  // --------------------------------------------------------------------------
   // R-040 — Désengagement précoce (engagement)
   // cf. §7.2 doc intégration : seule règle hors sécurité retenue au démarrage.
   // Ne modifie jamais la charge d'entraînement — c'est un signal produit/UI
@@ -223,6 +294,7 @@
       evaluerPicDeSeance(opts.activitySamples, dateReference),
       evaluerFatigueElevee(opts.runnerState),
       evaluerACWRElevee(opts.runnerState),
+      evaluerTendanceFatigue(opts.activitySamples, dateReference, opts.coureurOptions),
       evaluerDesengagementPrecoce(opts.engagementState),
     ].filter(Boolean);
 
@@ -285,6 +357,7 @@
     evaluerPicDeSeance,          // exposées pour tests unitaires isolés
     evaluerFatigueElevee,
     evaluerACWRElevee,
+    evaluerTendanceFatigue,
     evaluerDesengagementPrecoce,
     BORNE_AMPLEUR_MAX_POURCENT,  // référence partagée avec le garde-fou cumulé (decision-engine-apply.classic.js)
   };
