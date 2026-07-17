@@ -493,7 +493,7 @@ Sans lien avec le moteur de décision, mais découverte pendant cette même sess
 Par ordre de dépendance, ce qui reste du §11.7 initial :
 
 1. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité (VMA/SEUIL/SPEC/TEST), à concevoir à part. `reduire_charge` continue de ne cibler que EF/LONGUE.
-2. **Modules non commencés** du catalogue complet (§7 doc archi) : surentraînement combiné, progression, taper irrégulier, objectif à risque — à reprendre une fois les 3 règles actuelles éprouvées sur un usage réel prolongé (cf. §7.2), et une fois les modules 2/3/4 (SessionAnalysis/WeekAnalysis/TrendAnalysis) codés pour les règles qui en dépendraient.
+2. **Modules non commencés** du catalogue complet (§7 doc archi) : surentraînement combiné, progression, taper irrégulier, objectif à risque — à reprendre une fois les règles actuelles éprouvées sur un usage réel prolongé (cf. §7.2). Modules 2/3/4 (SessionAnalysis/WeekAnalysis/TrendAnalysis) tous codés depuis le 17/07/2026 (cf. inventaire §27/§30/§31, §13.4 ci-dessus) et `weekAnalysis`/`trendAnalysis` déjà branchés dans l'input du RuleEngine (inventaire §32) — la donnée n'est donc plus le facteur bloquant pour ces règles, reste la conception/codage des règles elles-mêmes.
 
 Hors périmètre moteur de décision, mais lié à ce jour de session : réinstaller le build TWA déjà signé et validé le 16/07/2026 pour corriger la régression du §12.6 (procédure complète en inventaire §22.2, pas besoin de repartir de zéro).
 
@@ -539,6 +539,6 @@ Nouveau fichier `decision-engine-session-analysis.classic.js`. Détail de concep
 ### 13.4 Prochaines étapes logiques
 
 1. **§13.1 point R-070** — pas encore observé se déclencher en conditions réelles (comme les autres règles avant elle).
-2. **Modules 3/4** (WeekAnalyzer/TrendAnalyzer) — toujours non codés ; R-060 (§13.1) contourne partiellement ce manque en rappelant directement le Module 1 à plusieurs dates plutôt que de consommer un vrai historique persisté.
+2. **Modules 3/4** (WeekAnalyzer/TrendAnalyzer) — codés le 17/07/2026 (session ultérieure, cf. inventaire §30/§31), branchés dans l'input du RuleEngine (`weekAnalysis`/`trendAnalysis`, cf. inventaire §32) mais **aucune règle ne les consomme encore** — les données sont disponibles, inertes. R-060 (§13.1) continue de rappeler directement le Module 1 à plusieurs dates plutôt que de consommer `trendAnalysis` — ce chantier n'a pas été fait pendant l'intégration, à faire si une règle basée sur `trendAnalysis` est conçue plus tard (les deux mécanismes coexistent, ne sont pas redondants au sens strict : R-060 regarde la fatigue seule sur 3 points fixes J/J-4/J-7, `TrendAnalyzer` croise plusieurs signaux sur une fenêtre de semaines calendaires).
 3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité — toujours reporté, `reduire_charge` ne cible toujours que EF/LONGUE/RECUP.
-4. **Reste du catalogue théorique** (doc archi §7) — signaux combinés de surentraînement, taper irrégulier, objectif à risque, plaisir déclaré, etc. — nécessitent pour la plupart les Modules 3/4 ou GoalFeasibility, non codés.
+4. **Reste du catalogue théorique** (doc archi §7) — signaux combinés de surentraînement, taper irrégulier, objectif à risque, plaisir déclaré, etc. — nécessitent pour la plupart de nouvelles règles s'appuyant sur `weekAnalysis`/`trendAnalysis` (désormais disponibles, cf. point 2) ou `GoalFeasibility` (non codé).
