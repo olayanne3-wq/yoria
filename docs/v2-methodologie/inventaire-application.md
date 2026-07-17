@@ -702,10 +702,23 @@ ci-dessus** (13 juillet 2026, jusqu'à publication de la v2.5) :
   connecté (`Push Github ...`) peut lire le repo (`get_file_contents`,
   `search_code` une fois indexé) mais **échoue systématiquement en écriture**
   (`create_or_update_file`, 403 "Resource not accessible by integration"),
-  malgré les permissions Contents Read+Write du token PAT. Pattern établi :
-  Claude prépare le contenu final exact et le fournit à copier-coller, Laurent
-  le colle et commit manuellement sur GitHub.com. Rediscuter si le connecteur
+  malgré les permissions Contents Read+Write du token PAT. Confirmé de
+  nouveau le 17/07/2026. Pattern retenu : push via l'API GitHub REST directe
+  (curl/Python `urllib.request`, token PAT fourni en début de session par
+  Laurent), toujours avec un SHA récupéré juste avant chaque écriture (le SHA
+  n'est jamais mis en cache entre deux pushes). Rediscuter si le connecteur
   évolue.
+- **Toute modification d'un plan déjà en place doit exclure les séances
+  passées** (garde-fou anti-régénération rétroactive, cf. §27.3) — vérifié
+  sur les 3 mécanismes identifiés au 17/07/2026 (`changerPalierGrandDebutant`,
+  `appliquerAdaptations`, `regenererStructuresIntervalles`) ainsi que le
+  Module 5 du moteur de décision (`decision-engine-apply.classic.js`, qui
+  exclut déjà les dates passées via `reconstruireJoursAvenirDeLaSemaine`).
+  **Ce n'est pas un garde-fou générique** appliqué automatiquement à toute
+  écriture sur `plan.semaines`/`plan_brut` — toute future fonctionnalité qui
+  modifie le contenu d'un plan existant (`plans_actif`, jamais
+  `plans_original`) doit implémenter elle-même la vérification de date avant
+  toute modification de séance/semaine.
 
 ## 11. Publication Play Store (TWA / Bubblewrap) — chantier ouvert le 13/07/2026
 
