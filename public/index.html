@@ -3437,6 +3437,58 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
   nouveauPlan.nom = planCourant.nom;
   nouveauPlan.statuses = planCourant.statuses;
 
+  // ── Garde-fou : préserver les séances déjà passées (17/07/2026) ──────────
+  // Demande explicite de Laurent : une régénération de plan (changement de
+  // palier, ou toute future régénération complète) ne doit JAMAIS modifier
+  // le contenu des séances dont la date est déjà passée — même si le nouveau
+  // plan généré (nouveauPlan) les définit différemment. Trouvé en pratique
+  // le 17/07/2026 : une séance "2×8×30-30" observée dans l'app était devenue
+  // "4×30-30" après une régénération antérieure, changeant rétroactivement
+  // ce que Laurent avait réellement couru par rapport à ce que l'app affiche
+  // désormais avoir été prévu — trompeur pour l'analyse a posteriori (dont
+  // le Module 2 du moteur de décision, qui compare la séance réalisée à ce
+  // que le plan dit avoir été prévu ce jour-là).
+  //
+  // Principe : pour chaque semaine du plan, si TOUTES ses séances ont une
+  // date strictement antérieure à aujourd'hui, on reprend cette semaine
+  // telle qu'elle existait dans planCourant (l'ancien plan), pas celle du
+  // nouveauPlan fraîchement généré. Une semaine partiellement passée (ex.
+  // semaine en cours) suit le nouveauPlan en entier — un mélange jour par
+  // jour au sein d'une même semaine serait plus risqué à maintenir cohérent
+  // (numérotation, structure) pour un gain marginal (seuls les jours déjà
+  // passés de cette semaine seraient concernés, généralement 0-6 jours).
+  // Même calcul de date que déjà utilisé ailleurs pour convertir
+  // semaine.semaineNum + jourIndex en date réelle (cf. ~ligne 837,
+  // vérifierMeteoPourSeance).
+  (function preserverSemainesPassees() {
+    const debutCourant = new Date(planCourant.dateDebut + 'T00:00:00Z');
+    const aujourdhui = new Date();
+    const aujourdhuiStr = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate())).toISOString().slice(0, 10);
+
+    const semainesCourantesParNum = {};
+    (planCourant.semaines || []).forEach(s => { semainesCourantesParNum[s.semaineNum] = s; });
+
+    (nouveauPlan.semaines || []).forEach((semaine, index) => {
+      const semaineCourante = semainesCourantesParNum[semaine.semaineNum];
+      if (!semaineCourante) return; // semaine nouvelle (au-delà de l'ancien plan) : rien à préserver
+
+      const datesJours = Object.keys(semaineCourante.assignment || {}).map(jourIndex => {
+        const d = new Date(debutCourant);
+        d.setUTCDate(debutCourant.getUTCDate() + (semaineCourante.semaineNum - 1) * 7 + Number(jourIndex));
+        return d.toISOString().slice(0, 10);
+      });
+      if (datesJours.length === 0) return; // semaine sans séance assignée, rien à comparer
+
+      const toutesPassees = datesJours.every(d => d < aujourdhuiStr);
+      if (toutesPassees) {
+        // Remplace la semaine du nouveauPlan par celle de l'ancien plan,
+        // en gardant semaineNum du nouveauPlan pour la cohérence de
+        // numérotation (devrait être identique de toute façon).
+        nouveauPlan.semaines[index] = { ...semaineCourante, semaineNum: semaine.semaineNum };
+      }
+    });
+  })();
+
   window.__PLAN_BRUT__ = nouveauPlan;
   window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
   PLAN = window.__PLAN_GENERE__;
