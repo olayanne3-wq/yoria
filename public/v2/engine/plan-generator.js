@@ -1901,78 +1901,11 @@ export const ACWR_SEUIL_RISQUE = 1.5;
 export const ACWR_SEUIL_VIGILANCE = 1.3;
 export const ACWR_SEUIL_SOUS_CHARGE = 0.8;
 
-/**
- * Regroupe les activités de course (type "Run") par jour (clé YYYY-MM-DD),
- * somme des distances en km. Utilise start_date_local en priorité (cohérent
- * avec calculerMedianeVolumeHebdo côté strava.js), repli sur start_date.
- */
-function kmParJour(activitesStrava) {
-  const parJour = {};
-  for (const a of activitesStrava) {
-    if (a.type !== 'Run') continue;
-    const dateLocal = (a.start_date_local || a.start_date || '').slice(0, 10);
-    if (!dateLocal) continue;
-    parJour[dateLocal] = (parJour[dateLocal] || 0) + (a.distance || 0) / 1000;
-  }
-  return parJour;
-}
-
-/**
- * Calcule l'ACWR jour par jour sur la période couverte par les activités
- * fournies (à partir du 28e jour, premier jour où une charge chronique
- * complète est calculable). Retourne l'historique complet (pour le
- * graphique) et le dernier ratio connu (pour l'intégration au score
- * d'adaptation). Fonction pure — ne touche à aucun élément du DOM.
- *
- * Retourne { historique: [{date, chargeAigue, chargeChronique, ratio}],
- *            dernierRatio, dernierePeriode } ou null si pas assez de
- * données (moins de 28 jours d'historique).
- */
-export function calculerACWR(activitesStrava) {
-  const parJour = kmParJour(activitesStrava);
-  const dates = Object.keys(parJour);
-  if (dates.length === 0) return null;
-
-  const toutesLesDates = dates.sort();
-  const premiereDate = new Date(toutesLesDates[0] + 'T00:00:00Z');
-  const derniereDate = new Date(toutesLesDates[toutesLesDates.length - 1] + 'T00:00:00Z');
-  const nbJoursTotal = Math.round((derniereDate - premiereDate) / 86400000) + 1;
-  if (nbJoursTotal < 28) return null;
-
-  const kmSur = (dateFin, nbJours) => {
-    let total = 0;
-    for (let i = 0; i < nbJours; i++) {
-      const d = new Date(dateFin);
-      d.setUTCDate(d.getUTCDate() - i);
-      total += parJour[d.toISOString().slice(0, 10)] || 0;
-    }
-    return total;
-  };
-
-  const historique = [];
-  for (let i = 27; i < nbJoursTotal; i++) {
-    const d = new Date(premiereDate);
-    d.setUTCDate(d.getUTCDate() + i);
-    const chargeAigue = kmSur(d, 7);
-    const chargeChronique = kmSur(d, 28) / 4;
-    const ratio = chargeChronique > 0 ? chargeAigue / chargeChronique : null;
-    historique.push({
-      date: d.toISOString().slice(0, 10),
-      chargeAigue: Math.round(chargeAigue * 10) / 10,
-      chargeChronique: Math.round(chargeChronique * 10) / 10,
-      ratio: ratio !== null ? Math.round(ratio * 100) / 100 : null
-    });
-  }
-
-  if (historique.length === 0) return null;
-  const dernier = historique[historique.length - 1];
-
-  return {
-    historique,
-    dernierRatio: dernier.ratio,
-    dernierePeriode: { chargeAigue: dernier.chargeAigue, chargeChronique: dernier.chargeChronique }
-  };
-}
+// kmParJour() et calculerACWR() retirées le 17/07/2026 (§9.3 doc intégration
+// moteur de décision — unification de la source de vérité sur la charge).
+// Remplacées par DecisionEngineRunnerState.calculerHistoriqueCharge() /
+// .calculerRunnerState() (côté classic ; pas d'équivalent ES module pour le
+// moteur de décision à ce jour, cf. inventaire).
 
 // ---------------------------------------------------------------------------
 // Section 33 — Règles d'adaptation du plan selon les résultats réels
