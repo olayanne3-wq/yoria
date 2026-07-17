@@ -228,8 +228,58 @@
     };
   }
 
+  // --------------------------------------------------------------------------
+  // Historique jour par jour du ratio ACWR — pour le graphique dashboard
+  // (§9.3 doc intégration : unification de la source de vérité sur la charge,
+  // remplace calculerACWR() de plan-generator.classic.js, retirée le 17/07/2026).
+  // Reproduit calculerCharge() pour chaque jour de la fenêtre plutôt qu'un
+  // seul point courant — même moteur (TRIMP/sRPE), pas de volume brut en km.
+  // --------------------------------------------------------------------------
+  function calculerHistoriqueCharge(activitySamples, options) {
+    const opts = options || {};
+    const fcMaxReference = opts.fcMaxReference || undefined;
+    const fcReposReference = opts.fcReposReference || undefined;
+    const sexe = opts.sexe || undefined;
+    const nbJoursAffiches = opts.nbJoursAffiches || 56; // ~8 semaines, cohérent avec l'ancien graphique
+
+    if (!Array.isArray(activitySamples) || activitySamples.length === 0) return null;
+
+    const datesTriees = activitySamples.map(s => s.date).filter(Boolean).sort();
+    if (datesTriees.length === 0) return null;
+
+    const premiereDate = new Date(datesTriees[0].slice(0, 10) + 'T00:00:00Z');
+    const dateReferenceFinale = opts.dateReference ? new Date(opts.dateReference) : new Date();
+    const nbJoursTotal = Math.round((dateReferenceFinale - premiereDate) / 86400000) + 1;
+    if (nbJoursTotal < 28) return null; // pas assez d'historique pour un ratio significatif, cf. calculerCharge
+
+    const premierJourAffiche = Math.max(27, nbJoursTotal - nbJoursAffiches);
+
+    const historique = [];
+    for (let i = premierJourAffiche; i < nbJoursTotal; i++) {
+      const d = new Date(premiereDate);
+      d.setUTCDate(d.getUTCDate() + i);
+      const charge = calculerCharge(activitySamples, d.toISOString(), fcMaxReference, fcReposReference, sexe);
+      historique.push({
+        date: d.toISOString().slice(0, 10),
+        chargeAigue: charge.aigue,
+        chargeChronique: charge.chronique,
+        ratio: charge.ratio,
+      });
+    }
+
+    if (historique.length === 0) return null;
+    const dernier = historique[historique.length - 1];
+
+    return {
+      historique,
+      dernierRatio: dernier.ratio,
+      dernierePeriode: { chargeAigue: dernier.chargeAigue, chargeChronique: dernier.chargeChronique },
+    };
+  }
+
   global.DecisionEngineRunnerState = {
     calculerRunnerState,
+    calculerHistoriqueCharge,
     calculerChargeSeance, // exposée pour tests unitaires isolés
     calculerCharge,       // idem
     calculerFatigue,      // idem
