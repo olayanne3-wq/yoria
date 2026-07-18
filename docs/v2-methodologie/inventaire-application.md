@@ -4514,3 +4514,132 @@ ce que le code "devrait" faire. Décision méthodologique à retenir pour de
 futurs bugs similaires (symptôme persistant malgré un fix qui semble
 correct sur le papier) : instrumenter directement plutôt que d'empiler les
 hypothèses non vérifiées.
+
+## 38. R-080 (déficit de volume durable) + test comparatif recuperationEstimee/ACWR (18/07/2026, session ultérieure)
+
+Suite directe de la session §37 (même conversation). Reprise du chantier
+`ecartVolumePourcent` laissé en attente depuis §36 (au profit de la
+monotonie), puis exploration d'un axe complémentaire (`recuperationEstimee`)
+avant de décider de ne pas coder de règle dessus pour l'instant.
+
+### 38.1 R-080 — Déficit de volume durable
+
+**Conception discutée avant codage** : trois options envisagées pour
+exploiter `ecartVolumePourcent` (Module 3) — (1) règle ponctuelle par
+semaine, (2) activer `STAGNATION_VOLUME` déjà détecté par le Module 4, (3)
+nouveau détecteur combinant les deux. Option 2 écartée après analyse : elle
+détecte un PLATEAU de volume (stabilité ±5% sur 4 semaines), pas un écart
+au plan — un coureur stable à 20km/sem sur un plan qui en vise 40 ne
+déclencherait jamais ce signal si son volume ne varie pas. Option 3
+retenue.
+
+**Nouveau détecteur** `detecterDeficitVolumeDurable()`
+(`decision-engine-trend-analysis.classic.js`) : 3 semaines consécutives
+avec `ecartVolumePourcent ≤ -10%` **chacune** (pas une moyenne globale ni
+une majorité — plus strict que d'autres détecteurs du même fichier, pour
+éviter qu'une seule semaine très faible fasse basculer une moyenne
+globalement correcte). Seuil -10% réutilisé du seuil déjà choisi pour
+`progressionVsPrecedente` (`WeekAnalysis`, §35) — pas de littérature
+trouvée pour calibrer un écart en % au plan individuel (l'étude marathon
+citée en §36 donne un seuil ABSOLU de 30km/sem, non transposable en %). À
+recalibrer une fois observé sur l'historique réel, décision explicite de
+ne pas figer ce choix.
+
+**Nouvelle règle R-080** (`decision-engine-rules.classic.js`) : priorité
+52 (entre R-070 à 55, signal plus direct sur le plan, et R-040 à 50, moins
+précis), catégorie `engagement`, type `alerter_deficit_volume`,
+informative uniquement. Distinct de R-070 (2 séances PRÉVUES ratées
+d'affilée, signal binaire sur les statuts posés) : capte une
+sous-réalisation même sur des séances FAITES mais raccourcies, invisible
+pour R-070.
+
+**Catalogue de règles à jour** : R-006 (100) > R-024s (90) > R-050 (85) >
+R-062 (82) > R-060 (80) > R-070 (55) > **R-080 (52)** > R-040 (50).
+
+**Fichiers modifiés** : `decision-engine-trend-analysis.classic.js` +
+`decision-engine-rules.classic.js`. Aucun changement côté `index.html`
+(câblage `trendAnalysis` déjà en place depuis §35/§36).
+
+**Jamais observée en conditions réelles** (comme R-062 et R-070) — à
+surveiller.
+
+### 38.2 Test comparatif recuperationEstimee vs ACWR — pas de règle codée
+
+Avant de concevoir une règle sur `recuperationEstimee`/`progressionVsPrecedente`
+(WeekAnalysis, jamais consommés par aucune règle), test empirique demandé
+par Laurent plutôt que de deviner leur valeur ajoutée.
+
+**Méthode** : helper temporaire `window.__testCompareRecupACWR(nbSemaines)`
+exposé dans `index.html` (retiré après le test, code conservé ci-dessous
+pour réutilisation future), qui boucle `analyserSemaineActuelle()` et
+`DecisionEngineRunnerState.calculerRunnerState()` sur N semaines et affiche
+un tableau comparatif (`recuperationEstimee`, `progressionVsPrecedente`,
+`ecartVolumePourcent`, `fatigue`, `ratioAcwr`).
+
+**Résultat sur les 2 semaines disponibles à ce stade du plan de Laurent**
+(seulement 2 semaines écoulées, plan démarré récemment) :
+
+| Semaine | recuperationEstimee | progression | ecartVolume% | fatigue | ratioACWR |
+|---|---|---|---|---|---|
+| 1 | 71 | stable | +3.8% | 37 | 0.87 |
+| 2 | 82 | baisse | -39.3% | 41 | 0.91 |
+
+**Constat** : `recuperationEstimee` varie fortement (71→82) en phase avec
+`ecartVolumePourcent` (+3.8%→-39.3%), alors que `fatigue`/`ratioAcwr` restent
+quasi stables — confirme que `recuperationEstimee` capte un axe différent
+de la fatigue/ACWR (écart au PLAN, pas écart à l'historique du coureur).
+Mais `recuperationEstimee` semble mathématiquement quasi identique à
+l'inverse de `ecartVolumePourcent` (cohérent avec sa formule, `100 -
+(ratioCharge-1)*50`, dérivée du même ratio charge réalisée/prévue) — une
+règle dessus ferait donc probablement doublon avec R-080 (§38.1), juste
+formulée à l'envers (haut = déficit plutôt que bas = surcharge).
+
+**Décision actée** : ne pas coder de règle sur `recuperationEstimee` pour
+l'instant — échantillon de seulement 2 semaines insuffisant pour trancher
+définitivement, et le risque de doublon avec R-080 est déjà visible sur ce
+peu de données. `progressionVsPrecedente` (indépendant du plan prévu,
+contrairement à `recuperationEstimee`) pourrait rester un vrai troisième
+angle, mais pas assez de points pour juger sa valeur ajoutée propre à ce
+stade.
+
+**À refaire dans quelques semaines ou en fin de plan**, une fois plus de
+semaines écoulées, pour trancher avec un échantillon exploitable. Code du
+helper de test (à recréer identique, retiré de `index.html` après ce
+test) :
+
+```javascript
+window.__testCompareRecupACWR = function(nbSemaines) {
+  const semaineActuelleNum = currentWeek();
+  const premiere = Math.max(1, semaineActuelleNum - nbSemaines + 1);
+  const resultats = [];
+  let precedente = null;
+  for (let w = premiere; w <= semaineActuelleNum; w++) {
+    const analyse = analyserSemaineActuelle(w, precedente);
+    if (!analyse) continue;
+    precedente = analyse;
+    const week = PLAN.find(pw => pw.week === w);
+    const dernierJour = week ? week.sessions[week.sessions.length - 1] : null;
+    const dateRef = dernierJour && dernierJour.date <= today() ? dernierJour.date : today();
+    let fatigue = null, ratioAcwr = null;
+    try {
+      const samples = adapterHistoriqueAvecRpe(window.stravaActivities || [], "strava_gratuit");
+      const rs = DecisionEngineRunnerState.calculerRunnerState(samples, { ...optionsRunnerStateActuel(), dateReference: dateRef });
+      fatigue = rs.fatigue;
+      ratioAcwr = rs.charge ? rs.charge.ratio : null;
+    } catch(e) {}
+    resultats.push({
+      semaine: w,
+      recuperationEstimee: analyse.recuperationEstimee,
+      progressionVsPrecedente: analyse.progressionVsPrecedente,
+      ecartVolumePourcent: analyse.ecartVolumePourcent,
+      fatigue,
+      ratioAcwr: ratioAcwr ? Math.round(ratioAcwr * 100) / 100 : null,
+    });
+  }
+  console.table(resultats);
+  return resultats;
+};
+```
+
+**Fichier modifié** : `public/index.html` (helper ajouté puis retiré dans
+la même session — code final identique à l'état d'avant ce test).
