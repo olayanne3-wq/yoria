@@ -576,3 +576,75 @@ Détail complet, décisions actées, et code exact : inventaire §33.
 UI des boutons de statut/RPE) poussé mais bloqué par le quota de
 déploiement Vercel gratuit atteint en fin de session (cf. inventaire §33.7)
 — à reprendre au prochain déploiement confirmé.
+
+## 15. Chantiers moteur, monotonie, et chaîne de bugs coach IA (18/07/2026, session ultérieure)
+
+Session dense, majoritairement du diagnostic/debug plutôt que de la
+conception — détail complet dans l'inventaire §34 à §38. Résumé pour ce
+document, côté moteur de décision uniquement (le reste — saisie manuelle,
+exclusion Strava, bugs coach IA — n'est pas du ressort de ce document
+d'intégration, cf. inventaire).
+
+### 15.1 R-062 — Fatigue installée sur plusieurs semaines
+
+Premier point du §13.4 (prochaines étapes de la session précédente,
+"aucune règle ne consomme `trendAnalysis`") traité : nouvelle règle basée
+sur `TrendAnalysis.FATIGUE_CROISSANTE` (3 semaines de suivi, fatigue en
+hausse continue), distincte de R-060 (7 derniers jours, mécanisme
+indépendant conservé tel quel — les deux coexistent, R-062 éclipse R-060
+naturellement via le tri de priorité si les deux matchent la même
+semaine). Priorité 82, informative uniquement. Détail : inventaire §35.1.
+
+### 15.2 R-080 — Déficit de volume durable
+
+Nouveau détecteur `detecterDeficitVolumeDurable()` (Module 4) : 3 semaines
+consécutives avec `ecartVolumePourcent ≤ -10%` chacune (Module 3),
+distinct de `STAGNATION_VOLUME` (déjà existant, mais détecte un PLATEAU de
+volume, pas un écart au plan — écarté après analyse comme substitut
+insuffisant). Règle R-080, priorité 52, catégorie engagement, informative.
+Seuil -10% calibré à dire d'expert (aucune littérature trouvée sur un
+écart en % au plan individuel — l'étude marathon disponible donne un
+seuil absolu de 30km/sem, non transposable). Détail : inventaire §38.1.
+
+**Catalogue de règles à jour (7 règles actives)** : R-006 (100) > R-024s
+(90) > R-050 (85) > R-062 (82) > R-060 (80) > R-070 (55) > R-080 (52) >
+R-040 (50). R-062, R-070, R-080 n'ont jamais été observées se déclencher
+en conditions réelles à ce jour.
+
+### 15.3 Monotonie de charge (Foster) — calculée et affichée, pas de règle
+
+Nouveau champ `WeekAnalysis.monotonieRealisee`/`monotoniePrevue` (formule
+Foster originale, moyenne/écart-type des charges journalières). Décision
+actée après recherche de littérature : **aucun seuil consensuel trouvé
+pour un coureur récréatif** — Foster original/RYPT (sport co, élite,
+seuil >2.0) contredit une étude sur des traileurs (0.6-0.9, mais sens
+différent : limitation de performance, pas risque de blessure). Affiché
+dans Stats (graphique 8 semaines, même pattern que l'ACWR), sans règle
+d'alerte. Détail : inventaire §36.1.
+
+### 15.4 Test comparatif recuperationEstimee vs ACWR — pas de règle codée
+
+`recuperationEstimee`/`progressionVsPrecedente` (Module 3, jamais
+consommés) testés empiriquement sur 2 semaines de données réelles avant
+de concevoir une règle. Constat : `recuperationEstimee` capte bien un axe
+différent de la fatigue/ACWR (écart au plan, pas à l'historique du
+coureur), mais semble mathématiquement redondant avec `ecartVolumePourcent`
+déjà exploité par R-080 — probable doublon si codé en règle. Décision
+actée : ne rien coder pour l'instant, refaire ce test avec plus de
+semaines de recul (dans quelques semaines, ou en fin de plan). Code du
+helper de test conservé dans l'inventaire §38.2 pour réutilisation future.
+
+### 15.5 Prochaines étapes logiques (mise à jour)
+
+1. **R-062/R-070/R-080** — toujours aucune observée en conditions
+   réelles ; surveiller au fil des prochaines semaines.
+2. **Test recuperationEstimee/ACWR** (§15.4) — à refaire avec un
+   échantillon plus large avant de décider définitivement si une règle est
+   pertinente.
+3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de
+   qualité — toujours reporté, `reduire_charge` ne cible toujours que
+   EF/LONGUE/RECUP.
+4. **Reste du catalogue théorique** (doc archi §7) — `GoalFeasibility`
+   toujours non codé ; les signaux combinés restants du catalogue
+   pourraient s'appuyer sur `progressionVsPrecedente` (Module 3, toujours
+   inconsommé) une fois §15.4 tranché.
