@@ -399,6 +399,34 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       { val: 'confirme', label: 'Confirmé', desc: "Plusieurs courses, je connais mes allures" },
     ];
     let niveauChoisi = profilExistant.niveau || null;
+    let sexeChoisi = profilExistant.sexe || null;
+
+    const SEXES = [
+      { val: 'homme', label: 'Homme' },
+      { val: 'femme', label: 'Femme' },
+      { val: 'autre', label: 'Autre' },
+    ];
+
+    // Records personnels (v2.14, 18/07/2026) — même format de stockage que
+    // Réglages (profilCoureur.records[dist].temps, compatible parseTimeToSeconds
+    // du moteur), saisie h/min/sec séparée — logique dupliquée ici (pas
+    // d'accès à window.creerChampsTempsHMS d'index.html, chargé après ce
+    // module) plutôt que factorisée, pour ne pas introduire une dépendance
+    // d'ordre de chargement entre les deux fichiers.
+    const DISTANCES_RECORD = ["5K", "10K", "Semi", "Marathon"];
+    function parserTempsRecordEnHMSOnboarding(str) {
+      if (!str) return { h: null, m: null, s: null };
+      const parts = str.split(':').map(Number);
+      if (parts.length === 2) return { h: null, m: parts[0] || null, s: parts[1] ?? null };
+      if (parts.length === 3) return { h: parts[0] || null, m: parts[1] ?? null, s: parts[2] ?? null };
+      return { h: null, m: null, s: null };
+    }
+    function formaterHMSEnTempsRecordOnboarding(h, m, s) {
+      const hNum = parseInt(h) || 0, mNum = parseInt(m) || 0, sNum = parseInt(s) || 0;
+      if (!h && !m && !s) return null;
+      const mm = String(mNum).padStart(2, '0'), ss = String(sNum).padStart(2, '0');
+      return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
+    }
 
     hote.innerHTML = `
       <style>
@@ -427,6 +455,28 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .niveau-opt.actif { border-color: var(--accent); background: rgba(var(--accent-rgb),0.08); }
       #ecran-onboarding .niveau-opt .titre { font-weight: 700; font-size: 0.9rem; }
       #ecran-onboarding .niveau-opt .desc { font-size: 0.78rem; color: var(--text-muted); }
+      #ecran-onboarding .sexe-opts { display: flex; gap: 8px; margin-bottom: 16px; }
+      #ecran-onboarding .sexe-opt {
+        flex: 1; text-align: center; padding: 8px 6px;
+        border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+        font-size: 0.82rem; font-weight: 600; transition: border-color 0.15s, background 0.15s;
+      }
+      #ecran-onboarding .sexe-opt.actif { border-color: var(--accent); background: rgba(var(--accent-rgb),0.08); color: var(--accent); }
+      #ecran-onboarding .records-wrap {
+        background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+        padding: 12px 14px; margin-bottom: 16px;
+      }
+      #ecran-onboarding .record-row {
+        display: flex; align-items: center; gap: 6px; padding: 7px 0; flex-wrap: wrap;
+      }
+      #ecran-onboarding .record-row + .record-row { border-top: 1px solid var(--border); }
+      #ecran-onboarding .record-row .dist-label { width: 56px; flex-shrink: 0; font-size: 0.85rem; color: var(--text-muted); }
+      #ecran-onboarding .record-row input[type=number] {
+        width: 42px; padding: 5px 4px; margin-bottom: 0; text-align: center;
+        font-variant-numeric: tabular-nums; flex-shrink: 0;
+      }
+      #ecran-onboarding .record-row .unite { font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0; }
+      #ecran-onboarding .records-note { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0; }
       #ecran-onboarding .btn-principal {
         width: 100%; padding: 12px; border-radius: 8px; border: none;
         background: var(--accent); color: var(--bg); font-weight: 700;
@@ -449,6 +499,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
           <input type="number" id="onb-annee" placeholder="1985" min="1920" max="2020" value="${profilExistant.anneeNaissance || ''}">
           <label for="onb-fcmax">FC max (bpm)</label>
           <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax && profilExistant.fcMax !== 181 ? profilExistant.fcMax : ''}">
+          <label for="onb-fcrepos">FC repos (bpm) — optionnel</label>
+          <input type="number" id="onb-fcrepos" placeholder="55" value="${profilExistant.fcRepos || ''}">
+          <label>Sexe — optionnel, affine le calcul de charge</label>
+          <div id="onb-sexes" class="sexe-opts"></div>
+          <label>Records personnels — optionnel, laisse vide si tu ne sais pas</label>
+          <div id="onb-records" class="records-wrap"></div>
           <label>Ton niveau</label>
             <div id="onb-niveaux"></div>
             <button class="btn-principal" id="onb-valider" disabled>Valider</button>
@@ -456,7 +512,50 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         </div>
       `;
     const niveauxHost = hote.querySelector('#onb-niveaux');
+    const sexesHost = hote.querySelector('#onb-sexes');
+    const recordsHost = hote.querySelector('#onb-records');
     const validerBtn = hote.querySelector('#onb-valider');
+
+    // Rendu des 4 lignes de record (5K/10K/Semi/Marathon), 3 champs h/min/sec
+    // chacune — champ optionnel, ne touche jamais à validerBtn.disabled
+    // (même principe que sexe : seul niveauChoisi contrôle la validation).
+    DISTANCES_RECORD.forEach((dist) => {
+      const recExistant = (profilExistant.records && profilExistant.records[dist]) || null;
+      const hms = parserTempsRecordEnHMSOnboarding(recExistant ? recExistant.temps : null);
+      const row = document.createElement('div');
+      row.className = 'record-row';
+      row.innerHTML =
+        `<span class="dist-label">${dist}</span>` +
+        `<input type="number" id="onb-rec-${dist}-h" min="0" max="23" placeholder="0" value="${hms.h ?? ''}">` +
+        `<span class="unite">h</span>` +
+        `<input type="number" id="onb-rec-${dist}-m" min="0" max="59" placeholder="00" value="${hms.m ?? ''}">` +
+        `<span class="unite">min</span>` +
+        `<input type="number" id="onb-rec-${dist}-s" min="0" max="59" placeholder="00" value="${hms.s ?? ''}">` +
+        `<span class="unite">s</span>`;
+      recordsHost.appendChild(row);
+    });
+    const recordsNote = document.createElement('p');
+    recordsNote.className = 'records-note';
+    recordsNote.textContent = "Une seule distance suffit pour démarrer — le moteur estime les autres.";
+    recordsHost.parentNode.insertBefore(recordsNote, recordsHost.nextSibling);
+
+    // Rendu des options sexe — champ optionnel, ne touche JAMAIS à
+    // validerBtn.disabled (seul niveauChoisi contrôle la validation, même
+    // principe que la version classic).
+    function rafraichirSexes() {
+      sexesHost.innerHTML = '';
+      SEXES.forEach((s) => {
+        const opt = document.createElement('div');
+        opt.className = 'sexe-opt' + (sexeChoisi === s.val ? ' actif' : '');
+        opt.textContent = s.label;
+        opt.addEventListener('click', () => {
+          sexeChoisi = sexeChoisi === s.val ? null : s.val; // re-clic désélectionne, champ optionnel
+          rafraichirSexes();
+        });
+        sexesHost.appendChild(opt);
+      });
+    }
+    rafraichirSexes();
 
     function rafraichirNiveaux() {
       niveauxHost.innerHTML = '';
@@ -486,10 +585,27 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         hote.querySelector('#ecran-onboarding').style.display = 'none';
         const annee = parseInt(hote.querySelector('#onb-annee').value) || profilExistant.anneeNaissance || null;
         const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
+        const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
+        const records = { ...(profilExistant.records || {}) };
+        DISTANCES_RECORD.forEach((dist) => {
+          const hInp = hote.querySelector(`#onb-rec-${dist}-h`);
+          const mInp = hote.querySelector(`#onb-rec-${dist}-m`);
+          const sInp = hote.querySelector(`#onb-rec-${dist}-s`);
+          const tempsFormate = formaterHMSEnTempsRecordOnboarding(hInp.value, mInp.value, sInp.value);
+          if (tempsFormate) {
+            const dateExistante = (records[dist] && records[dist].date) || null;
+            records[dist] = { temps: tempsFormate, date: dateExistante };
+          } else if (!(profilExistant.records && profilExistant.records[dist])) {
+            records[dist] = null;
+          }
+        });
         resolve({
           anneeNaissance: annee,
           fcMax: fcmax,
-          niveau: niveauChoisi
+          fcRepos: fcrepos,
+          sexe: sexeChoisi,
+          niveau: niveauChoisi,
+          records
         });
       }
 
