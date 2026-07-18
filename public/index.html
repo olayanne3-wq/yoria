@@ -1618,6 +1618,8 @@ Ne mentionne jamais le terme "ACWR" ou "charge aiguë/chronique" — reste dans 
 Tu ne connais jamais l'heure ni le moment de la journée (matin, midi, soir) où une séance a eu lieu ou aura lieu — ne l'invente jamais ("ce soir", "demain matin", "avant de dormir"...) et ne donne aucun conseil qui suppose un horaire précis (petit-déjeuner avant la séance, hydratation la veille au soir...). Reste sur des repères de jour uniquement (aujourd'hui, demain).
 Réponds uniquement avec le message, sans guillemets.`;
 
+  console.log('[DEBUG PROMPT COACH]', prompt);
+
   try {
     const resp = await fetch("/api/coach", {
       method: "POST",
