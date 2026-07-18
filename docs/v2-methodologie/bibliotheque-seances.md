@@ -612,6 +612,23 @@ Testé (mock) : calcul de médiane exact sur 8 semaines simulées, affichage cor
 
 **Reste à faire** (chantier suivant) : comparer allure/FC réelles des séances aux zones attendues — nécessite de résoudre l'appariement activité Strava ↔ séance prévue du plan.
 
+## 41. Strides sur les EF de Construction — variété du stimulus, pas du volume
+
+Suite à un audit de la variété perçue en phase Construction (17/07/2026) : chaque distance n'a que **2 sous-types de séance qualité** en Construction (contre 5-6 en Spécifique, cf. `ROTATION_SOUS_TYPE`), ce qui donne l'impression d'une répétition mécanique sur plusieurs semaines — seule la charge (répétitions, durée) progresse, pas la nature de l'effort.
+
+**Recherche complémentaire à Daniels** (littérature convergente, tradition Lydiard/base aérobique moderne, Runners Connect, Coach Saltmarsh) : les **strides** (accélérations courtes et contrôlées, ~15-20s à ~95% de la vitesse maximale, récupération complète) sont le stimulus le mieux adapté à la phase de base — risque quasi nul, distinct du travail VMA déjà présent (`i-30-30`/`i-3min`), entretient l'économie de course et l'efficacité neuromusculaire sans faire progresser le VO2max ni ajouter de charge significative.
+
+**Différence structurelle avec toutes les séances qualité existantes** : pas d'allure chiffrée. Contrairement à `seuil`/`i-3min`/`vitesse`/`allure-course` qui calculent tous une allure précise (T/I/V/C) dans `structureIntervalles.allure`, les strides se pilotent au ressenti — une allure fixe en min/km n'aurait pas de sens pour ce type d'effort. Le champ `allure` est donc une chaîne descriptive ("accélération progressive jusqu'à un effort vif mais contrôlé"), pas un pace formaté.
+
+**Décision de ciblage** (délibérément restrictive, pour ne jamais entrer en conflit avec les limites déjà validées) :
+- **Uniquement en phase Construction** — Spécifique a déjà une rotation riche (section 38), Affûtage doit éviter tout stimulus superflu avant course
+- **Uniquement sur les EF `role: "standard"`** — jamais sur les EF `role: "recuperation"` (jour de vraie récupération, pas d'ajout d'intensité)
+- **Fréquence cyclique** : 1 EF standard sur 2 (compteur sur les occurrences d'EF standard rencontrées, pas un jour fixe dans la semaine) — s'adapte automatiquement au nombre réel d'EF standard du plan, quel que soit le niveau/mode, sans cas particulier à coder par mode
+
+**Implémentation** : nouvelle fonction `injecterStrides(semaines, alluresSec)`, même pattern que `injecterNotesPratiques`/`injecterJalonsTransition` (mute `semaines` en place, s'exécute après que les séances aient leur contenu final). Ajoute le texte des strides à la suite du contenu EF existant, incrémente légèrement `kmEstime` (~0,3km pour 4×20s, estimé à partir de l'allure V) — pour que le moteur de décision (ACWR, charge) ne traite pas une EF+strides comme une EF pure, même si l'écart de charge réel est marginal. Un nouveau champ structuré `seance.strides` (repetitions, dureeEffortSec, allure descriptive) est aussi posé, cohérent avec le principe déjà en place que `structureIntervalles` ne doit jamais être reparsée depuis le texte (section 22).
+
+**Audit de non-conflit avec les limites déjà validées** (17/07/2026, sur GEM'AUBAGNE) : le volume ajouté par les strides (~0,3km/semaine sur un plan à 40-42,5km) est trop marginal pour affecter la limite Daniels sur le seuil (≤10% du volume hebdo en T) ou la distribution 80/20 (Seiler) déjà vérifiées conformes sur ce plan — pas de nouveau garde-fou nécessaire.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
@@ -619,3 +636,4 @@ Testé (mock) : calcul de médiane exact sur 8 semaines simulées, affichage cor
 - Runners Connect — physiologie des séances 5K (VO2max, seuil lactique)
 - The Running Channel, TrainingPeaks, Marathon Handbook — structuration et taper marathon
 - CorrerJuntos, HikingManual, Trainero — structuration semi-marathon en 12 semaines
+- Tradition Lydiard (base aérobique moderne), Runners Connect, Coach Saltmarsh — strides comme stimulus neuromusculaire de phase de base (section 41)
