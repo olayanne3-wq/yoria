@@ -133,6 +133,66 @@
   }
 
   // --------------------------------------------------------------------------
+  // Monotonie de charge (Foster, 1998) — ajoutée le 18/07/2026, après
+  // discussion avec Laurent et vérification de la littérature. Décision
+  // actée : PAS de règle d'alerte pour l'instant (aucun seuil consensuel
+  // transposable à un coureur récréatif — la littérature trouvée est soit
+  // calibrée sport co/élite (Foster original, seuil >2.0 = "trop élevé"),
+  // soit contradictoire sur une population plus proche (traileurs
+  // récréatifs, Matos et al. 2020 : 0.6-0.9 = LIMITATION de performance, pas
+  // le même sens ni la même échelle). Uniquement calculée et exposée pour
+  // affichage (Stats), à la manière de l'ACWR déjà visible avant d'avoir sa
+  // propre règle. Un futur seuil d'alerte, si jamais posé, devra être
+  // calibré sur l'historique réel de Laurent plutôt qu'importé d'une étude
+  // qui ne le concerne pas vraiment (même prudence méthodologique que pour
+  // COEFFICIENT_INTENSITE_PAR_TYPE ci-dessus).
+  //
+  // Formule ORIGINALE de Foster retenue (moyenne/écart-type des charges
+  // journalières sur 7 jours), pas la version "bornée" (moyenne/(écart-type
+  // + moyenne)) — décision explicite : sans seuil d'alerte à stabiliser, la
+  // formule originale reste comparable aux repères trouvés dans la
+  // littérature (>2.0, 0.6-0.9), contrairement à la version bornée qui
+  // casserait cette comparabilité pour un gain de stabilité visuelle non
+  // exploité ici.
+  // --------------------------------------------------------------------------
+  function ecartType(valeurs) {
+    const n = valeurs.length;
+    if (n === 0) return 0;
+    const moyenne = valeurs.reduce((s, v) => s + v, 0) / n;
+    const varianceSum = valeurs.reduce((s, v) => s + Math.pow(v - moyenne, 2), 0);
+    return Math.sqrt(varianceSum / n); // écart-type de population, pas d'échantillon (cohérent avec Foster original)
+  }
+
+  // seancesAvecDate : tableau de { date: 'YYYY-MM-DD', charge: number } — une
+  // entrée par séance (réalisée ou prévue selon l'appel), peu importe
+  // l'ordre. dateDebutSemaine : 'YYYY-MM-DD' du lundi de la semaine, pour
+  // reconstruire les 7 jours (y compris les jours sans séance, comptés à 0 —
+  // essentiel pour ne pas fausser l'écart-type : un repos ignoré plutôt que
+  // compté à 0 sous-estimerait la vraie variabilité de la semaine).
+  // Retourne null si moins de 2 jours avec une charge non-nulle (écart-type
+  // non significatif sur une semaine quasi vide, cf. §4 doc archi principe
+  // de dégradation propre) — sinon un nombre, plafonné à 10 si écart-type
+  // proche de 0 (même plafond de sécurité que fellrnr.com pour la formule
+  // originale, qui tend vers l'infini sinon).
+  function calculerMonotonie(seancesAvecDate, dateDebutSemaine) {
+    if (!Array.isArray(seancesAvecDate) || !dateDebutSemaine) return null;
+    const chargesParJour = [0, 0, 0, 0, 0, 0, 0];
+    const debut = new Date(dateDebutSemaine + 'T00:00:00');
+    seancesAvecDate.forEach(s => {
+      if (!s.date || !s.charge) return;
+      const jour = new Date(s.date + 'T00:00:00');
+      const offsetJours = Math.round((jour - debut) / (24 * 60 * 60 * 1000));
+      if (offsetJours >= 0 && offsetJours <= 6) chargesParJour[offsetJours] += s.charge;
+    });
+    const joursAvecCharge = chargesParJour.filter(c => c > 0).length;
+    if (joursAvecCharge < 2) return null; // pas assez de variabilité observable pour un écart-type significatif
+    const moyenne = chargesParJour.reduce((s, c) => s + c, 0) / 7;
+    const et = ecartType(chargesParJour);
+    if (et === 0) return 10; // toutes les charges identiques et non-nulles — plafond de sécurité (cf. fellrnr.com)
+    return Math.min(10, Math.round((moyenne / et) * 100) / 100);
+  }
+
+  // --------------------------------------------------------------------------
   // Détermine si une séance prévue compte comme "à réaliser" (repos exclu —
   // un repos n'est ni manqué ni réussi, il n'entre pas dans seancesTotal).
   // --------------------------------------------------------------------------
@@ -209,6 +269,23 @@
       }
     }
 
+    // Monotonie (Foster) — ajoutée le 18/07/2026, cf. calculerMonotonie()
+    // ci-dessus pour la justification complète (affichage seul, pas de
+    // règle). planSemaine.dateDebutSemaine : nouveau champ du contrat
+    // PlanContext, fourni par l'appelant (index.html connaît déjà le lundi
+    // de chaque semaine via week.sessions[0].date) — repli sur null si
+    // absent, dégradation propre (monotonie non calculée plutôt qu'une
+    // valeur fausse).
+    const dateDebutSemaine = planSemaine && planSemaine.dateDebutSemaine ? planSemaine.dateDebutSemaine : null;
+    const monotonieRealisee = calculerMonotonie(
+      seancesRealisees.map(r => ({ date: r.date, charge: calculerChargeSeanceRealisee(r, fcMaxReference, fcReposReference, sexe) })),
+      dateDebutSemaine
+    );
+    const monotoniePrevue = calculerMonotonie(
+      prevues.map(p => ({ date: p.date, charge: calculerChargePrevueSeance(p) })),
+      dateDebutSemaine
+    );
+
     return {
       semaine,
       volumeRealiseKm,
@@ -220,6 +297,8 @@
       chargeTotaleSemaine,
       recuperationEstimee,
       progressionVsPrecedente,
+      monotonieRealisee, // null si <2 jours avec charge non-nulle, ou dateDebutSemaine absente
+      monotoniePrevue,   // idem, calculée sur seancesPrevues
     };
   }
 
