@@ -4363,3 +4363,154 @@ weekNum:w.week})))`), au lieu de perdre `w.week` dans le flatMap initial.
 
 **Fichier modifié** : `public/index.html` uniquement. Vérifié visuellement
 par Laurent après déploiement — fonctionne.
+
+## 37. Chaîne de bugs coach IA + fix Réglages Strava (18/07/2026, session ultérieure)
+
+Suite directe de la session §36 (même conversation). Un bug signalé par
+Laurent ("le coach félicite une séance sautée") a révélé en réalité
+**quatre bugs distincts et cumulatifs**, découverts un par un par
+instrumentation progressive (logs de debug temporaires poussés puis
+retirés à chaque étape) — chaque fix révélait le suivant plutôt que de
+résoudre le problème d'un coup. Méthode volontairement itérative :
+vérifier chaque hypothèse avec de vraies données avant de conclure, ne
+jamais supposer qu'un fix fonctionne sans preuve en conditions réelles.
+
+### 37.1 Bug préalable : bloc Strava des Réglages sans date de synchro
+
+Signalé en ouverture de session, sans lien avec le reste de §37. Le bloc
+Strava de la page Réglages (`"Connecté · X activités"`) n'affichait jamais
+la date de dernière synchro (`lastSyncTime`), contrairement au bloc
+équivalent du dashboard qui l'affiche déjà correctement (`syncAgo`/
+`syncAgoStr`) — deux blocs distincts et redondants, jamais maintenus en
+cohérence. Corrigé en réutilisant le même calcul dans les deux blocs.
+**Fichier modifié** : `public/index.html`.
+
+### 37.2 Bug n°1 (partiel) — description du statut pas assez explicite pour le LLM
+
+Premier correctif tenté : la partie du prompt qui décrit factuellement le
+statut de la séance (`sessionDone ? ... : sessionSkipped ? ... : ...`)
+transmettait un simple emoji brut ("statut ✅", "statut ❌") sans jamais
+expliciter en toutes lettres le sens de chaque statut ni la tonalité
+attendue pour le LLM. Corrigé : chaque statut (✅/⚠️/❌/😴) reçoit
+désormais une instruction explicite ("RÉUSSIE, tu peux féliciter" /
+"RATÉE, NE FÉLICITE JAMAIS" / etc.). **Insuffisant seul** — testé par
+Laurent, bug persistant (cf. §37.3).
+
+### 37.3 Bug n°2 — deuxième instruction du prompt ignorée pour 😴
+
+En creusant plus loin dans le même prompt : une **deuxième instruction**,
+distincte de la première (celle qui pilote réellement le CONTENU/ton du
+message généré, pas seulement la description factuelle), ne testait que
+`sessionDone` — jamais `sessionSkipped`. Pour une séance 😴, elle tombait
+dans le `else` "PAS ENCORE EU LIEU", poussant le LLM à générer un message
+tourné vers une séance à venir, que le modèle a ensuite halluciné comme
+déjà réalisée (cohérent avec le contexte disponible par ailleurs dans le
+prompt — météo, type de séance). Corrigé : branche `sessionSkipped`
+ajoutée à cette deuxième instruction également. **Toujours insuffisant
+seul** — le prompt corrigé produisait bien la bonne instruction (vérifié
+en loggant le prompt complet envoyé), et l'API répondait bien correctement
+(vérifié en loggant la réponse brute), mais le mauvais message continuait
+d'apparaître à l'écran malgré un rafraîchissement manuel. Diagnostic plus
+poussé nécessaire (cf. §37.4).
+
+### 37.4 Bug n°3 (root cause principale) — race condition sync Supabase
+
+**Diagnostic** : `coachMsg` était bien mis à jour correctement EN MÉMOIRE
+juste après `render()` (vérifié par logs), mais `localStorage` contenait
+encore l'ancien message quelques instants plus tard (vérifié directement
+via `localStorage.getItem(...)` en console) — et un rechargement de page
+ramenait systématiquement l'ancien message.
+
+**Cause** : `lk_coach_msg`/`lk_coach_date` étaient synchronisés vers
+Supabase comme n'importe quelle autre clé (`plan_donnees`, mécanisme
+générique décrit en tête de fichier §"save()"). Au rechargement suivant,
+`precharger()` (`sync-storage.classic.js`/`sync-storage.js`) récupère
+`plan_donnees.data` depuis Supabase et écrase `localStorage` avec son
+contenu — si la dernière écriture locale (le bon message, juste généré)
+n'avait pas encore fini de se propager vers Supabase au moment de ce
+rechargement, `precharger()` réimportait l'ancienne version cloud
+par-dessus.
+
+**Correctif** (2 fichiers, architecture duale ES/classic) :
+- `CLES_LOCALES_UNIQUEMENT` (déjà existante pour `lk_weather_cache`)
+  étendue à `lk_coach_msg`/`lk_coach_date` — empêche toute future écriture
+  vers Supabase pour ces clés (données éphémères régénérées chaque jour,
+  aucune valeur à synchroniser entre appareils)
+- La boucle de `precharger()` exclut désormais explicitement ces clés
+  (`CLES_LOCALES_UNIQUEMENT.indexOf(cle) !== -1 → continue`) — nécessaire
+  en plus du point précédent, pour ne plus jamais relire une valeur déjà
+  synchronisée par le passé (avant ce fix), qui serait sinon restée
+  indéfiniment sur Supabase et continué à écraser localStorage à chaque
+  démarrage
+
+**Fichiers modifiés** : `public/engine-classic-scripts/sync-storage.classic.js`
++ `public/v2/engine/sync-storage.js` (même fix dans les deux, cohérent
+avec l'architecture duale déjà établie pour ce module).
+
+Vérifié par Laurent après déploiement — fonctionnel pour la première fois
+sur ce scénario précis. **Mais un quatrième bug restait caché** (cf.
+§37.5), invisible tant que ce scénario particulier n'avait jamais
+fonctionné jusqu'au bout.
+
+### 37.5 Bug n°4 — `dateSeance` jamais transmis sur la carte du jour
+
+Demande de suivi de Laurent ("le coach devrait se rafraîchir à chaque
+changement de statut, automatique ou manuel") a révélé, en testant le
+chemin manuel à nouveau, que **le rafraîchissement manuel ne fonctionnait
+toujours pas** — alors même que le mécanisme lui-même (`if (dateSeance ===
+today()) { ...invalider cache...; fetchCoachMsg(); }`, présent depuis le
+17/07) semblait correct sur le papier.
+
+**Cause** (trouvée par log direct sur le clic) : `renderStatusRow(uid,
+dateSeance)` attend deux paramètres, mais l'appel utilisé sur la carte du
+jour du dashboard (`!isRest?renderStatusRow(uid2):null`, ligne ~3240)
+n'en passait qu'**un seul** — `dateSeance` restait `undefined` à cet
+endroit précis, donc `dateSeance === today()` échouait systématiquement,
+peu importe la vraie date de la séance cliquée. L'autre appel de la même
+fonction (détail semaine, `renderStatusRow(uid, s.date)`, ligne ~4401)
+passait déjà `s.date` correctement — seul l'appel de la carte du jour
+était incomplet.
+
+**Ce bug était probablement présent depuis la création du mécanisme le
+17/07/2026** — pas une régression introduite pendant cette session, mais
+un bug jamais détecté car jamais testé jusqu'au bout dans ce contexte
+précis avant aujourd'hui (masqué par le bug §37.4 qui empêchait de toute
+façon toute vérification fiable).
+
+**Correctif** : `renderStatusRow(uid2, s.date)` — un seul paramètre
+manquant ajouté.
+
+**Fichier modifié** : `public/index.html` uniquement.
+
+### 37.6 Auto-refresh sur validation automatique (demande complémentaire)
+
+En marge du debug, demande explicite de Laurent : le coach doit se
+rafraîchir aussi quand le statut de la séance du jour est posé
+**automatiquement** (validation post-synchro Strava, fonction appelée en
+arrière-plan après `syncStrava()`), pas seulement sur un clic manuel.
+
+**Implémentation** : la boucle de validation automatique (qui ne
+concernait jamais que le passé/aujourd'hui, garde-fou déjà en place)
+détecte désormais si la séance modifiée automatiquement est celle du jour
+(`s.date === aujourdhui`), et si oui, invalide le cache coach et relance
+`fetchCoachMsg()` après la boucle complète — même logique que le
+déclenchement manuel, appliquée au chemin automatique.
+
+**Non encore vérifié en conditions réelles** (Laurent a testé le chemin
+manuel en premier, cf. §37.5) — à confirmer à la prochaine synchro Strava
+qui valide automatiquement la séance du jour.
+
+**Fichier modifié** : `public/index.html` uniquement.
+
+### 37.7 Enseignement méthodologique de cette session
+
+Cinq bugs indépendants (§37.1 à §37.5) ont produit un seul symptôme
+observable ("le coach dit n'importe quoi") — chacun masquait le suivant.
+Aucun n'aurait été trouvé par une simple relecture de code : chaque
+diagnostic a nécessité une preuve empirique directe (prompt réellement
+envoyé, réponse API réelle, contenu réel de `localStorage`, valeur réelle
+d'un paramètre au moment du clic) plutôt qu'un raisonnement théorique sur
+ce que le code "devrait" faire. Décision méthodologique à retenir pour de
+futurs bugs similaires (symptôme persistant malgré un fix qui semble
+correct sur le papier) : instrumenter directement plutôt que d'empiler les
+hypothèses non vérifiées.
