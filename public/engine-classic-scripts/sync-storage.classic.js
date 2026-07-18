@@ -45,7 +45,16 @@
     'v2_gist_id',
   ];
 
-  const CLES_LOCALES_UNIQUEMENT = ['lk_weather_cache'];
+  // lk_coach_msg/lk_coach_date ajoutées le 18/07/2026 (bug signalé par
+  // Laurent) : messages du coach IA régénérés chaque jour, sans valeur à
+  // synchroniser entre appareils. Symptôme observé : un nouveau message
+  // sauvegardé localement (après changement de statut de séance) pouvait
+  // être écrasé par l'ancien au rechargement suivant, si precharger()
+  // s'exécutait AVANT que le save() précédent n'ait fini de se propager
+  // vers Supabase (race condition entre écriture locale et lecture cloud
+  // sur la même clé). Exclure ces clés de la sync élimine le risque à la
+  // racine plutôt que d'essayer de gagner la course de vitesse.
+  const CLES_LOCALES_UNIQUEMENT = ['lk_weather_cache', 'lk_coach_msg', 'lk_coach_date'];
 
   const CLE_FILE_SYNC = 'lk_file_attente_sync';
 
@@ -263,6 +272,13 @@
         const entries = Object.entries(planDonneesRes.data.data);
         for (let j = 0; j < entries.length; j++) {
           const cle = entries[j][0];
+          // Exclusion CLES_LOCALES_UNIQUEMENT (18/07/2026) : protège aussi
+          // contre une valeur déjà synchronisée par le passé, avant ce
+          // fix — sans cette exclusion ici, une ancienne valeur cloud
+          // continuerait à écraser localStorage indéfiniment même après
+          // avoir empêché toute FUTURE écriture côté
+          // synchroniserVersSupabase().
+          if (CLES_LOCALES_UNIQUEMENT.indexOf(cle) !== -1) continue;
           const valeur = entries[j][1];
           localStorage.setItem(cle + suffixe, JSON.stringify(valeur));
         }
