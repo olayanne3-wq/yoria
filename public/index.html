@@ -1302,6 +1302,7 @@ function analyserSemaineActuelle(weekNum, semainePrecedenteAnalyse) {
     .filter(s => s.date <= jourReference)
     .map(s => ({
       id: s.uid,
+      date: s.date, // ajouté 18/07/2026 pour la monotonie (calculerMonotonie a besoin de la date de chaque séance prévue, cf. decision-engine-week-analysis.classic.js) — absent avant, sans impact sur les autres champs déjà consommés (volumePrevuKm/ecartVolumePourcent n'en avaient pas besoin)
       type: s.type === "REPOS" ? "repos" : (s.type === "RACE" ? "endurance" : s.type.toLowerCase()),
       volumePrevuKm: s.kmEstime || 0,
     }));
@@ -1336,6 +1337,17 @@ function analyserSemaineActuelle(weekNum, semainePrecedenteAnalyse) {
     // chargePrevue non fournie ici : DecisionEngineWeekAnalysis.analyser()
     // la calcule désormais lui-même depuis seancesPrevues (chantier du
     // 17/07/2026, cf. en-tête decision-engine-week-analysis.classic.js).
+    // dateDebutSemaine ajouté 18/07/2026 pour la monotonie — week.sessions[0]
+    // est toujours le lundi (index ISO 0, cf. v1-bridge.classic.js
+    // JOUR_NOMS.map sur 7 jours), jamais absent même si repos.
+    // POINT DE VIGILANCE : pour la semaine EN COURS, seancesPrevues ne
+    // contient que les jours déjà passés (filtre s.date<=jourReference
+    // ci-dessus, même filtre que pour ecartVolumePourcent/seancesManquees)
+    // — monotoniePrevue calculée sur la semaine en cours sera donc partielle
+    // (écart-type sur moins de 7 jours), jamais sur la semaine complète tant
+    // qu'elle n'est pas terminée. Pas un bug, juste une limite à garder en
+    // tête si affichée avant la fin de semaine.
+    dateDebutSemaine: week.sessions && week.sessions[0] ? week.sessions[0].date : null,
   };
 
   // fcMax/fcRepos/sexe lus depuis optionsRunnerStateActuel(), même source que
@@ -1414,6 +1426,30 @@ function analyserTendance(fenetreSemaines) {
   }
 
   return DecisionEngineTrendAnalysis.analyserAvecEtatCoureur(historiqueSemaines, historiqueRunnerStates, fenetreSemaines);
+}
+
+// ── Historique de monotonie pour l'affichage Stats (18/07/2026) ────────────
+// Réutilise la même boucle que analyserTendance() ci-dessus (chaque semaine
+// via analyserSemaineActuelle(), qui calcule déjà monotonieRealisee/
+// monotoniePrevue depuis le chantier §35) plutôt que d'écrire une deuxième
+// boucle sur PLAN — évite la duplication, cohérent avec le principe "un seul
+// calcul partagé" déjà appliqué à calculerEtatMoteurDecision(). N'appelle
+// jamais TrendAnalysis (pas besoin ici, juste les WeekAnalysis bruts).
+// Retourne un tableau de { semaine, monotonieRealisee, monotoniePrevue },
+// plus ancien en premier, ou [] si moins de 2 semaines exploitables.
+function obtenirHistoriqueMonotonie(fenetreSemaines) {
+  if (typeof DecisionEngineWeekAnalysis === 'undefined') return [];
+  const semaineActuelleNum = currentWeek();
+  const premiereSemaineNum = Math.max(1, semaineActuelleNum - fenetreSemaines + 1);
+  const historique = [];
+  let precedente = null;
+  for (let w = premiereSemaineNum; w <= semaineActuelleNum; w++) {
+    const analyse = analyserSemaineActuelle(w, precedente);
+    if (!analyse) continue;
+    historique.push({ semaine: analyse.semaine, monotonieRealisee: analyse.monotonieRealisee, monotoniePrevue: analyse.monotoniePrevue });
+    precedente = analyse;
+  }
+  return historique;
 }
 
 
@@ -5039,6 +5075,66 @@ function renderStats() {
     );
   })();
 
+  // ── Monotonie de charge (Foster) ─────────────────────────────────────────
+  // Ajoutée le 18/07/2026, cf. decision-engine-week-analysis.classic.js pour
+  // la justification complète : affichage SEUL, pas de règle d'alerte (pas
+  // de seuil consensuel trouvé pour un coureur récréatif dans la
+  // littérature vérifiée — la fourchette Foster >2.0 vient du sport co/
+  // élite, une seule étude trouvée sur des traileurs donne 0.6-0.9 mais
+  // dans un sens différent, limitation de performance et non blessure).
+  // Repères de lecture donnés dans le texte d'accompagnement ci-dessous,
+  // jamais présentés comme un seuil d'alerte actif dans Yoria.
+  const monotonieEl = (() => {
+    const hist = obtenirHistoriqueMonotonie(8).filter(h => h.monotonieRealisee !== null);
+    if (hist.length < 2) {
+      return el("div",{style:{marginBottom:"16px"}},
+        el("div",{class:"label"},"📊 Monotonie de charge"),
+        el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px",textAlign:"center"}},
+          el("div",{class:"muted",style:{fontSize:"13px",fontStyle:"italic"}},"Disponible après quelques semaines de suivi complet (séances + repos identifiables)")
+        )
+      );
+    }
+
+    const W = 340, H = 90, PAD = { t: 12, r: 12, b: 20, l: 28 };
+    const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
+    const mk = (tag, attrs) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
+    const xScale = i => PAD.l + (i / Math.max(hist.length - 1, 1)) * iW;
+    const maxVal = Math.max(3, ...hist.map(h => h.monotonieRealisee)) * 1.1;
+    const yScale = v => PAD.t + iH - (v / maxVal) * iH;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.style.width = "100%"; svg.style.display = "block";
+    svg.appendChild(mk("rect", { x: 0, y: 0, width: W, height: H, fill: "var(--bg)" }));
+    [0, Math.round(maxVal/2*10)/10, Math.round(maxVal*10)/10].forEach(v => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", PAD.l - 4); t.setAttribute("y", yScale(v) + 3);
+      t.setAttribute("fill", "var(--text-muted)"); t.setAttribute("font-size", "8"); t.setAttribute("text-anchor", "end");
+      t.textContent = v; svg.appendChild(t);
+    });
+    const pts = hist.map((h, i) => `${xScale(i)},${yScale(h.monotonieRealisee)}`).join(" ");
+    svg.appendChild(mk("polyline", { points: pts, fill: "none", stroke: "var(--accent)", "stroke-width": "2.5", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    hist.forEach((h, i) => {
+      svg.appendChild(mk("circle", { cx: xScale(i), cy: yScale(h.monotonieRealisee), r: i === hist.length - 1 ? "4" : "2", fill: "var(--accent)" }));
+    });
+    const dernierVal = hist[hist.length - 1].monotonieRealisee;
+    const dernierLbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    dernierLbl.setAttribute("x", xScale(hist.length - 1)); dernierLbl.setAttribute("y", yScale(dernierVal) - 8);
+    dernierLbl.setAttribute("fill", "var(--text)"); dernierLbl.setAttribute("font-size", "10"); dernierLbl.setAttribute("text-anchor", "end"); dernierLbl.setAttribute("font-weight", "700");
+    dernierLbl.textContent = dernierVal.toFixed(2); svg.appendChild(dernierLbl);
+
+    return el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"📊 Monotonie de charge"),
+      el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"12px",marginBottom:"8px"}},
+        el("div",{class:"muted",style:{fontSize:"11px",marginBottom:"6px"}},"Régularité de charge jour après jour, sur "+hist.length+" semaines"),
+        svg
+      ),
+      el("div",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5",padding:"0 4px"}},
+        "Mesure si tes charges d'entraînement varient assez d'un jour à l'autre (vrais jours durs, vrais jours de repos) plutôt que d'être toutes similaires. Repères indicatifs de la littérature sportive (pas un seuil d'alerte dans Yoria) : au-delà de 2.0, souvent considéré comme trop peu varié ; en dessous de 1.5, généralement préférable."
+      )
+    );
+  })();
+
   // ── Infos du plan ─────────────────────────────────────────────────────
   const infoEl=el("div",{},
     el("div",{class:"label"},"Informations"),
@@ -5210,6 +5306,7 @@ function renderStats() {
     ieCurveEl,
     cadCurveEl,
     acwrEl,
+    monotonieEl,
     projEl,
     paceEl,
     infoEl,
