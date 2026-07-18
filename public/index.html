@@ -6303,12 +6303,78 @@ function renderSettings() {
   );
 
 
-  // ── Records personnels par distance (v2.3, 12 juillet 2026) ──────────────
+  // ── Records personnels par distance (v2.3, 12 juillet 2026 ; saisie h/min/sec
+  // séparée depuis v2.14, 18/07/2026) ────────────────────────────────────────
   // Un temps de référence par distance, mémorisé une fois pour toutes dans
   // profilCoureur.records — le wizard n'a plus besoin de le redemander à
   // chaque nouveau plan, il choisit automatiquement le record le plus
   // pertinent pour la distance visée (avec repli sur Riegel si aucun
   // record exact n'existe, cf. section 2.3 du doc de convergence).
+  //
+  // Saisie par 3 champs numériques (h/min/sec) plutôt qu'un champ texte
+  // libre "mm:ss" — plus facile à remplir au clavier (surtout mobile,
+  // pavé numérique direct) et supprime toute ambiguïté de format sur les
+  // temps ≥ 1h (Semi/Marathon). Le format texte stocké (compatible
+  // parseTimeToSeconds du moteur, "mm:ss" ou "h:mm:ss") ne change pas —
+  // seule la saisie change, pas le schéma de données ni ce que consomme
+  // le reste de l'app (Riegel, wizard).
+  //
+  // Réutilisée telle quelle par l'onboarding (auth.classic.js /
+  // v2/engine/auth.js) — factorisée ici plutôt que dupliquée, cf. principe
+  // "un seul fichier modifié couvre tous les modes" (inventaire, section
+  // Key learnings).
+  window.parserTempsRecordEnHMS = function(str) {
+    // "50:21" -> {h:0,m:50,s:21} ; "3:45:00" -> {h:3,m:45,s:0}
+    if (!str) return { h: null, m: null, s: null };
+    const parts = str.split(':').map(Number);
+    if (parts.length === 2) return { h: null, m: parts[0] || null, s: parts[1] ?? null };
+    if (parts.length === 3) return { h: parts[0] || null, m: parts[1] ?? null, s: parts[2] ?? null };
+    return { h: null, m: null, s: null };
+  };
+  window.formaterHMSEnTempsRecord = function(h, m, s) {
+    // Repli sur 0 uniquement pour min/sec si l'un des deux est renseigné
+    // (évite un format "::30" invalide) — mais si les 3 champs sont vides,
+    // retourne null plutôt qu'un "0:00" trompeur.
+    const hNum = parseInt(h) || 0;
+    const mNum = parseInt(m) || 0;
+    const sNum = parseInt(s) || 0;
+    if (!h && !m && !s) return null;
+    const mm = String(mNum).padStart(2, '0');
+    const ss = String(sNum).padStart(2, '0');
+    return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
+  };
+
+  // Construit les 3 champs h/min/sec pour une distance donnée. idPrefix sert
+  // à générer des ids uniques (ex. "rec-temps-10K" -> "rec-temps-10K-h/-m/-s"),
+  // réutilisable pour l'onboarding avec un préfixe différent (ex. "onb-rec-temps-").
+  window.creerChampsTempsHMS = function(idPrefix, valeurInitiale) {
+    const { h, m, s } = window.parserTempsRecordEnHMS(valeurInitiale);
+    const styleChamp = "width:44px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 4px;color:var(--text);font-size:15px;text-align:center;font-variant-numeric:tabular-nums;";
+    const styleUnite = "color:var(--text-muted);font-size:12px;flex-shrink:0;";
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0;";
+
+    const hInp = document.createElement("input");
+    hInp.type = "number"; hInp.id = idPrefix + "-h"; hInp.min = "0"; hInp.max = "23";
+    hInp.placeholder = "0"; hInp.value = h ?? ""; hInp.style.cssText = styleChamp;
+    const hUnit = document.createElement("span"); hUnit.textContent = "h"; hUnit.style.cssText = styleUnite;
+
+    const mInp = document.createElement("input");
+    mInp.type = "number"; mInp.id = idPrefix + "-m"; mInp.min = "0"; mInp.max = "59";
+    mInp.placeholder = "00"; mInp.value = m ?? ""; mInp.style.cssText = styleChamp;
+    const mUnit = document.createElement("span"); mUnit.textContent = "min"; mUnit.style.cssText = styleUnite;
+
+    const sInp = document.createElement("input");
+    sInp.type = "number"; sInp.id = idPrefix + "-s"; sInp.min = "0"; sInp.max = "59";
+    sInp.placeholder = "00"; sInp.value = s ?? ""; sInp.style.cssText = styleChamp;
+    const sUnit = document.createElement("span"); sUnit.textContent = "s"; sUnit.style.cssText = styleUnite;
+
+    wrap.appendChild(hInp); wrap.appendChild(hUnit);
+    wrap.appendChild(mInp); wrap.appendChild(mUnit);
+    wrap.appendChild(sInp); wrap.appendChild(sUnit);
+    return wrap;
+  };
+
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏅 Records personnels"),
     (()=>{
@@ -6317,19 +6383,16 @@ function renderSettings() {
       ["5K","10K","Semi","Marathon"].forEach((dist,i) => {
         const rec = profilCoureur.records?.[dist];
         const row = document.createElement("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;"+(i>0?"border-top:1px solid var(--border);":"");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap;"+(i>0?"border-top:1px solid var(--border);":"");
         const label = document.createElement("span");
-        label.style.cssText = "color:var(--text-muted);font-size:15px;width:70px;flex-shrink:0;";
+        label.style.cssText = "color:var(--text-muted);font-size:15px;width:60px;flex-shrink:0;";
         label.textContent = dist;
-        const tempsInp = document.createElement("input");
-        tempsInp.type = "text"; tempsInp.id = "rec-temps-"+dist; tempsInp.placeholder = "mm:ss";
-        tempsInp.value = rec?.temps || "";
-        tempsInp.style.cssText = "width:80px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:15px;text-align:right;font-variant-numeric:tabular-nums;";
+        const champsHMS = window.creerChampsTempsHMS("rec-temps-"+dist, rec?.temps);
         const dateInp = document.createElement("input");
         dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
         dateInp.value = rec?.date || "";
-        dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;flex:1;min-width:0;";
-        row.appendChild(label); row.appendChild(tempsInp); row.appendChild(dateInp);
+        dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;flex:1;min-width:110px;";
+        row.appendChild(label); row.appendChild(champsHMS); row.appendChild(dateInp);
         wrap.appendChild(row);
       });
       const note = document.createElement("p");
@@ -6339,6 +6402,7 @@ function renderSettings() {
       return wrap;
     })(),
   );
+
 
     // Réglage source de données par défaut (docs/source-donnees-seances.md) —
     // n'est qu'une préférence d'affichage sur la carte du jour, pas un mode
@@ -6503,10 +6567,13 @@ function renderSettings() {
     const anneeNaissance = document.getElementById("inp-annee-naissance"); if(anneeNaissance) { profilCoureur.anneeNaissance=parseInt(anneeNaissance.value)||null; }
     profilCoureur.records = profilCoureur.records || {};
     ["5K","10K","Semi","Marathon"].forEach(dist => {
-      const tempsInp = document.getElementById("rec-temps-"+dist);
+      const hInp = document.getElementById("rec-temps-"+dist+"-h");
+      const mInp = document.getElementById("rec-temps-"+dist+"-m");
+      const sInp = document.getElementById("rec-temps-"+dist+"-s");
       const dateInp = document.getElementById("rec-date-"+dist);
-      if (tempsInp && tempsInp.value.trim()) {
-        profilCoureur.records[dist] = { temps: tempsInp.value.trim(), date: dateInp?.value || null };
+      const tempsFormate = (hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null;
+      if (tempsFormate) {
+        profilCoureur.records[dist] = { temps: tempsFormate, date: dateInp?.value || null };
       } else {
         profilCoureur.records[dist] = null;
       }
