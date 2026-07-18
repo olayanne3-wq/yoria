@@ -3907,6 +3907,7 @@ function renderStatusRow(uid, dateSeance) {
     b.addEventListener("click",avecRetourTactile(()=>{
       if (estFuture && opt!=="—") return;
       statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses);
+      console.log('[DEBUG CLIC STATUT]', 'uid:', uid, 'opt:', opt, 'dateSeance:', dateSeance, 'today:', today(), 'egal?', dateSeance===today());
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
       // cette carte (render() reconstruit toute la vue). Corrigé : met à
