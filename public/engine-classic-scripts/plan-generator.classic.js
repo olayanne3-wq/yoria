@@ -188,6 +188,76 @@ const NOTES_PRATIQUES = {
   ]
 };
 
+// ---------------------------------------------------------------------------
+// Strides (accélérations courtes) — v2.13, ajouté suite à un échange sur la
+// variété perçue en phase Construction (17/07/2026). Littérature convergente
+// (tradition Lydiard, Runners Connect, Coach Saltmarsh) : stimulus neuromusculaire
+// bref et à risque quasi nul (récupération complète entre répétitions),
+// distinct du travail VMA déjà couvert par i-30-30/i-3min — n'entre donc pas
+// en conflit avec les limites Daniels déjà validées (audit du 17/07/2026),
+// puisque le volume ajouté est marginal (cf. STRIDES_KM_PAR_REP ci-dessous).
+//
+// Volontairement PAS d'allure chiffrée (contrairement à seuil/VMA/vitesse) :
+// les strides se pilotent au ressenti (accélération progressive jusqu'à un
+// effort vif mais contrôlé, jamais un sprint à fond), une allure fixe en
+// min/km n'aurait pas de sens pour ce type d'effort. Le champ `allure` de
+// structureIntervalles est donc une chaîne descriptive, pas un pace formaté.
+// ---------------------------------------------------------------------------
+
+const STRIDES_REPETITIONS = 4; // base phase — 4 suffisent (Runners Connect), pas 6-8 (réservé à la prépa course)
+const STRIDES_DUREE_EFFORT_SEC = 20;
+// Distance estimée par répétition à titre indicatif (~95% de l'allure V),
+// pour que kmEstime reste cohérent avec le reste du moteur (ACWR, charge) —
+// même logique que le sous-type 'vitesse' qui connaît sa distance directement.
+// Approximation volontairement grossière : l'objectif n'est pas la précision
+// mais d'éviter qu'une séance EF+strides paraisse identique en charge à une
+// EF pure alors que la charge réelle (même faible) diffère légèrement.
+function estimerKmStrides(alluresSec) {
+  const paceApproxSecParKm = (alluresSec.V ?? alluresSec.I) * 1.05; // légèrement plus lent que V, jamais un sprint pur
+  const kmParRep = STRIDES_DUREE_EFFORT_SEC / paceApproxSecParKm;
+  return Math.round(kmParRep * STRIDES_REPETITIONS * 100) / 100;
+}
+
+/**
+ * Ajoute des strides en fin d'un sous-ensemble des séances EF "standard" de
+ * la phase Construction — jamais sur les EF "recuperation" (le but est
+ * d'entretenir la mécanique/l'économie sans jamais empiéter sur un jour de
+ * vraie récupération), et jamais hors Construction (Spécifique a déjà une
+ * rotation de sous-types qualité riche, cf. tableau doc méthodologie ; en
+ * Affûtage on évite tout stimulus superflu avant course, cf. littérature).
+ *
+ * Fréquence : 1 EF standard sur STRIDES_FREQUENCE (compteur cyclique sur les
+ * occurrences d'EF standard rencontrées, pas un jour fixe dans la semaine —
+ * s'adapte automatiquement au nombre réel d'EF standard du plan, quel que
+ * soit le niveau/mode). Mute `semaines` en place, ne retourne rien.
+ */
+const STRIDES_FREQUENCE = 2;
+
+function injecterStrides(semaines, alluresSec) {
+  const kmStrides = estimerKmStrides(alluresSec);
+  const structureStrides = {
+    repetitions: STRIDES_REPETITIONS,
+    dureeEffortSec: STRIDES_DUREE_EFFORT_SEC,
+    allure: 'ressenti — accélération progressive jusqu\'à un effort vif mais contrôlé (≈95% vitesse max), jamais un sprint à fond',
+    dureeRecupSec: null,
+    recupLabel: 'complète (marche/trot 1-2min)'
+  };
+
+  let compteurEFStandard = 0;
+  for (const semaine of semaines) {
+    if (semaine.phase !== 'Construction') continue;
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'ef' || seance.role !== 'standard') continue;
+      compteurEFStandard++;
+      if (compteurEFStandard % STRIDES_FREQUENCE !== 0) continue;
+
+      seance.contenu = `${seance.contenu} + 4×20s lignes droites (accélération progressive, effort vif mais contrôlé, jamais à fond), récupération complète entre chaque`;
+      seance.kmEstime = (seance.kmEstime ?? 0) + kmStrides;
+      seance.strides = structureStrides;
+    }
+  }
+}
+
 /**
  * Injecte une note pratique (piochée aléatoirement) selon le type/sous-type
  * de chaque séance du plan. Mute `semaines` en place, ne retourne rien.
@@ -1842,6 +1912,11 @@ function generatePlan(profil, params) {
   // après que les séances aient leur contenu/sousType
   injecterNotesPratiques(semaines);
 
+  // Strides sur un sous-ensemble des EF standard de Construction (v2.13,
+  // 17/07/2026) — après injecterNotesPratiques pour que le texte des strides
+  // s'ajoute à la suite de la note pratique existante, pas l'inverse
+  injecterStrides(semaines, allSeconds);
+
   // Repères qualitatifs sur séances dures (doc convergence-v1-v2.md, 2.4) —
   // ressenti (banque de variantes) + progression relative (comparaison à
   // l'historique du plan déjà généré, doit s'exécuter après que kmEstime
@@ -2322,3 +2397,4 @@ function regenererStructuresIntervalles(plan) {
 
   return nbMisesAJour;
 }
+
