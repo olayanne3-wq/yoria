@@ -4643,3 +4643,125 @@ window.__testCompareRecupACWR = function(nbSemaines) {
 
 **Fichier modifié** : `public/index.html` (helper ajouté puis retiré dans
 la même session — code final identique à l'état d'avant ce test).
+
+## 39. Audit Daniels/Seiler sur plan réel (GEM'AUBAGNE) + strides sur EF de Construction (18/07/2026)
+
+### 39.1 Audit de conformité — principes Daniels, sans code
+
+Avant de coder quoi que ce soit, audit manuel du plan actif GEM'AUBAGNE
+(9 semaines, 10K, `dateDebut: 2026-07-06`) contre plusieurs principes du
+livre *Daniels' Running Formula* (4e édition, ajouté aux fichiers projet) :
+progression du volume par palier de 3-4 semaines, limite de durée sur la
+sortie longue (≤150min ou 25-30% du volume hebdo), limite sur le volume en
+T-effort réel (≤10% du volume hebdo par séance), distribution facile/intense
+(Seiler, 80/20).
+
+**Méthode** : plan brut extrait via `console.log(JSON.stringify(__PLAN_BRUT__))`
+depuis la console navigateur (pas d'accès direct à Supabase depuis l'outil
+GitHub, en lecture seule sur ce repo).
+
+**Résultat** : le générateur actuel respecte déjà l'essentiel des principes
+vérifiés, **sans qu'aucune règle ne les code explicitement** :
+- Progression du volume : jamais plus de 2 semaines consécutives
+  d'augmentation, décharge cyclique correcte (40→42,5→42,5→31,9 décharge→42,5...)
+- Sortie longue : max observé 73min, très en dessous de la limite Daniels
+  (150min)
+- T-effort réel (isolé de l'échauffement/retour au calme dans
+  `structureIntervalles`, pas le `kmEstime` global de la séance qui inclut
+  tout) : 8,5-9% du volume hebdo sur la plupart des semaines — un seul écart
+  mineur trouvé (11,3% en semaine 5, phase Spécifique), jugé trop marginal
+  pour justifier un nouveau garde-fou
+- Distribution facile/intense : ~70-75% facile / 25-30% intense selon les
+  semaines — plus proche d'un 70/30 que d'un strict 80/20 Seiler, mais
+  cohérent avec la littérature spécifique 10K (moins polarisé qu'un plan
+  marathon)
+
+**Point méthodologique retenu pour tout audit futur** : comparer le volume
+en allure T au `kmEstime` total d'une séance qualité est trompeur (inclut
+échauffement + retour au calme, ~40% du volume affiché sur une séance
+seuil-court typique) — il faut isoler `structureIntervalles.blocs[].dureeEffortSec`
+à l'allure T précisément, pas le total de la séance.
+
+**Conclusion** : pas de refonte du générateur, pas de nouveau garde-fou de
+volume/durée nécessaire à ce stade — l'audit sert de référence si un futur
+plan (marathon notamment, contraintes plus strictes) montre un écart plus
+net.
+
+### 39.2 Audit de variété des séances qualité — tableau de rotation complet
+
+Constat initial (sur GEM'AUBAGNE seul) : peu de variété perçue en phase
+Spécifique (seulement 4 sous-types vus sur 9 semaines). Vérification contre
+`ROTATION_SOUS_TYPE` (source de vérité du code, pas le plan seul) : la
+bibliothèque est en réalité riche (6 sous-types en Spécifique pour le 10K),
+mais le cycle de rotation tourne sur 12 positions — un plan à phase
+Spécifique courte (3 semaines × 2 séances qualité = 6 tirages) n'a
+mathématiquement pas le temps d'atteindre les positions rares du cycle
+(`seuil-negatif` position 5, `pyramidale` position 12). Pas un bug, un effet
+de la durée du plan.
+
+**Tableau de rotation complet par objectif et phase** (construit en lisant
+`ROTATION_SOUS_TYPE` du code, avec l'allure travaillée associée à chaque
+sous-type d'après le `switch` de `genererContenuQualite`) :
+
+| Objectif | Construction | Spécifique (cycle sur 12) | Affûtage |
+|---|---|---|---|
+| 5K | cotes (V), i-30-30 (VMA) | i-3min/vitesse en alternance (VMA/V, ×5), pyramidale (VMA) en position 12 | vitesse (V), i-3min (VMA) |
+| 10K | seuil-court (T), i-30-30 (VMA) | i-3min (VMA), seuil (T), allure-course (C) en boucle ×3, seuil-negatif (T→VMA) ×2, pyramidale (VMA) en position 12 | allure-course (C), seuil-court (T) |
+| Semi | tempo-court (T), seuil-2min (T) | seuil (T), i-3min (VMA), allure-course (C) en boucle ×3, seuil-negatif (T→VMA) ×2, pyramidale (VMA) en position 12 | allure-course-court (C), seuil-court (T) |
+| Marathon | tempo-court (T), seuil-court (T) | seuil (T), allure-course (C) en alternance ×4, seuil-negatif (T→VMA) ×2 — pas de pyramidale (volontaire, phase plus orientée seuil/allure course) | tempo-court (T), allure-course-court (C) |
+
+`seuil-negatif` est noté T→VMA : seul sous-type qui enchaîne deux allures
+différentes dans la même séance (bloc seuil puis bloc plus rapide, ~30% du
+chemin vers l'allure VMA).
+
+**Constat retenu** : la variété est correcte en Spécifique, mais
+**Construction n'a que 2 sous-types pour chaque objectif** — installation
+volontaire d'une base (VMA courte + seuil léger) avant la spécificité
+course, cohérent avec Daniels, mais avec seulement 2 formats en boucle
+pendant 3-4 semaines, la monotonie perçue en Construction est réelle, pas
+qu'une impression.
+
+### 39.3 Strides ajoutés sur les EF standard de Construction (v2.13)
+
+Recherche complémentaire à Daniels (littérature 2024-2026 : tradition
+Lydiard, Runners Connect, Coach Saltmarsh) pour combler le déficit de
+variété en Construction sans toucher aux limites déjà validées en 39.1.
+Détail complet de la recherche et de la décision : voir
+`bibliotheque-seances.md` section 41.
+
+**Résumé de la fonctionnalité livrée** : nouvelle fonction
+`injecterStrides(semaines, alluresSec)` dans `plan-generator.classic.js` /
+`plan-generator.js` (ES, synchronisées et testées) — mute `semaines` en
+place, appelée juste après `injecterNotesPratiques` dans `generatePlan`.
+
+- Ajoute `4×20s lignes droites` en fin d'un sous-ensemble des séances EF
+  `role: "standard"` de la phase Construction — jamais sur `recuperation`,
+  jamais hors Construction
+- Fréquence : 1 EF standard sur 2 (compteur cyclique sur les occurrences
+  d'EF standard, pas un jour fixe — s'adapte à tout mode/niveau
+  automatiquement)
+- **Pas d'allure chiffrée** (différence structurelle avec tous les autres
+  sous-types qualité) — champ `allure` descriptif ("ressenti — accélération
+  progressive... jamais un sprint à fond"), cohérent avec la nature de
+  l'effort (piloté au ressenti dans la littérature, pas au chrono)
+- `kmEstime` incrémenté légèrement (~0,3km pour 4×20s, estimé à ~95% de
+  l'allure V) — pour que le moteur de décision (ACWR, charge) distingue une
+  EF+strides d'une EF pure, même si l'écart réel est marginal
+- Nouveau champ structuré `seance.strides` (repetitions, dureeEffortSec,
+  allure descriptive, récupération complète) — cohérent avec le principe
+  déjà en place que `structureIntervalles` ne doit jamais être reparsée
+  depuis le texte
+
+**Testé** (script Node local avant push, retiré après validation) : cycle
+correct sur EF standard uniquement, jamais sur recuperation, jamais hors
+Construction, `kmEstime` et texte de contenu correctement enrichis sur les
+occurrences ciblées.
+
+**Fichiers modifiés** : `public/engine-classic-scripts/plan-generator.classic.js`,
+`public/v2/engine/plan-generator.js` (synchronisées, syntaxe validée via
+`node --check` sur les deux). `docs/v2-methodologie/bibliotheque-seances.md`
+(nouvelle section 41, avec les nouvelles sources ajoutées à la liste finale).
+
+**Non fait à ce stade** : pas de garde-fou de non-régression automatisé
+(ex. test unitaire dédié dans `test-plan-generator.mjs`) — à ajouter si ce
+fichier de tests est retouché dans une session future.
