@@ -1493,8 +1493,9 @@ let coachRequestId = 0;
 
 async function fetchCoachMsg() {
   const t = today();
-  if (coachDate === t && coachMsg) return; // déjà fetché aujourd'hui
+  if (coachDate === t && coachMsg) { console.log('[DEBUG FETCH SKIP] déjà fetché', coachDate, coachMsg?.slice(0,30)); return; }
   const monTicket = ++coachRequestId;
+  console.log('[DEBUG FETCH START] ticket:', monTicket, 'appelé depuis:', new Error().stack?.split('\n')[2]?.trim());
   const cd = countdown();
   const todaySess = ALL_SESSIONS.filter(s=>s.date===t);
   const sessType = todaySess.length ? todaySess[0].type : "REPOS";
@@ -1638,12 +1639,14 @@ Réponds uniquement avec le message, sans guillemets.`;
     });
     const data = await resp.json();
     const msg = data.text || null;
+    console.log('[DEBUG FETCH END] ticket:', monTicket, 'coachRequestId actuel:', coachRequestId, 'obsolete?', monTicket !== coachRequestId, 'msg:', msg?.slice(0,40));
     if (monTicket !== coachRequestId) return; // réponse obsolète (un appel plus récent a déjà répondu ou est en cours) — ignorée silencieusement, cf. déclaration de coachRequestId plus haut
     if (msg) {
       coachMsg = msg;
       coachDate = t;
       save(clePourPlan("lk_coach_msg"), coachMsg);
       save(clePourPlan("lk_coach_date"), coachDate);
+      console.log('[DEBUG FETCH APPLIED] ticket:', monTicket, 'nouveau coachMsg:', coachMsg.slice(0,40));
       render();
     }
   } catch(e) {
@@ -3095,6 +3098,7 @@ function renderDashboard() {
     onClick:()=>{ coachMsg=null; coachDate=""; save(clePourPlan("lk_coach_msg"),null); save(clePourPlan("lk_coach_date"),""); fetchCoachMsg(); }
   },"🔄");
   // Coach intégré dans la carte séance — bloc discret
+  console.log('[DEBUG RENDER coachEl]', 'coachMsg:', coachMsg?.slice(0,40), 'coachDate:', coachDate, 'today:', today());
   const coachEl = el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"10px 12px",display:"flex",gap:"8px",alignItems:"flex-start"}},
     el("span",{style:{fontSize:"16px",flexShrink:"0"}},"🤖"),
     el("div",{style:{flex:"1"}},
