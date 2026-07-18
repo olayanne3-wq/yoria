@@ -4736,11 +4736,8 @@ function renderStats() {
   const cadCurveEl = drawCurve(cadData,"🦶 Cadence par séance","cad","spm",null);
 
   // ── Courbes FC par type de séance ──────────────────────────────────────────
-  let fcCurveEl;
-  try {
-  fcCurveEl = (()=>{
+  const fcCurveEl = (()=>{
     const types = ["VMA","SPEC","SEUIL"].filter(t => ieData[t] && ieData[t].some(p=>p.fc));
-    console.log('[DEBUG FC types]', JSON.stringify(types), 'ieData keys:', JSON.stringify(Object.keys(ieData)));
     if (!types.length) return null;
 
     const FC_ZONES_CURVE = { VMA:{min:163,max:181}, SPEC:{min:154,max:163}, SEUIL:{min:145,max:163} };
@@ -4763,7 +4760,12 @@ function renderStats() {
 
       // SVG courbe
       const W=320, H=70, PL=28, PT=10, PB=22, PR=30;
-      const allWeeks = PLAN.flatMap(w=>w.sessions).filter(s=>s.type===type).map(s=>s.week);
+      // Bug corrigé le 18/07/2026 (trouvé par Laurent : affichage "Sundefined"
+      // au lieu du numéro de semaine) : s.week n'existe pas sur un objet
+      // séance individuelle (week.sessions[i] n'a que day/date/type/...),
+      // seul l'objet SEMAINE (w, avant le flatMap) a un champ week — d'où
+      // w.week répété pour chaque séance de cette semaine, pas s.week.
+      const allWeeks = PLAN.flatMap(w=>w.sessions.map(s=>({s,weekNum:w.week}))).filter(({s})=>s.type===type).map(({weekNum})=>weekNum);
       const uniqueWeeks = [...new Set(allWeeks)].sort((a,b)=>a-b);
       const nW = uniqueWeeks.length;
       const xOf = w => PL + ((uniqueWeeks.indexOf(w)) / Math.max(nW-1,1)) * (W-PL-PR);
@@ -4877,11 +4879,6 @@ function renderStats() {
       ...cards
     );
   })();
-  } catch(errFc) {
-    console.error('[DEBUG FC EXCEPTION]', errFc.message, errFc.stack);
-    fcCurveEl = null;
-  }
-  console.log('[DEBUG FC final]', fcCurveEl ? 'element cree, enfants: '+fcCurveEl.children.length : 'NULL');
 
   const paceEl=el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"Référentiel allures & FC"),
