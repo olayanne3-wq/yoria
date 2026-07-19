@@ -79,9 +79,16 @@ input[type=text], input[type=number], input[type=password] {
 ============================================================ -->
 <div id="ecran-auth-hote"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="/engine-classic-scripts/auth.classic.js"></script>
-<script src="/engine-classic-scripts/sync-storage.classic.js"></script>
+<!-- Le <script src=".../supabase.min.js"> UMD a été retiré le 19/07/2026
+     (étape 3, conversion module) — auth.js (module ES) fait désormais son
+     propre `import { createClient } from 'https://esm.sh/@supabase/
+     supabase-js@2'`, indépendant de ce SDK global. Plus utilisé nulle
+     part ailleurs dans ce fichier (vérifié). -->
+<!-- auth.classic.js et sync-storage.classic.js retirés le 19/07/2026 —
+     étape 3 du chantier de conversion module (cf. mémoire de session, le
+     point le plus délicat car window.__AUTH_PRET__ lui-même dépend de ces
+     deux modules). Remplacés par import() dynamique dans le script juste
+     en dessous, avant toute utilisation de LkAuth/LkSync. -->
 <script src="/engine-classic-scripts/decision-engine-adapter.classic.js"></script>  
 <script src="/engine-classic-scripts/decision-engine-runner-state.classic.js"></script>
 <script src="/engine-classic-scripts/decision-engine-engagement.classic.js"></script>
@@ -91,6 +98,43 @@ input[type=text], input[type=number], input[type=password] {
 <script src="/engine-classic-scripts/decision-engine-rules.classic.js"></script>
 <script src="/engine-classic-scripts/decision-engine-apply.classic.js"></script>
 <script>
+(async () => {
+  // Cache des modules auth.js et sync-storage.js (19/07/2026, étape 3 du
+  // chantier de conversion module — cf. mémoire de session, la partie la
+  // plus délicate : window.__AUTH_PRET__ lui-même dépend de ces deux
+  // modules, et tout le reste du fichier attend cette promesse avant
+  // d'utiliser window.__UTILISATEUR__ (cf. point de vigilance documenté
+  // dans l'inventaire). auth.classic.js/sync-storage.classic.js
+  // exposaient LkAuth/LkSync comme un OBJET nommé (window.LkAuth = {...}),
+  // pas des fonctions globales sans préfixe comme les autres modules déjà
+  // migrés — reproduit ici à l'identique (Object.assign(window, ...)
+  // exposerait monterEcranAuth/precharger/etc. directement en global sans
+  // préfixe, cassant tous les appels existants LkAuth.xxx/LkSync.xxx).
+  const authModule = await import("/v2/engine/auth.js");
+  window.LkAuth = {
+    // Getter plutôt que valeur figée, miroir exact de auth.classic.js :
+    // `supabase` (export `let`, mutable) vaut undefined tant que
+    // supabaseReady n'est pas résolue.
+    get supabase() { return authModule.supabase; },
+    supabaseReady: authModule.supabaseReady,
+    monterEcranAuth: authModule.monterEcranAuth,
+    monterEcranOnboarding: authModule.monterEcranOnboarding,
+    deconnecter: authModule.deconnecter,
+    utilisateurActuel: authModule.utilisateurActuel
+  };
+  const syncModule = await import("/v2/engine/sync-storage.js");
+  window.LkSync = {
+    precharger: syncModule.precharger,
+    synchroniserVersSupabase: syncModule.synchroniserVersSupabase,
+    migrerDonneesExistantes: syncModule.migrerDonneesExistantes,
+    assurerPlanExiste: syncModule.assurerPlanExiste,
+    cloturerPlanSupabase: syncModule.cloturerPlanSupabase,
+    mettreAJourPlanSupabase: syncModule.mettreAJourPlanSupabase,
+    chargerPlansSupabase: syncModule.chargerPlansSupabase,
+    rejouerFileSync: syncModule.rejouerFileSync,
+    activerRealtime: syncModule.activerRealtime
+  };
+
   // Démarre le montage de l'écran d'auth dès que possible ; la promesse
   // se résout avec l'utilisateur dès qu'une session est active (existante
   // au chargement, ou obtenue via le formulaire).
@@ -154,6 +198,7 @@ input[type=text], input[type=number], input[type=password] {
 
     return user;
   });
+})();
 </script>
 
 <!-- Moteur v2 chargé en script classique (pas de modules ES) pour garantir
@@ -181,7 +226,9 @@ input[type=text], input[type=number], input[type=password] {
      conversion module (cf. mémoire de session). Remplacé par un import()
      dynamique de v2/engine/v1-bridge.js, chargé juste après plan-forme.js
      (aucune dépendance entre eux, mais regroupé au même endroit pour
-     cohérence). Module autonome, aucun autre import nécessaire. -->
+     cohérence). Module autonome, aucun autre import nécessaire. Vercel a
+     manqué le webhook de déploiement sur les deux premiers push de ce
+     commit (18/07 18:22 et 18:24) — ce commentaire force un vrai diff. -->
 <!-- gist-sync.classic.js retiré le 19/07/2026 — étape 2 du chantier de
      conversion module (cf. mémoire de session). Remplacé par un import()
      dynamique de v2/engine/gist-sync.js, chargé une seule fois au tout
