@@ -1478,7 +1478,16 @@ if (coachDate !== today()) { coachMsg = null; } // forcer le fetch si nouveau jo
 // N'a pas besoin d'être recalculé chaque jour comme coachMsg (le contexte
 // course change peu d'un jour à l'autre), donc pas de vraie clé de date
 // associée — un bouton de rafraîchissement manuel suffit.
+//
+// Bug corrigé le 19/07/2026 : ce cache restait figé même après une
+// modification de calculerStrategieCourse() (ex. passage de 2 à 4
+// segments) — le message généré référençait l'ancienne stratégie,
+// contredisant les segments réellement affichés dans splitsCard. Fix :
+// coachRaceStratSig mémorise une signature du contenu de la stratégie au
+// moment de la génération ; si elle diverge de la stratégie actuelle, le
+// cache est traité comme invalide et regénéré automatiquement.
 let coachRaceMsg = load(clePourPlan("lk_coach_race_msg"), null);
+let coachRaceStratSig = load(clePourPlan("lk_coach_race_strat_sig"), null);
 
 // Compteur global de requêtes coach — corrige une race condition découverte
 // le 18/07/2026 (Laurent : message affiché contredit le vrai statut malgré
@@ -1669,7 +1678,7 @@ if (!coachMsg || coachDate !== today()) {
 // l'objectif, la météo prévue le jour J si connue, le nombre de jours
 // restants — pour un vrai conseil mental/stratégique, pas une répétition
 // des allures déjà visibles.
-async function fetchCoachRaceMsg(notesSegments) {
+async function fetchCoachRaceMsg(notesSegments, stratSig) {
   const cd = countdown();
   const predNow = currentPred || predict10K();
   const gapStr = predNow.gap <= 0 ? '-'+fmtTime(Math.abs(predNow.gap))+" de l'objectif" : '+'+fmtTime(predNow.gap)+" de l'objectif";
@@ -1694,7 +1703,9 @@ Donne un vrai conseil complémentaire, PAS une reformulation de la stratégie ci
     const msg = data.text || null;
     if (msg) {
       coachRaceMsg = msg;
+      coachRaceStratSig = stratSig;
       save(clePourPlan("lk_coach_race_msg"), coachRaceMsg);
+      save(clePourPlan("lk_coach_race_strat_sig"), coachRaceStratSig);
       render();
     }
   } catch(e) {
@@ -5671,9 +5682,12 @@ function renderCourse() {
   // restants) plutôt qu'une répétition des mêmes chiffres.
   // Déclenche le premier appel si aucun message n'a encore été chargé pour
   // ce plan (pas de vraie clé de date, contrairement à coachMsg — le
-  // contexte course change peu d'un jour à l'autre).
-  if (!coachRaceMsg) {
-    setTimeout(() => fetchCoachRaceMsg(splits.map(s=>s.note)), 2000);
+  // contexte course change peu d'un jour à l'autre), OU si la stratégie
+  // sous-jacente a changé depuis la dernière génération (bug corrigé le
+  // 19/07/2026, cf. commentaire sur coachRaceStratSig plus haut).
+  const stratSigActuelle = splits.map(s=>s.from+"-"+s.to+":"+Math.round(s.pace)).join("|");
+  if (!coachRaceMsg || coachRaceStratSig !== stratSigActuelle) {
+    setTimeout(() => fetchCoachRaceMsg(splits.map(s=>s.note), stratSigActuelle), 2000);
   }
 
   const coachRaceEl = el("div",{style:{marginBottom:"12px"}},
@@ -5685,7 +5699,7 @@ function renderCourse() {
       ),
       el("button",{style:{background:"none",border:"none",color:"var(--text-muted)",fontSize:"16px",cursor:"pointer",flexShrink:"0"},
         feedback:true,
-        onClick:()=>{ coachRaceMsg=null; fetchCoachRaceMsg(splits.map(s=>s.note)); render(); }
+        onClick:()=>{ coachRaceMsg=null; fetchCoachRaceMsg(splits.map(s=>s.note), stratSigActuelle); render(); }
       },"🔄")
     )
   );
