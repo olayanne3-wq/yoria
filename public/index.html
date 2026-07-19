@@ -163,8 +163,20 @@ input[type=text], input[type=number], input[type=password] {
      avec les `export` retirés — PAS une nouvelle source de vérité, à
      régénérer depuis les fichiers sources si le moteur évolue (cf.
      docs/v2-methodologie/convergence-v1-v2.md, section 5). -->
-<script src="/engine-classic-scripts/plan-generator.classic.js"></script>
-<script src="/engine-classic-scripts/plan-forme.classic.js"></script>
+<!-- plan-generator.classic.js retiré le 19/07/2026 — étape 2 du chantier de
+     conversion module (cf. mémoire de session). Remplacé par un import()
+     dynamique de v2/engine/plan-generator.js, chargé une seule fois au
+     tout début de window.__PLAN_PRET__ (en même temps que gist-sync.js)
+     et exposé en global via Object.assign(window, ...) pour rester
+     compatible avec les points d'appel existants (generatePlan(),
+     KM_BY_DISTANCE, formatPace(), etc.). v1-bridge.classic.js n'a aucune
+     dépendance directe vers plan-generator (vérifié), reste chargé en
+     script classique normalement. -->
+<!-- plan-forme.classic.js retiré le 19/07/2026 — étape 2 du chantier de
+     conversion module (cf. mémoire de session). Remplacé par un import()
+     dynamique de v2/engine/plan-forme.js, chargé juste après
+     plan-generator.js dont il dépend (import ES direct : formatPace,
+     riegelPredict, computeFcMaxTanaka, etc.). -->
 <script src="/engine-classic-scripts/v1-bridge.classic.js"></script>
 <!-- gist-sync.classic.js retiré le 19/07/2026 — étape 2 du chantier de
      conversion module (cf. mémoire de session). Remplacé par un import()
@@ -207,18 +219,30 @@ input[type=text], input[type=number], input[type=password] {
     // mais correct plutôt que rapide-et-faux.
     await window.__AUTH_PRET__;
 
-    // Cache du module gist-sync.js (19/07/2026, étape 2 du chantier de
-    // conversion module — cf. mémoire de session). Même pattern que
-    // _fitParserModule plus bas dans ce fichier : import() dynamique,
-    // chargé une seule fois puis réutilisé, plutôt qu'un <script src>
-    // statique (gist-sync.classic.js retiré). Les fonctions du module
-    // sont exposées en global via Object.assign(window, ...) pour rester
-    // compatibles avec tout le code existant qui les appelle directement
-    // (chargerPlans(), sauvegarderPlan(), getGithubToken(), etc. sans
-    // préfixe, à plusieurs endroits de ce fichier) — pas de réécriture de
-    // chaque point d'appel, seul le tout premier chargement change.
+    // Cache des modules gist-sync.js et plan-generator.js (19/07/2026,
+    // étape 2 du chantier de conversion module — cf. mémoire de session).
+    // Même pattern que _fitParserModule plus bas dans ce fichier :
+    // import() dynamique, chargé une seule fois puis réutilisé, plutôt
+    // qu'un <script src> statique (gist-sync.classic.js/
+    // plan-generator.classic.js retirés). Les fonctions/constantes des
+    // modules sont exposées en global via Object.assign(window, ...) pour
+    // rester compatibles avec tout le code existant qui les appelle
+    // directement (chargerPlans(), generatePlan(), KM_BY_DISTANCE, etc.
+    // sans préfixe, à de nombreux endroits de ce fichier) — pas de
+    // réécriture de chaque point d'appel, seul le tout premier chargement
+    // change. Les deux modules sont chargés ici, tôt dans ce bloc, car
+    // KM_BY_DISTANCE (plan-generator.js) et generatePlan() sont utilisés
+    // de façon synchrone plus loin dans ce même IIFE async (ligne
+    // ~291/~850) — doivent donc être garantis disponibles AVANT.
     window._gistSyncModule = await import("/v2/engine/gist-sync.js");
     Object.assign(window, window._gistSyncModule);
+    window._planGeneratorModule = await import("/v2/engine/plan-generator.js");
+    Object.assign(window, window._planGeneratorModule);
+    // plan-forme.js importe déjà plan-generator.js via de vrais import ES
+    // (formatPace, riegelPredict, computeFcMaxTanaka, etc.) — doit donc
+    // être chargé APRÈS plan-generator.js ci-dessus, jamais avant.
+    window._planFormeModule = await import("/v2/engine/plan-forme.js");
+    Object.assign(window, window._planFormeModule);
 
     const idPlanChoisi = localStorage.getItem('v2_preview_plan_id');
     let planBrut = null;
