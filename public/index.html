@@ -4390,10 +4390,14 @@ function renderWeekDetail(weekNum) {
       ):null
     );
 
-    if (effSess.type==="RACE") {
+  if (effSess.type==="RACE") {
+      const raceDistKm = DISTANCE_M_REFERENCE / 1000;
+      const raceGoalPace = fmtPace(DISTANCE_M_REFERENCE / raceGoalTime) + "/km";
+      const kmMid = Math.max(1, Math.round(raceDistKm / 2));
       card.appendChild(el("div",{style:{background:"rgba(var(--accent-rgb),0.13)",border:"1px solid rgba(var(--accent-rgb),0.27)",borderRadius:"8px",padding:"10px 12px",marginTop:"4px"}},
-        el("div",{style:{color:"var(--accent)",fontWeight:"700",fontSize:"15px"}},"🏁 Jour J — Objectif 48\'30\""),
-        el("div",{class:"text2",style:{fontSize:"14px",marginTop:"4px"}},"Km 1-3 : prudent · Km 4-7 : contrôle · Km 8-10 : tout donner !")
+        el("div",{style:{color:"var(--accent)",fontWeight:"700",fontSize:"15px"}},"🏁 Jour J — Objectif "+fmtTime(raceGoalTime)),
+        el("div",{class:"text2",style:{fontSize:"14px",marginTop:"4px"}},
+          "Km 1-"+kmMid+" : prudent, autour de "+raceGoalPace+" · Km "+(kmMid+1)+"-"+Math.round(raceDistKm)+" : tout donner !")
       ));
     } else if (effSess.type!=="REPOS") {
       // Raison du statut ❌ ou ⚠️
