@@ -433,11 +433,11 @@ const SCOLORS={"—":"var(--text-muted)","✅":"var(--accent2)","❌":"var(--war
 // d'allure (ancien emplacement, mis à jour pour rester cohérent — un seul
 // système de RPE dans toute l'app).
 const RPE_OPTIONS = [
-  {v:2, e:"🙂", label:"Facile"},
-  {v:4, e:"😐", label:"Modéré"},
-  {v:6, e:"😓", label:"Difficile"},
-  {v:8, e:"😣", label:"Très difficile"},
-  {v:10, e:"🥵", label:"Maximal"},
+  {v:2, e:"🙂", label:"Facile (CR-10 : 1-2)"},
+  {v:4, e:"😐", label:"Modéré (CR-10 : 3-4)"},
+  {v:6, e:"😓", label:"Difficile (CR-10 : 5-6)"},
+  {v:8, e:"😣", label:"Très difficile (CR-10 : 7-8)"},
+  {v:10, e:"🥵", label:"Maximal (CR-10 : 9-10)"},
 ];
 
 // ── Allures de référence (sec/km) ──
@@ -3968,8 +3968,15 @@ function renderStatusRow(uid, dateSeance) {
   if (["✅", "⚠️", "❌"].indexOf(statutActuel) !== -1) {
     let rpeValStatut = sessionRpe[uid] || null;
     const rpeRowStatut = el("div",{style:{display:"flex",gap:"6px",width:"100%",flexWrap:"nowrap"}});
+    // Libellé + référence CR-10 de l'option sélectionnée, affiché sous le
+    // rang de boutons — remplace le tooltip natif (attribut title), qui ne
+    // se déclenche jamais sur mobile faute de survol souris (signalé par
+    // Laurent le 19/07/2026). Vide tant qu'aucune option n'est choisie.
+    const rpeLabelStatut = el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px",minHeight:"16px"}});
     const rebuildRpeStatut = () => {
       rpeRowStatut.innerHTML = "";
+      const optionActuelle = RPE_OPTIONS.find(o=>o.v===rpeValStatut);
+      rpeLabelStatut.textContent = optionActuelle ? optionActuelle.label : "";
       RPE_OPTIONS.forEach(o=>{
         const rb = el("button",{title:o.label,style:{
           flex:"1",padding:"10px 0",fontSize:"18px",cursor:"pointer",
@@ -3989,7 +3996,8 @@ function renderStatusRow(uid, dateSeance) {
     rebuildRpeStatut();
     rpeWrapperStatut = el("div",{style:{width:"100%"}},
       el("div",{style:{fontSize:"11px",color:"var(--text-muted)",marginBottom:"4px"}},"Ressenti"),
-      rpeRowStatut
+      rpeRowStatut,
+      rpeLabelStatut
     );
     wrapper.appendChild(rpeWrapperStatut);
   }
@@ -6144,6 +6152,8 @@ function renderHelp() {
       a:"Strava reste la plus simple si tu es déjà connecté (synchro automatique). L\'import FIT convient si tu n\'utilises pas Strava — allure, distance et FC sont toujours bien récupérées, mais le découpage précis d\'une séance qualité (effort/récupération) dépend du modèle de montre : certaines n\'enregistrent pas cette structure dans le fichier exporté, même si la séance a été suivie fidèlement. La saisie manuelle reste la plus fiable si tu veux un contrôle total." },
     { q:"C\'est quoi la carte \"Yoria te propose un ajustement\" ?",
       a:"C\'est le moteur de décision : il surveille ta fatigue, ta charge d\'entraînement et ta régularité, et propose parfois d\'alléger une prochaine séance EF/longue si les signaux l\'indiquent — jamais une séance de qualité, pour ne pas casser sa structure. Rien n\'est appliqué automatiquement : tu choisis d\'ignorer ou d\'appliquer la proposition." },
+    { q:"À quoi sert le sélecteur \"Ressenti\" (RPE) après une séance ?",
+      a:"Le RPE (Rating of Perceived Exertion, ou \"ressenti d\'effort\") complète ce que Strava/ta montre mesurent (allure, FC) par ce que ton corps a vraiment ressenti — deux séances à l\'allure identique peuvent être très différentes un jour de fatigue ou de forme. Les 5 icônes correspondent à l\'échelle scientifique CR-10 de Borg (référence en sciences du sport) : 🙂 Facile (CR-10 1-2, conversation aisée) · 😐 Modéré (3-4, encore confortable) · 😓 Difficile (5-6, effort soutenu) · 😣 Très difficile (7-8, à la limite de ce que tu peux tenir) · 🥵 Maximal (9-10, tout donné). Ce ressenti aide Yoria à mieux estimer ta charge d\'entraînement réelle et à ajuster tes prochaines séances si besoin." },
   ];
 
   const faqCards = faqItems.map(f => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
