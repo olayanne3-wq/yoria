@@ -1,5 +1,10 @@
 // ============================================================
 // Yoria — Module d'authentification Supabase
+// Fix 19/07/2026 : #ecran-onboarding démarrait scrollé au milieu du
+// contenu (align-items: center sur un contenu plus haut que l'écran,
+// selon navigateur) plutôt qu'en haut — Laurent voyait "FC max" en
+// premier au lieu de "Année de naissance". Passé à align-items:
+// flex-start pour garantir un affichage démarrant toujours en haut.
 // Source de vérité : public/v2/engine/auth.js
 // Copie non-module dérivée : public/engine-classic-scripts/auth.classic.js
 // (mêmes conventions que plan-generator.js / v1-bridge.js / gist-sync.js /
@@ -433,7 +438,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding {
         position: fixed; inset: 0; z-index: 9999;
         background: var(--bg); color: var(--text);
-        display: flex; align-items: center; justify-content: center;
+        display: flex; align-items: flex-start; justify-content: center;
         padding: 20px; box-sizing: border-box; overflow-y: auto;
       }
       #ecran-onboarding .carte { width: 100%; max-width: 400px; }
