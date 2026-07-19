@@ -4984,3 +4984,135 @@ moins la même app fabricant est en cause. Pas de fichier testé, pas de
 décision à prendre dans l'immédiat — à documenter comme cas à part si un
 utilisateur Apple Watch de Yoria se présente un jour, plutôt qu'à traiter
 comme une marque de montre supplémentaire dans le tableau §40.4.
+
+## 41. Session du 19/07/2026 — cohérence de la stratégie de course, RPE mobile, profil coureur complet
+
+Session de correctifs multiples, tous poussés et validés par Laurent le
+jour même.
+
+### 41.1 Bug "jour de course" incohérent entre 3 sources distinctes
+
+Signalé par Laurent : le texte de stratégie de course (segments, allures)
+affiché dans la vue Semaine ne correspondait ni à l'onglet Course ni au
+message du coach IA — trois formulations différentes pour la même
+course, avec parfois des allures contradictoires.
+
+**Diagnostic** — trois sources indépendantes, chacune avec sa propre
+logique :
+
+1. **Vue Semaine** (`index.html`) — un bloc codé en dur ("Objectif
+   48'30\", Km 1-3 prudent · Km 4-7 contrôle · Km 8-10 tout donner"),
+   totalement indépendant du plan réel, vestige d'un ancien test resté
+   en production.
+2. **Onglet Course** (`index.html`, `renderCourse()`) — logique
+   correcte et déjà bien pensée : `calculerSplitsCalibres()` /
+   `calculerStrategieCourse()`, calibrage exact par distance (3-4
+   segments selon 5K/10K/Semi-Marathon), déjà documentée et corrigée
+   deux fois auparavant (bugs du 7 et 11 juillet 2026, cf. commentaires
+   dans le code).
+3. **Contenu du plan lui-même** (`plan-generator.js` /
+   `.classic.js`, fonction `genererContenuRace()`) — génère le texte
+   affiché comme titre de la séance RACE **au moment de la création du
+   plan**, puis le fige dans `seance.contenu`, stocké tel quel en base
+   (Supabase, `plans_actif.plan_brut`). Cette fonction avait sa PROPRE
+   stratégie, plus ancienne et plus simple (2 segments bruts pour un
+   10K, sans calibrage), jamais mise à jour en miroir des évolutions de
+   `calculerStrategieCourse()` côté affichage.
+
+**Fix en 3 temps** :
+
+1. Extraction de `calculerSplitsCalibres()` / `calculerStrategieCourse()`
+   en fonctions globales dans `index.html` (auparavant définies
+   localement dans `renderCourse()`), réutilisables ailleurs dans le
+   même fichier.
+2. `genererContenuRace()` réécrite dans `plan-generator.js` **et**
+   `plan-generator.classic.js` (architecture duale respectée) pour
+   utiliser un miroir exact de cette même logique — même segments, même
+   calibrage, mêmes allures.
+3. Un premier essai d'ajout d'un bloc "🏁 Jour J" dédié dans la vue
+   Semaine s'est avéré redondant avec `effSess.session` (le titre de la
+   séance, déjà affiché plus haut dans la carte, contient déjà tout le
+   texte généré par `genererContenuRace()`) — le bloc ajouté a été
+   retiré, `effSess.session` suffit seul.
+
+**Cache du message coach obsolète** — effet de bord découvert en cours
+de diagnostic : `coachRaceMsg` (conseil texte généré une fois par Claude
+Haiku via `/api/coach`, puis stocké en `localStorage`/Supabase) restait
+figé indéfiniment même après correction du calcul sous-jacent, car
+aucune condition ne le régénérait tant qu'un message existait déjà.
+Fix : ajout d'une signature `coachRaceStratSig` (hash simple des
+segments/allures calculés), sauvegardée avec le message ; si la
+signature actuelle diverge de celle stockée, le cache est traité comme
+obsolète et régénéré automatiquement.
+
+**Migration des données déjà en base** — un correctif de code seul ne
+suffisait pas : le texte incohérent était déjà figé dans
+`plan_brut.semaines[X].assignment[Y].contenu` pour les deux plans actifs
+de Laurent (GEM'AUBAGNE, "400 ans de la Marine"). Corrigé directement en
+SQL via le SQL Editor Supabase : requête `SELECT` de vérification
+d'abord (localiser précisément les 2 lignes concernées via
+`jsonb_path_exists` sur `type == "race"`), puis un bloc `DO $$ ... $$`
+en PL/pgSQL parcourant `semaines`/`assignment` de chaque plan et
+appliquant `jsonb_set` uniquement sur le champ `contenu` des séances
+`type: "race"`, sans toucher au reste du plan. Vérifié après coup par
+une nouvelle `SELECT`.
+
+### 41.2 RPE — lisibilité mobile et documentation utilisateur
+
+Le tooltip du sélecteur RPE (attribut HTML `title`, déjà existant)
+n'affiche jamais rien sur mobile, faute de survol souris possible.
+Fix : le libellé complet (ex. "Difficile (CR-10 : 5-6)") s'affiche
+maintenant sous le rang de boutons dès qu'une icône est sélectionnée
+— fonctionne aussi bien sur desktop que mobile. Trois options
+présentées à Laurent (label permanent sous chaque icône, appui long,
+label sous l'icône sélectionnée) — la troisième retenue, la plus légère
+visuellement.
+
+Nouvelle entrée FAQ ajoutée (`docs`/aide intégrée à l'app) expliquant le
+concept du RPE et détaillant les 5 niveaux avec leur référence CR-10.
+
+### 41.3 Profil coureur — chantier "date de naissance complète" clos
+
+Dernier des trois champs identifiés comme manquants dans `profilCoureur`
+(avec `fcRepos` et `sexe`, qui se sont révélés déjà entièrement
+implémentés lors de la vérification du code — corrigé dans la mémoire
+de session, ces deux champs ne doivent plus être listés comme
+chantiers à faire).
+
+`profilCoureur.dateNaissance` (format `YYYY-MM-DD`, champ
+`<input type="date">` dans Réglages) remplace l'ancien
+`anneeNaissance` (nombre). `anneeNaissance` reste néanmoins calculée
+automatiquement en dérivé à chaque sauvegarde, pour ne rien casser côté
+`plan-generator.js`/wizard qui ne consomment que l'année (formule de
+Tanaka, `computeFcMaxTanaka`).
+
+Deux nouvelles fonctions dans `index.html` :
+- `calculerAnneeReferenceSaisonFFA(dateReference)` — détermine l'année
+  de référence de la saison FFA en cours, avec bascule au 1er septembre
+  (avant cette date : année en cours ; à partir de cette date : année
+  suivante).
+- `calculerCategorieAgeFFA(anneeNaissance, dateReference)` — retourne
+  la catégorie (Senior, Espoir, Junior, ... ou Master 0 à Master 10),
+  calculée sur l'année de naissance uniquement (la règle FFA ne
+  descend jamais au jour précis). Validée contre la grille officielle
+  2025-2026 (athle.fr) et l'exemple officiel cité par une source tierce
+  (né juin 1986 → Master 0 jusqu'au 31/08/2025, Master 1 dès le
+  01/09/2025).
+
+Catégorie affichée sous le tableau profil dans Réglages ("Catégorie
+FFA saison en cours : Master X (MX)"). Message "🎂 Joyeux anniversaire !"
+affiché en tête de la section profil si `dateNaissance` correspond au
+jour du jour (comparaison "MM-DD" uniquement, indépendante du calcul de
+catégorie).
+
+### 41.4 Chantier de fond identifié, pas commencé — conversion en modules ES
+
+Discuté avec Laurent en fin de session : éliminer la duplication
+moteur/classic en convertissant `index.html` en `<script type="module">`
+pour importer directement `public/v2/engine/*.js`, sans passer par
+`public/engine-classic-scripts/*.classic.js`. Plan en 5 étapes présenté
+(branche dédiée, migration progressive module par module en commençant
+par les moins critiques, tests systématiques en conditions réelles).
+Jugé trop risqué pour être fait à la volée — reporté à une session
+dédiée avec du temps devant soi. Cf. mémoire de session pour le détail
+complet du plan.
