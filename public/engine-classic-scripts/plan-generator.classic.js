@@ -1418,58 +1418,93 @@ function genererContenuTest({ distance, alluresSec }) {
 // Jour de course (doc convergence-v1-v2.md, section 2.7) — stratégie de
 // pacing par distance décidée à partir de la littérature (cf. doc pour les
 // sources), explicitement pour un public amateur/intermédiaire, pas élite.
+//
+// Réécrite le 19/07/2026 pour utiliser EXACTEMENT la même logique de
+// calibrage que calculerStrategieCourse()/calculerSplitsCalibres() dans
+// public/index.html (carte "Allures de passage" de l'onglet Course et
+// carte "Jour J" de la vue Semaine) — bug corrigé : cette fonction générait
+// un texte narratif AU MOMENT DE LA CRÉATION DU PLAN, figé ensuite dans
+// seance.contenu (stocké tel quel en base), avec une stratégie à 2
+// segments non calibrée (10K) complètement différente de la stratégie à
+// 3-4 segments calibrés affichée dynamiquement ailleurs dans l'app. Miroir
+// exact de public/v2/engine/plan-generator.js (architecture duale) — toute
+// modification de cette fonction doit être répercutée dans les deux
+// fichiers.
 // ---------------------------------------------------------------------------
 
 /**
- * Génère le contenu de la séance de course, avec une stratégie de segments
- * qui varie par distance (pas un pattern unique généralisé) :
- * - 5K : quasi-plat, 1er km légèrement plus lent, accélération km 3-4,
- *   dernier km à fond
- * - 10K : 2 segments nets — 5 premiers km prudents (5-8s/km plus lent que
- *   l'allure moyenne visée), 2 derniers km à l'allure maximale soutenable
- * - Semi/Marathon : allure cible stable avec marge de sécurité au départ,
- *   pas de paliers progressifs marqués
+ * Calcule les segments à partir de définitions avec un ÉCART relatif
+ * (offsetSecKm) pour tous les segments SAUF le dernier — le dernier
+ * segment est calibré mathématiquement pour compenser exactement l'écart
+ * accumulé, garantissant que la somme des temps de tous les segments
+ * corresponde TOUJOURS exactement au temps objectif. Miroir exact de
+ * calculerSplitsCalibres() dans public/index.html.
+ */
+function calculerSplitsCalibres(distanceKm, tempsObjectifSec, definitionsSegmentsIntermediaires, dernierNote) {
+  const paceMoyen = tempsObjectifSec / distanceKm;
+  let tempsUtilise = 0, distUtilisee = 0;
+  const segments = definitionsSegmentsIntermediaires.map(d => {
+    const pace = paceMoyen + d.offsetSecKm;
+    const dist = d.to - d.from;
+    tempsUtilise += dist * pace;
+    distUtilisee += dist;
+    return { from: d.from, to: d.to, note: d.note, pace };
+  });
+  const distRestante = distanceKm - distUtilisee;
+  const tempsRestant = tempsObjectifSec - tempsUtilise;
+  segments.push({ from: distUtilisee, to: distanceKm, note: dernierNote, pace: tempsRestant / distRestante });
+  return segments;
+}
+
+/**
+ * Choix des segments selon la distance de course. Miroir exact de
+ * calculerStrategieCourse() dans public/index.html.
+ */
+function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
+  if (distanceKmCourse <= 5.5) {
+    const d = Math.round(distanceKmCourse);
+    return calculerSplitsCalibres(distanceKmCourse, tempsObjectifSec, [
+      { from: 0, to: Math.min(1, d * 0.2), note: "Départ prudent", offsetSecKm: 6 },
+      { from: Math.min(1, d * 0.2), to: d * 0.45, note: "Allure cible", offsetSecKm: 1 },
+      { from: d * 0.45, to: d * 0.8, note: "Accélération progressive", offsetSecKm: -2 },
+    ], "Tout donner");
+  } else if (distanceKmCourse <= 12) {
+    const d = distanceKmCourse;
+    return calculerSplitsCalibres(d, tempsObjectifSec, [
+      { from: 0, to: d * 0.2, note: "Départ prudent", offsetSecKm: 8 },
+      { from: d * 0.2, to: d * 0.5, note: "Montée en régime", offsetSecKm: 2 },
+      { from: d * 0.5, to: d * 0.8, note: "Allure cible soutenue", offsetSecKm: -2 },
+    ], "Dernier effort, tout donner");
+  } else {
+    const d = distanceKmCourse;
+    const kmDepart = d * 0.15;
+    return calculerSplitsCalibres(d, tempsObjectifSec, [
+      { from: 0, to: kmDepart, note: "Marge de sécurité, ne pars pas trop vite", offsetSecKm: 5 },
+      { from: kmDepart, to: d * 0.85, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+    ], "Ajuste au ressenti en fin de course");
+  }
+}
+
+/**
+ * Génère le contenu de la séance de course. Utilise calculerStrategieCourse()
+ * ci-dessus — mêmes segments (bornes km, note, allure) que la carte visuelle
+ * "Allures de passage" affichée dynamiquement dans l'app, garantissant que
+ * le texte figé dans le plan et l'affichage recalculé racontent toujours la
+ * même histoire.
  */
 function genererContenuRace({ distance, alluresSec }) {
   const distanceKm = KM_BY_DISTANCE[distance] ?? 10;
   const C = alluresSec.C; // allure course, en secondes/km
+  const tempsObjectifSec = C * distanceKm;
 
-  const formatSegment = (kmDebut, kmFin, paceSec) =>
-    `Km ${kmDebut}-${kmFin} : ${formatPace(paceSec)}`;
+  const splits = calculerStrategieCourse(distanceKm, tempsObjectifSec);
 
-  let segments;
-  let resume;
+  const segments = splits.map(s =>
+    `Km ${Math.round(s.from)}-${Math.round(s.to)} : ${s.note} (${formatPace(s.pace)})`
+  );
+  const resume = segments.join(' · ');
 
-  if (distance === '5K') {
-    const paceDepart = C + 4; // 3-5s/km plus lent, milieu de fourchette
-    segments = [
-      `Km 1 : ${formatPace(paceDepart)}`,
-      `Km 2 : ${formatPace(C)}`,
-      `Km 3-4 : accélère progressivement vers ${formatPace(C - 3)}`,
-      `Dernier km : tout donner`
-    ];
-    resume = `Départ légèrement prudent (${formatPace(paceDepart)}), accélération progressive, dernier km à fond.`;
-  } else if (distance === '10K') {
-    const paceDepart = Math.round(C + 6.5); // 5-8s/km plus lent, milieu de fourchette
-    const kmSegment1 = Math.round(distanceKm * 0.5); // ~5 premiers km sur 10K
-    segments = [
-      formatSegment(1, kmSegment1, paceDepart),
-      `Km ${kmSegment1 + 1}-${Math.round(distanceKm)} : allure maximale soutenable, vise ${formatPace(C)}`
-    ];
-    resume = `2 segments : prudent sur la première moitié (${formatPace(paceDepart)}), tout donner sur la seconde.`;
-  } else {
-    // Semi / Marathon : allure stable, marge de sécurité au départ, pas de
-    // paliers progressifs marqués — ajustement au ressenti en fin de course
-    const paceDepart = Math.round(C + 5);
-    segments = [
-      `Premiers km : reste ${formatPace(paceDepart)}, ne te laisse pas emporter par l'excitation du départ`,
-      `Corps de course : allure cible ${formatPace(C)}`,
-      `Derniers km : ajuste au ressenti — accélère seulement si tu te sens vraiment bien`
-    ];
-    resume = `Allure stable avec marge de sécurité au départ (${formatPace(paceDepart)}), ajustement au ressenti en fin de course plutôt que paliers marqués.`;
-  }
-
-  const contenu = `🏁 Jour de course — ${distanceKm}km à l'allure objectif ${formatPace(C)}. ${resume} ${segments.join(' · ')}`;
+  const contenu = `🏁 Jour de course — ${distanceKm}km à l'allure objectif ${formatPace(C)}. ${resume}`;
   return { sousType: 'race', contenu, kmEstime: distanceKm };
 }
 
