@@ -687,15 +687,48 @@
      ici soit toujours rattaché à un vrai user_id.
 ============================================================ -->
 <div id="ecran-auth-hote"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="/engine-classic-scripts/auth.classic.js"></script>
-<script src="/engine-classic-scripts/sync-storage.classic.js"></script>
+<!-- Le <script src=".../supabase.min.js"> UMD a été retiré le 19/07/2026 —
+     auth.js (module ES) fait son propre import ES vers esm.sh, comme
+     dans public/index.html (même fix le même soir). -->
+<!-- auth.classic.js et sync-storage.classic.js retirés le 19/07/2026 —
+     étape 4b du chantier de conversion module (cf. mémoire de session,
+     miroir exact du fix appliqué à public/index.html le même soir).
+     Remplacés par import() dynamique ci-dessous. -->
 <script>
+(async () => {
+  // Cache des modules auth.js et sync-storage.js — même pattern que
+  // public/index.html (cf. mémoire de session, étape 3a) : LkAuth/LkSync
+  // exposés comme des OBJETS NOMMÉS (window.LkAuth = {...}), pas des
+  // fonctions globales sans préfixe, pour rester compatibles avec tous
+  // les appels existants LkAuth.xxx/LkSync.xxx plus loin dans ce fichier.
+  const authModule = await import("/v2/engine/auth.js");
+  window.LkAuth = {
+    get supabase() { return authModule.supabase; },
+    supabaseReady: authModule.supabaseReady,
+    monterEcranAuth: authModule.monterEcranAuth,
+    monterEcranOnboarding: authModule.monterEcranOnboarding,
+    deconnecter: authModule.deconnecter,
+    utilisateurActuel: authModule.utilisateurActuel
+  };
+  const syncModule = await import("/v2/engine/sync-storage.js");
+  window.LkSync = {
+    precharger: syncModule.precharger,
+    synchroniserVersSupabase: syncModule.synchroniserVersSupabase,
+    migrerDonneesExistantes: syncModule.migrerDonneesExistantes,
+    assurerPlanExiste: syncModule.assurerPlanExiste,
+    cloturerPlanSupabase: syncModule.cloturerPlanSupabase,
+    mettreAJourPlanSupabase: syncModule.mettreAJourPlanSupabase,
+    chargerPlansSupabase: syncModule.chargerPlansSupabase,
+    rejouerFileSync: syncModule.rejouerFileSync,
+    activerRealtime: syncModule.activerRealtime
+  };
+
   window.__AUTH_PRET__ = LkAuth.monterEcranAuth('ecran-auth-hote').then(function (user) {
     window.__UTILISATEUR__ = user;
     document.getElementById('wizard-contenu').style.display = 'block';
     return user;
   });
+})();
 </script>
 
 <div id="wizard-contenu" style="display:none;">
