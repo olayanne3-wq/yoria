@@ -167,7 +167,12 @@ input[type=text], input[type=number], input[type=password] {
 <script src="/engine-classic-scripts/plan-forme.classic.js"></script>
 <script src="/engine-classic-scripts/v1-bridge.classic.js"></script>
 <script src="/engine-classic-scripts/gist-sync.classic.js"></script>
-<script src="/engine-classic-scripts/weather.classic.js"></script>
+<!-- weather.classic.js retiré le 19/07/2026 — étape 1 du chantier de
+     conversion module (cf. mémoire de session). Remplacé par un
+     import() dynamique de v2/engine/weather.js, au point d'appel exact
+     dans verifierMeteoSeanceDemain(). Ne pas régénérer ce fichier si
+     weather.js évolue — c'est justement le but de ce chantier de
+     l'éliminer. -->
 <script src="/engine-classic-scripts/changelog.classic.js"></script>
 <script>
   // Charge (ou génère par défaut) le plan à afficher — chantier convergence
@@ -981,6 +986,15 @@ async function verifierMeteoSeanceDemain() {
       const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
 
       if (dateSeanceStr === demainStr && seance.contenu) {
+        // Import dynamique du module ES (19/07/2026, étape 1 du chantier
+        // de conversion module — cf. mémoire de session). weather.js
+        // n'est plus dupliqué en weather.classic.js : c'est le seul
+        // fichier source désormais. import() est asynchrone et peut être
+        // appelé n'importe où dans un script classique (contrairement à
+        // `import { x } from "..."` en haut de fichier, réservé aux vrais
+        // modules) — le `await` garantit que verifierMeteoPourSeance est
+        // bien chargée avant d'être appelée.
+        const { verifierMeteoPourSeance } = await import("/v2/engine/weather.js");
         await verifierMeteoPourSeance(seance, demainStr);
         // Re-traduit le plan brut (potentiellement enrichi d'une note) vers
         // le format v1 affiché, et rafraîchit l'affichage immédiatement
