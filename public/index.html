@@ -5624,16 +5624,31 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
       { from:d*0.2, to:d*0.5, note:"Montée en régime", offsetSecKm: 2 },
       { from:d*0.5, to:d*0.8, note:"Allure cible soutenue", offsetSecKm: -2 },
     ], "Dernier effort, tout donner");
-  } else {
-    // Semi / Marathon : marge de sécurité au départ, allure stable au
-    // milieu, ajustement final au ressenti — 3 segments, pas de paliers
-    // aussi marqués que sur un 10K (distance plus longue, gestion d'effort
-    // différente)
+  } else if (distanceKmCourse <= 25) {
+    // Semi — bornes km FIXES (20/07/2026, demande explicite de Laurent :
+    // plus lisible en course que des pourcentages calculés, un coureur
+    // suit ses passages sur des repères ronds). Tous les 5km : départ
+    // prudent (0-5), allure cible régulière (5-10, 10-15), ajustement au
+    // ressenti en fin de course (15-21.1).
     const d = distanceKmCourse;
-    const kmDepart = d * 0.15;
     return calculerSplitsCalibres(d, tempsObjectifSec, [
-      { from:0, to:kmDepart, note:"Marge de sécurité, ne pars pas trop vite", offsetSecKm: 5 },
-      { from:kmDepart, to:d*0.85, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+      { from:0, to:5, note:"Départ prudent", offsetSecKm: 5 },
+      { from:5, to:10, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+      { from:10, to:15, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+    ], "Ajuste au ressenti en fin de course");
+  } else {
+    // Marathon — bornes km FIXES (20/07/2026, même demande, paliers non
+    // uniformes actés avec Laurent) : 0-5 prudent, 5-10 encore un peu
+    // prudent (l'erreur de départ pèse plus lourd sur cette distance),
+    // 10-20/20-30/30-35 allure cible régulière, 35-42.2 ajustement au
+    // ressenti (les derniers km sont les plus difficiles à tenir).
+    const d = distanceKmCourse;
+    return calculerSplitsCalibres(d, tempsObjectifSec, [
+      { from:0, to:5, note:"Marge de sécurité, ne pars pas trop vite", offsetSecKm: 6 },
+      { from:5, to:10, note:"Encore prudent", offsetSecKm: 3 },
+      { from:10, to:20, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+      { from:20, to:30, note:"Allure cible, régularité", offsetSecKm: -0.5 },
+      { from:30, to:35, note:"Allure cible, régularité", offsetSecKm: -0.5 },
     ], "Ajuste au ressenti en fin de course");
   }
 }
@@ -5806,7 +5821,17 @@ function renderCourse() {
       ...splits.map((s,i)=>{
         const paceStr = Math.floor(s.pace/60)+":"+(Math.round(s.pace%60)).toString().padStart(2,"0")+"/km";
         const passageStr = fmtTime(passageTimes[i]) || "--";
-        const segLabel = s.from+"→"+s.to+" km";
+        // 20/07/2026, bug remonté par Laurent (plan Marathon affichant
+        // "35.870000000000005 km") : s.from/s.to sont des flottants issus
+        // de divisions décimales (ex. 42.2*0.85), jamais arrondis avant
+        // l'affichage — l'imprécision binaire classique de JS (0.1+0.2 !==
+        // 0.3) remonte telle quelle dans le label. Le calcul interne
+        // (pace, cumul des temps) reste volontairement sur les valeurs
+        // précises non arrondies pour ne rien perdre en précision — seul
+        // l'AFFICHAGE de la borne est concerné ici.
+        const fromArrondi = Math.round(s.from * 10) / 10;
+        const toArrondi = Math.round(s.to * 10) / 10;
+        const segLabel = fromArrondi+"→"+toArrondi+" km";
         const posRelative = i / (splits.length - 1 || 1); // 0 = premier segment, 1 = dernier
         const color = posRelative < 0.4 ? "var(--accent)" : posRelative < 0.7 ? "var(--accent)" : "var(--accent2)";
         return el("div",{style:{display:"grid",gridTemplateColumns:"60px 1fr 70px 70px",gap:"0",padding:"10px 12px",borderBottom:i<splits.length-1?"1px solid var(--border)":"none",alignItems:"center"}},
