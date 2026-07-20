@@ -7082,6 +7082,19 @@ async function ensureFreshToken() {
   try {
     const resp = await fetch("/api/strava/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:stravaRefresh})});
     const data = await resp.json();
+    // 20 juillet 2026 : si le refresh_token lui-même est révoqué/invalide
+    // côté Strava, /api/strava/refresh répond avec {errors:[...]} sans
+    // access_token — jusqu'ici jamais détecté : la fonction affectait quand
+    // même stravaToken=undefined et retournait true, faisant échouer l'appel
+    // suivant à /api/strava/activities avec la même erreur "access_token
+    // invalid" côté Strava, mais après un aller-retour réseau inutile et
+    // sans garantie que le message "Connexion Strava expirée" s'affiche de
+    // façon fiable. Détecté ici explicitement, même traitement que le cas
+    // déjà géré dans syncStrava() (cf. inventaire §18.2).
+    if (!data.access_token) {
+      stravaAuthInvalide = true;
+      return false;
+    }
     stravaToken=data.access_token; stravaRefresh=data.refresh_token; stravaExpires=data.expires_at;
     save("lk_strava_token",stravaToken); save("lk_strava_refresh",stravaRefresh); save("lk_strava_expires",stravaExpires);
     return true;
@@ -7254,7 +7267,19 @@ async function syncStrava(force = false) {
   }
   syncing=true; syncMsg="Connexion à Strava..."; stravaAuthInvalide=false; render();
   const ok = await ensureFreshToken();
-  if (!ok) { syncing=false; syncMsg="Erreur de token"; render(); return; }
+  if (!ok) {
+    syncing=false;
+    // 20 juillet 2026 : ensureFreshToken() a pu détecter elle-même un
+    // refresh_token révoqué (stravaAuthInvalide déjà positionné) — dans ce
+    // cas, même message/bouton de reconnexion que le cas déjà géré plus bas
+    // pour une réponse Strava directe. Sinon (échec réseau générique),
+    // message inchangé.
+    syncMsg = stravaAuthInvalide
+      ? "❌ Connexion Strava expirée — reconnecte-toi pour continuer la synchro."
+      : "Erreur de token";
+    render();
+    return;
+  }
   try {
     syncMsg="Récupération des activités..."; render();
     const intervalDates = [...INTERVAL_SESSION_DATES].join(",");
