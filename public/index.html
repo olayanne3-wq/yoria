@@ -157,7 +157,7 @@ input[type=text], input[type=number], input[type=password] {
     // pas les perdre silencieusement au premier login. Cf. bug de
     // production du 13 juillet 2026, inventaire §8bis.
     await LkSync.migrerDonneesExistantes(user.id, null);
-    await LkSync.precharger(user.id, null);
+    const resultatPrechargement = await LkSync.precharger(user.id, null);
 
     // Onboarding profil (v2.8, §17.7) — affiché une seule fois si le
     // niveau n'a jamais été renseigné (nouveau compte, ou compte existant
@@ -165,8 +165,21 @@ input[type=text], input[type=number], input[type=password] {
     // ici : profilCoureur/migrerVersProfilCoureur() ne sont définis que
     // plus loin dans ce fichier (après ce script), donc on ne peut pas
     // encore s'appuyer dessus à ce stade du chargement.
+    //
+    // Garde-fou ajouté le 20/07/2026 (bug remonté par Laurent : onboarding
+    // redéclenché sur un compte existant, niveau écrasé à null en base
+    // après validation). Cause : quand le préchargement Supabase échoue
+    // (réseau, RLS, timeout — cf. sync-storage.js precharger()),
+    // localStorage n'est jamais réhydraté avec le vrai profil. Le test
+    // ci-dessous traitait alors ce localStorage vide comme "profil jamais
+    // renseigné", déclenchait l'onboarding, puis écrasait le vrai profil
+    // Supabase avec un profil minimal une fois validé. Ne JAMAIS
+    // déclencher l'onboarding si resultatPrechargement signale un échec
+    // — mieux vaut laisser l'utilisateur sur un dashboard potentiellement
+    // vide temporairement (rechargera correctement au prochain essai)
+    // que risquer d'écraser des données réelles.
     const profilBrut = JSON.parse(localStorage.getItem('lk_profil_coureur') || 'null');
-    if (!profilBrut || !profilBrut.niveau) {
+    if ((!profilBrut || !profilBrut.niveau) && !resultatPrechargement.echecChargementProfil) {
       const complement = await LkAuth.monterEcranOnboarding('ecran-auth-hote', profilBrut || {});
       const profilMisAJour = Object.assign(
         { prenom: "", nom: "", poids: null, taille: null, fcMax: 181, pps: "", records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
