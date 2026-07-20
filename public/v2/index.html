@@ -2234,6 +2234,20 @@
       document.getElementById('accueil-wizard-contenu').style.display = 'none';
       document.getElementById('choix-mode-contenu').style.display = 'none';
       document.getElementById('wizard-course-contenu').style.display = 'block';
+      // Restaure aussi la distance sélectionnée (20/07/2026, bug remonté
+      // par Laurent) — sans ça, currentDist repartait de sa valeur par
+      // défaut ("10") au reload, donnant l'impression qu'un plan Marathon
+      // se transformait en 10K après une reconnexion Strava en cours de
+      // route. Réapplique la même logique que selectDist() (classe
+      // .selected + applyDistanceMeta + pré-remplissage du profil), sans
+      // dépendre d'un élément cliqué puisqu'il n'y en a pas ici.
+      const distSauvegardee = sessionStorage.getItem('v2_wizard_dist');
+      if (distSauvegardee) {
+        currentDist = distSauvegardee;
+        document.querySelectorAll('.dist').forEach(o => o.classList.toggle('selected', o.dataset.dist === distSauvegardee));
+        applyDistanceMeta();
+        if (typeof preremplirDepuisProfilCoureur === 'function') preremplirDepuisProfilCoureur();
+      }
       current = etapeWizardCourseAuReload;
       showStep(current);
       return;
@@ -2246,6 +2260,7 @@
     if (!rechargementVientDeStrava) {
       sessionStorage.removeItem('v2_wizard_step');
       sessionStorage.removeItem('v2_wizard_step_forme');
+      sessionStorage.removeItem('v2_wizard_dist');
     }
 
     // 16 juillet 2026 : même correctif que ci-dessus, pour le wizard Mode
@@ -2829,6 +2844,14 @@
     // capterRetourStravaOAuth). sessionStorage plutôt que localStorage :
     // ne doit pas survivre au-delà de cette session de navigation.
     sessionStorage.setItem('v2_wizard_step', n);
+    // Bug remonté par Laurent le 20/07/2026 : la distance sélectionnée
+    // (currentDist, simple variable JS) n'était jamais persistée — un
+    // retour Strava en cours de wizard restaurait bien la bonne ÉTAPE
+    // (ci-dessus), mais currentDist repartait de sa valeur par défaut
+    // ("10"), donnant l'impression qu'un plan Marathon choisi à l'étape 1
+    // se transformait silencieusement en plan 10K après reconnexion
+    // Strava. Persisté ici pour la même raison que v2_wizard_step.
+    sessionStorage.setItem('v2_wizard_dist', currentDist);
   }
 
   // Marche-course (grand débutant, 14/07/2026) : steps 2 (volume actuel),
