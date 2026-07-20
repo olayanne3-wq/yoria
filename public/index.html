@@ -2665,7 +2665,16 @@ function predict10K() {
     details.push({ label: `Référence · poids ${Math.round(lavendouWeight*100)}%`, value: fmtTime(BASE_TIME_REFERENCE) });
   }
 
-  const target = 48.5*60;
+  // 20/07/2026, bug remonté par Laurent (plan Marathon affichant un écart
+  // de +3h11'30" avec l'estimation) : `target` était codé en dur à 48.5*60
+  // (48'30", l'ancien objectif historique 10K de Laurent) — jamais dérivé
+  // du plan réellement chargé. Même famille de résidu que le bug déjà
+  // corrigé section 7bis (RACE_NAME/FC_MAX/BASE_TIME_REFERENCE codés en
+  // dur), simplement oublié ici spécifiquement dans predict10K(). Corrigé
+  // en réutilisant OBJECTIF_REFERENCE (déjà déclarée plus haut dans ce
+  // fichier, dérivée de paramsOrigine.objectif/plan.objectif, avec repli
+  // sur 48'30" uniquement si le plan chargé n'a vraiment aucun objectif).
+  const target = OBJECTIF_REFERENCE;
   const gap = estimate - target;
 
   // Enregistrer l\'estimation du jour dans l\'historique
