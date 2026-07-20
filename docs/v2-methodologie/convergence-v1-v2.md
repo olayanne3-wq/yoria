@@ -460,3 +460,9 @@ Uniquement `changelog.classic.js` et les 8 `decision-engine-*.classic.js` — to
 ### Point de vigilance pour toute future modification du moteur
 
 Un changement dans `public/v2/engine/*.js` n'a plus besoin d'être répercuté nulle part ailleurs — c'est justement le but de ce chantier. Seule exception : les 8 fichiers `decision-engine-*.classic.js`, qui restent des fichiers autonomes sans équivalent module ES ; toute modification s'y fait directement, sans duplication à craindre.
+
+## 13. Nettoyage final et suite du chantier jour de course (19-20 juillet 2026)
+
+**Nettoyage des fichiers orphelins (étape 5, 19 juillet 2026)** : les 7 fichiers `.classic.js` remplacés par `import()` dynamique (cf. tableau section 12 : `weather`, `gist-sync`, `plan-generator`, `plan-forme`, `v1-bridge`, `auth`, `sync-storage`) ont été supprimés du repo. `engine-classic-scripts/` ne contient désormais plus que `changelog.classic.js` et les 8 `decision-engine-*.classic.js`, conformément à ce que décrivait déjà la section 12.
+
+**Suite du chantier 2.7 (jour de course) — bug résiduel trouvé et corrigé (19-20 juillet 2026)** : la section 2.7 avait comblé l'écart majeur (génération d'une vraie séance de course avec stratégie de pacing). Un bug résiduel est apparu ensuite : la stratégie de jour de course pouvait différer entre la vue Semaine et l'onglet Course (deux calculs distincts pour la même donnée) — corrigé en unifiant les deux affichages sur `calculerStrategieCourse()`. Un second bug lié au même chantier : quand `dateCourse` ne tombait pas sur le dernier jour généré de la dernière semaine (ex. course un samedi, dimanche encore présent dans le plan), les jours suivant la course gardaient leur type normal (EF/longue/qualité) au lieu de passer en repos. Corrigé par `neutraliserJoursApresCourse(plan)` dans `plan-generator.js`, appelée juste après le placement de la séance de course.
