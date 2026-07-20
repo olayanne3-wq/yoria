@@ -235,7 +235,7 @@ Contrairement à la note ci-dessus, l'étape 2 a en fait été commencée le jou
 
 **Garde-fou de prédiction ajouté (contournement temporaire de la limite VMA ci-dessus)** : `predict10K()` compare maintenant chaque source (SPEC/SEUIL/VMA) individuellement à `BASE_TIME` (référence connue) et exclut celle dont l'écart dépasse 20%, avant la pondération finale. Validé en conditions réelles avec Laurent : l'estimation est passée de 53'38" (VMA mal détectée incluse) à 49'16" (VMA écartée), proche de la v1 réelle (48'35"). Un premier essai comparant chaque source à la médiane des autres avait été tenté et écarté : avec seulement 2 sources, la médiane de 2 valeurs est leur moyenne, donc aucune n'est jamais détectée comme aberrante par cette méthode — d'où le choix de comparer à `BASE_TIME` (référence stable, indépendante du nombre de sources).
 
-## 7. Sélection/génération du plan depuis l'interface v1 (nouveau chantier, non commencé)
+## 7. Sélection/génération du plan depuis l'interface v1 (fait)
 
 Actuellement, `index-v2-preview.html` génère le plan avec des paramètres codés en dur dans le script (10K, réf 50'21, objectif 48'30, dates fixes) — aucune saisie utilisateur possible. Laurent souhaite pouvoir choisir/générer un nouveau plan (distance, objectif, dates) directement depuis cette interface.
 
@@ -264,7 +264,7 @@ Actuellement, `index-v2-preview.html` génère le plan avec des paramètres cod�
 
 **Non tranché à ce stade** : le mécanisme exact de passage d'intention entre les deux pages ; la gestion du cas où aucun plan n'a encore été généré/sauvegardé (première utilisation) ; si `index-v2-preview.html` doit toujours utiliser le même token GitHub/Gist que le wizard v2 (probable, pour que les deux interfaces voient les mêmes plans) ou un espace dédié ; comment présenter visuellement le sélecteur de plans dans le style/design de l'interface v1 (différent de celui de v2).
 
-**Statut : réflexion posée, implémentation non commencée.**
+**Statut : implémenté et confirmé fait par Laurent (20 juillet 2026).**
 
 ## 7bis. Variables non indexées sur le plan sélectionné (écart critique découvert le 6 juillet 2026)
 
