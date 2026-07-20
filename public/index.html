@@ -6538,8 +6538,24 @@ function renderSettings() {
             background: actif ? "rgba(var(--accent-rgb),0.13)" : "transparent",
             color: actif ? "var(--accent)" : "var(--text-muted)"
           }, onClick: ()=>{
+            // BUG CORRIGÉ (20/07/2026, signalé par Laurent — profil perdu à
+            // répétition) : ce clic appelait auparavant sauvegarderProfilCoureur()
+            // immédiatement, qui envoie tout profilCoureur EN MÉMOIRE vers
+            // Supabase à cet instant précis. Or les champs texte du formulaire
+            // (prénom, nom, poids, taille...) ne sont recopiés dans
+            // profilCoureur qu'au clic sur le bouton "Enregistrer les
+            // paramètres" plus bas (cf. saveBtn.addEventListener) — pas à
+            // chaque frappe. Si l'utilisateur tapait son nom/prénom/poids/
+            // taille PUIS cliquait sur un bouton Niveau avant de cliquer sur
+            // "Enregistrer", ce clic sauvegardait un profil avec le nouveau
+            // niveau mais l'ANCIEN nom/prénom/poids/taille (souvent vides),
+            // écrasant silencieusement Supabase avec des données incomplètes
+            // avant même que l'utilisateur ait fini de remplir le formulaire.
+            // Fix : mettre à jour uniquement l'état local + réafficher (pour
+            // le highlight visuel du bouton actif) ; la vraie sauvegarde
+            // n'a lieu qu'au clic explicite sur "Enregistrer les paramètres",
+            // qui lit alors TOUS les champs du formulaire y compris le niveau.
             profilCoureur.niveau = val;
-            sauvegarderProfilCoureur();
             render();
           }}, lbl);
         })
@@ -6568,8 +6584,11 @@ function renderSettings() {
             background: actif ? "rgba(var(--accent-rgb),0.13)" : "transparent",
             color: actif ? "var(--accent)" : "var(--text-muted)"
           }, onClick: ()=>{
+            // Même correctif que le sélecteur de niveau ci-dessus (20/07/2026,
+            // bug de perte de données) : plus de sauvegarde immédiate ici,
+            // seulement l'état local ; la vraie sauvegarde a lieu au clic sur
+            // "Enregistrer les paramètres".
             profilCoureur.sexe = val;
-            sauvegarderProfilCoureur();
             render();
           }}, lbl);
         })
