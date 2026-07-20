@@ -1064,12 +1064,29 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
       { from: d * 0.2, to: d * 0.5, note: "Montée en régime", offsetSecKm: 2 },
       { from: d * 0.5, to: d * 0.8, note: "Allure cible soutenue", offsetSecKm: -2 },
     ], "Dernier effort, tout donner");
-  } else {
+  } else if (distanceKmCourse <= 25) {
+    // Semi — bornes km FIXES (20/07/2026, demande explicite de Laurent :
+    // plus lisible en course que des pourcentages calculés). Miroir exact
+    // du même changement côté index.html (calculerStrategieCourse) —
+    // cf. commentaire en tête de cette fonction sur la nécessité de
+    // garder les deux alignées.
     const d = distanceKmCourse;
-    const kmDepart = d * 0.15;
     return calculerSplitsCalibres(d, tempsObjectifSec, [
-      { from: 0, to: kmDepart, note: "Marge de sécurité, ne pars pas trop vite", offsetSecKm: 5 },
-      { from: kmDepart, to: d * 0.85, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+      { from: 0, to: 5, note: "Départ prudent", offsetSecKm: 5 },
+      { from: 5, to: 10, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+      { from: 10, to: 15, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+    ], "Ajuste au ressenti en fin de course");
+  } else {
+    // Marathon — bornes km FIXES (20/07/2026, même demande, paliers non
+    // uniformes actés avec Laurent). Miroir exact du même changement côté
+    // index.html.
+    const d = distanceKmCourse;
+    return calculerSplitsCalibres(d, tempsObjectifSec, [
+      { from: 0, to: 5, note: "Marge de sécurité, ne pars pas trop vite", offsetSecKm: 6 },
+      { from: 5, to: 10, note: "Encore prudent", offsetSecKm: 3 },
+      { from: 10, to: 20, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+      { from: 20, to: 30, note: "Allure cible, régularité", offsetSecKm: -0.5 },
+      { from: 30, to: 35, note: "Allure cible, régularité", offsetSecKm: -0.5 },
     ], "Ajuste au ressenti en fin de course");
   }
 }
