@@ -1007,7 +1007,14 @@ let isRebuilding = false;
 let lastRebuildDate = load(clePourPlan("lk_last_rebuild"), null);
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MÉTÉO — Open-Meteo (Toulon fixe)
+// MÉTÉO — via proxy /api/weather (Open-Meteo)
+// Réconciliation du 20/07/2026 (convergence-v1-v2.md section 13) : ces deux
+// fonctions appelaient Open-Meteo directement depuis le navigateur, en
+// parallèle du proxy /api/weather déjà utilisé par weather.js pour la
+// prévision J+1. Migrées ici sur le même proxy (type=current/historical) —
+// la logique de géolocalisation de chaque fonction n'a pas changé (Strava
+// GPS pour la météo actuelle, cf. coordonneesMeteoActuelles() ci-dessous),
+// seul le canal d'appel à Open-Meteo est désormais commun.
 // ══════════════════════════════════════════════════════════════════════════════
 let weatherTemp = null;
 let weatherDesc = "";
@@ -1015,13 +1022,11 @@ let historicalWeatherCache = load("lk_weather_cache", {});
 
 async function fetchHistoricalWeather(date, lat, lon) {
   try {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m&timezone=Europe%2FParis`;
-    const resp = await fetch(url);
+    const params = new URLSearchParams({ lat, lon, date, type: "historical" });
+    const resp = await fetch(`/api/weather?${params}`);
     const data = await resp.json();
-    if (!data.hourly?.temperature_2m) return null;
-    // Prendre la température de l'heure de début de séance (approximation : 18h)
-    const temps = data.hourly.temperature_2m;
-    return Math.round(temps[18] ?? temps[12] ?? temps[0]);
+    if (!data.disponible) return null;
+    return data.temperatureC;
   } catch(e) { return null; }
 }
 
@@ -1048,16 +1053,12 @@ function coordonneesMeteoActuelles() {
 async function fetchWeather() {
   try {
     const { lat, lon } = coordonneesMeteoActuelles();
-    const resp = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=Europe%2FParis`
-    );
+    const params = new URLSearchParams({ lat, lon, type: "current" });
+    const resp = await fetch(`/api/weather?${params}`);
     const data = await resp.json();
-    weatherTemp = Math.round(data.current.temperature_2m);
-    const code = data.current.weathercode;
-    if (code === 0) weatherDesc = "☀️";
-    else if (code <= 3) weatherDesc = "⛅";
-    else if (code <= 67) weatherDesc = "🌧️";
-    else weatherDesc = "🌡️";
+    if (!data.disponible) return;
+    weatherTemp = data.temperatureC;
+    weatherDesc = data.emoji;
     render();
   } catch(e) {
     console.warn("Météo indisponible:", e.message);
