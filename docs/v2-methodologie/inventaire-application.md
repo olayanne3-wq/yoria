@@ -5105,7 +5105,7 @@ affiché en tête de la section profil si `dateNaissance` correspond au
 jour du jour (comparaison "MM-DD" uniquement, indépendante du calcul de
 catégorie).
 
-### 41.4 Chantier de fond identifié, pas commencé — conversion en modules ES
+### 41.4 Chantier de fond identifié — conversion en modules ES
 
 Discuté avec Laurent en fin de session : éliminer la duplication
 moteur/classic en convertissant `index.html` en `<script type="module">`
@@ -5113,6 +5113,183 @@ pour importer directement `public/v2/engine/*.js`, sans passer par
 `public/engine-classic-scripts/*.classic.js`. Plan en 5 étapes présenté
 (branche dédiée, migration progressive module par module en commençant
 par les moins critiques, tests systématiques en conditions réelles).
-Jugé trop risqué pour être fait à la volée — reporté à une session
-dédiée avec du temps devant soi. Cf. mémoire de session pour le détail
-complet du plan.
+Jugé trop risqué pour être fait à la volée — dans un premier temps
+reporté à une session dédiée, puis finalement réalisé en intégralité
+la même soirée après que Laurent a insisté ("avant que l'application
+soit trop lourde") — cf. section 42 pour le détail complet du chantier
+réalisé.
+
+## 42. Session du 19/07/2026 (suite) — cause probable des déconnexions Strava, conversion complète en modules ES, fix scroll onboarding
+
+Suite directe de la session 41, même soirée. Trois chantiers distincts,
+tous poussés et validés par Laurent.
+
+### 42.1 Cause probable des déconnexions Strava fréquentes
+
+Signalé par Laurent comme gênant depuis un moment. Diagnostic mené
+avant de coder quoi que ce soit :
+
+Strava utilise un **rotating refresh token** — chaque appel
+`/oauth/token` (déclenché par `ensureFreshToken()`) renvoie un nouveau
+`refresh_token` et invalide immédiatement l'ancien côté Strava, comme
+pour tout fournisseur OAuth avec rotation de jeton.
+
+Le préchargement Supabase (`LkSync.precharger()`, exécuté à chaque
+connexion/rechargement de page) écrasait systématiquement
+`lk_strava_token`/`lk_strava_refresh` en `localStorage` avec la valeur
+stockée en base, sans jamais vérifier si le token local était plus
+récent. Scénario de course identifié : un appareil/onglet qui vient de
+rafraîchir son token peut voir ce nouveau token écrasé par l'ancien
+(pas encore propagé vers Supabase, la fonction `save()` y écrivant de
+façon fire-and-forget) — rendant le prochain refresh impossible
+(Strava rejette un refresh_token déjà invalidé).
+
+**Fix appliqué** (`sync-storage.classic.js` et `sync-storage.js`, en
+miroir) : le préchargement ne remplace plus le token Strava local s'il
+existe déjà — il ne le restaure depuis Supabase que sur un appareil qui
+n'a jamais eu de token (vraie première connexion). Réversible en une
+ligne si besoin. Risque résiduel accepté : sur un vrai changement
+d'appareil, le relais ne se fait qu'à l'expiration naturelle du token
+ou après déconnexion explicite — non gênant pour un usage mono-appareil.
+
+Efficacité non prouvée formellement (impossible de reproduire la race
+condition à volonté pour valider empiriquement) — à surveiller dans les
+jours suivants.
+
+### 42.2 Conversion complète en modules ES — chantier terminé et clos
+
+Décidé en fin de session 41 comme "trop risqué pour aujourd'hui",
+Laurent est revenu dessus dans la foulée ("on devrait vraiment la
+lancer maintenant avant que l'application soit trop lourde"). Réalisé
+intégralement dans la continuité, avec une méthode affinée en cours de
+route.
+
+**Principe retenu** : `import()` **dynamique** (appelé comme une
+fonction, avec `await`, au point d'usage exact) plutôt qu'un
+`<script type="module">` **statique** en tête de fichier. Un module
+statique s'exécute toujours en différé (après le parsing DOM complet)
+— comportement fixe du navigateur — ce qui aurait cassé l'ordre
+d'exécution strictement séquentiel dont dépend une bonne partie du
+code de `index.html`. `import()` dynamique reste asynchrone mais
+n'exécute rien avant le point où il est appelé, permettant de garder
+l'ordre exact du code existant.
+
+Chaque module chargé republie ses exports en global via
+`Object.assign(window, module)`, pour rester compatible avec tout le
+code existant qui les appelle sans préfixe — sauf `auth.js`/
+`sync-storage.js`, qui exposaient déjà leurs fonctions sous un objet
+nommé (`window.LkAuth`, `window.LkSync`) côté `.classic.js`, reconstruit
+à l'identique plutôt qu'aplati, pour ne pas casser les appels
+`LkAuth.xxx`/`LkSync.xxx` existants.
+
+**Étape 1** (`index.html`) : `weather.js` — module test, aucune
+dépendance externe. Un seul point d'appel (`verifierMeteoSeanceDemain()`),
+déjà dans un contexte `async`. Testé en conditions réelles via la
+console navigateur (`import(...)` résolu avec les 3 exports attendus).
+
+**Étape 2** (`index.html`) : `gist-sync.js`, `plan-generator.js`,
+`plan-forme.js`, `v1-bridge.js` — chargés ensemble. Piège trouvé :
+`plan-forme.classic.js` dépendait directement de fonctions globales
+posées par `plan-generator.classic.js` (`formatPace`, `riegelPredict`,
+`computeFcMaxTanaka`...) — un couple lié, migrable seulement ensemble et
+dans l'ordre (plan-generator avant plan-forme), pas séparément comme
+prévu par le plan initial. Un IIFE synchrone lisant `?gistV2=` dans
+l'URL a dû être rendu `async` (sinon le `typeof setV2GistId ===
+"function"` échouait presque toujours, le module n'étant pas encore
+chargé à ce point). `KM_BY_DISTANCE` et `generatePlan()`, utilisés de
+façon synchrone tôt dans le premier script, ont nécessité que le
+chargement des modules soit placé strictement avant ces usages.
+
+**Étape 3a** (`index.html`) : `auth.js` + `sync-storage.js` — le point
+le plus délicat, `window.__AUTH_PRET__` lui-même dépendant de ces deux
+modules. Le `<script src=".../supabase.min.js">` UMD, devenu inutile
+(`auth.js` fait son propre `import` ES vers `esm.sh`), retiré aussi.
+
+**Fausse alerte** sur cette étape : après déploiement, un compte a vu
+l'écran d'onboarding s'afficher au lieu du dashboard. Rollback fait par
+précaution (retour au commit précédent), diagnostic mené sous pression
+avec plusieurs comptes Supabase affichés simultanément (confusion entre
+un vrai compte et un compte de test aux noms similaires) — a d'abord
+semblé indiquer un profil vide en base pour le compte concerné, mais
+après reconnexion normale le vrai profil s'est révélé intact et
+complet. Cause exacte de l'incident non identifiée avec certitude.
+Patch re-appliqué et validé par un test contrôlé sur un compte de test
+dédié (`olayanne3@gmail.com`, créé spécifiquement pour ce genre de
+test) : dashboard direct confirmé, sans onboarding, avec le patch actif
+— confirmant que le code n'était probablement pas en cause. Aucune
+perte de données réelle sur aucun compte.
+
+**Leçon retenue** : lors d'un diagnostic sous pression avec plusieurs
+comptes affichés simultanément, vérifier deux fois l'identifiant exact
+avant de conclure — un rollback réflexe peut ajouter de la confusion
+plutôt que la lever.
+
+**Étape "3b" abandonnée** (jamais une vraie étape) : les 8 fichiers
+`decision-engine-*.classic.js` n'ont jamais eu de version module ES
+source dans `public/v2/engine/` — vérifié explicitement (le dossier ne
+contient que `auth`, `gist-sync`, `plan-forme`, `plan-generator`,
+`strava`, `sync-storage`, `v1-bridge`, `weather.js`, aucun
+`decision-engine-*.js`). Ce sont des fichiers `.classic.js` **uniques**,
+pas des duplications — rien à migrer. Ils s'exposent via des
+namespaces globaux (`window.DecisionEngineAdapter`, `.RunnerState`,
+`.Engagement`, `.SessionAnalysis`, `.WeekAnalysis`, `.TrendAnalysis`,
+`.Rules`, `.Apply`), restent des scripts classiques inchangés.
+
+**Étape 4** (`index.html`) : conversion du bloc principal lui-même
+(~7334 lignes — `render()`, `PLAN`, `ALL_SESSIONS`, tous les
+gestionnaires de clic) en `<script type="module">`. Analyse préalable
+avant tout changement : seulement 9 assignations `window.x = ...`
+explicites dans tout le bloc (le reste comptait sur la globalité
+implicite d'un script classique, devenue privée au module sans que
+rien à l'extérieur n'en dépende d'après vérification), zéro
+`onclick="..."` inline HTML (uniquement des gestionnaires JS via
+`addEventListener`/`onClick:`, compatibles modules), zéro
+`document.write`. Testé en conditions réelles : aucune erreur console,
+dashboard normal, statut de séance fonctionnel, navigation entre
+onglets opérationnelle.
+
+**Étape 4b** (`v2/index.html`, le wizard) : même patch `auth.js`/
+`sync-storage.js` appliqué en miroir, `v2/index.html` étant le seul
+autre fichier à encore les charger. Ce fichier avait déjà, avant cette
+session, un `<script type="module">` statique préexistant important
+les autres modules du moteur (`plan-generator`, `plan-forme`, `strava`,
+`gist-sync`, `pdf-export`, `weather`) sous `window.Engine`, synchronisé
+avec le reste du fichier via un événement `engineReady` — pattern
+différent de celui utilisé pour `index.html`, mais déjà fonctionnel ;
+seuls `auth`/`sync-storage` restaient donc à migrer là, avec la même
+méthode `import()` dynamique.
+
+**Étape 5 (nettoyage)** : les 7 fichiers `.classic.js` désormais
+orphelins (`weather`, `gist-sync`, `plan-generator`, `plan-forme`,
+`v1-bridge`, `auth`, `sync-storage`) supprimés du repo, via un script
+PowerShell dédié (`delete_file.ps1`, DELETE via l'API GitHub avec SHA
+frais, même principe que le script de push habituel). Vérifié après
+coup : `engine-classic-scripts/` ne contient plus que
+`changelog.classic.js` et les 8 `decision-engine-*.classic.js`, tous
+deux légitimement présents (fichiers uniques, sans équivalent module
+ES).
+
+Documentation mise à jour en miroir : `docs/v2-methodologie/
+convergence-v1-v2.md`, section 9 (décision initiale "scripts
+classiques, pas modules ES" marquée révisée) et nouvelle section 12
+(détail complet du nouvel état, tableau récapitulatif par fichier).
+
+### 42.3 Bug de scroll sur l'écran d'onboarding — trouvé en testant le fix Strava
+
+Repéré par Laurent en testant la suppression/recréation d'un compte de
+test dans le cadre du diagnostic de la fausse alerte (42.2) :
+l'écran d'onboarding s'affichait "coupé", démarrant visuellement au
+champ "FC max" plutôt qu'en haut ("Année de naissance", premier champ
+du formulaire) — reproductible sur PC et mobile.
+
+Cause : `#ecran-onboarding` (`auth.js`) utilisait `align-items: center`
+sur un conteneur `flex` dont le contenu (carte de profil, plusieurs
+champs) dépasse fréquemment la hauteur de l'écran — selon le
+navigateur, ce centrage peut faire démarrer l'affichage/scroll au
+milieu du contenu plutôt qu'en haut. Le champ manquant n'était donc pas
+un bug de rendu (vérifié présent dans le HTML généré), simplement hors
+du champ de vision initial.
+
+**Fix** : `align-items: flex-start` à la place de `center`, garantissant
+un affichage démarrant toujours depuis le haut du contenu, quelle que
+soit sa hauteur. Validé par Laurent sur PC et mobile après déploiement.
