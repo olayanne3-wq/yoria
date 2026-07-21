@@ -574,6 +574,45 @@ export async function mettreAJourPlanSupabase(planId, planBrutComplet) {
   }
 }
 
+// ------------------------------------------------------------
+// Supprime définitivement un plan côté Supabase (plans_actif ET
+// plans_original — décision du 21/07/2026 : "supprimer" doit vraiment
+// tout effacer, pas laisser une copie figée orpheline en base). Ajoutée
+// suite à un bug découvert le même jour : supprimerPlan() (gist-sync.js)
+// existe depuis longtemps côté wizard (supprimerPlanUI), mais n'a jamais
+// été migrée vers Supabase lors du passage v2.8 ("Supabase devient le
+// mécanisme de sauvegarde principal") — elle ne fait rien de concret pour
+// quiconque n'a pas de token GitHub configuré (le cas de Laurent depuis
+// qu'il a retiré le sien), puisqu'elle appelle chargerPlans()/
+// ecrireListePlans() qui reposent entièrement sur le Gist. Symptôme
+// observé : la suppression semblait "ne rien faire", le plan restait
+// visible partout.
+//
+// plan_donnees (statuts/notes/etc, cf. schéma) n'est volontairement PAS
+// nettoyée ici — pas de contrainte de clé étrangère bloquante connue à ce
+// jour (à vérifier si un jour Postgres la rejette), et une ligne
+// orpheline dans plan_donnees pour un plan_id qui n'existe plus n'a aucun
+// effet visible (jamais relue sans un plan_id valide correspondant côté
+// plans_actif). Nettoyage possible plus tard si ça devient un problème
+// réel (volume de données, ou contrainte FK ajoutée).
+// ------------------------------------------------------------
+export async function supprimerPlanSupabase(planId) {
+  await supabaseReady;
+  if (!estUuidValide(planId)) return;
+  try {
+    const { error: erreurActif } = await supabase.from('plans_actif').delete().eq('id', planId);
+    if (erreurActif) {
+      console.warn('Suppression plans_actif échouée :', erreurActif.message);
+    }
+    const { error: erreurOriginal } = await supabase.from('plans_original').delete().eq('id', planId);
+    if (erreurOriginal) {
+      console.warn('Suppression plans_original échouée :', erreurOriginal.message);
+    }
+  } catch (err) {
+    console.warn('supprimerPlanSupabase a échoué :', err.message);
+  }
+}
+
 // Conservée pour compatibilité : clôture seule (pas de renommage), utilisée
 // par la bannière grand-débutant où il n'y a pas de nom particulier à
 // synchroniser (le nom auto-généré à la création reste correct — il ne
