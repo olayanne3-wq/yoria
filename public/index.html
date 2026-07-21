@@ -6520,6 +6520,7 @@ function renderHelp() {
 }
 
 function renderSettings() {
+  console.log('[DEBUG abonnement] renderSettings() appelee, cache actuel =', window.__abonnementStatutCache__);
   // Section compte utilisateur (Supabase) — ajoutée le 13 juillet 2026,
   // chantier v2.5 auth (inventaire §8bis). Oubliée lors de l'intégration
   // initiale de l'écran de connexion : LkAuth.deconnecter() existait déjà
