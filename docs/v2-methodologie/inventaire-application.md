@@ -34,7 +34,8 @@ yoria/
 │   ├── stripe-checkout.js        # Création session Stripe Checkout
 │   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
 │   ├── beta.js                   # Candidature bêta (public)
-│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits)
+│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits,
+│                                  # signalements)
 ├── docs/
 │   ├── legal/                    # Confidentialité, CGU/CGV, RGPD, Play Store data safety
 │   └── v2-methodologie/
@@ -42,10 +43,12 @@ yoria/
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~8000 lignes)
+│   ├── index.html                 # App principale (dashboard, ~8100 lignes)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
-│   ├── beta-admin/                # Interface admin bêta (script.js, styles.css)
+│   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
+│   │                              # Onglets : Candidatures, Sélectionnés, Invités,
+│   │                              # Signalements, Statistiques
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -95,6 +98,8 @@ Fonctions de rendu (`render*`) :
 - `renderHelp` — aide
 - `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
 - `render` — orchestrateur principal
+- `ouvrirSignalementProbleme` — modale accessible via le bouton 🐛 des
+  headers, cf. §11
 
 ## 5. Persistance
 
@@ -117,10 +122,10 @@ globale non préfixée est un risque de contamination inter-plans.
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`,
 lue/écrite en brut sans JSON.parse/stringify, contrairement aux autres clés),
 `abonnements` (statut de facturation Stripe, cf. §11), `beta_testers`
-(candidatures bêta). Sync Realtime activée sur `plan_donnees` (anti-écho
-3s). File d'attente de sync en cas d'échec réseau
-(`lk_file_attente_sync`, rejouée au retour réseau et toutes les 5 min,
-abandon après 10 essais).
+(candidatures bêta), `signalements` (retours utilisateurs, cf. §11). Sync
+Realtime activée sur `plan_donnees` (anti-écho 3s). File d'attente de
+sync en cas d'échec réseau (`lk_file_attente_sync`, rejouée au retour
+réseau et toutes les 5 min, abandon après 10 essais).
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -296,6 +301,26 @@ les endpoints serverless (clé `service_role`, contourne RLS).
   testeur crée son compte Yoria avec le **même email** que sa
   candidature — condition impérative à communiquer au testeur.
 
+**Signalements utilisateurs** — bouton 🐛 dans les headers de `index.html`
+(`ouvrirSignalementProbleme()`) : sélecteur de type (Bug/Donnée
+incorrecte/Suggestion/Autre) + description libre. Double écriture à
+chaque envoi :
+- **Sentry** (`Sentry.captureMessage`, best-effort, contexte technique
+  brut — vue, planId, url — dans le message, jamais en second argument
+  objet, cf. §15)
+- **Table Supabase `signalements`** (`type`, `message`, `contexte` en
+  `jsonb`, `user_id`/`email`, `statut`, `sentry_event_id` pour faire le
+  lien entre les deux) — source de vérité pour le triage humain, RLS
+  limitée à `insert` côté client (aucune lecture/écriture publique en
+  dehors de la création).
+
+Administration dans `beta-admin` (onglet "🐛 Signalements", `api/beta-
+admin.js` action `update_signalement_statut`) : liste filtrable par type
+et statut, changement de statut (`nouveau`/`en_cours`/`resolu`) via
+`<select>` inline par ligne. Sentry reste l'outil de diagnostic technique
+(stack traces, erreurs JS) ; `signalements` est l'outil de suivi produit
+(triage humain, statut).
+
 ## 12. Authentification Supabase
 
 Auth email/mot de passe (pas de Google/Apple sign-in). Variables
@@ -365,8 +390,6 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
 
 | Chantier | Statut |
 |---|---|
-| v2.5 commercialisation (Stripe) | ✅ Fait — Checkout, webhook, abonnements gratuits beta, cf. §11 |
-| Module admin signalements (beta-admin) | 🔜 Non commencé — table Supabase, typologie (Bug/Donnée incorrecte/Suggestion/Autre), lien vers dashboard Sentry pour les erreurs auto |
 | Déclenchement `genererBlocSuivant()` (Mode Forme) | 🔜 À décider |
 | Réduction d'intervalles pour séances qualité | 🔜 Session de conception dédiée nécessaire |
 | Saisie plaisir par séance (PACES-S) | 🔜 Reporté |
