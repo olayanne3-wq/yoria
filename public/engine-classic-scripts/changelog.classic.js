@@ -21,7 +21,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.17", title:"Abonnement Yoria Premium", current:true, notes:[
+      { ver:"v2.18", title:"Mode Forme sans référence de temps, fiabilité du chargement de plan", current:true, notes:[
+        "🏃 En Mode Forme, plus besoin d'avoir un temps de course récent — \"Je n'ai pas de référence\" propose un test de 6 minutes en première semaine, tes allures sont calculées automatiquement une fois le test fait",
+        "🔁 Nouveau bouton pour enchaîner sur un nouveau bloc de 4 semaines quand le précédent est terminé, en Mode Forme",
+        "📏 Ajout d'un sélecteur de distance (5K/10K/Semi/Marathon) à côté du temps de référence en Mode Forme, pour que tes allures soient calculées sur la bonne base",
+        "🐛 Correctif important de fiabilité : un plan tout juste créé pouvait parfois ne pas s'afficher immédiatement au retour sur l'app, obligeant à recharger la page",
+        "🐛 La suppression d'un plan depuis le wizard échouait silencieusement dans certains cas — corrigé",
+      ]},
+      { ver:"v2.17", title:"Abonnement Yoria Premium", current:false, notes:[
         "💳 Nouvel abonnement Yoria Premium (7€/mois ou tarif annuel), depuis Réglages",
         "🔒 Paiement sécurisé via Stripe, dans ton navigateur habituel",
         "✅ Statut de l'abonnement visible directement dans Réglages",
