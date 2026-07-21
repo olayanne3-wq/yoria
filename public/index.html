@@ -170,21 +170,23 @@ input[type=text], input[type=number], input[type=password] {
     // Sentry (20/07/2026) — le Loader Script (cf. <head>) initialise déjà
     // Sentry automatiquement avec le vrai DSN dès son chargement (config
     // window.sentryOnLoad définie en tête de <head>, cf. juste après
-    // <!DOCTYPE html>). setUser() n'est PAS bufferisé par le Loader Script
-    // (contrairement à captureException/captureMessage/captureEvent) —
-    // appelé trop tôt il échoue avec "Sentry.setUser is not a function"
-    // (constaté en test le 20/07/2026). Sentry.onLoad() est la méthode
-    // documentée pour différer un appel jusqu'à ce que le SDK complet soit
-    // effectivement chargé, à utiliser à tout moment (pas seulement au
-    // chargement initial de la page) — cf. doc Sentry Loader Script.
+    // <!DOCTYPE html>). setUser() n'existe PAS dans le mini-buffer exposé
+    // par le Loader Script tant que le SDK complet n'est pas chargé —
+    // constaté en test le 20/07/2026 (Object.keys(Sentry) ne contient que
+    // onLoad/forceLoad/init/addBreadcrumb/captureMessage/captureException/
+    // captureEvent/configureScope/withScope/showReportDialog). Même
+    // Sentry.onLoad() n'a pas résolu le souci en pratique. configureScope
+    // EST dans ce buffer et fonctionne dès le départ — utilisé à la place,
+    // c'est la méthode recommandée par Sentry pour les anciennes versions
+    // de toute façon (setUser est un raccourci plus récent).
     try {
-      if (typeof Sentry !== 'undefined' && typeof Sentry.onLoad === 'function') {
-        Sentry.onLoad(function () {
-          Sentry.setUser({ id: user.id });
+      if (typeof Sentry !== 'undefined' && typeof Sentry.configureScope === 'function') {
+        Sentry.configureScope(function (scope) {
+          scope.setUser({ id: user.id });
         });
       }
     } catch (e) {
-      console.warn('Sentry setUser non déclenché :', e.message);
+      console.warn('Sentry configureScope non déclenché :', e.message);
     }
     // Migration rétroactive (one-shot par appareil) AVANT le préchargement :
     // pousse vers Supabase les données déjà présentes en localStorage
