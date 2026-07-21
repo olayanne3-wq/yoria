@@ -6520,7 +6520,6 @@ function renderHelp() {
 }
 
 function renderSettings() {
-  console.log('[DEBUG abonnement] renderSettings() appelee, cache actuel =', window.__abonnementStatutCache__);
   // Section compte utilisateur (Supabase) — ajoutée le 13 juillet 2026,
   // chantier v2.5 auth (inventaire §8bis). Oubliée lors de l'intégration
   // initiale de l'écran de connexion : LkAuth.deconnecter() existait déjà
@@ -7205,9 +7204,6 @@ function renderSettings() {
   // en lecture directe Supabase (RLS "Users can view their own subscription",
   // policy select où auth.uid()=user_id) — pas de route API dédiée, cohérent
   // avec le reste de l'app qui lit déjà Supabase directement côté client.
- if (typeof window.__abonnementStatutCache__ === "undefined") {
-    window.__abonnementStatutCache__ = null;
-  }
   const urlParamsAbonnement = new URLSearchParams(window.location.search);
   const retourStripeSucces = urlParamsAbonnement.get("stripe") === "succes";
   if (retourStripeSucces && !window.__abonnementCacheInvalideApresCheckout__) {
@@ -7227,10 +7223,8 @@ function renderSettings() {
           .select('subscription_status, price_id')
           .eq('user_id', window.__UTILISATEUR__.id)
           .maybeSingle();
-        console.log('[DEBUG abonnement] error:', error, 'data:', data, 'view actuelle:', view);
         window.__abonnementStatutCache__ = error ? 'none' : (data ? data.subscription_status : 'none');
-        console.log('[DEBUG abonnement] cache mis a jour:', window.__abonnementStatutCache__);
-        if (view === "settings") { console.log('[DEBUG abonnement] appel de render()'); render(); } else { console.log('[DEBUG abonnement] render() NON appele, view =', view); }
+        if (view === "settings") render();
       } catch (e) {
         console.warn("Lecture abonnement échouée :", e.message);
         window.__abonnementStatutCache__ = 'none';
