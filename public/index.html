@@ -7226,8 +7226,10 @@ function renderSettings() {
           .select('subscription_status, price_id')
           .eq('user_id', window.__UTILISATEUR__.id)
           .maybeSingle();
+        console.log('[DEBUG abonnement] error:', error, 'data:', data, 'view actuelle:', view);
         window.__abonnementStatutCache__ = error ? 'none' : (data ? data.subscription_status : 'none');
-        if (view === "settings") render();
+        console.log('[DEBUG abonnement] cache mis a jour:', window.__abonnementStatutCache__);
+        if (view === "settings") { console.log('[DEBUG abonnement] appel de render()'); render(); } else { console.log('[DEBUG abonnement] render() NON appele, view =', view); }
       } catch (e) {
         console.warn("Lecture abonnement échouée :", e.message);
         window.__abonnementStatutCache__ = 'none';
