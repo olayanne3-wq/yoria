@@ -2979,7 +2979,108 @@ function renderDashboard() {
     return wrapperVide;
   }
 
-  const cw=currentWeek(), cd=countdown(), gp=globalPct();
+  // ── Fin de bloc Mode Forme — propose de générer le bloc suivant
+  // (21/07/2026) ──────────────────────────────────────────────────────────
+  // Même pattern que la progression marche-course ci-dessus : détection
+  // automatique, génération uniquement sur clic explicite (semi-automatique,
+  // décision actée le 21/07/2026 — le Mode Forme n'a pas de fin naturelle
+  // comme un plan course, donc l'utilisateur doit rester décisionnaire à
+  // chaque bloc plutôt que de voir son contenu changer silencieusement).
+  // Détection par date (dernière séance du plan < aujourd'hui), pas par
+  // statut des séances — cohérent avec le principe transverse de l'app
+  // (raisonner en dates, jamais en complétion des statuts, cf. inventaire
+  // §15). Bloqué sur un plan Forme clôturé (dateCloture) : ce cas ne doit
+  // jamais proposer de bloc suivant, cf. garde-fou déjà en place côté
+  // genererBlocSuivant()/sauvegarderPlan() (gist-sync.js).
+  const blocSuivantEl = (() => {
+    if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.mode !== 'forme') return null;
+    if (window.__PLAN_BRUT__.dateCloture) return null;
+    if (window.__PLAN_BRUT__.sousMode === 'marche-course') return null; // progression gérée séparément ci-dessus
+
+    const derniereSeance = ALL_SESSIONS[ALL_SESSIONS.length - 1];
+    if (!derniereSeance || derniereSeance.date >= today()) return null; // bloc pas encore terminé
+
+    const genererSuivant = async () => {
+      const boutonClique = document.getElementById("bloc-suivant-btn");
+      if (boutonClique) { boutonClique.disabled = true; boutonClique.textContent = "Génération..."; }
+      try {
+        // profilOrigine/paramsOrigine ne sont PAS stockés sur le plan résultant
+        // de generatePlanForme() (cf. plan-forme.js) — même limite déjà
+        // rencontrée et corrigée pour changerPalierGrandDebutant() un peu plus
+        // bas dans ce fichier. Reconstruction à l'identique : jours
+        // d'entraînement déduits des séances déjà placées, reste du profil lu
+        // depuis lk_profil_coureur, params reconstruits depuis le plan courant.
+        const planCourant = window.__PLAN_BRUT__;
+        const premiereSemaine = planCourant.semaines?.[0];
+        const joursDisponibles = premiereSemaine
+          ? Object.keys(premiereSemaine.assignment).map(Number)
+          : [1, 3, 5];
+
+        let profilStocke;
+        try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
+
+        const profil = {
+          niveau: profilStocke?.niveau || 'intermediaire',
+          anneeNaissance: profilStocke?.anneeNaissance || undefined,
+          fcMaxConnue: profilStocke?.fcMax || undefined,
+          joursDisponiblesHabituels: joursDisponibles,
+          renforcementMusculaire: false
+        };
+
+        // tempsReference/refDistance/volumeActuel/accent ne sont pas non plus
+        // reconstructibles depuis planCourant seul (aucune trace de la
+        // référence de performance d'origine sur le plan résultant) — repli
+        // sur les records du profil stocké, cohérent avec preremplirDepuisProfilCoureur()
+        // utilisé ailleurs dans l'app pour le même besoin.
+        const recordDispo = profilStocke?.records && Object.entries(profilStocke.records).find(([, r]) => r?.temps);
+        if (!recordDispo) {
+          alert("Impossible de générer le bloc suivant : aucun record de référence trouvé dans ton profil. Renseigne un temps de référence dans Réglages.");
+          return;
+        }
+        const [refDistanceLabel, refRecord] = recordDispo;
+        const derniereSemaineBloc = planCourant.semaines[planCourant.semaines.length - 1];
+
+        const params = {
+          dateDebut: derniereSeance.date,
+          dateCloture: planCourant.dateCloture,
+          nbSemainesBloc: planCourant.tailleBlocSemaines,
+          tempsReference: refRecord.temps,
+          refDistance: refDistanceLabel,
+          accent: planCourant.accent,
+          volumeActuel: derniereSemaineBloc?.estDechargeSemaine
+            ? (planCourant.semaines[planCourant.semaines.length - 2]?.volumeCibleKm ?? 20)
+            : (derniereSemaineBloc?.volumeCibleKm ?? 20)
+        };
+
+        const nouveauPlan = genererBlocSuivant(planCourant, profil, params);
+        nouveauPlan.id = planCourant.id;
+        nouveauPlan.nom = planCourant.nom;
+        nouveauPlan.statuses = planCourant.statuses;
+
+        await sauvegarderPlan(nouveauPlan);
+        window.location.reload();
+      } catch (e) {
+        alert("La génération du bloc suivant a échoué : " + e.message);
+        console.error(e);
+      } finally {
+        if (boutonClique) { boutonClique.disabled = false; boutonClique.textContent = "Générer le bloc suivant"; }
+      }
+    };
+
+    return el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
+      el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px"}},
+        el("span",{style:{fontSize:"20px"}},"🔁"),
+        el("div",{style:{color:"var(--text)",fontSize:"14px",fontWeight:"600"}},"Ton bloc de 4 semaines est terminé")
+      ),
+      el("button",{id:"bloc-suivant-btn",style:{
+          width:"100%",background:"var(--accent)",border:"none",borderRadius:"8px",padding:"11px",
+          color:"var(--bg)",fontSize:"14px",fontWeight:"700",cursor:"pointer"
+        }, onClick: genererSuivant
+      },"Générer le bloc suivant")
+    );
+  })();
+
+
   const done=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const missed=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
@@ -3993,7 +4094,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,adaptationEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,adaptationEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
