@@ -11,6 +11,12 @@ const STATUSES = new Set([
   "rejected",
 ]);
 
+const SIGNALEMENT_STATUSES = new Set([
+  "nouveau",
+  "en_cours",
+  "resolu",
+]);
+
 const json = (response, status, payload) =>
   response.status(status).json(payload);
 
@@ -541,22 +547,27 @@ export default async function handler(request, response) {
 
   if (request.method === "GET") {
     try {
-      const candidates =
-        await supabaseRequest(
+      const [candidates, signalements] = await Promise.all([
+        supabaseRequest(
           config,
           "beta_testers?select=*&order=created_at.desc",
-          {
-            method: "GET",
-          },
-        );
+          { method: "GET" },
+        ),
+        supabaseRequest(
+          config,
+          "signalements?select=*&order=created_at.desc",
+          { method: "GET" },
+        ),
+      ]);
 
       return json(response, 200, {
         candidates,
+        signalements,
       });
     } catch {
       return json(response, 500, {
         message:
-          "Impossible de charger les candidatures.",
+          "Impossible de charger les données.",
       });
     }
   }
@@ -564,8 +575,65 @@ export default async function handler(request, response) {
   if (request.method === "PATCH") {
     const body = request.body || {};
 
-    const id = String(body.id || "");
     const action = String(body.action || "");
+
+    /*
+     * Signalements — table et validations distinctes de beta_testers,
+     * traitées avant le bloc candidatures pour ne pas passer par la
+     * validation regex UUID stricte pensée pour beta_testers uniquement
+     * (les deux tables utilisent bien des UUID, mais les statuts et le
+     * contexte métier diffèrent complètement).
+     */
+    if (action === "update_signalement_statut") {
+      const signalementId = String(body.id || "");
+      const statut = String(body.statut || "");
+
+      if (!/^[0-9a-f-]{36}$/i.test(signalementId)) {
+        return json(response, 400, {
+          message: "Identifiant de signalement invalide.",
+        });
+      }
+
+      if (!SIGNALEMENT_STATUSES.has(statut)) {
+        return json(response, 400, {
+          message: "Statut de signalement invalide.",
+        });
+      }
+
+      try {
+        const updated = await supabaseRequest(
+          config,
+          `signalements?id=eq.${encodeURIComponent(signalementId)}&select=*`,
+          {
+            method: "PATCH",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({
+              statut,
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        );
+
+        if (!Array.isArray(updated) || updated.length !== 1) {
+          return json(response, 404, {
+            message: "Signalement introuvable.",
+          });
+        }
+
+        return json(response, 200, {
+          signalement: updated[0],
+        });
+      } catch {
+        return json(response, 500, {
+          message: "Le statut n'a pas pu être modifié.",
+        });
+      }
+    }
+
+    /*
+     * Le reste (candidatures beta_testers) — id/action/status classiques.
+     */
+    const id = String(body.id || "");
     const status = String(body.status || "");
 
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
