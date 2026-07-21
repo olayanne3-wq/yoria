@@ -165,7 +165,14 @@ export function traduirePlanVersFormatV1(plan) {
       }
       if (seance.type === 'qualite') {
         const { warmup, session, cooldown, notes } = parserContenuQualite(seance.contenu);
-        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime, structureIntervalles };
+        // estTest/sousType propagés le 21/07/2026 — nécessaires à
+        // index.html (renderTestSemiCooperRow) pour détecter la séance de
+        // test semi-Cooper et afficher son champ de saisie dédié. Oubliés
+        // lors de la création initiale du flux test (bug trouvé le même
+        // jour : le champ n'apparaissait jamais malgré une séance bien
+        // marquée estTest côté plan brut — cette fonction de traduction
+        // v1-bridge ne les connaissait simplement pas encore).
+        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime, structureIntervalles, estTest: seance.estTest, sousType: seance.sousType };
       }
       if (seance.type === 'marche-course') {
         // Contenu déjà rédigé de façon lisible par genererContenuMarcheCourse
