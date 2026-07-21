@@ -965,6 +965,15 @@
             <input type="text" maxlength="2" value="21" id="tSecForme" style="font-size:28px;">
             <span class="unit">min:sec</span>
           </div>
+          <!-- Flux "pas de référence" (21/07/2026) — pour un coureur qui n'a
+               aucun temps de course récent à donner, même approximatif. Bascule
+               vers un test semi-Cooper (6min) en semaine 1 du plan plutôt que
+               de forcer une saisie inventée : cf. plan-forme.js
+               (generatePlanFormeAvecTest, enAttenteTest). testeurEstime()
+               ci-dessous appelle cette fonction à la place du flux normal. -->
+          <div id="formePasDeReferenceLien" style="text-align:center; margin-top:14px;">
+            <a href="#" onclick="return activerFluxTestForme(event)" style="color:var(--muted); font-size:13px; text-decoration:underline;">Je n'ai pas de référence</a>
+          </div>
         </div>
       </div>
 
@@ -1500,6 +1509,24 @@
     document.querySelectorAll('.opt-compact[data-dist-forme]').forEach(o=>o.classList.remove('selected'));
     el.classList.add('selected');
     currentDistForme = el.dataset.distForme;
+  }
+
+  // Flux "pas de référence" (21/07/2026) — bascule la génération vers
+  // generatePlanFormeAvecTest() (semaine 1 uniquement, avec test
+  // semi-Cooper) au lieu du flux normal. Désactive visuellement le champ
+  // temps/distance (plus besoin, ambigu de les laisser actifs) sans les
+  // masquer complètement — évite un saut de mise en page brusque.
+  let fluxTestForme = false;
+  function activerFluxTestForme(event) {
+    event.preventDefault();
+    fluxTestForme = true;
+    document.getElementById('formeDistSelecteur').style.opacity = '0.35';
+    document.getElementById('formeDistSelecteur').style.pointerEvents = 'none';
+    document.querySelector('#formeRefTempsBloc .time-input').style.opacity = '0.35';
+    document.querySelector('#formeRefTempsBloc .time-input').style.pointerEvents = 'none';
+    document.getElementById('formePasDeReferenceLien').innerHTML =
+      '<div style="color:var(--signal); font-size:13px;">✓ Un test de 6 minutes te sera proposé en première semaine, pour calibrer tes allures à partir de tes vraies sensations.</div>';
+    return false;
   }
 
   function renderTrack(){
@@ -3730,6 +3757,42 @@
     if (params.dateCloture) {
       const dateAffichee = new Date(params.dateCloture+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
       if (!confirm(`Ce plan sera clôturé au ${dateAffichee}.\n\nCette date ne pourra plus être modifiée ni retirée une fois le plan sauvegardé — le plan deviendra figé (lecture seule) à partir de cette date. Continuer ?`)) return;
+    }
+
+    // Flux "pas de référence" (21/07/2026) — route vers
+    // generatePlanFormeAvecTest() (plan-forme.js), qui ignore
+    // params.tempsReference/refDistance (non pertinents ici) et ne génère
+    // que la semaine 1 avec le test semi-Cooper. Le reste du bloc sera
+    // généré depuis le dashboard une fois le résultat du test connu (cf.
+    // completerBlocApresTest(), index.html). Suit exactement le même
+    // enchaînement d'affichage que le flux normal juste en dessous
+    // (renderResults + bascule vers l'écran de résultats) — pas de fonction
+    // séparée, pour ne pas dupliquer cette plomberie d'affichage.
+    if (fluxTestForme) {
+      let planTest;
+      try {
+        planTest = Engine.generatePlanFormeAvecTest(profil, params);
+      } catch (err) {
+        alert("Erreur de génération : " + err.message);
+        console.error(err);
+        return;
+      }
+      planTest.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-forme-' + Date.now());
+      planTest.nom = nommerPlanForme(planTest);
+      planTest.statuses = {};
+      dernierPlanFormeGenere = planTest;
+      dernierPlanGenere = planTest;
+      renderResults(planTest);
+      showingResults = true;
+      consultationSeule = false;
+      document.getElementById('wizard-forme-contenu').style.display = 'none';
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.querySelector('.screen[data-step="10"]').classList.add('active');
+      document.getElementById('wizard-course-contenu').style.display = 'block';
+      document.getElementById('nextBtn').innerHTML = '✓';
+      document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
+      document.getElementById('nextBtn').title = 'Terminer';
+      return;
     }
 
     let plan;
