@@ -7198,7 +7198,81 @@ function renderSettings() {
     );
   })() : null;
 
+   // ── Abonnement (v2.5, 21/07/2026) ───────────────────────────────────────
+  // Section en fin de Paramètres — gestion du compte/facturation, distincte
+  // des réglages de coaching (profil/niveau/sexe) qui précèdent. Statut lu
+  // en lecture directe Supabase (RLS "Users can view their own subscription",
+  // policy select où auth.uid()=user_id) — pas de route API dédiée, cohérent
+  // avec le reste de l'app qui lit déjà Supabase directement côté client.
+  let abonnementStatutActuel = null; // rempli en async ci-dessous, re-render() une fois connu
+  (async () => {
+    if (!window.__UTILISATEUR__?.id || !LkAuth?.supabase) return;
+    try {
+      const { data, error } = await LkAuth.supabase
+        .from('abonnements')
+        .select('subscription_status, price_id')
+        .eq('user_id', window.__UTILISATEUR__.id)
+        .maybeSingle();
+      if (!error) {
+        abonnementStatutActuel = data ? data.subscription_status : 'none';
+        if (view === "settings") render();
+      }
+    } catch (e) {
+      console.warn("Lecture abonnement échouée :", e.message);
+    }
+  })();
+
+  async function demarrerCheckout(plan) {
+    if (!LkAuth?.supabase) return;
+    const boutonClique = document.getElementById("abonnement-btn-"+plan);
+    if (boutonClique) { boutonClique.disabled = true; boutonClique.textContent = "Chargement..."; }
+    try {
+      const { data: { session } } = await LkAuth.supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { alert("Merci de te reconnecter."); return; }
+      const resp = await fetch("/api/stripe-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({ plan })
+      });
+      const data = await resp.json();
+      if (data.success && data.url) {
+        window.open(data.url, "_blank");
+      } else {
+        alert(data.message || "Impossible de démarrer le paiement.");
+      }
+    } catch (e) {
+      console.warn("Erreur démarrage Checkout :", e.message);
+      alert("Une erreur est survenue.");
+    } finally {
+      if (boutonClique) { boutonClique.disabled = false; boutonClique.textContent = "S'abonner — 7€/mois"; }
+    }
+  }
+
+  const abonnementLabels = { active: "✅ Actif", past_due: "⚠️ Paiement en retard", canceled: "Abonnement annulé", none: null };
+  const abonnementStatutLabel = abonnementStatutActuel ? abonnementLabels[abonnementStatutActuel] : null;
+  const abonnementEstActif = abonnementStatutActuel === 'active';
+
+  const abonnementSection = el("div",{style:{marginBottom:"24px"}},
+    el("div",{class:"label"},"💳 Abonnement"),
+    card(
+      abonnementStatutLabel ? el("div",{style:{marginBottom:"10px",fontSize:"14px",fontWeight:"700",color:abonnementEstActif?"var(--accent2)":"var(--warn)"}}, abonnementStatutLabel)
+        : el("div",{class:"muted",style:{marginBottom:"10px",fontSize:"14px"}},"Aucun abonnement actif"),
+      abonnementEstActif ? null : el("button",{id:"abonnement-btn-monthly",style:{
+          width:"100%",background:"var(--accent)",border:"none",borderRadius:"8px",padding:"12px",
+          color:"#F8FAFC",fontSize:"14px",fontWeight:"700",cursor:"pointer",marginBottom:"8px"
+        }, onClick: ()=>demarrerCheckout("monthly")
+      },"S'abonner — 7€/mois"),
+      abonnementEstActif ? null : el("div",{style:{textAlign:"center"}},
+        el("a",{href:"#",style:{color:"var(--text-muted)",fontSize:"13px",textDecoration:"underline",cursor:"pointer"},
+          onClick:(e)=>{ e.preventDefault(); demarrerCheckout("annual"); }
+        },"ou économiser en payant annuellement")
+      )
+    )
+  );
+
   const hasRes=!!load(clePourPlan("lk_race_result"),null);
+
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
     el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"8px"}},
@@ -7216,6 +7290,7 @@ function renderSettings() {
     profileSection, niveauSection, sexeSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection, importFitSection,
     el("div",{style:{marginBottom:"24px"}}, stravaSection),
     githubToken ? qrSection : null,
+    abonnementSection,
     versionSection
   );
 }
