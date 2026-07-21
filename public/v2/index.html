@@ -250,6 +250,26 @@
     border-color:var(--signal);
     background:var(--signal-dim);
   }
+  /* Toggle compact — sélecteur de distance Mode Forme (21/07/2026), plus
+     léger que .opt (pas d'icône ni de description, juste un label court) */
+  .opt-compact{
+    flex:1;
+    text-align:center;
+    padding:10px 6px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:rgba(var(--text-rgb),0.03);
+    cursor:pointer;
+    font-size:13px;
+    font-weight:600;
+    transition:border-color .15s, background .15s;
+  }
+  .opt-compact:active{ transform:scale(0.97); }
+  .opt-compact.selected{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+    color:var(--signal);
+  }
   .opt .ico{
     width:38px;height:38px;
     border-radius:10px;
@@ -922,7 +942,23 @@
 
         <div id="formeRefTempsBloc">
           <div class="block-label" style="margin-top:22px;">Une référence de temps, pour calibrer tes allures</div>
-          <p class="sub" style="margin-top:0; margin-bottom:8px;">N'importe quelle distance récente (5K, 10K, semi...), même approximative.</p>
+          <p class="sub" style="margin-top:0; margin-bottom:8px;">Sur quelle distance, et en combien de temps ? Même approximatif, ça suffit.</p>
+          <!-- Sélecteur de distance ajouté le 21/07/2026 — le champ temps
+               seul était ambigu (5K, 10K, semi... même temps, allures très
+               différentes) et le code retombait silencieusement sur 10K par
+               défaut (params.refDistance jamais fourni pour ce flux), faussant
+               potentiellement les allures calculées si le temps donné venait
+               d'une autre distance. Compact, autonome (currentDistForme),
+               volontairement séparé du sélecteur pleine page du mode course
+               (selectDist/distanceMeta) plutôt que de le réutiliser tel quel —
+               logique bien plus simple ici (pas de format d'heure conditionnel,
+               pas de recalcul de record associé). -->
+          <div id="formeDistSelecteur" style="display:flex; gap:6px; margin-bottom:14px;">
+            <div class="opt-compact" data-dist-forme="5K" onclick="selectDistForme(this)">5K</div>
+            <div class="opt-compact selected" data-dist-forme="10K" onclick="selectDistForme(this)">10K</div>
+            <div class="opt-compact" data-dist-forme="Semi" onclick="selectDistForme(this)">Semi</div>
+            <div class="opt-compact" data-dist-forme="Marathon" onclick="selectDistForme(this)">Marathon</div>
+          </div>
           <div class="time-input" style="padding:16px 10px;">
             <input type="text" maxlength="2" value="50" id="tMinForme" style="font-size:28px;">
             <span class="sep">:</span>
@@ -1454,6 +1490,17 @@
     "42.2":{ label:"Marathon", name:"Ton dernier marathon", refDefault:{h:4,m:5,s:0}, objDefault:{h:3,m:50,s:0}, unit:"h:min:sec" }
   };
   let currentDist = "10";
+  // Distance de référence pour le temps saisi en Mode Forme (21/07/2026) —
+  // indépendante de currentDist (mode course, non pertinent en Forme).
+  // Valeur par défaut alignée sur le bouton pré-sélectionné dans le HTML
+  // (formeDistSelecteur, data-dist-forme="10K" marqué "selected").
+  let currentDistForme = "10K";
+
+  function selectDistForme(el){
+    document.querySelectorAll('.opt-compact[data-dist-forme]').forEach(o=>o.classList.remove('selected'));
+    el.classList.add('selected');
+    currentDistForme = el.dataset.distForme;
+  }
 
   function renderTrack(){
     const track = document.getElementById('track');
@@ -3633,7 +3680,14 @@
     const dateClotureVal = document.getElementById('dateClotureForme').value;
 
     const params = {
-      refDistance: '10K',
+      // refDistance corrigé le 21/07/2026 — était codé en dur à '10K' alors
+      // que le champ temps ne demandait jamais explicitement sur quelle
+      // distance il portait (bug UX + calcul : un temps de 5K interprété
+      // comme un temps de 10K fausse les allures calculées, bien plus
+      // optimistes qu'elles ne devraient l'être). currentDistForme reflète
+      // maintenant le sélecteur de distance ajouté juste avant le champ
+      // temps (formeDistSelecteur/selectDistForme).
+      refDistance: currentDistForme,
       tempsReference: `${tMin}:${String(tSec).padStart(2,'0')}`,
       volumeActuel: isNaN(volumeActuel) ? 30 : volumeActuel,
       accent: accentChoisi,
