@@ -2357,13 +2357,17 @@
 
     if (document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
       let plans = [];
+      console.log('[DEBUG accueil] UTILISATEUR au moment du check:', window.__UTILISATEUR__?.id, 'LkSync dispo:', !!window.LkSync);
       try {
         if (window.__UTILISATEUR__?.id && window.LkSync) {
           plans = await window.LkSync.chargerPlansSupabase(window.__UTILISATEUR__.id);
+          console.log('[DEBUG accueil] plans Supabase chargés:', plans.length);
+        } else {
+          console.log('[DEBUG accueil] condition UTILISATEUR/LkSync fausse, saut du chargement Supabase');
         }
-      } catch (e) { /* pas grave, traité comme "aucun plan" */ }
+      } catch (e) { console.log('[DEBUG accueil] erreur chargement Supabase:', e.message); }
       if (plans.length === 0) {
-        try { plans = await chargerPlans(); } catch (e) { /* pas de Gist configuré */ }
+        try { plans = await chargerPlans(); console.log('[DEBUG accueil] plans Gist chargés:', plans.length); } catch (e) { console.log('[DEBUG accueil] erreur Gist:', e.message); }
       }
       if (plans.length === 0) {
         document.getElementById('accueil-wizard-contenu').style.display = 'none';
