@@ -30,17 +30,22 @@ yoria/
 │   ├── coach.js                  # Proxy Claude Haiku (messages coach courts)
 │   ├── strava.js                 # OAuth Strava (auth, callback, refresh, activities)
 │   ├── weather.js                # Proxy Open-Meteo (prévision + alerte chaleur >28°C)
-│   └── config.js                 # Expose SUPABASE_URL/SUPABASE_ANON_KEY au client
+│   ├── config.js                 # Expose SUPABASE_URL/SUPABASE_ANON_KEY au client
+│   ├── stripe-checkout.js        # Création session Stripe Checkout
+│   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
+│   ├── beta.js                   # Candidature bêta (public)
+│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits)
 ├── docs/
 │   ├── legal/                    # Confidentialité, CGU/CGV, RGPD, Play Store data safety
 │   └── v2-methodologie/
 │       ├── inventaire-application.md   # CE FICHIER
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
-│       ├── convergence-v1-v2.md        # Historique des décisions de convergence v1→v2
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~7300 lignes)
+│   ├── index.html                 # App principale (dashboard, ~8000 lignes)
 │   ├── privacy.html
+│   ├── beta/                      # Page candidature bêta publique
+│   ├── beta-admin/                # Interface admin bêta (script.js, styles.css)
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -54,6 +59,8 @@ yoria/
 │           ├── plan-forme.js
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
+└── vercel.json                    # Routing explicite en whitelist (toute route API
+                                    # doit y être déclarée, sinon 404 silencieux)
 ```
 
 ## 3. Les deux interfaces
@@ -86,7 +93,7 @@ Fonctions de rendu (`render*`) :
 - `renderStats` — statistiques (ACWR, monotonie de charge, etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat, stratégie)
 - `renderHelp` — aide
-- `renderSettings` — profil coureur, records personnels, tokens, notifications
+- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
 - `render` — orchestrateur principal
 
 ## 5. Persistance
@@ -108,10 +115,12 @@ globale non préfixée est un risque de contamination inter-plans.
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`,
-lue/écrite en brut sans JSON.parse/stringify, contrairement aux autres clés).
-Sync Realtime activée sur `plan_donnees` (anti-écho 3s). File d'attente de
-sync en cas d'échec réseau (`lk_file_attente_sync`, rejouée au retour
-réseau et toutes les 5 min, abandon après 10 essais).
+lue/écrite en brut sans JSON.parse/stringify, contrairement aux autres clés),
+`abonnements` (statut de facturation Stripe, cf. §11), `beta_testers`
+(candidatures bêta). Sync Realtime activée sur `plan_donnees` (anti-écho
+3s). File d'attente de sync en cas d'échec réseau
+(`lk_file_attente_sync`, rejouée au retour réseau et toutes les 5 min,
+abandon après 10 essais).
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -247,17 +256,45 @@ séance, `v2/engine/weather.js`) — deux besoins différents, pas un doublon.
 **Sync multi-device** — GitHub Gist (`lk_github_token`), géré par
 `v2/engine/gist-sync.js`.
 
-**Sentry (suivi d'erreurs)** — Loader Script CDN dans le `<head>` de
-`index.html` (`window.sentryOnLoad` défini avant le tag). `user_id`
-attaché via `Sentry.getCurrentScope().setUser({id})` dans le bloc
-`window.__AUTH_PRET__`, différé par `Sentry.onLoad()`. Point de vigilance
-important : ne jamais utiliser `Sentry.setUser()` directement (absent du
-mini-buffer du Loader Script tant que le SDK complet n'est pas chargé) ni
-`Sentry.configureScope()` (déprécié en SDK v8, cause un crash "out of
-memory" confirmé — cf. principes transverses §15). Bouton "Signaler un
-problème" (icône 🐛, dans les headers) envoie un `Sentry.captureMessage()`
-avec le contexte (vue, planId, url) inline dans le message, jamais en
-second argument objet.
+**Stripe (abonnements, v2.5)** — Produit "Yoria Premium" (7€/mois,
+`STRIPE_PRICE_ID`, et tarif annuel `STRIPE_PRICE_ID_ANNUAL`), mode Checkout
+hébergé (jamais de formulaire carte natif dans la TWA, conforme politique
+Google Play sans programme "alternative billing"). Table Supabase
+`abonnements` (`user_id` nullable, `email`, `stripe_customer_id`,
+`stripe_subscription_id`, `subscription_status`, `price_id`) avec RLS
+lecture seule pour le propriétaire — les écritures passent uniquement par
+les endpoints serverless (clé `service_role`, contourne RLS).
+
+- `api/stripe-checkout.js` : vérifie le token Supabase (`Authorization:
+  Bearer`), retrouve ou crée le `stripe_customer_id` (par `user_id` puis
+  par `email` en repli — cas beta testeur déjà lié), crée la session
+  Checkout, retourne l'URL à ouvrir dans le navigateur externe.
+  Redirection `yoria.run/?stripe=succes|annule`.
+- `api/stripe-webhook.js` : `bodyParser` désactivé (body brut requis pour
+  la vérification de signature HMAC-SHA256, faite nativement via Web
+  Crypto, sans dépendance npm `stripe`). Écoute
+  `checkout.session.completed`, `customer.subscription.created/updated`,
+  `customer.subscription.deleted` — met à jour `subscription_status`
+  (mapping des statuts Stripe vers `active`/`past_due`/`canceled`/`none`).
+- Routes `/api/stripe-checkout` et `/api/stripe-webhook` déclarées
+  explicitement dans `vercel.json` (routing en whitelist — toute nouvelle
+  route API doit y être ajoutée, sinon 404 silencieux vers `public/`).
+- Bouton "S'abonner" dans Paramètres (section "💳 Abonnement", en fin de
+  page) : lecture du statut via `window.__abonnementStatutCache__`
+  (initialisé une seule fois par session pour éviter un fetch + `render()`
+  en boucle infinie — bug rencontré et corrigé le 21/07/2026). Invalidé
+  une fois au retour `?stripe=succes` pour refléter immédiatement le
+  nouveau statut sans F5 manuel.
+- **Abonnements gratuits (beta testeurs et au-delà)** : bon de réduction
+  Stripe 100% répétitif (jamais nommé "beta" dans Stripe pour rester
+  réutilisable au-delà de la bêta), appliqué via `discounts[0][coupon]`
+  (paramètre `coupon` seul rejeté sur les comptes en `billing_mode:
+  flexible`, le défaut Stripe actuel). Déclenché depuis `beta-admin`
+  (action `create_free_subscription` sur `api/beta-admin.js`) : recherche
+  ou crée le client Stripe par email, crée l'abonnement avec le coupon,
+  upsert `abonnements`. Liaison automatique au `user_id` dès que le
+  testeur crée son compte Yoria avec le **même email** que sa
+  candidature — condition impérative à communiquer au testeur.
 
 ## 12. Authentification Supabase
 
@@ -316,6 +353,11 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
 - **Toute modification d'un plan existant doit exclure les séances
   passées** — pas un garde-fou générique, à implémenter dans chaque
   nouvelle fonctionnalité qui touche `plans_actif`
+- **Cache client mis à jour de façon async (fetch + `render()`) : bien
+  distinguer `undefined` (jamais initialisé) de `null`/valeur connue** —
+  un `if` qui réinitialise trop tôt à une valeur non-`undefined` empêche
+  le déclenchement du fetch réel (bug rencontré sur le cache abonnement,
+  21/07/2026)
 - **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
   sans demande explicite
 
@@ -323,8 +365,7 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
 
 | Chantier | Statut |
 |---|---|
-| v2.5 commercialisation (Stripe via redirection navigateur, abonnements) | 🔜 Non commencé — décision d'architecture actée (bouton dans l'app → Stripe Checkout en navigateur externe, jamais de formulaire carte intégré dans la TWA) |
-| Abonnements gratuits beta testeurs depuis beta-admin | 🔜 Non commencé — dépend de la v2.5, lien par email entre Stripe et Supabase Auth |
+| v2.5 commercialisation (Stripe) | ✅ Fait — Checkout, webhook, abonnements gratuits beta, cf. §11 |
 | Module admin signalements (beta-admin) | 🔜 Non commencé — table Supabase, typologie (Bug/Donnée incorrecte/Suggestion/Autre), lien vers dashboard Sentry pour les erreurs auto |
 | Déclenchement `genererBlocSuivant()` (Mode Forme) | 🔜 À décider |
 | Réduction d'intervalles pour séances qualité | 🔜 Session de conception dédiée nécessaire |
@@ -332,6 +373,7 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
 | Republier piste "V2" Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Nettoyage `lk_gist_id` résiduel | 🔜 Pas urgent |
 | Détection auto `invalid access_token` Strava | 🔜 Amélioration future |
+| Passage Stripe en clés live (commercialisation réelle) | 🔜 Quand prêt à lancer publiquement |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
