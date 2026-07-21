@@ -48,6 +48,31 @@ export function computeAlluresForme({ refTimeSeconds, refDistanceKm }) {
 }
 
 // ---------------------------------------------------------------------------
+// Test semi-Cooper (6 minutes) — estimation de référence quand le coureur
+// n'a aucun temps de course récent à donner (21/07/2026, décision avec
+// Laurent). Formule : VMA (km/h) = distance parcourue en mètres ÷ 100
+// (protocole "demi-Cooper", plus simple que le Cooper classique 12min et
+// généralement jugé plus fiable en usage libre — moins d'erreur de gestion
+// d'allure sur une durée plus courte).
+//
+// La VMA estimée correspond directement à l'allure I (VMA) du système de
+// zones existant (PACE_RATIOS.I = 0.855, calibré sur le profil réel de
+// Laurent) — on en déduit un temps 10K équivalent pour rester compatible
+// avec computeAlluresForme(), qui attend un couple (refTimeSeconds,
+// refDistanceKm) plutôt qu'une VMA directe. Évite de repasser par un temps
+// de course simulé + Riegel (double approximation) : conversion directe
+// via le ratio déjà utilisé pour dériver les zones.
+// ---------------------------------------------------------------------------
+
+export function estimerReferenceDepuisSemiCooper(distanceMetres) {
+  const vmaKmh = distanceMetres / 100;
+  const allureISecKm = 3600 / vmaKmh;
+  const allure10kSecKm = allureISecKm / PACE_RATIOS.I;
+  const refTimeSeconds = Math.round(allure10kSecKm * 10);
+  return { refTimeSeconds, refDistanceKm: 10, vmaKmh };
+}
+
+// ---------------------------------------------------------------------------
 // Plafonds de volume — pas de distance de course, donc pas de PLAFONDS_VOLUME
 // par distance. Le mode Forme vise un plateau autour du volume de départ
 // choisi, pas une progression vers un plafond de population : la marge de
