@@ -3728,6 +3728,10 @@ function renderDashboard() {
           // s.date correctement — seul celui-ci (carte du jour du
           // dashboard) était incomplet.
           !isRest?renderStatusRow(uid2, s.date):null,
+          // Test semi-Cooper (Mode Forme sans référence, 21/07/2026) —
+          // affiché uniquement pour la séance test tant qu'elle n'est pas
+          // encore validée, à la place du bloc manualPerf classique.
+          (s.estTest && s.sousType === 'test-semi-cooper') ? renderTestSemiCooperRow(uid2, s, stravaRun2) : null,
           // Saisie/correction manuelle de performance (docs/source-donnees-
           // seances.md) : toujours accessible pour SPEC/VMA quel que soit
           // dataSource — pas réservée au mode "manuel". Une saisie existante
@@ -4369,6 +4373,72 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
 // 8 juillet 2026 pour aussi l'utiliser sur la carte "Aujourd'hui" du
 // dashboard (Laurent signale qu'il fallait aller dans le détail de semaine
 // juste pour valider la séance du jour, pourtant déjà affichée).
+// ══════════════════════════════════════════════════════════════════════════════
+// TEST SEMI-COOPER — capture du résultat (Mode Forme sans référence, 21/07/2026)
+// ══════════════════════════════════════════════════════════════════════════════
+// Bloc dédié, volontairement séparé du système manualPerf général (qui gère
+// la saisie manuelle récurrente pour toutes les séances qualité d'un plan
+// course tout au long de sa durée) — le test semi-Cooper est un événement
+// unique par bloc généré sans référence, une seule donnée à capter (distance
+// parcourue en 6min), pas besoin de la même infrastructure.
+//
+// Détection Strava : réutilise getLapsAffichage(activite, structureIntervalles)
+// déjà utilisé pour toutes les séances qualité — la structureIntervalles du
+// test (1 seul bloc, 1 répétition, dureeRecupSec:0) fait que le lap détecté
+// correspond exactement à l'effort de 6min, à condition que l'utilisateur ait
+// programmé sa montre en 3 laps manuels (échauffement/effort/retour au calme),
+// comme pour toute autre séance qualité.
+function renderTestSemiCooperRow(uid, seance, stravaRun) {
+  if (statuses[uid]) return null; // déjà validé, plus rien à afficher ici
+
+  const effortLaps = stravaRun ? getLapsAffichage(stravaRun, seance.structureIntervalles) : [];
+  const distanceDetectee = effortLaps.length === 1 ? Math.round(effortLaps[0].distance) : null;
+
+  const validerResultat = (distanceMetres) => {
+    if (!distanceMetres || distanceMetres < 200 || distanceMetres > 3000) {
+      alert("Distance invalide — vérifie la valeur (attendu entre 200m et 3000m environ pour 6 minutes de course).");
+      return;
+    }
+    const { refTimeSeconds, refDistanceKm, vmaKmh } = estimerReferenceDepuisSemiCooper(distanceMetres);
+    // Stocké préfixé par plan (comme le reste des données de plan), lu
+    // ensuite par la génération des semaines 2-4 (étape 4 du chantier).
+    save(clePourPlan("lk_resultat_test_forme"), { refTimeSeconds, refDistanceKm, vmaKmh, distanceMetres, dateTest: today() });
+    statuses[uid] = "✅";
+    save(clePourPlan("lk_statuses"), statuses);
+    render();
+  };
+
+  if (distanceDetectee) {
+    return el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"10px",padding:"12px",marginTop:"8px"}},
+      el("div",{style:{fontSize:"14px",color:"var(--text)",marginBottom:"8px"}},
+        "📍 Détecté sur Strava : "+distanceDetectee+"m parcourus en 6min"
+      ),
+      el("button",{style:{width:"100%",background:"var(--accent)",border:"none",borderRadius:"8px",padding:"10px",color:"var(--bg)",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
+        onClick: () => validerResultat(distanceDetectee)
+      },"Confirmer ce résultat")
+    );
+  }
+
+  // Repli manuel — pas de Strava, ou détection ratée (structure non
+  // programmée correctement sur la montre, activité absente, etc.)
+  const inputDistance = el("input",{type:"number",placeholder:"ex: 1400",style:{
+    flex:"1",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",
+    padding:"9px 10px",color:"var(--text)",fontSize:"15px"
+  }});
+
+  return el("div",{style:{background:"var(--border-soft)",borderRadius:"10px",padding:"12px",marginTop:"8px"}},
+    el("div",{style:{fontSize:"13px",color:"var(--text-muted)",marginBottom:"8px"}},
+      "Distance parcourue en 6 minutes (mètres)"
+    ),
+    el("div",{style:{display:"flex",gap:"8px"}},
+      inputDistance,
+      el("button",{style:{background:"var(--accent)",border:"none",borderRadius:"8px",padding:"9px 16px",color:"var(--bg)",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
+        onClick: () => validerResultat(parseInt(inputDistance.value, 10))
+      },"Valider")
+    )
+  );
+}
+
 function renderStatusRow(uid, dateSeance) {
   const wrapper = el("div",{style:{display:"flex",flexDirection:"column",gap:"8px",marginTop:"4px",width:"100%"}});
   const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"nowrap",width:"100%"}});
