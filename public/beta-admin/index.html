@@ -16,6 +16,7 @@
       <button class="nav" data-view="applications">◎ Candidatures</button>
       <button class="nav" data-view="selected">✓ Sélectionnés</button>
       <button class="nav" data-view="invited">✉ Invités</button>
+      <button class="nav" data-view="signalements">🐛 Signalements</button>
       <button class="nav" data-view="statistics">↗ Statistiques</button>
     </nav>
     <a class="site-link" href="/beta" target="_blank" rel="noopener">Voir le site bêta</a>
@@ -83,6 +84,32 @@
 
       <section class="view" data-panel="selected"><div id="selected-list" class="list"></div></section>
       <section class="view" data-panel="invited"><div id="invited-list" class="list"></div></section>
+
+      <section class="view" data-panel="signalements">
+        <div class="filters">
+          <select id="signalement-type-filter">
+            <option value="all">Tous les types</option>
+            <option value="bug">🐛 Bug</option>
+            <option value="donnee_incorrecte">📊 Donnée incorrecte</option>
+            <option value="suggestion">💡 Suggestion</option>
+            <option value="autre">❓ Autre</option>
+          </select>
+          <select id="signalement-statut-filter">
+            <option value="all">Tous les statuts</option>
+            <option value="nouveau">Nouveau</option>
+            <option value="en_cours">En cours</option>
+            <option value="resolu">Résolu</option>
+          </select>
+        </div>
+        <div class="card table-wrap">
+          <table>
+            <thead><tr><th>Type</th><th>Message</th><th>Contexte</th><th>E-mail</th><th>Statut</th><th>Date</th></tr></thead>
+            <tbody id="signalements-tbody"></tbody>
+          </table>
+          <div id="signalements-empty" class="empty" hidden>Aucun signalement.</div>
+        </div>
+      </section>
+
       <section class="view" data-panel="statistics"><div id="statistics" class="grid2"></div></section>
     </section>
   </main>
