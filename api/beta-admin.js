@@ -216,9 +216,9 @@ function createInvitationHtml(candidate, appUrl) {
                       font-size:16px;
                       line-height:1.65;
                     ">
-                      Vous allez pouvoir découvrir l’application,
+                      Vous allez pouvoir découvrir l'application,
                       tester ses fonctionnalités et nous aider à
-                      améliorer l’expérience des futurs utilisateurs.
+                      améliorer l'expérience des futurs utilisateurs.
                     </p>
 
                     <table
@@ -269,7 +269,7 @@ function createInvitationHtml(candidate, appUrl) {
                     color:#777283;
                     font-size:13px;
                   ">
-                    Merci de participer à l’aventure Yoria.
+                    Merci de participer à l'aventure Yoria.
                   </td>
                 </tr>
               </table>
@@ -331,11 +331,120 @@ async function sendBrevoInvitation(config, candidate) {
 
     throw new Error(
       data?.message ||
-        "L’e-mail d’invitation n’a pas pu être envoyé.",
+        "L'e-mail d'invitation n'a pas pu être envoyé.",
     );
   }
 
   return data;
+}
+
+async function findOrCreateStripeCustomer(config, email, firstName) {
+  const searchParams = new URLSearchParams();
+  searchParams.append("query", `email:"${email}"`);
+
+  const searchResponse = await fetch(
+    `https://api.stripe.com/v1/customers/search?${searchParams.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${config.stripeSecretKey}`,
+      },
+    },
+  );
+
+  if (!searchResponse.ok) {
+    const errorText = await searchResponse.text();
+    throw new Error(`Erreur recherche client Stripe : ${errorText}`);
+  }
+
+  const searchData = await searchResponse.json();
+
+  if (searchData.data && searchData.data.length > 0) {
+    return searchData.data[0];
+  }
+
+  const createParams = new URLSearchParams();
+  createParams.append("email", email);
+  if (firstName) {
+    createParams.append("name", firstName);
+  }
+
+  const createResponse = await fetch(
+    "https://api.stripe.com/v1/customers",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.stripeSecretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: createParams.toString(),
+    },
+  );
+
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text();
+    throw new Error(`Erreur création client Stripe : ${errorText}`);
+  }
+
+  return createResponse.json();
+}
+
+async function createFreeStripeSubscription(config, customerId) {
+  const params = new URLSearchParams();
+  params.append("customer", customerId);
+  params.append("items[0][price]", config.stripePriceId);
+  params.append("coupon", config.stripeFreeCouponId);
+
+  const response = await fetch(
+    "https://api.stripe.com/v1/subscriptions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.stripeSecretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Erreur création abonnement Stripe : ${errorText}`);
+  }
+
+  return response.json();
+}
+
+async function upsertAbonnementGratuit(config, email, stripeCustomerId, stripeSubscriptionId, priceId) {
+  const existingRows = await supabaseRequest(
+    config,
+    `abonnements?email=eq.${encodeURIComponent(email)}&select=*&limit=1`,
+    { method: "GET" },
+  );
+
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+
+  const payload = {
+    email,
+    stripe_customer_id: stripeCustomerId,
+    stripe_subscription_id: stripeSubscriptionId,
+    subscription_status: "active",
+    price_id: priceId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const path = existing
+    ? `abonnements?id=eq.${existing.id}`
+    : "abonnements";
+
+  const method = existing ? "PATCH" : "POST";
+
+  const rows = await supabaseRequest(config, path, {
+    method,
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(payload),
+  });
+
+  return Array.isArray(rows) ? rows[0] : null;
 }
 
 export default async function handler(request, response) {
@@ -357,6 +466,13 @@ export default async function handler(request, response) {
       process.env.BETA_INVITATION_FROM_NAME,
     appUrl:
       process.env.BETA_APP_URL,
+
+    stripeSecretKey:
+      process.env.STRIPE_SECRET_KEY,
+    stripePriceId:
+      process.env.STRIPE_PRICE_ID,
+    stripeFreeCouponId:
+      process.env.STRIPE_FREE_COUPON_ID,
   };
 
   if (
@@ -460,7 +576,7 @@ export default async function handler(request, response) {
     }
 
     /*
-     * Action spéciale : envoyer l’invitation Brevo.
+     * Action spéciale : envoyer l'invitation Brevo.
      */
     if (action === "send_invitation") {
       if (
@@ -532,14 +648,14 @@ export default async function handler(request, response) {
         ) {
           return json(response, 500, {
             message:
-              "L’e-mail a été envoyé, mais le statut n’a pas pu être mis à jour.",
+              "L'e-mail a été envoyé, mais le statut n'a pas pu être mis à jour.",
           });
         }
 
         return json(response, 200, {
           success: true,
           message:
-            "L’invitation a bien été envoyée.",
+            "L'invitation a bien été envoyée.",
           candidate: updatedCandidates[0],
         });
       } catch (error) {
@@ -551,7 +667,73 @@ export default async function handler(request, response) {
         return json(response, 500, {
           message:
             error.message ||
-            "L’invitation n’a pas pu être envoyée.",
+            "L'invitation n'a pas pu être envoyée.",
+        });
+      }
+    }
+
+    /*
+     * Action spéciale : créer un abonnement Stripe gratuit (coupon 100%)
+     * pour un testeur/ami, sans passer par un vrai paiement. Utilisable
+     * au-delà de la seule bêta — le coupon n'est pas nommé "beta" pour
+     * cette raison (cf. décision 21/07/2026).
+     */
+    if (action === "create_free_subscription") {
+      if (
+        !config.stripeSecretKey ||
+        !config.stripePriceId ||
+        !config.stripeFreeCouponId
+      ) {
+        return json(response, 500, {
+          message: "Configuration Stripe incomplète.",
+        });
+      }
+
+      try {
+        const candidates = await supabaseRequest(
+          config,
+          `beta_testers?id=eq.${encodeURIComponent(id)}&select=*`,
+          { method: "GET" },
+        );
+
+        if (!Array.isArray(candidates) || candidates.length !== 1) {
+          return json(response, 404, {
+            message: "Candidature introuvable.",
+          });
+        }
+
+        const candidate = candidates[0];
+
+        const stripeCustomer = await findOrCreateStripeCustomer(
+          config,
+          candidate.email,
+          candidate.first_name,
+        );
+
+        const stripeSubscription = await createFreeStripeSubscription(
+          config,
+          stripeCustomer.id,
+        );
+
+        await upsertAbonnementGratuit(
+          config,
+          candidate.email,
+          stripeCustomer.id,
+          stripeSubscription.id,
+          config.stripePriceId,
+        );
+
+        return json(response, 200, {
+          success: true,
+          message: "Abonnement gratuit créé.",
+        });
+      } catch (error) {
+        console.error("Erreur abonnement gratuit :", error);
+
+        return json(response, 500, {
+          message:
+            error.message ||
+            "L'abonnement gratuit n'a pas pu être créé.",
         });
       }
     }
@@ -601,7 +783,7 @@ export default async function handler(request, response) {
     } catch {
       return json(response, 500, {
         message:
-          "Le statut n’a pas pu être modifié.",
+          "Le statut n'a pas pu être modifié.",
       });
     }
   }
