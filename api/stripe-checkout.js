@@ -151,19 +151,21 @@ export default async function handler(request, response) {
   const priceIdMonthly = process.env.STRIPE_PRICE_ID;
   const priceIdAnnual = process.env.STRIPE_PRICE_ID_ANNUAL;
 
-  if (
-    !supabaseUrl ||
-    !supabaseAnonKey ||
-    !serviceRoleKey ||
-    !stripeSecretKey ||
-    !priceIdMonthly ||
-    !priceIdAnnual
-  ) {
-    console.error("Variables d'environnement Stripe/Supabase manquantes.");
+  const missingVars = [];
+  if (!supabaseUrl) missingVars.push("SUPABASE_URL");
+  if (!supabaseAnonKey) missingVars.push("SUPABASE_ANON_KEY");
+  if (!serviceRoleKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY");
+  if (!stripeSecretKey) missingVars.push("STRIPE_SECRET_KEY");
+  if (!priceIdMonthly) missingVars.push("STRIPE_PRICE_ID");
+  if (!priceIdAnnual) missingVars.push("STRIPE_PRICE_ID_ANNUAL");
+
+  if (missingVars.length > 0) {
+    console.error("Variables d'environnement manquantes : " + missingVars.join(", "));
 
     return sendJson(response, 500, {
       success: false,
       message: "Le service est temporairement indisponible.",
+      debug: missingVars,
     });
   }
 
