@@ -43,7 +43,7 @@ yoria/
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~8100 lignes)
+│   ├── index.html                 # App principale (dashboard, ~8300 lignes)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
@@ -60,6 +60,7 @@ yoria/
 │       └── engine/                # Moteur v2 (modules ES, source de vérité)
 │           ├── plan-generator.js
 │           ├── plan-forme.js
+│           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
 └── vercel.json                    # Routing explicite en whitelist (toute route API
@@ -86,6 +87,22 @@ globale via `Object.assign(window, module)` (sauf `auth.js`/`sync-storage.js`
 qui exposent `window.LkAuth`/`window.LkSync` comme objets nommés). Les 7
 fichiers `.classic.js` devenus orphelins ont été supprimés du repo.
 
+**Point de vigilance critique (race condition découverte et corrigée le
+21/07/2026, dans les DEUX fichiers)** : `window.__AUTH_PRET__` doit être
+créée de façon **synchrone**, en tout début de script, avant tout `await
+import(...)`. L'ancien pattern (assignée après plusieurs imports
+dynamiques) laissait une fenêtre où `window.__AUTH_PRET__` valait
+`undefined` — tout code qui teste `if (window.__AUTH_PRET__)` avant ce
+point échoue silencieusement, et tout code qui fait `await
+window.__AUTH_PRET__` sur `undefined` ne bloque jamais (JS résout
+immédiatement une valeur non-promise). Pattern correct désormais en
+place : `window.__AUTH_PRET__ = new Promise((resolve) => {
+window.__resoudreAuthPret__ = resolve; })` tout en haut, résolue plus
+tard via `window.__resoudreAuthPret__(user)`. Symptômes observés avant
+correctif : écran "Consulter un plan existant" jamais affiché
+(v2/index.html), dashboard retombant sur le plan de repli par défaut
+malgré un vrai plan existant en base (index.html).
+
 ## 4. Écrans de l'app principale (`index.html`)
 
 Fonctions de rendu (`render*`) :
@@ -100,6 +117,8 @@ Fonctions de rendu (`render*`) :
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 🐛 des
   headers, cf. §11
+- `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans
+  référence)
 
 ## 5. Persistance
 
@@ -113,10 +132,18 @@ Clés préfixées par plan (via `clePourPlan()`) : `lk_statuses`,
 `lk_checklist`, `lk_adaptations_ignorees`, `lk_last_rebuild`,
 `lk_pred_history`, `lk_race_goal`, `lk_race_horaires`, `lk_race_parcours`,
 `lk_race_result`, `lk_weather_cache`, `lk_coach_msg`, `lk_coach_date`,
-`lk_coach_race_msg`.
+`lk_coach_race_msg`, `lk_resultat_test_forme` (résultat du test semi-Cooper
+en attente de complétion du bloc, cf. §14).
 
 **Principe** : toute donnée propre à un plan doit être préfixée — une clé
 globale non préfixée est un risque de contamination inter-plans.
+
+**Convention `statuses[uid]`** : peut valoir `'—'` (valeur de repli
+explicite utilisée à plusieurs endroits de l'app), pas seulement
+`undefined`/absent — tout code qui teste "cette séance a-t-elle déjà un
+statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`, pas
+`if (statuses[uid])` seul (bug rencontré le 21/07/2026 sur la carte de
+test semi-Cooper).
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`,
@@ -126,6 +153,19 @@ lue/écrite en brut sans JSON.parse/stringify, contrairement aux autres clés),
 Realtime activée sur `plan_donnees` (anti-écho 3s). File d'attente de
 sync en cas d'échec réseau (`lk_file_attente_sync`, rejouée au retour
 réseau et toutes les 5 min, abandon après 10 essais).
+
+**Sauvegarde de plan — Supabase est la source de vérité principale, Gist
+en best-effort uniquement** : toute fonction qui modifie un plan existant
+(génération du bloc suivant, complétion après test, suppression) doit
+appeler `LkSync.mettreAJourPlanSupabase()`/`supprimerPlanSupabase()` comme
+mécanisme bloquant, et n'appeler `sauvegarderPlan()`/`supprimerPlan()`
+(Gist, `gist-sync.js`) qu'en `try/catch` non bloquant, seulement si un
+token GitHub existe encore (`getGithubToken()`). Sans ce garde, tout code
+qui appelle le Gist en premier échoue systématiquement pour un compte sans
+token configuré (`ecrireListePlans()` lève une exception explicite),
+interrompant toute la fonction avant même d'atteindre Supabase — plusieurs
+bugs de ce type trouvés et corrigés le 21/07/2026 (suppression de plan,
+génération du bloc suivant, complétion après test).
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -155,6 +195,12 @@ réseau et toutes les 5 min, abandon après 10 essais).
   — seulement mettre à jour l'état local (`profilCoureur.niveau/sexe` +
   `render()`) — sinon un profil incomplet (champs texte pas encore relus)
   écrase Supabase. Bug déjà rencontré et corrigé le 20/07/2026.
+- **Un seul compte Supabase Auth par email** — vérifier `Authentication →
+  Users` en cas de doute plutôt que de supposer : un profil orphelin (lié
+  à un `user_id` qui n'existe plus dans Auth) peut coexister silencieusement
+  avec le vrai profil actif, provoquant des erreurs RLS et un affichage
+  "profil vide" trompeur (incident réel du 21/07/2026, cause jamais
+  formellement identifiée, profil restauré et orpheline nettoyée).
 
 ## 7. Moteur de plan (`v2/engine/plan-generator.js`)
 
@@ -178,6 +224,15 @@ les séances déjà passées.
 entre `index.html` et `plan-generator.js`) — bornes km fixes pour
 Semi/Marathon (tous les 5km + palier à 35km sur marathon), proportionnel
 pour 5K/10K.
+
+**v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
+le plan brut (v2) et le format attendu par `index.html`. Tout nouveau champ
+personnalisé ajouté sur une séance côté moteur (ex: `estTest`, `sousType`)
+doit être explicitement propagé dans cette fonction pour être visible côté
+`index.html` — sinon silencieusement perdu, sans erreur (bug rencontré le
+21/07/2026 : `estTest`/`sousType` du test semi-Cooper jamais propagés,
+rendant le champ de saisie de résultat invisible malgré un plan brut
+correct).
 
 ## 8. Moteur de décision
 
@@ -223,6 +278,14 @@ sans règle d'alerte (pas de seuils validés pour coureurs récréatifs).
 - R-062/R-070/R-080 jamais observées sur données réelles de Laurent — à
   surveiller
 
+**Bug à investiguer (noté 21/07/2026)** : la carte "Yoria te propose un
+ajustement" a affiché "Seulement 0 séance(s) sur les 14 derniers jours" de
+façon apparemment incorrecte, juste après une session de correction de
+bugs de timing (race condition `__AUTH_PRET__`, profil dupliqué). À
+vérifier : le moteur a-t-il tourné sur un historique de séances incomplet
+à cause de ces bugs, ou est-ce un bug distinct dans le calcul lui-même
+(EngagementCalculator/R-040).
+
 ## 9. Saisie manuelle et RPE
 
 **Saisie manuelle** : bouton "Annuler" (réinitialise + relance sync Strava),
@@ -258,12 +321,14 @@ Paramètre `type=forecast|current|historical` (forecast = défaut,
 rétrocompatible). Géolocalisation selon l'usage : dernière activité Strava
 avec GPS pour la météo actuelle/passée (repli position par défaut sinon),
 position live du navigateur pour la prévision J+1 (alerte chaleur avant
-séance, `v2/engine/weather.js`) — deux besoins différents, pas un doublon.
+séance, `v2/engine/weather.js`) — deux besoins légitimement différents,
+pas un doublon.
 
 **Coach (messages courts)** — `api/coach.js`, proxy Claude Haiku 4.5.
 
 **Sync multi-device** — GitHub Gist (`lk_github_token`), géré par
-`v2/engine/gist-sync.js`.
+`v2/engine/gist-sync.js`. Best-effort uniquement pour la sauvegarde de
+plan, cf. §5.
 
 **Stripe (abonnements, v2.5)** — Produit "Yoria Premium" (7€/mois,
 `STRIPE_PRICE_ID`, et tarif annuel `STRIPE_PRICE_ID_ANNUAL`), mode Checkout
@@ -344,6 +409,9 @@ login sur une erreur transitoire). Point de vigilance critique :
 qui écrase ensuite le vrai profil Supabase avec un profil minimal une
 fois l'onboarding validé. Bug réel rencontré et corrigé le 20/07/2026.
 
+Voir aussi §3 pour la race condition `window.__AUTH_PRET__` (assignation
+tardive) corrigée le 21/07/2026.
+
 ## 13. Publication Play Store (TWA Android)
 
 - Package : `app.vercel.plan_10k_alpha.twa` (identifiant permanent,
@@ -364,8 +432,45 @@ Cycle glissant sans date de course, réutilise les briques génériques de
 n'importe jamais `computePhases`/`ROTATION_SOUS_TYPE`/`placerSeanceTest`/
 `placerSeanceCourse`. Câblé de bout en bout (wizard + index.html).
 
-**Reste ouvert** : déclenchement de `genererBlocSuivant()` pas encore câblé
-côté `index.html` — décider si automatique ou action explicite utilisateur.
+**Déclenchement du bloc suivant** — FAIT le 21/07/2026. Bandeau semi-
+automatique au Dashboard ("🔁 Ton bloc de 4 semaines est terminé"),
+affiché quand la dernière séance du plan est passée (détection par date,
+pas par statut des séances — cohérent avec le principe transverse de
+l'app). Au clic, `genererBlocSuivant()` (`plan-forme.js`) reconstruit
+`profil`/`params` depuis `localStorage` + le plan courant (mêmes limites
+que `changerPalierGrandDebutant` : `profilOrigine`/`paramsOrigine` non
+stockés sur le plan résultant), repart du bon volume (ignore la décharge
+si la dernière semaine en était une).
+
+**Test semi-Cooper — flux "je n'ai pas de référence"** — FAIT le
+21/07/2026. Pour un coureur sans temps de course récent à donner :
+- Formule : `VMA (km/h) = distance parcourue en 6min (m) / 100` (protocole
+  "demi-Cooper"), convertie en temps 10K équivalent via `PACE_RATIOS.I`
+  (`estimerReferenceDepuisSemiCooper()`, `plan-forme.js`)
+- `generatePlanFormeAvecTest()` : génère uniquement la semaine 1
+  (`enAttenteTest: true` sur le plan) — le jour normalement dévolu à la
+  séance qualité devient le test (6min effort max), tous les autres jours
+  deviennent des footings libres sans allure chiffrée (aucune référence
+  disponible à ce stade pour calculer quoi que ce soit)
+- Résultat capté sur la carte du jour (`renderTestSemiCooperRow`,
+  `index.html`) : détection Strava automatique via `getLapsAffichage`
+  (réutilise le même mécanisme que les séances qualité classiques — la
+  montre doit être programmée en 3 laps manuels), repli sur saisie
+  manuelle de la distance. Stocké dans `lk_resultat_test_forme`.
+- `completerBlocApresTest()` (`plan-forme.js`) génère les semaines 2 à N
+  avec les vraies allures, déclenché par un bandeau semi-automatique au
+  Dashboard ("🎯 Ton résultat est prêt")
+- Bouton "Je n'ai pas de référence" dans le wizard (`v2/index.html`,
+  étape temps de référence), désactive visuellement les champs
+  temps/distance, route `genererPlanFormeUI()` vers
+  `generatePlanFormeAvecTest()` au lieu du flux normal
+
+**Sélecteur de distance de référence** — FAIT le 21/07/2026. Le champ
+temps de référence du wizard Forme ne précisait jamais explicitement la
+distance associée (bug : `refDistance` codé en dur à `'10K'`, faussant le
+calcul si le temps donné venait d'une autre distance) — sélecteur compact
+5K/10K/Semi/Marathon ajouté juste au-dessus du champ temps
+(`currentDistForme`/`selectDistForme()`).
 
 ## 15. Principes transverses à retenir
 
@@ -387,6 +492,17 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
   un `if` qui réinitialise trop tôt à une valeur non-`undefined` empêche
   le déclenchement du fetch réel (bug rencontré sur le cache abonnement,
   21/07/2026)
+- **Toute promesse globale attendue ailleurs (`window.__AUTH_PRET__` et
+  équivalents futurs) doit être créée de façon synchrone, avant tout
+  `await`** — sinon risque de race condition où le code qui l'attend la
+  trouve `undefined` (cf. §3, bug corrigé le 21/07/2026 dans les deux
+  fichiers principaux)
+- **Toute fonction de traduction entre formats (`v1-bridge.js` et
+  équivalents) doit être mise à jour à chaque nouveau champ personnalisé
+  ajouté sur une séance** — sinon le champ est silencieusement perdu sans
+  erreur (cf. §7, bug `estTest`/`sousType` du 21/07/2026)
+- **Toute fonction qui modifie/supprime un plan doit traiter Supabase
+  comme bloquant et Gist comme best-effort**, jamais l'inverse (cf. §5)
 - **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
   sans demande explicite
 
@@ -394,11 +510,14 @@ côté `index.html` — décider si automatique ou action explicite utilisateur.
 
 | Chantier | Statut |
 |---|---|
-| Déclenchement `genererBlocSuivant()` (Mode Forme) | 🔜 À décider |
+| Test semi-Cooper (6min) pour plan course, en repli si "pas de référence" | 🔜 Même principe que Mode Forme (semaine 1 seule, `enAttenteTest`), mais dépendant de `dateCourse` — les semaines 2 à N doivent respecter le nombre de semaines restantes jusqu'à la course, pas un bloc de taille fixe comme en Forme. Décidé le 21/07/2026, pas commencé. |
+| Saisie manuelle du volume hebdo accessible sans synchro Strava (wizard) | 🔜 Actuellement le champ de saisie manuelle du volume actuel n'est accessible/visible qu'après une synchro Strava (ou son échec) — doit devenir une alternative immédiatement disponible, sans dépendance à Strava. Concerne tous les wizards (course, forme). Décidé le 21/07/2026, pas commencé. |
+| Sélecteur explicite du jour de sortie longue (wizard, tous plans) | 🔜 À l'étape de sélection des jours disponibles de la semaine, ajouter un sélecteur dédié "quel jour est ta sortie longue ?" parmi les jours cochés — actuellement le jour de la longue est déduit automatiquement (via `placerSemaine()`) sans que le coureur puisse le choisir explicitement. Décidé le 21/07/2026, pas commencé. |
 | Réduction d'intervalles pour séances qualité | 🔜 Session de conception dédiée nécessaire |
 | Saisie plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier piste "V2" Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passage Stripe en clés live (commercialisation réelle) | 🔜 Quand prêt à lancer publiquement |
+| Bug carte moteur "0 séance sur 14 jours" | 🔜 À investiguer, cf. §8 |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
