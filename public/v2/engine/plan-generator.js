@@ -32,8 +32,13 @@ export function formatSecondsToTime(totalSeconds) {
 }
 
 export function formatPace(secPerKm) {
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
+  // BUG corrigé le 22/07/2026 (trouvé en vérifiant le fix VMA/10K) :
+  // Math.round(secPerKm % 60) pouvait arrondir à 60 sans jamais reporter
+  // sur les minutes (ex. 359.6 sec/km -> "5:60/km" au lieu de "6:00/km").
+  // Arrondi désormais sur le total en secondes avant de séparer min/sec.
+  const total = Math.round(secPerKm);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${String(s).padStart(2, '0')}/km`;
 }
 
@@ -1063,10 +1068,31 @@ const DUREE_TEST_SEMI_COOPER_MIN = 6;
 const DUREE_ECHAUFFEMENT_TEST_SEMI_COOPER_MIN = 15;
 const DUREE_RETOUR_CALME_TEST_SEMI_COOPER_MIN = 10;
 
+// Ratio documenté (littérature demi-Cooper) : un coureur tient environ 90%
+// de sa VMA sur 10K — indépendant de PACE_RATIOS.I, qui lui est calibré sur
+// des séances VMA classiques (répétitions courtes avec récupération, cf.
+// commentaire sur PACE_RATIOS plus haut) et ne représente pas la même
+// notion de "vitesse proche de VMA" qu'un effort continu de 6 minutes.
+const RATIO_VMA_VERS_10K = 0.90;
+
 export function estimerReferenceDepuisSemiCooper(distanceMetres) {
+  // BUG corrigé le 22/07/2026 (signalé par Laurent, allures EF/10K
+  // incohérentes avec la VMA réelle) : le calcul assimilait à tort la
+  // vitesse du test demi-Cooper à l'allure I du système Daniels
+  // (PACE_RATIOS.I=0.855, calibré empiriquement sur les séances VMA
+  // classiques de Laurent — répétitions courtes avec récupération), puis
+  // en déduisait le 10K par ce même ratio. Ces deux "vitesses proches de
+  // VMA" ne sont pas équivalentes : un effort maximal CONTINU de 6 minutes
+  // (demi-Cooper) est mécaniquement plus lent qu'une répétition VMA courte
+  // avec récupération. Chaîner les deux ratios amplifiait l'écart et
+  // sous-estimait fortement le 10K équivalent (ex. VMA=11km/h donnait un
+  // 10K en 1h03'48 au lieu de ~1h00'36 attendu). Corrigé : conversion
+  // directe VMA -> 10K via le ratio documenté de la littérature du test
+  // demi-Cooper (~90% de la VMA tenue sur 10K), sans passer par
+  // PACE_RATIOS.I qui n'a pas vocation à représenter ce protocole précis.
   const vmaKmh = distanceMetres / 100;
-  const allureISecKm = 3600 / vmaKmh;
-  const allure10kSecKm = allureISecKm / PACE_RATIOS.I;
+  const allure10kKmh = vmaKmh * RATIO_VMA_VERS_10K;
+  const allure10kSecKm = 3600 / allure10kKmh;
   const refTimeSeconds = Math.round(allure10kSecKm * 10);
   return { refTimeSeconds, refDistanceKm: 10, vmaKmh };
 }
