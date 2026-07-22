@@ -393,7 +393,17 @@ export function generatePlanForme(profil, params) {
       };
     })(),
     semaines,
-    warnings
+    warnings,
+    // Ajouté le 22/07/2026 : jamais posés jusqu'ici sur un plan Forme (à la
+    // différence du plan course, où generateAndShowResults les pose côté
+    // wizard après coup) — index.html lit
+    // window.__PLAN_BRUT__.paramsOrigine.tempsReference (BASE_TIME_REFERENCE)
+    // pour l'affichage "Estimation", avec un repli codé en dur sur 3021s
+    // (50'21", valeur historique de Laurent) si absent. Sans ces deux
+    // champs, TOUT plan Forme retombait sur ce repli, jamais son vrai temps
+    // de référence.
+    paramsOrigine: params,
+    profilOrigine: profil
   };
 
   return plan;
@@ -527,6 +537,20 @@ export function generatePlanFormeAvecTest(profil, params) {
       const { contenu, kmEstime } = genererContenuFootingLibre();
       seance.contenu = contenu;
       seance.kmEstime = kmEstime;
+    } else if (seance.type === 'qualite') {
+      // BUG corrigé le 22/07/2026 : cette semaine n'a qu'une seule vraie
+      // séance structurée (le test) — tout autre jour "qualite" désigné
+      // par placerSemaine() (ex. nbQualiteFor renvoie 2 pour ce nombre de
+      // jours/niveau) restait sans contenu du tout (ni contenu, ni
+      // kmEstime). Retypé en 'ef' (footing libre), cohérent avec
+      // l'affichage — pas de badge VMA/SEUIL fantôme sans contenu.
+      seance.type = 'ef';
+      delete seance.indexQualite;
+      delete seance.sousType;
+      delete seance.restrictionsAllure;
+      const { contenu, kmEstime } = genererContenuFootingLibre();
+      seance.contenu = contenu;
+      seance.kmEstime = kmEstime;
     }
   }
 
@@ -557,7 +581,11 @@ export function generatePlanFormeAvecTest(profil, params) {
       };
     })(),
     semaines: [semaine1],
-    warnings: warningsPlacement
+    warnings: warningsPlacement,
+    // Conservés pour completerBlocApresTest, même principe que
+    // generatePlanAvecTestSemiCooper (plan-generator.js).
+    paramsOrigine: { ...params },
+    profilOrigine: { ...profil }
   };
 }
 
@@ -600,9 +628,9 @@ export function completerBlocApresTest(planPartiel, profil, resultatTest) {
   // Recalcul des footings de la semaine 1 (22/07/2026, même correctif que
   // completerPlanApresTestSemiCooper dans plan-generator.js) — jusqu'ici,
   // semaine 1 restait figée avec "Footing libre" même après complétion du
-  // test, alors que les vraies allures sont désormais connues. Seul le jour
-  // du test (estTest:true) n'est jamais touché (déjà réalisé). Durée fixe
-  // 40min : pas de volumeCibleKm connu pour cette semaine de test.
+  // test. Seul le jour du test (estTest:true) n'est jamais touché (déjà
+  // réalisé). Durée fixe 40min : pas de volumeCibleKm connu pour cette
+  // semaine de test.
   const DUREE_FOOTING_SEMAINE_TEST_MIN = 40;
   const semaine1Recalculee = {
     ...planPartiel.semaines[0],
@@ -633,6 +661,17 @@ export function completerBlocApresTest(planPartiel, profil, resultatTest) {
       };
     })(),
     semaines: [semaine1Recalculee, ...semainesSuivantes],
-    warnings: [...(planPartiel.warnings ?? []), ...warnings]
+    warnings: [...(planPartiel.warnings ?? []), ...warnings],
+    // Ajouté le 22/07/2026 : conservés avec les vraies valeurs finales
+    // (tempsReference/refDistance issus du test), même correctif que
+    // completerPlanApresTestSemiCooper (plan-generator.js) — sans ça,
+    // BASE_TIME_REFERENCE (index.html) retombait sur le repli codé en dur
+    // 3021s (50'21").
+    paramsOrigine: {
+      ...planPartiel.paramsOrigine,
+      tempsReference: `${Math.floor(resultatTest.refTimeSeconds / 60)}:${String(Math.round(resultatTest.refTimeSeconds % 60)).padStart(2, '0')}`,
+      refDistance: `${resultatTest.refDistanceKm}K`
+    },
+    profilOrigine: planPartiel.profilOrigine
   };
 }
