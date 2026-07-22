@@ -512,7 +512,10 @@ export function nbQualiteFor(nbSeances, niveau) {
   return 2;
 }
 
-function pickLongueDay(joursDisponibles) {
+function pickLongueDay(joursDisponibles, jourLongueChoisi) {
+  if (jourLongueChoisi !== undefined && jourLongueChoisi !== null && joursDisponibles.includes(jourLongueChoisi)) {
+    return jourLongueChoisi;
+  }
   if (joursDisponibles.includes(6)) return 6;
   if (joursDisponibles.includes(5)) return 5;
   return Math.max(...joursDisponibles);
@@ -523,7 +526,7 @@ function distanceCirculaire(a, b) {
   return Math.min(diff, 7 - diff);
 }
 
-export function placerSemaine({ joursDisponibles, niveau, renforcementActif, modulation = {}, forcerAucuneQualite = false }) {
+export function placerSemaine({ joursDisponibles, niveau, renforcementActif, modulation = {}, forcerAucuneQualite = false, jourLongueChoisi = null }) {
   const days = [...joursDisponibles].sort((a, b) => a - b);
   const nb = days.length;
   const warnings = [];
@@ -547,7 +550,7 @@ export function placerSemaine({ joursDisponibles, niveau, renforcementActif, mod
     return { assignment, warnings };
   }
 
-  const longueDay = pickLongueDay(days);
+  const longueDay = pickLongueDay(days, jourLongueChoisi);
   assignment[longueDay] = { type: 'longue' };
 
   let pool = days.filter(d => d !== longueDay);
@@ -1414,7 +1417,8 @@ export function generatePlan(profil, params) {
         niveau: profil.niveau,
         renforcementActif: profil.renforcementMusculaire,
         modulation,
-        forcerAucuneQualite: phase.nom === 'Reacclimatation'
+        forcerAucuneQualite: phase.nom === 'Reacclimatation',
+        jourLongueChoisi: profil.jourLongueChoisi ?? null
       });
 
       let kmQualiteTotal = 0;
