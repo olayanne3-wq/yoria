@@ -1155,6 +1155,19 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
       const { contenu, kmEstime } = genererContenuFootingLibrePreTest();
       seance.contenu = contenu;
       seance.kmEstime = kmEstime;
+    } else if (seance.type === 'qualite') {
+      // BUG corrigé le 22/07/2026 : cette semaine n'a qu'une seule vraie
+      // séance structurée (le test) — tout autre jour "qualite" désigné
+      // par placerSemaine() (nbQualiteFor peut renvoyer 2) restait sans
+      // aucun contenu. Retypé en 'ef' (footing libre), cohérent avec
+      // l'affichage.
+      seance.type = 'ef';
+      delete seance.indexQualite;
+      delete seance.sousType;
+      delete seance.restrictionsAllure;
+      const { contenu, kmEstime } = genererContenuFootingLibrePreTest();
+      seance.contenu = contenu;
+      seance.kmEstime = kmEstime;
     }
   }
 
