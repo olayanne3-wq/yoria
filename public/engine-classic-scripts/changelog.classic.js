@@ -21,7 +21,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.19", title:"Test semi-Cooper pour plan course, échange de séances, statut repos automatique", current:true, notes:[
+      { ver:"v2.20", title:"Estimation 10K progressive, bandes de tolérance, lisibilité des statuts", current:true, notes:[
+        "🎯 L'estimation 10K ne recule plus après une séance de qualité réussie — elle progresse désormais par petits pas vers ta forme mesurée au lieu de sauter directement dessus, et ralentit si tu rates plusieurs séances récemment",
+        "📊 Le graphique d'évolution de l'estimation affiche maintenant une bande de tolérance autour de la courbe",
+        "😴 Le nombre de séances sautées apparaît maintenant dans le bilan de la semaine sur le dashboard",
+        "🎨 Les boutons de statut (✅/❌/⚠️/😴) et de ressenti (RPE) sont plus visibles une fois sélectionnés",
+        "🐛 La trajectoire projetée vers la date de course utilisait une durée de plan fixe (11 semaines) au lieu de la vraie durée de ton plan",
+      ]},
+      { ver:"v2.19", title:"Test semi-Cooper pour plan course, échange de séances, statut repos automatique", current:false, notes:[
         "🎯 Le flux \"Je n'ai pas de référence\" (test de 6 minutes) est maintenant aussi disponible pour un plan course, pas seulement en Mode Forme — la durée du plan s'ajuste automatiquement à ta date de course",
         "📅 Le champ de saisie manuelle du volume hebdo est accessible directement, sans devoir d'abord tenter (et échouer) une synchro Strava",
         "⭐ Nouveau sélecteur du jour de sortie longue dans le wizard — reclique sur un jour sélectionné pour en faire ta sortie longue",
