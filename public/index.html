@@ -2302,7 +2302,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 7; // Incrémenté : calculerBorneBruteAtDate() inclut désormais SEUIL et la vraie pondération Lavandou (bug réel : convergence figée sur BASE_TIME_REFERENCE malgré séances SEUIL/VMA validées, 22/07/2026)
+const PREDICTOR_VERSION = 8; // Incrémenté : SEUIL utilise désormais la formule Daniels-Gilbert (VDOT) au lieu de Riegel, structurellement moins pessimiste sur les efforts sous-maximaux (22/07/2026)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2612,10 +2612,17 @@ function calculerBorneBruteAtDate(dateStr) {
 
   const seuilData = weightedAvgByEffortDuration("SEUIL", runs, dateDebutPlan);
   if (seuilData && seuilData.runs.length >= 3) {
-    const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
-    const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
-    const riegelSeuil = totalEffortTime * Math.pow(DISTANCE_M_REFERENCE/totalEffortDist, 1.06);
-    estimates.push({ value: riegelSeuil, weight: 0.10 });
+    // Formule Daniels-Gilbert (22/07/2026) — remplace Riegel, structurellement
+    // pessimiste sur une allure sous-maximale comme le seuil (cf. commentaire
+    // détaillé dans plan-generator.js, vdotDepuisEffortSousMaximal). Le seuil
+    // est tenable ~60 minutes en course (Daniels, chapitre 4) : on en déduit
+    // un VDOT représentatif, puis la vitesse équivalente sur la distance de
+    // référence du plan (DISTANCE_M_REFERENCE).
+    const vitesseSeuilMMin = seuilData.speed * 60; // m/s → m/min
+    const vdotSeuil = vdotDepuisEffortSousMaximal(vitesseSeuilMMin, 60);
+    const vitesseEquivalente = vitesseDepuisVdotEtDistance(vdotSeuil, DISTANCE_M_REFERENCE);
+    const estimationSeuil = DISTANCE_M_REFERENCE / vitesseEquivalente * 60; // m/min → secondes
+    estimates.push({ value: estimationSeuil, weight: 0.10 });
   }
 
   const vmaData = weightedAvgByEffortDuration("VMA", runs, dateDebutPlan);
@@ -3013,13 +3020,20 @@ function predict10K() {
   }
 
   // ── 2. SEUIL → contribue uniquement à partir de 3 séances ─────────────────
+  // Formule Daniels-Gilbert (22/07/2026) — remplace Riegel, structurellement
+  // pessimiste sur une allure sous-maximale comme le seuil (bug réel : un
+  // bon seuil à 4:59/km donnait 52:58 via Riegel contre 49:15 en VDOT, sur
+  // une même séance qui aurait dû faire progresser l'estimation). Détail
+  // complet dans plan-generator.js, vdotDepuisEffortSousMaximal.
   const seuilData = weightedAvg("SEUIL");
   if (seuilData && seuilData.runs.length >= 3) {
-    const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
+    const vitesseSeuilMMin = seuilData.speed * 60; // m/s → m/min
+    const vdotSeuil = vdotDepuisEffortSousMaximal(vitesseSeuilMMin, 60);
+    const vitesseEquivalente = vitesseDepuisVdotEtDistance(vdotSeuil, DISTANCE_M_REFERENCE);
+    const estimationSeuil = DISTANCE_M_REFERENCE / vitesseEquivalente * 60; // m/min → secondes
+    estimates.push({ value: estimationSeuil, weight: 0.10 });
     const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
-    const riegelSeuil = totalEffortTime * Math.pow(DISTANCE_M_REFERENCE/totalEffortDist, 1.06);
-    estimates.push({ value: riegelSeuil, weight: 0.10 });
-    details.push({ label:`SEUIL · ${seuilData.runs.length} séances · ${Math.round(totalEffortDist)}m effort`, value:fmtPace(seuilData.speed)+"/km → "+fmtTime(Math.round(riegelSeuil)) });
+    details.push({ label:`SEUIL · ${seuilData.runs.length} séances · ${Math.round(totalEffortDist)}m effort`, value:fmtPace(seuilData.speed)+"/km → "+fmtTime(Math.round(estimationSeuil)) });
   }
 
   // ── 3. VMA → vitesse × 0.87 ──────────────────────────────────────────────
