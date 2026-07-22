@@ -977,9 +977,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
             <div class="opt-compact" data-dist-forme="Marathon" onclick="selectDistForme(this)">Marathon</div>
           </div>
           <div class="time-input" style="padding:16px 10px;">
-            <input type="text" maxlength="2" value="50" id="tMinForme" style="font-size:28px;">
+            <input type="text" maxlength="2" value="" placeholder="mm" id="tMinForme" style="font-size:28px;">
             <span class="sep">:</span>
-            <input type="text" maxlength="2" value="21" id="tSecForme" style="font-size:28px;">
+            <input type="text" maxlength="2" value="" placeholder="ss" id="tSecForme" style="font-size:28px;">
             <span class="unit">min:sec</span>
           </div>
           <!-- Flux "pas de référence" (21/07/2026) — pour un coureur qui n'a
@@ -1221,11 +1221,11 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <h1><span id="refDistLabel">Ton dernier 10K</span>, ou une estimation</h1>
       <p class="sub" id="refHelpText">Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.</p>
       <div class="time-input">
-        <input type="text" maxlength="2" value="50" id="tHour" style="display:none;">
+        <input type="text" maxlength="2" value="" placeholder="0" id="tHour" style="display:none;">
         <span class="sep" id="tHourSep" style="display:none;">:</span>
-        <input type="text" maxlength="2" value="50" id="tMin">
+        <input type="text" maxlength="2" value="" placeholder="mm" id="tMin">
         <span class="sep">:</span>
-        <input type="text" maxlength="2" value="21" id="tSec">
+        <input type="text" maxlength="2" value="" placeholder="ss" id="tSec">
         <span class="unit" id="tUnit">min:sec</span>
       </div>
       <div class="helper-row">
@@ -2891,6 +2891,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
+    // Validation (22/07/2026) : les champs temps de référence/objectif
+    // n'ont plus de valeur par défaut en dur (placeholder uniquement,
+    // cf. suppression de "50:21") — un champ resté vide donnerait
+    // Engine.parseTimeToSeconds("0:00") = 0, produisant un plan aux
+    // allures absurdes sans erreur explicite. Bloqué ici avant tout appel
+    // au moteur.
+    if (!estGrandDebutant() && !fluxTestCourse) {
+      if (Engine.parseTimeToSeconds(params.tempsReference) <= 0) {
+        alert("Renseigne ton temps de référence avant de continuer (ou utilise \"Je n'ai pas de référence\").");
+        return;
+      }
+      if (Engine.parseTimeToSeconds(params.objectif) <= 0) {
+        alert("Renseigne ton objectif avant de continuer.");
+        return;
+      }
+    }
+
     let plan;
     try {
       plan = Engine.generatePlan(profil, params);
@@ -3961,6 +3978,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       document.getElementById('nextBtn').innerHTML = '✓';
       document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
       document.getElementById('nextBtn').title = 'Terminer';
+      return;
+    }
+
+    // Validation (22/07/2026), même principe que le wizard course : le
+    // champ n'a plus de valeur par défaut en dur, un champ vide donnerait
+    // un objectif à 0:00 sans erreur explicite.
+    if (Engine.parseTimeToSeconds(params.tempsReference) <= 0) {
+      alert("Renseigne ton temps de référence avant de continuer (ou utilise \"Je n'ai pas de référence\").");
       return;
     }
 
