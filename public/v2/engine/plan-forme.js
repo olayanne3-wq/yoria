@@ -289,7 +289,8 @@ function genererSemainesForme({ profil, allSeconds, accent, volumeActuel, semain
       niveau: profil.niveau,
       renforcementActif: profil.renforcementMusculaire,
       modulation: {},
-      forcerAucuneQualite: false
+      forcerAucuneQualite: false,
+      jourLongueChoisi: profil.jourLongueChoisi ?? null
     });
 
     const { volumeKm, estDecharge } = computeVolumeFormeSemaine({ volumeDepart: volumeActuel, semaineNum });
@@ -484,7 +485,8 @@ export function generatePlanFormeAvecTest(profil, params) {
     niveau: profil.niveau,
     renforcementActif: profil.renforcementMusculaire,
     modulation: {},
-    forcerAucuneQualite: false
+    forcerAucuneQualite: false,
+    jourLongueChoisi: profil.jourLongueChoisi ?? null
   });
 
   for (const [, seance] of Object.entries(assignment)) {
