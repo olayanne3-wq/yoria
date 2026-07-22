@@ -4170,16 +4170,16 @@ function renderDashboard() {
     bilanEl = el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"Bilan semaine "+cw2),
       el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px"}},
-        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
-          el("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap"}},
-            el("div",{},el("div",{style:{color:"var(--accent2)",fontSize:"20px",fontWeight:"800"}},report.done+""),el("div",{class:"muted",style:{fontSize:"13px"}},"✅ faites")),
-            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"20px",fontWeight:"800"}},report.adapted+""),el("div",{class:"muted",style:{fontSize:"13px"}},"⚠️ partielles")),
-            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"20px",fontWeight:"800"}},report.missed+""),el("div",{class:"muted",style:{fontSize:"13px"}},"❌ manquées")),
-            el("div",{},el("div",{style:{color:"var(--accent)",fontSize:"20px",fontWeight:"800"}},report.skipped+""),el("div",{class:"muted",style:{fontSize:"13px"}},"😴 sautées"))
+        el("div",{style:{marginBottom:"12px"}},
+          el("div",{style:{display:"flex",gap:"14px",flexWrap:"wrap",marginBottom:"10px"}},
+            el("div",{},el("div",{style:{color:"var(--accent2)",fontSize:"18px",fontWeight:"800"}},report.done+""),el("div",{class:"muted",style:{fontSize:"11px",whiteSpace:"nowrap"}},"✅ faites")),
+            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"18px",fontWeight:"800"}},report.adapted+""),el("div",{class:"muted",style:{fontSize:"11px",whiteSpace:"nowrap"}},"⚠️ partielles")),
+            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"18px",fontWeight:"800"}},report.missed+""),el("div",{class:"muted",style:{fontSize:"11px",whiteSpace:"nowrap"}},"❌ manquées")),
+            el("div",{},el("div",{style:{color:"var(--accent)",fontSize:"18px",fontWeight:"800"}},report.skipped+""),el("div",{class:"muted",style:{fontSize:"11px",whiteSpace:"nowrap"}},"😴 sautées"))
           ),
-          el("div",{style:{textAlign:"right"}},
-            el("div",{style:{color:pctColor,fontSize:"22px",fontWeight:"800"}},pct+"%"),
-            el("div",{class:"muted",style:{fontSize:"13px"}},"complétées")
+          el("div",{style:{display:"flex",alignItems:"baseline",gap:"6px"}},
+            el("span",{style:{color:pctColor,fontSize:"20px",fontWeight:"800"}},pct+"%"),
+            el("span",{class:"muted",style:{fontSize:"13px"}},"complétées")
           )
         ),
         el("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap",paddingTop:"10px",borderTop:"1px solid var(--border)"}},
