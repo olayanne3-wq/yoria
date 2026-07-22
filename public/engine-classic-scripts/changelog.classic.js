@@ -21,7 +21,17 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.18", title:"Mode Forme sans référence de temps, fiabilité du chargement de plan", current:true, notes:[
+      { ver:"v2.19", title:"Test semi-Cooper pour plan course, échange de séances, statut repos automatique", current:true, notes:[
+        "🎯 Le flux \"Je n'ai pas de référence\" (test de 6 minutes) est maintenant aussi disponible pour un plan course, pas seulement en Mode Forme — la durée du plan s'ajuste automatiquement à ta date de course",
+        "📅 Le champ de saisie manuelle du volume hebdo est accessible directement, sans devoir d'abord tenter (et échouer) une synchro Strava",
+        "⭐ Nouveau sélecteur du jour de sortie longue dans le wizard — reclique sur un jour sélectionné pour en faire ta sortie longue",
+        "🔄 Possibilité d'échanger deux séances déjà présentes dans la semaine (pas seulement déplacer vers un jour de repos)",
+        "😴 Une séance passée sans statut saisi est désormais marquée automatiquement comme repos/sautée, visible sur toutes les cartes et dans le résumé du dashboard",
+        "🚫 Une séance ne peut plus être supprimée du plan — seul un statut (✅/❌/⚠️/😴) la caractérise",
+        "🐛 Correctif important : un déplacement manuel de séance n'était pas toujours pris en compte par le reste de l'app (prédicteur, statistiques, alertes) — corrigé à la source",
+        "🐛 Plusieurs correctifs sur les allures calculées après un test semi-Cooper (méthode de calcul VMA→10K revue avec la littérature scientifique, allures EF/seuil incohérentes corrigées)",
+      ]},
+      { ver:"v2.18", title:"Mode Forme sans référence de temps, fiabilité du chargement de plan", current:false, notes:[
         "🏃 En Mode Forme, plus besoin d'avoir un temps de course récent — \"Je n'ai pas de référence\" propose un test de 6 minutes en première semaine, tes allures sont calculées automatiquement une fois le test fait",
         "🔁 Nouveau bouton pour enchaîner sur un nouveau bloc de 4 semaines quand le précédent est terminé, en Mode Forme",
         "📏 Ajout d'un sélecteur de distance (5K/10K/Semi/Marathon) à côté du temps de référence en Mode Forme, pour que tes allures soient calculées sur la bonne base",
