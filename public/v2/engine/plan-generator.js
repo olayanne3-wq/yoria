@@ -1215,8 +1215,17 @@ export function completerPlanApresTestSemiCooper(planPartiel, resultatTest) {
     dureeSemaines: (planSuite.dureeSemaines ?? 0) + 1,
     semaines: [planPartiel.semaines[0], ...semainesRenumerotees],
     warnings: [...(planPartiel.warnings ?? []), ...(planSuite.warnings ?? [])],
-    paramsOrigine: undefined,
-    profilOrigine: undefined
+    // BUG corrigé le 22/07/2026 : mettre ces deux champs à undefined ici
+    // cassait BASE_TIME_REFERENCE côté index.html (app principale), qui lit
+    // window.__PLAN_BRUT__.paramsOrigine.tempsReference pour afficher
+    // "Estimation" — sans lui, ce repli retombait sur 3021s (50'21", valeur
+    // historique codée en dur). Conservés avec les VRAIES valeurs finales
+    // (tempsReference/objectif recalculés ci-dessus depuis le test, pas les
+    // valeurs par défaut du wizard d'origine), cohérent avec un plan
+    // généré normalement (generateAndShowResults pose aussi ces deux
+    // champs après coup, cf. wizard).
+    paramsOrigine: paramsSuite,
+    profilOrigine: planPartiel.profilOrigine
   };
 }
 
