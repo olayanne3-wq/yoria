@@ -3247,6 +3247,16 @@ function renderDashboard() {
   const done=ALL_SESSIONS.filter(s=>statuses[s.uid]==="✅").length;
   const missed=ALL_SESSIONS.filter(s=>statuses[s.uid]==="❌").length;
   const adapted=ALL_SESSIONS.filter(s=>statuses[s.uid]==="⚠️").length;
+  // Ajouté le 22/07/2026 (signalé par Laurent : "pas de compte des status
+  // zzz" sur cette carte) — utilise statutEffectif (cf.
+  // recalculerAllSessions) donc inclut à la fois les 😴 saisis
+  // manuellement ET les jours passés sans statut auto-considérés comme
+  // repos volontaire. Comportement volontairement différent des trois
+  // compteurs au-dessus (qui restent sur le VRAI statut saisi, statuses[uid]
+  // brut) : la carte globale doit refléter ce que montre déjà le badge
+  // visuel de chaque séance (renderWeekDetail), qui utilise aussi
+  // statutEffectif.
+  const skipped=ALL_SESSIONS.filter(s=>s.statutEffectif==="😴").length;
 
   // ── Proposition de progression de palier marche-course (grand débutant,
   // 14/07/2026) ────────────────────────────────────────────────────────────
@@ -3695,6 +3705,8 @@ function renderDashboard() {
         el("span",{style:{color:"var(--warn)",fontWeight:"700"}},"⚠️ "+adapted),
         el("span",{class:"muted"},"·"),
         el("span",{style:{color:"var(--warn)",fontWeight:"700"}},"❌ "+missed),
+        skipped>0 ? el("span",{class:"muted"},"·") : null,
+        skipped>0 ? el("span",{style:{fontWeight:"700"}},"😴 "+skipped) : null,
         el("span",{class:"muted"},"·"),
         el("span",{class:"muted"},"S"+cw),
         el("div",{style:{flex:"1"}}),
