@@ -1000,6 +1000,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <div class="strava-card" id="stravaConnexionBlocForme" style="display:none;">
           <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines).</p>
           <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
+          <span class="alt-toggle" onclick="toggleManualVolumeForme()" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
         </div>
 
         <div class="strava-card" id="stravaCardForme">
@@ -1179,6 +1180,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <div class="strava-card" id="stravaConnexionBloc" style="display:none;">
         <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines), plutôt que de l'estimer toi-même.</p>
         <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
+        <span class="alt-toggle" onclick="toggleManualVolume()" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
       </div>
 
       <div class="strava-card" id="stravaCard">
