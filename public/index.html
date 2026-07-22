@@ -1655,7 +1655,18 @@ function weeklyReport(weekNum) {
   // Ajouté le 22/07/2026 (demande Laurent) : compteur 😴 (séance
   // volontairement sautée/repos) dans le Bilan semaine du dashboard, même
   // esprit que le compteur déjà affiché sur l'écran Course.
-  const skipped = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="😴").length;
+  // BUG corrigé le même jour (audit statutEffectif) : statuses[uid]==="😴"
+  // ne couvrait que le 😴 posé MANUELLEMENT — le 😴 automatique (séance
+  // passée jamais cochée, recalculerAllSessions()) n'est jamais écrit dans
+  // statuses[uid] lui-même, seulement dans ALL_SESSIONS[i].statutEffectif.
+  // Sans ce correctif, le compteur "sautées" ignorait silencieusement le
+  // cas le plus courant (oubli de cocher), ne comptant que les rares 😴
+  // explicitement cliqués.
+  const skipped = sessions.filter(s => {
+    const uid = `${weekNum}-${week.sessions.indexOf(s)}`;
+    const sessionAllSessions = ALL_SESSIONS.find(as => as.uid === uid);
+    return (sessionAllSessions?.statutEffectif ?? statuses[uid]) === "😴";
+  }).length;
   // plannedMin via kmEstime x allure EF de référence — même calcul que
   // weekStats() (déjà corrigé le 7 juillet 2026, cf. inventaire §7bis/
   // 7quater). Avant ce correctif (17/07/2026), plannedMin reparsait le
@@ -7196,7 +7207,7 @@ function exportPdfRecap() {
       if(s.type==="REPOS") return;
       const uid=wk.week+"-"+i;
       const eff=getEffectiveSession(wk,i)||s;
-      const st=statuses[uid]||"-";
+      const st = ALL_SESSIONS.find(as => as.uid === uid)?.statutEffectif || statuses[uid] || "-";
       const strava=getStravaRunSiPasManuel(s.date, uid);
       let line=s.date+" | "+eff.type+" | "+eff.session.slice(0,35)+" | "+st;
       if(strava){
