@@ -5320,11 +5320,23 @@ function renderStats() {
     return formatPace(efSec + 20); // +20s/km si chaleur, même règle que le reste de l'app
   })();
   const labelSpecifique = "Spécifique " + (window.__PLAN_BRUT__?.distance || "10K");
+  // BUG corrigé le 22/07/2026 (signalé par Laurent, incohérence FC/allure
+  // repérée sur un plan Forme) : la ligne SPEC (allure course/C) s'affichait
+  // inconditionnellement, y compris pour un plan Forme — qui n'a JAMAIS de
+  // zone C (computeAlluresForme, plan-forme.js, ne calcule pas cette zone,
+  // notion propre au plan course). construireSessionTargets() retombait
+  // alors sur son repli codé en dur (294 sec/km = 4:54/km, "valeur
+  // historique") pour SPEC, affiché comme si c'était une vraie donnée
+  // calculée — avec une zone FC pourtant plus BASSE que le seuil (85-90%
+  // contre 90-95%) alors que l'allure fictive affichée était plus rapide,
+  // incohérence physiologique visible. Ligne SPEC désormais masquée pour
+  // tout plan sans allures.C réelles.
+  const aZoneC = !!window.__PLAN_BRUT__?.allures?.C;
   const paceRows = [
     {type:"EF",      label:"Endurance fondamentale", pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.EF.min+"–"+FC_ZONES.EF.max, pct:FC_ZONES.EF.label, color:"var(--accent)"},
     {type:"LONGUE",  label:"Sortie longue",           pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.LONGUE.min+"–"+FC_ZONES.LONGUE.max, pct:FC_ZONES.LONGUE.label, color:"var(--accent2)"},
     {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:FC_ZONES.SEUIL.min+"–"+FC_ZONES.SEUIL.max, pct:FC_ZONES.SEUIL.label, color:"var(--accent2)"},
-    {type:"SPEC",    label:labelSpecifique,           pace:SESSION_TARGETS.SPEC.effort,  heat:null, fc:FC_ZONES.SPEC.min+"–"+FC_ZONES.SPEC.max, pct:FC_ZONES.SPEC.label, color:"var(--accent)"},
+    ...(aZoneC ? [{type:"SPEC", label:labelSpecifique, pace:SESSION_TARGETS.SPEC.effort, heat:null, fc:FC_ZONES.SPEC.min+"–"+FC_ZONES.SPEC.max, pct:FC_ZONES.SPEC.label, color:"var(--accent)"}] : []),
     {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:FC_ZONES.VMA.min+"–"+FC_ZONES.VMA.max, pct:FC_ZONES.VMA.label, color:"var(--accent)"},
   ];
   // ── Courbes IE + Cadence ─────────────────────────────────────────────────
