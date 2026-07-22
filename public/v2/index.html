@@ -2030,21 +2030,31 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
-    // Semaine test semi-Cooper (21/07/2026) — plan.allures est null tant
-    // que le test n'est pas fait (cf. generatePlanFormeAvecTest,
-    // plan-forme.js), donc Object.entries(plan.allures) plus bas
-    // planterait exactement comme le cas marche-course ci-dessus l'a déjà
-    // fait avant son propre correctif du 15/07 (bouton "Générer" qui
-    // semblait ne rien faire, erreur JS silencieuse). Sortie anticipée
-    // avec un message explicite, plutôt que de repasser par le chemin
-    // Mode Forme classique plus bas qui suppose toujours des allures
-    // connues.
-    if (plan.mode === 'forme' && plan.enAttenteTest) {
-      document.getElementById('resultsAmpleur').textContent =
-        `Mode forme — test semi-Cooper à faire avant de connaître tes allures — ${plan.warnings.length} avertissement(s).`;
+    // Semaine test semi-Cooper (21/07/2026, étendu au plan course le
+    // 22/07/2026) — plan.allures est null tant que le test n'est pas fait
+    // (cf. generatePlanFormeAvecTest / generatePlanAvecTestSemiCooper),
+    // donc Object.entries(plan.allures) plus bas planterait exactement
+    // comme le cas marche-course ci-dessus l'a déjà fait avant son propre
+    // correctif du 15/07 (bouton "Générer" qui semblait ne rien faire,
+    // erreur JS silencieuse). Sortie anticipée avec un message explicite.
+    // BUG corrigé le 22/07/2026 : cette condition testait plan.mode ===
+    // 'forme', qui ne correspond jamais au plan course (pas de champ mode
+    // du tout) — le plan course en attente de test tombait dans le chemin
+    // normal plus bas, qui plante sur Object.entries(plan.allures)=null.
+    // Retiré la condition sur plan.mode : plan.enAttenteTest seul suffit à
+    // distinguer ce cas, dans les deux wizards.
+    if (plan.enAttenteTest) {
+      const estModeFormeTest = plan.mode === 'forme';
+      document.getElementById('resultsAmpleur').textContent = estModeFormeTest
+        ? `Mode forme — test semi-Cooper à faire avant de connaître tes allures — ${plan.warnings.length} avertissement(s).`
+        : `Test semi-Cooper à faire avant de connaître tes allures — ${plan.warnings.length} avertissement(s).`;
       document.getElementById('resultsWarnCount').textContent = `${plan.warnings.length} alerte(s)`;
-      document.getElementById('resDuree').textContent = `Bloc de ${plan.tailleBlocSemaines} semaines (glissant)`;
-      document.getElementById('resPhases').textContent = 'Mode forme — pas de phases';
+      document.getElementById('resDuree').textContent = estModeFormeTest
+        ? `Bloc de ${plan.tailleBlocSemaines} semaines (glissant)`
+        : `Durée définitive après ton test (jusqu'au ${plan.dateCourse})`;
+      document.getElementById('resPhases').textContent = estModeFormeTest
+        ? 'Mode forme — pas de phases'
+        : 'Phases établies après ton test';
       document.getElementById('resPlafond').textContent = '—';
       document.getElementById('resFcMax').textContent = plan.zoneFC
         ? `${plan.zoneFC.fcMax} bpm max (${plan.zoneFC.methode === 'mesuree' ? 'mesurée' : 'estimée, formule de Tanaka'})`
