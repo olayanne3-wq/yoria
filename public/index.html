@@ -1652,6 +1652,10 @@ function weeklyReport(weekNum) {
   const done    = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="✅").length;
   const adapted = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="⚠️").length;
   const missed  = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="❌").length;
+  // Ajouté le 22/07/2026 (demande Laurent) : compteur 😴 (séance
+  // volontairement sautée/repos) dans le Bilan semaine du dashboard, même
+  // esprit que le compteur déjà affiché sur l'écran Course.
+  const skipped = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="😴").length;
   // plannedMin via kmEstime x allure EF de référence — même calcul que
   // weekStats() (déjà corrigé le 7 juillet 2026, cf. inventaire §7bis/
   // 7quater). Avant ce correctif (17/07/2026), plannedMin reparsait le
@@ -1692,7 +1696,7 @@ function weeklyReport(weekNum) {
     }
   }
 
-  return { done, adapted, missed, total:sessions.length, plannedMin, realMin, avgEfPace, avgEfHr, prevEfPace, prevEfHr };
+  return { done, adapted, missed, skipped, total:sessions.length, plannedMin, realMin, avgEfPace, avgEfHr, prevEfPace, prevEfHr };
 }
 
 // ── Branchement Module 3 (WeekAnalyzer) — 17/07/2026 ───────────────────────
@@ -4160,17 +4164,18 @@ function renderDashboard() {
   const cw2 = currentWeek();
   const report = weeklyReport(cw2);
   let bilanEl = null;
-  if (report && (report.done+report.adapted+report.missed) > 0) {
+  if (report && (report.done+report.adapted+report.missed+report.skipped) > 0) {
     const pct = Math.round((report.done+report.adapted)/report.total*100);
     const pctColor = pct>=80?"var(--accent2)":pct>=50?"var(--warn)":"var(--warn)";
     bilanEl = el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"Bilan semaine "+cw2),
       el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
-          el("div",{style:{display:"flex",gap:"16px"}},
+          el("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap"}},
             el("div",{},el("div",{style:{color:"var(--accent2)",fontSize:"20px",fontWeight:"800"}},report.done+""),el("div",{class:"muted",style:{fontSize:"13px"}},"✅ faites")),
             el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"20px",fontWeight:"800"}},report.adapted+""),el("div",{class:"muted",style:{fontSize:"13px"}},"⚠️ partielles")),
-            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"20px",fontWeight:"800"}},report.missed+""),el("div",{class:"muted",style:{fontSize:"13px"}},"❌ manquées"))
+            el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"20px",fontWeight:"800"}},report.missed+""),el("div",{class:"muted",style:{fontSize:"13px"}},"❌ manquées")),
+            report.skipped>0?el("div",{},el("div",{style:{color:"var(--accent)",fontSize:"20px",fontWeight:"800"}},report.skipped+""),el("div",{class:"muted",style:{fontSize:"13px"}},"😴 sautées")):null
           ),
           el("div",{style:{textAlign:"right"}},
             el("div",{style:{color:pctColor,fontSize:"22px",fontWeight:"800"}},pct+"%"),
@@ -5868,7 +5873,13 @@ function renderStats() {
     // Coefficient k calibré sur le gain réalisé à ce stade
     const weeksElapsed = Math.max(1, (predHistory.length - 1) / 7);
     const k = gainSoFar > 0 ? -Math.log(1 - Math.min(gainSoFar / gainRealist, 0.99)) / weeksElapsed : 0.1;
-    const weeksTotal = 11;
+    // 22/07/2026, remonté par Laurent : weeksTotal était codé en dur à 11
+    // (durée de son ancien plan 10K historique), jamais dérivé du plan
+    // réellement chargé — un plan de 9 semaines (comme le sien actuellement)
+    // faisait une projection sur une durée trop longue. Même famille de
+    // résidu que le bug déjà corrigé pour OBJECTIF_REFERENCE/target (cf.
+    // commentaire predict10K, 20/07/2026).
+    const weeksTotal = PLAN.length;
     const projectedGain = Math.round(gainRealist * (1 - Math.exp(-k * weeksTotal)));
     const projectedTime = BASE_TIME_START - projectedGain;
 
