@@ -51,6 +51,72 @@ export function riegelPredict(t1Seconds, d1Km, d2Km) {
   return t1Seconds * Math.pow(d2Km / d1Km, 1.06);
 }
 
+// ── Formules Daniels-Gilbert (22/07/2026) ───────────────────────────────────
+// Riegel suppose que la performance de départ est un effort MAXIMAL (un
+// record), ce qui en fait un mauvais outil pour extrapoler depuis une
+// séance de SEUIL — allure volontairement sous-maximale, tenue à environ
+// 86-88 % du VO2max, jamais "à fond" (Daniels' Running Formula, chapitre 4,
+// section Threshold Running). Appliquer Riegel à une allure seuil revient à
+// traiter cette allure comme si c'était déjà la limite du coureur, ce qui
+// sous-estime systématiquement sa vraie vitesse sur une autre distance —
+// bug réel constaté le 22/07/2026 (Laurent) : un bon seuil à 4:59/km
+// donnait une estimation 10K de 52:58 via Riegel, contre 49:15 avec la
+// méthode ci-dessous (~4 minutes d'écart), alors que la même séance
+// faisait par ailleurs progresser les autres sources (VMA, SPEC).
+//
+// Ces deux fonctions sont les équations Daniels-Gilbert originales,
+// publiées dans Daniels' Running Formula et utilisées pour construire les
+// tables VDOT du chapitre 5 (non disponible dans le fichier projet fourni
+// à Claude — équations vérifiées par recherche web le 22/07/2026 auprès de
+// plusieurs calculateurs VDOT tiers indépendants qui citent la même
+// formule caractéristique, cohérente avec les pourcentages VO2max déjà
+// confirmés dans le chapitre 4 du livre : seuil ≈ 86-88% VO2max, tenable
+// environ 60 minutes en course).
+//
+// Coût en oxygène d'une vitesse donnée (v en m/min) → VO2 en ml/kg/min.
+export function vo2FromVelocity(v) {
+  return -4.60 + 0.182258 * v + 0.000104 * v * v;
+}
+// Inverse de vo2FromVelocity — recherche par dichotomie, la fonction étant
+// strictement croissante sur la plage de vitesses de course (100-500 m/min
+// couvre largement tout du jogging au sprint).
+export function velocityFromVo2(vo2) {
+  let lo = 100, hi = 500;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (vo2FromVelocity(mid) < vo2) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+// Fraction du VO2max soutenable pour une durée d'effort donnée (t en
+// minutes) — plus l'effort est long, plus cette fraction diminue (on ne
+// peut pas tenir 100% du VO2max plus d'environ 10-11 minutes).
+export function pctVo2MaxPourDuree(tMinutes) {
+  return 0.8 + 0.1894393 * Math.exp(-0.012778 * tMinutes) + 0.2989558 * Math.exp(-0.1932605 * tMinutes);
+}
+// Calcule un VDOT (indice de forme unique) à partir d'une vitesse tenue à
+// une intensité connue pendant une durée connue — ex. allure seuil (vSeuil,
+// tenable ~60min en course chez Daniels) → VDOT représentatif du coureur.
+export function vdotDepuisEffortSousMaximal(vitesseKmMin, dureeMinTenableEnCourse) {
+  const vo2 = vo2FromVelocity(vitesseKmMin);
+  const pct = pctVo2MaxPourDuree(dureeMinTenableEnCourse);
+  return vo2 / pct;
+}
+// Convertit un VDOT en vitesse (m/min) pour une distance cible donnée, par
+// résolution itérative (la durée de la course cible dépend elle-même de la
+// vitesse qu'on cherche — quelques itérations suffisent à converger,
+// exactement comme pour construire les tables VDOT du livre).
+export function vitesseDepuisVdotEtDistance(vdot, distanceM) {
+  let dureeMinEstimee = distanceM / 200; // estimation grossière de départ (~200 m/min)
+  for (let i = 0; i < 20; i++) {
+    const pct = pctVo2MaxPourDuree(dureeMinEstimee);
+    const vo2Cible = vdot * pct;
+    const v = velocityFromVo2(vo2Cible);
+    dureeMinEstimee = distanceM / v;
+  }
+  return distanceM / dureeMinEstimee; // m/min
+}
+
 export const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
 
 // ---------------------------------------------------------------------------
