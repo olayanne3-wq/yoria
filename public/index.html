@@ -2730,12 +2730,24 @@ function rebuildPredHistory() {
   lastRebuildDate = today();
   save(clePourPlan("lk_last_rebuild"), lastRebuildDate);
   isRebuilding = false;
+  // Allures dynamiques (22/07/2026) : ne peut s'évaluer qu'une fois
+  // predHistory à jour — appelée ici pour le cas où la reconstruction
+  // était nécessaire (asynchrone dans les faits, cette fonction reste
+  // elle-même synchrone mais mieux vaut la garder groupée avec la mise à
+  // jour de predHistory plutôt que de la déclencher ailleurs en parallèle).
+  verifierEtAppliquerAlluresDynamiques();
   render();
 }
 
 // Reconstruire l\'historique si manquant ou incomplet
 if ((stravaActivities.length > 0 || nbSaisiesManuelles() > 0) && (predHistory.length <= 1 || (predHistory[0] && predHistory[0].predictorVersion !== PREDICTOR_VERSION))) {
   rebuildPredHistory();
+} else {
+  // predHistory déjà à jour (cas normal, la reconstruction n'a pas tourné
+  // ce chargement-ci) : vérifier quand même les allures dynamiques, sinon
+  // ce mécanisme ne se déclencherait jamais pour un utilisateur dont
+  // l'historique était déjà complet dès le départ.
+  verifierEtAppliquerAlluresDynamiques();
 }
 
 // ── Fiabilité du plan pondérée par récence ──────────────────────────────────
@@ -2767,6 +2779,114 @@ function fiabilitePlanPonderee(dateStr) {
   });
   if (!poidsTotal) return 1;
   return poidsReussite / poidsTotal; // 0..1
+}
+
+// ── Allures dynamiques (22/07/2026) ─────────────────────────────────────────
+// Vérifie, à chaque chargement du dashboard, si le plan vient de dépasser la
+// fin d'une semaine PAIRE (S2, S4, S6...) sans avoir encore recalculé les
+// allures d'entraînement pour cette période — si oui, compare l'estimation
+// actuelle du prédicteur à celle de la période précédente (via predHistory)
+// et décide, via calculerReferenceCouranteAllures() (plan-generator.js), si
+// les allures E/T/I doivent être resserrées ou assouplies. Contrairement à
+// appliquerAdaptations() (qui réagit à des semaines ratées et est déclenchée
+// sur clic explicite), ce mécanisme est automatique et réagit à la
+// PROGRESSION mesurée par le prédicteur — les deux systèmes sont
+// indépendants et ne se substituent pas l'un à l'autre.
+//
+// State persistant nécessaire (deux clés, préfixées par plan comme le
+// reste) :
+// - lk_derniere_semaine_paire_allures : dernière semaine paire déjà traitée,
+//   pour ne recalculer qu'une fois par palier (pas à chaque chargement).
+// - lk_regression_allures_en_attente : { depuis, semaineNum } si une
+//   régression a été détectée mais pas encore confirmée sur 2 périodes
+//   consécutives — remis à null dès que le prochain calcul n'est plus une
+//   régression significative (retour au stable = le compteur repart de
+//   zéro, cohérent avec le principe "2 périodes CONSÉCUTIVES").
+function verifierEtAppliquerAlluresDynamiques() {
+  if (!window.__PLAN_BRUT__?.paramsOrigine || !window.__PLAN_BRUT__?.semaines) return; // même garde qu'appliquerAdaptations()
+  if (window.__PLAN_BRUT__.mode === 'forme') return; // pas de notion d'objectif/allure C pour un plan Forme
+
+  const semaineActuelle = currentWeek();
+  const derniereSemainePaireTraitee = load(clePourPlan("lk_derniere_semaine_paire_allures"), 0);
+  // Dernière semaine paire déjà entièrement passée (semaineActuelle est la
+  // semaine EN COURS, donc la dernière semaine paire COMPLÈTE est
+  // semaineActuelle-1 arrondie en dessous au pair le plus proche).
+  const derniereSemainePaireComplete = Math.floor((semaineActuelle - 1) / 2) * 2;
+  if (derniereSemainePaireComplete < 2 || derniereSemainePaireComplete <= derniereSemainePaireTraitee) return;
+
+  const semaineInfo = window.__PLAN_BRUT__.semaines.find(s => s.semaineNum === derniereSemainePaireComplete);
+  if (!semaineInfo || !window.__PLAN_BRUT__.dateDebut) return;
+  const debutPlan = new Date(window.__PLAN_BRUT__.dateDebut + "T00:00:00Z");
+  const dateFinPeriode = new Date(debutPlan);
+  dateFinPeriode.setUTCDate(debutPlan.getUTCDate() + derniereSemainePaireComplete * 7 - 1);
+  const dateFinPeriodeStr = dateFinPeriode.toISOString().slice(0,10);
+  const dateFinPeriodePrecedente = new Date(debutPlan);
+  dateFinPeriodePrecedente.setUTCDate(debutPlan.getUTCDate() + (derniereSemainePaireComplete - 2) * 7 - 1);
+  const dateFinPeriodePrecedenteStr = dateFinPeriodePrecedente.toISOString().slice(0,10);
+
+  // Trouver l'entrée predHistory la plus proche de (mais pas après) chaque
+  // date de fin de période — predHistory a une entrée par jour, donc en
+  // pratique une correspondance exacte est attendue, avec repli sur la plus
+  // proche disponible si un jour manquait (ex. reconstruction interrompue).
+  const trouverEstimationAvant = (dateStr) => {
+    const bonnes = predHistory.filter(p => p.date <= dateStr);
+    return bonnes.length ? bonnes[bonnes.length-1].time : null;
+  };
+  const referenceActuelle = parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.tempsReference);
+  const estimationActuelle = trouverEstimationAvant(dateFinPeriodeStr);
+  // Pour la toute première comparaison possible (fin S2), il n'existe pas
+  // de "fin de période précédente" au sens propre (S0 n'est pas une
+  // période évaluée) — mais la référence initiale du plan
+  // (paramsOrigine.tempsReference) EST la valeur de départ légitime à
+  // laquelle comparer : ne pas la traiter comme une absence de donnée
+  // (correctif du 22/07/2026, signalé par Laurent — la version précédente
+  // forçait `null` ici, ce qui empêchait toute détection de progression ou
+  // de régression avant la fin de S4, perdant tout le signal du premier
+  // mois du plan, période où l'écart entre allures d'entraînement et
+  // objectif est justement le plus grand).
+  const estimationPeriodePrecedente = derniereSemainePaireComplete === 2 ? referenceActuelle : trouverEstimationAvant(dateFinPeriodePrecedenteStr);
+  if (estimationActuelle == null) return; // pas encore assez de données, on retentera au prochain chargement
+
+  const regressionEnAttente = load(clePourPlan("lk_regression_allures_en_attente"), null);
+
+  const resultat = calculerReferenceCouranteAllures({
+    estimationActuelle,
+    estimationPeriodePrecedente,
+    referenceActuellementUtilisee: referenceActuelle,
+    regressionDejaEnAttente: regressionEnAttente
+  });
+
+  // Marquer cette semaine paire comme traitée dans tous les cas (y compris
+  // "insuffisant"/"stable") pour ne pas retenter à chaque chargement du
+  // dashboard tant qu'une nouvelle semaine paire n'est pas atteinte.
+  save(clePourPlan("lk_derniere_semaine_paire_allures"), derniereSemainePaireComplete);
+
+  if (resultat.statut === 'regression_en_attente') {
+    save(clePourPlan("lk_regression_allures_en_attente"), { depuis: estimationPeriodePrecedente, semaineNum: derniereSemainePaireComplete });
+    return;
+  }
+  if (resultat.statut === 'stable' || resultat.statut === 'insuffisant') {
+    if (regressionEnAttente) save(clePourPlan("lk_regression_allures_en_attente"), null); // retour au stable : le compteur de régression repart de zéro
+    return;
+  }
+
+  // progression ou regression_confirmee : appliquer la nouvelle référence.
+  save(clePourPlan("lk_regression_allures_en_attente"), null);
+  const nouvellesAllures = computeAllures({
+    refTimeSeconds: resultat.nouvelleReference,
+    refDistanceKm: KM_BY_DISTANCE[window.__PLAN_BRUT__.paramsOrigine.refDistance ?? window.__PLAN_BRUT__.paramsOrigine.distance],
+    objectifTimeSeconds: parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.objectif),
+    distanceCibleKm: KM_BY_DISTANCE[window.__PLAN_BRUT__.paramsOrigine.distance]
+  });
+  // Formatage identique à celui déjà produit par le wizard pour
+  // window.__PLAN_BRUT__.allures (mm:ss/km par zone) — cf. plan-generator.js.
+  window.__PLAN_BRUT__.allures = Object.fromEntries(
+    Object.entries(nouvellesAllures).map(([zone, paceSec]) => [zone, formatPace(paceSec)])
+  );
+  save(clePourPlan("lk_message_allures_dynamiques"), resultat.messageUtilisateur);
+  if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && window.__PLAN_BRUT__.id) {
+    window.LkSync.mettreAJourPlanSupabase(window.__PLAN_BRUT__.id, window.__PLAN_BRUT__).catch(e => console.warn("Allures dynamiques appliquées localement, sauvegarde échouée :", e.message));
+  }
 }
 
 // ── Helper partagé : vitesse moyenne pondérée par durée d'effort ───────────
@@ -3593,6 +3713,32 @@ function renderDashboard() {
     );
   })();
 
+  // ── Notification allures dynamiques (22/07/2026) ──────────────────────────
+  // Contrairement à adaptationEl ci-dessus (proposition avec bouton
+  // "Appliquer" explicite), le changement d'allures dynamiques est déjà
+  // appliqué automatiquement au moment où ce message existe (cf.
+  // verifierEtAppliquerAlluresDynamiques) — ce bandeau est purement
+  // informatif, avec un bouton "Compris" pour le faire disparaître (jamais
+  // silencieux, mais pas bloquant non plus).
+  const alluresDynamiquesEl = (() => {
+    const message = load(clePourPlan("lk_message_allures_dynamiques"), null);
+    if (!message) return null;
+    return el("div",{style:{background:"rgba(var(--accent2-rgb),0.08)",border:"1px solid rgba(var(--accent2-rgb),0.25)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
+      el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}},
+        el("span",{style:{fontSize:"20px"}},"📈"),
+        el("span",{style:{color:"var(--accent2)",fontSize:"15px",fontWeight:"700"}},"Allures mises à jour")
+      ),
+      el("div",{class:"muted",style:{fontSize:"14px",marginBottom:"12px",lineHeight:"1.5"}}, message),
+      el("button",{style:{width:"100%",background:"none",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"9px",color:"var(--text-muted)",fontSize:"14px",fontWeight:"600",cursor:"pointer"},
+        feedback:true,
+        onClick:()=>{
+          save(clePourPlan("lk_message_allures_dynamiques"), null);
+          render();
+        }
+      },"Compris")
+    );
+  })();
+
   // ── Proposition du moteur de décision (étape 4, doc intégration moteur-decision) ──
   // Cf. §8.2 doc intégration : carte au-dessus du plan de la semaine, même
   // esprit que adaptationEl ci-dessus. Détection AUTOMATIQUE à chaque rendu
@@ -4412,7 +4558,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
