@@ -519,6 +519,24 @@
   .strava-unit{ font-size:13px; color:rgba(var(--text-rgb),0.5); }
   .manual-volume .time-input{ justify-content:flex-start; padding:20px 18px; }
 
+  /* Refonte étape volume (22/07/2026) — carte unique, réutilise
+     .strava-card comme conteneur visuel pour tous les états. */
+  .volume-card-inner{
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:18px;
+    background:rgba(var(--text-rgb),0.03);
+  }
+  .volume-card-inner .time-input{ justify-content:flex-start; padding:20px 18px; }
+  .volume-status{
+    display:flex; align-items:center; gap:8px;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    color:rgba(var(--text-rgb),0.65);
+  }
+  .volume-status-warn{ color:var(--warn, #c9762a); }
+  .volume-spin{ font-style:normal; }
+
   /* Date picker + computed duration */
   .date-field{
     border:1px solid var(--line);
@@ -1000,39 +1018,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <h1>Combien tu cours actuellement&nbsp;?</h1>
         <p class="sub">Sert de base au plateau de volume visé — pas de progression agressive en mode forme.</p>
 
-        <div class="strava-card" id="stravaConnexionBlocForme" style="display:none;">
-          <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines).</p>
-          <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
-          <span class="alt-toggle" onclick="toggleManualVolumeForme()" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
-        </div>
-
-        <div class="strava-card" id="stravaCardForme">
-          <div class="strava-head">
-            <span class="strava-badge">📡 Depuis Strava</span>
-            <span class="strava-period">Médiane, 8 dernières semaines</span>
-          </div>
-          <div class="strava-value"><span id="stravaKmForme">32</span><span class="strava-unit">km / semaine</span></div>
-          <span class="alt-toggle" onclick="toggleManualVolumeForme()">Ce chiffre ne te semble pas juste ? Corriger manuellement</span>
-          <span class="alt-toggle" onclick="deconnecterStrava()" style="display:block; margin-top:4px; opacity:0.6;">Déconnecter Strava</span>
-        </div>
-
-        <div class="manual-volume" id="manualVolumeForme" style="display:none;">
-          <div class="time-input">
-            <input type="text" maxlength="3" value="30" id="manualKmForme" style="width:3ch;">
-            <span class="unit">km / semaine</span>
-          </div>
-          <span class="alt-toggle" onclick="toggleManualVolumeForme()">Revenir à l'estimation Strava</span>
-        </div>
-
-        <div class="flag" id="noStravaFlagForme" style="display:none; margin-top:16px;">
-          <span class="ico">ℹ️</span>
-          <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
-        </div>
-
-        <div class="flag" id="stravaAuthInvalideFlagForme" style="display:none; margin-top:16px; flex-direction:column; align-items:flex-start; gap:10px;">
-          <span style="display:flex; align-items:center; gap:8px;"><span class="ico">⚠️</span><span>Connexion Strava expirée.</span></span>
-          <button class="btn-mini" onclick="connecterStrava()">🔄 Reconnecter Strava</button>
-        </div>
+        <!-- Refonte du 22/07/2026, même principe que le wizard course
+             (renderVolumeCard, préfixe 'Forme'). -->
+        <div class="volume-card" id="volumeCardForme"></div>
       </div>
 
       <!-- FORME STEP 3: Disponibilité -->
@@ -1180,39 +1168,12 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <h1>Combien tu cours actuellement&nbsp;?</h1>
       <p class="sub">Sert à calculer une progression du volume sûre, sans à-coups d'une semaine à l'autre.</p>
 
-      <div class="strava-card" id="stravaConnexionBloc" style="display:none;">
-        <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines), plutôt que de l'estimer toi-même.</p>
-        <button class="btn-mini" onclick="connecterStrava()">📡 Connecter Strava</button>
-        <span class="alt-toggle" onclick="toggleManualVolume()" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
-      </div>
-
-      <div class="strava-card" id="stravaCard">
-        <div class="strava-head">
-          <span class="strava-badge">📡 Depuis Strava</span>
-          <span class="strava-period">Médiane, 8 dernières semaines</span>
-        </div>
-        <div class="strava-value"><span id="stravaKm">32</span><span class="strava-unit">km / semaine</span></div>
-        <span class="alt-toggle" onclick="toggleManualVolume()">Ce chiffre ne te semble pas juste ? Corriger manuellement</span>
-        <span class="alt-toggle" onclick="deconnecterStrava()" style="display:block; margin-top:4px; opacity:0.6;">Déconnecter Strava</span>
-      </div>
-
-      <div class="manual-volume" id="manualVolume" style="display:none;">
-        <div class="time-input">
-          <input type="text" maxlength="3" value="30" id="manualKm" style="width:3ch;">
-          <span class="unit">km / semaine</span>
-        </div>
-        <span class="alt-toggle" onclick="toggleManualVolume()">Revenir à l'estimation Strava</span>
-      </div>
-
-      <div class="flag" id="noStravaFlag" style="display:none; margin-top:16px;">
-        <span class="ico">ℹ️</span>
-        <span>Pas d'historique Strava suffisant — indique ton volume actuel manuellement.</span>
-      </div>
-
-      <div class="flag" id="stravaAuthInvalideFlag" style="display:none; margin-top:16px; flex-direction:column; align-items:flex-start; gap:10px;">
-        <span style="display:flex; align-items:center; gap:8px;"><span class="ico">⚠️</span><span>Connexion Strava expirée.</span></span>
-        <button class="btn-mini" onclick="connecterStrava()">🔄 Reconnecter Strava</button>
-      </div>
+      <!-- Refonte du 22/07/2026 (demande de Laurent : saisie trop complexe) —
+           un seul conteneur affichant un état à la fois, remplacé par
+           renderVolumeCard() (voir JS), plutôt que 5 blocs distincts
+           (stravaConnexionBloc/stravaCard/manualVolume/noStravaFlag/
+           stravaAuthInvalideFlag) basculés en display:none/block. -->
+      <div class="volume-card" id="volumeCard"></div>
     </div>
 
     <!-- STEP 4: Temps de référence -->
@@ -1801,12 +1762,97 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.getElementById(id).addEventListener('input', computeAltEstimate);
   });
 
-  function toggleManualVolume(){
-    const strava = document.getElementById('stravaCard');
-    const manual = document.getElementById('manualVolume');
-    const showManual = strava.style.display !== 'none';
-    strava.style.display = showManual ? 'none' : 'block';
-    manual.style.display = showManual ? 'block' : 'none';
+  // ===========================================================================
+  // Refonte de l'étape volume (22/07/2026, demande de Laurent : saisie trop
+  // complexe) — état unique rendu dans un seul conteneur ('volumeCard' /
+  // 'volumeCardForme') au lieu de 5 blocs distincts basculés en display.
+  // volumeState : { mode: 'chargement'|'connexion'|'strava'|'manuel'|'erreur'|'authInvalide',
+  //                 valeur: number|null, erreurMsg: string|null }
+  // ===========================================================================
+  let volumeState = { mode: 'chargement', valeur: null, erreurMsg: null };
+  let volumeStateForme = { mode: 'chargement', valeur: null, erreurMsg: null };
+
+  function renderVolumeCard(prefixe) {
+    const estForme = prefixe === 'Forme';
+    const state = estForme ? volumeStateForme : volumeState;
+    const conteneur = document.getElementById(estForme ? 'volumeCardForme' : 'volumeCard');
+    if (!conteneur) return;
+
+    const suffixeToggle = estForme ? 'toggleManualVolumeForme' : 'toggleManualVolume';
+    const suffixeDeco = 'deconnecterStrava' + (estForme ? 'Forme' : '');
+    const suffixeConnecter = 'connecterStrava';
+    const idInput = 'manualVolumeInput' + (estForme ? 'Forme' : '');
+
+    if (state.mode === 'chargement') {
+      conteneur.innerHTML = `
+        <div class="volume-card-inner">
+          <div class="volume-status"><i class="volume-spin">⏳</i><span>Chargement…</span></div>
+        </div>`;
+      return;
+    }
+
+    if (state.mode === 'connexion') {
+      conteneur.innerHTML = `
+        <div class="volume-card-inner">
+          <p class="sub" style="margin-bottom:12px;">Connecte Strava pour pré-remplir ce chiffre automatiquement (médiane des 8 dernières semaines), plutôt que de l'estimer toi-même.</p>
+          <button class="btn-mini" onclick="${suffixeConnecter}()">📡 Connecter Strava</button>
+          <span class="alt-toggle" onclick="${suffixeToggle}('manuel')" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
+        </div>`;
+      return;
+    }
+
+    if (state.mode === 'authInvalide') {
+      conteneur.innerHTML = `
+        <div class="volume-card-inner">
+          <div class="volume-status volume-status-warn">
+            <span>⚠️</span><span>Connexion Strava expirée</span>
+          </div>
+          <button class="btn-mini" style="margin-top:10px;" onclick="${suffixeConnecter}()">🔄 Reconnecter Strava</button>
+          <span class="alt-toggle" onclick="${suffixeToggle}('manuel')" style="display:block; margin-top:10px;">Ou indique ton volume manuellement</span>
+        </div>`;
+      return;
+    }
+
+    if (state.mode === 'erreur') {
+      conteneur.innerHTML = `
+        <div class="volume-card-inner">
+          <div class="volume-status">
+            <span>ℹ️</span><span>Pas d'historique Strava suffisant</span>
+          </div>
+          <span class="alt-toggle" onclick="${suffixeToggle}('manuel')" style="display:block; margin-top:10px;">Indiquer mon volume manuellement</span>
+        </div>`;
+      return;
+    }
+
+    if (state.mode === 'manuel') {
+      conteneur.innerHTML = `
+        <div class="volume-card-inner">
+          <div class="time-input">
+            <input type="text" maxlength="3" value="${state.valeur ?? 30}" id="${idInput}" style="width:3ch;">
+            <span class="unit">km / semaine</span>
+          </div>
+          ${state.stravaDisponible ? `<span class="alt-toggle" onclick="${suffixeToggle}('strava')">Revenir à l'estimation Strava</span>` : ''}
+        </div>`;
+      return;
+    }
+
+    // mode 'strava' — connecté, valeur chargée
+    conteneur.innerHTML = `
+      <div class="volume-card-inner">
+        <div class="strava-head">
+          <span class="strava-badge">📡 Depuis Strava</span>
+          <span class="strava-period">Médiane, 8 dernières semaines</span>
+        </div>
+        <div class="strava-value"><span>${state.valeur}</span><span class="strava-unit">km / semaine</span></div>
+        <span class="alt-toggle" onclick="${suffixeToggle}('manuel')">Ce chiffre ne te semble pas juste ? Corriger manuellement</span>
+        <span class="alt-toggle" onclick="${suffixeDeco}()" style="display:block; margin-top:4px; opacity:0.6;">Déconnecter Strava</span>
+      </div>`;
+  }
+
+  function toggleManualVolume(cible) {
+    volumeState.stravaDisponible = volumeState.stravaDisponible || volumeState.mode === 'strava';
+    volumeState.mode = cible;
+    renderVolumeCard('');
   }
 
   // ===========================================================================
@@ -1878,22 +1924,15 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
 
   async function chargerVolumeStrava() {
-    const blocConnexion = document.getElementById('stravaConnexionBloc');
-    const blocValeur = document.getElementById('stravaCard');
-    const flag = document.getElementById('noStravaFlag');
-    const flagAuthInvalide = document.getElementById('stravaAuthInvalideFlag');
+    volumeState.mode = 'chargement';
+    renderVolumeCard('');
 
     const accessToken = await Engine.assurerTokenStravaValide();
     if (!accessToken) {
-      blocValeur.style.display = 'none';
-      blocConnexion.style.display = 'block';
+      volumeState = { mode: 'connexion', valeur: null, erreurMsg: null };
+      renderVolumeCard('');
       return;
     }
-
-    blocConnexion.style.display = 'none';
-    blocValeur.style.display = 'block';
-    flag.style.display = 'none';
-    flagAuthInvalide.style.display = 'none';
 
     const { mediane, erreur, authInvalide } = await Engine.recupererVolumeStrava(accessToken);
     if (authInvalide) {
@@ -1901,18 +1940,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // historique insuffisant) — proposer une reconnexion directe plutôt
       // que de basculer silencieusement en saisie manuelle sans expliquer
       // pourquoi. Même piste que côté v1 (index.html), cf. inventaire §18.2.
-      flagAuthInvalide.style.display = 'flex';
-      toggleManualVolume();
+      volumeState = { mode: 'authInvalide', valeur: null, erreurMsg: null, stravaDisponible: false };
     } else if (erreur) {
       console.warn('Chargement du volume Strava échoué :', erreur);
-      flag.style.display = 'flex';
-      toggleManualVolume();
+      volumeState = { mode: 'erreur', valeur: null, erreurMsg: erreur, stravaDisponible: false };
     } else if (mediane === null) {
-      flag.style.display = 'flex';
-      toggleManualVolume();
+      volumeState = { mode: 'erreur', valeur: null, erreurMsg: null, stravaDisponible: false };
     } else {
-      document.getElementById('stravaKm').textContent = mediane;
+      volumeState = { mode: 'strava', valeur: mediane, erreurMsg: null, stravaDisponible: true };
     }
+    renderVolumeCard('');
   }
 
   const NIVEAU_MAP = { "Je n'ai jamais couru": "grand-debutant", "Je débute": "debutant", "Intermédiaire": "intermediaire", "Confirmé": "confirme" };
@@ -1938,9 +1975,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       .map(el => el.dataset.value)
       .filter(v => v !== 'aucune');
 
-    const volumeActuel = document.getElementById('stravaCard').style.display !== 'none'
-      ? parseFloat(document.getElementById('stravaKm').textContent)
-      : parseFloat(document.getElementById('manualKm').value);
+    const volumeActuel = volumeState.mode === 'manuel'
+      ? parseFloat(document.getElementById('manualVolumeInput')?.value ?? volumeState.valeur ?? 30)
+      : (volumeState.valeur ?? 30);
 
     let profilStocke;
     try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
@@ -3867,45 +3904,36 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.getElementById('nextBtn').title = 'Terminer';
   }
 
-  function toggleManualVolumeForme(){
-    const strava = document.getElementById('stravaCardForme');
-    const manual = document.getElementById('manualVolumeForme');
-    const showManual = strava.style.display !== 'none';
-    strava.style.display = showManual ? 'none' : 'block';
-    manual.style.display = showManual ? 'block' : 'none';
+  function toggleManualVolumeForme(cible){
+    volumeStateForme.stravaDisponible = volumeStateForme.stravaDisponible || volumeStateForme.mode === 'strava';
+    volumeStateForme.mode = cible;
+    renderVolumeCard('Forme');
   }
 
   // Réutilise le même mécanisme Strava que le wizard course (Engine.*),
   // juste affiché dans les éléments -Forme plutôt que ceux du wizard course.
   async function chargerVolumeStravaForme() {
-    const blocConnexion = document.getElementById('stravaConnexionBlocForme');
-    const blocValeur = document.getElementById('stravaCardForme');
-    const flag = document.getElementById('noStravaFlagForme');
-    const flagAuthInvalide = document.getElementById('stravaAuthInvalideFlagForme');
-    if (!blocConnexion || !blocValeur) return; // flux Forme pas encore affiché
+    if (!document.getElementById('volumeCardForme')) return; // flux Forme pas encore affiché
+    volumeStateForme.mode = 'chargement';
+    renderVolumeCard('Forme');
 
     const accessToken = await Engine.assurerTokenStravaValide();
     if (!accessToken) {
-      blocValeur.style.display = 'none';
-      blocConnexion.style.display = 'block';
+      volumeStateForme = { mode: 'connexion', valeur: null, erreurMsg: null };
+      renderVolumeCard('Forme');
       return;
     }
-    blocConnexion.style.display = 'none';
-    blocValeur.style.display = 'block';
-    flag.style.display = 'none';
-    flagAuthInvalide.style.display = 'none';
 
     const { mediane, erreur, authInvalide } = await Engine.recupererVolumeStrava(accessToken);
     if (authInvalide) {
       // 16 juillet 2026 : même piste que côté wizard course, cf. ci-dessus.
-      flagAuthInvalide.style.display = 'flex';
-      toggleManualVolumeForme();
+      volumeStateForme = { mode: 'authInvalide', valeur: null, erreurMsg: null, stravaDisponible: false };
     } else if (erreur || mediane === null) {
-      flag.style.display = 'flex';
-      toggleManualVolumeForme();
+      volumeStateForme = { mode: 'erreur', valeur: null, erreurMsg: erreur, stravaDisponible: false };
     } else {
-      document.getElementById('stravaKmForme').textContent = mediane;
+      volumeStateForme = { mode: 'strava', valeur: mediane, erreurMsg: null, stravaDisponible: true };
     }
+    renderVolumeCard('Forme');
   }
 
   const NIVEAU_MAP_FORME = { "Je débute": "debutant", "Intermédiaire": "intermediaire", "Confirmé": "confirme" };
@@ -3914,9 +3942,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const joursDisponibles = [...document.querySelectorAll('#daysGridForme .day.selected')]
       .map(el => parseInt(el.dataset.dayIndex));
 
-    const volumeActuel = document.getElementById('stravaCardForme').style.display !== 'none'
-      ? parseFloat(document.getElementById('stravaKmForme').textContent)
-      : parseFloat(document.getElementById('manualKmForme').value);
+    const volumeActuel = volumeStateForme.mode === 'manuel'
+      ? parseFloat(document.getElementById('manualVolumeInputForme')?.value ?? volumeStateForme.valeur ?? 30)
+      : (volumeStateForme.valeur ?? 30);
 
     let profilStockeForme;
     try { profilStockeForme = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStockeForme = null; }
