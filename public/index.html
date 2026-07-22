@@ -2305,7 +2305,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 4; // Incrémenté après corrections SEUIL + pondération Lavandou
+const PREDICTOR_VERSION = 5; // Incrémenté après convergence progressive + bornes de tolérance (22/07/2026)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2580,7 +2580,15 @@ function renderLapRow(lap, i, sessionType) {
 }
 
 
-function predict10KAtDate(dateStr) {
+// Renommée le 22/07/2026 (ex predict10KAtDate) : ne renvoie plus l'estimation
+// affichée mais la BORNE BRUTE (mesure physio pure, non lissée) à une date
+// donnée — sert de plafond/plancher de tolérance à predict10KConvergentAtDate
+// ci-dessous, même rôle que borneBrute dans predict10K(). Note : version
+// simplifiée par rapport à predict10K() (pas de SEUIL ni garde-fou
+// d'exclusion), écart connu et accepté pour la reconstruction rétroactive
+// (cf. commentaire garde-fou dans predict10K : le SEUIL n'a de toute façon
+// qu'un poids de 0.10, impact marginal sur la borne).
+function calculerBorneBruteAtDate(dateStr) {
   // Calcule l\'estimation 10K en ne prenant que les activités du plan actuel
   // (depuis dateDebutPlan) et antérieures à dateStr — même correctif que
   // predict10K() (docs/v2-methodologie/convergence-v1-v2.md, section 7bis/
@@ -2657,25 +2665,65 @@ function nbSaisiesManuelles() {
   return Object.values(manualPerf).filter(m => m?.average_speed).length;
 }
 
-function rebuildPredHistory() {
-  if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
-  isRebuilding = true; render();
-  // Générer une entrée par jour depuis le début du plan jusqu\'à aujourd\'hui
-  const startDate = PLAN[0].sessions[0].date;
-  const endDate = today();
+// ── Convergence rejouée séquentiellement (rétroactif, 22/07/2026) ─────────
+// Applique le même pas de convergence que predict10K() mais jour par jour,
+// dans l'ordre chronologique, en partant de BASE_TIME_REFERENCE — nécessaire
+// car la convergence dépend de la veille (departConvergence), impossible à
+// calculer une date isolée sans rejouer toute la séquence depuis le début.
+// aDesNouvellesDonneesQualite(dateStr) : y a-t-il une séance SEUIL/VMA/SPEC
+// avec activité/saisie manuelle exploitable CE jour précis ? (seul le jour
+// même déclenche un pas — pas juste "il existe une activité avant cette
+// date", sinon la convergence avancerait tous les jours même sans nouvelle
+// séance de qualité, ce que predict10K() ne fait pas non plus).
+function aDesNouvellesDonneesQualite(dateStr) {
+  return ALL_SESSIONS.some(s =>
+    s.date === dateStr && (s.type==="SEUIL"||s.type==="VMA"||s.type==="SPEC") &&
+    statuses[s.uid] && statuses[s.uid]!=="❌" &&
+    (stravaActivities.some(a=>a.type==="Run" && a.start_date_local?.slice(0,10)===dateStr) || manualPerf[s.uid]?.average_speed)
+  );
+}
+
+function rebuildPredHistorySequentielle(startDate, endDate) {
+  const PAS_CONVERGENCE_BASE = 0.15;
   const newHistory = [];
+  let estimateCourante = BASE_TIME_REFERENCE;
   let d = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
   while (d <= end) {
     const dateStr = d.toISOString().slice(0,10);
-    const time = predict10KAtDate(dateStr);
+    const borneBrute = calculerBorneBruteAtDate(dateStr);
+    const fiabilite = fiabilitePlanPonderee(dateStr);
+    if (aDesNouvellesDonneesQualite(dateStr)) {
+      const pas = PAS_CONVERGENCE_BASE * fiabilite;
+      estimateCourante = estimateCourante + (borneBrute - estimateCourante) * pas;
+    }
+    const borneMin = Math.min(borneBrute, BASE_TIME_REFERENCE);
+    const borneMax = Math.max(borneBrute, BASE_TIME_REFERENCE);
+    const estimateClampee = Math.min(Math.max(estimateCourante, borneMin), borneMax);
     const aDesDonnees = stravaActivities.some(a=>a.start_date_local?.slice(0,10)<=dateStr) ||
       Object.entries(manualPerf).some(([uid,m])=>m?.average_speed && ALL_SESSIONS.find(s=>s.uid===uid && s.date<=dateStr));
     const confidence = aDesDonnees ? 45 : 30;
-    newHistory.push({ date: dateStr, time, confidence, predictorVersion: PREDICTOR_VERSION });
+    newHistory.push({
+      date: dateStr, time: Math.round(estimateClampee), confidence,
+      predictorVersion: PREDICTOR_VERSION,
+      borneMin: Math.round(borneMin), borneMax: Math.round(borneMax),
+    });
     d.setDate(d.getDate()+1);
   }
-  predHistory = newHistory;
+  return newHistory;
+}
+
+function rebuildPredHistory() {
+  if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
+  isRebuilding = true; render();
+  // Générer une entrée par jour depuis le début du plan jusqu\'à aujourd\'hui,
+  // via la reconstruction séquentielle (convergence progressive + bornes,
+  // 22/07/2026) — remplace l'ancienne boucle qui appelait predict10KAtDate
+  // indépendamment pour chaque jour (incompatible avec la convergence, qui
+  // dépend de la veille).
+  const startDate = PLAN[0].sessions[0].date;
+  const endDate = today();
+  predHistory = rebuildPredHistorySequentielle(startDate, endDate);
   save(clePourPlan("lk_pred_history"), predHistory);
   lastRebuildDate = today();
   save(clePourPlan("lk_last_rebuild"), lastRebuildDate);
@@ -2686,6 +2734,37 @@ function rebuildPredHistory() {
 // Reconstruire l\'historique si manquant ou incomplet
 if ((stravaActivities.length > 0 || nbSaisiesManuelles() > 0) && (predHistory.length <= 1 || (predHistory[0] && predHistory[0].predictorVersion !== PREDICTOR_VERSION))) {
   rebuildPredHistory();
+}
+
+// ── Fiabilité du plan pondérée par récence ──────────────────────────────────
+// Chantier "convergence progressive" (22/07/2026, demande explicite de
+// Laurent : une séance de qualité réussie ne doit jamais dégrader
+// l'estimation, une séance rapide ne doit pas trop l'améliorer non plus —
+// l'estimation doit tendre vers l'objectif au fil du plan, sauf ratés).
+//
+// Calcule un taux de réussite sur TOUTES les séances (pas seulement les
+// séances de qualité — une LONGUE ou EF ratée est un vrai signal de
+// fatigue/désengagement qui doit freiner la convergence, même si elle ne
+// dit rien sur la vitesse), pondéré par récence : poids décroissant avec
+// l'ancienneté sur toute la durée du plan (mémoire longue, mais séances
+// récentes plus influentes), même esprit que lavendouWeight plus bas.
+// Décroissance : demi-vie ≈ 3 semaines (poids divisé par 2 tous les 21j).
+function fiabilitePlanPonderee(dateStr) {
+  const HALF_LIFE_JOURS = 21;
+  const seancesPassees = ALL_SESSIONS.filter(s => s.date <= dateStr && statuses[s.uid]);
+  if (!seancesPassees.length) return 1; // pas d'historique : pas de raison de freiner
+  let poidsTotal = 0, poidsReussite = 0;
+  seancesPassees.forEach(s => {
+    const joursEcart = Math.max(0, (new Date(dateStr) - new Date(s.date)) / 86400000);
+    const poids = Math.pow(0.5, joursEcart / HALF_LIFE_JOURS);
+    poidsTotal += poids;
+    const st = statuses[s.uid];
+    // ✅ = 1 (pleine confiance), ⚠️ = 0.5 (partiel), ❌ = 0 (raté)
+    const score = st === "✅" ? 1 : st === "⚠️" ? 0.5 : 0;
+    poidsReussite += poids * score;
+  });
+  if (!poidsTotal) return 1;
+  return poidsReussite / poidsTotal; // 0..1
 }
 
 function predict10K() {
@@ -2894,14 +2973,14 @@ function predict10K() {
   if (!hasVma && !hasSpec && hasSeuil) lavendouWeight = Math.max(lavendouWeight, 0.70);
   if (!hasVma && !hasSpec && !hasSeuil) lavendouWeight = 1.00;
 
-  let estimate = BASE_TIME;
+  let borneBrute = BASE_TIME; // ex-"estimate" : mesure physio pure (non lissée), sert de plafond/plancher de tolérance
   let confidence = 30;
   let method = "Référence (" + fmtTime(BASE_TIME_REFERENCE) + ")";
 
   if (estimates.length > 0) {
     const totalWeight = estimates.reduce((s,e) => s+e.weight, 0);
     const weighted = estimates.reduce((s,e) => s+e.value*e.weight, 0) / totalWeight;
-    estimate = BASE_TIME * lavendouWeight + weighted * (1 - lavendouWeight);
+    borneBrute = BASE_TIME * lavendouWeight + weighted * (1 - lavendouWeight);
     confidence = Math.min(30 + (vmaData?.laps.length||0)*3 + (specData?.laps.length||0)*5 + (seuilData?.laps.length||0)*2, 95);
     method = estimates.length===1 ? "1 source" : estimates.length+" sources combinées";
     // La référence de base contribue toujours au calcul final (via
@@ -2912,6 +2991,36 @@ function predict10K() {
     // plutôt que de source principale).
     details.push({ label: `Référence · poids ${Math.round(lavendouWeight*100)}%`, value: fmtTime(BASE_TIME_REFERENCE) });
   }
+
+  // ── Convergence progressive vers l'objectif (22/07/2026) ─────────────────
+  // L'estimation AFFICHÉE ne saute plus directement à la mesure physio brute
+  // (borneBrute ci-dessus) à chaque séance — elle part de BASE_TIME_REFERENCE
+  // en début de plan et s'en rapproche par petits pas à chaque nouvelle
+  // séance de qualité (SEUIL/VMA/SPEC, cohérent avec les sources ci-dessus),
+  // clampée pour ne jamais dépasser borneBrute (qui sert de plafond/plancher
+  // de tolérance). Le pas de convergence est modulé par la fiabilité globale
+  // du plan (toutes séances, pondérées par récence, cf.
+  // fiabilitePlanPonderee) : bonne fiabilité récente → convergence normale,
+  // ratés récents → convergence ralentie voire gelée.
+  const todayStrConv = today();
+  const dernierePred = predHistory.length ? predHistory[predHistory.length-1] : null;
+  const departConvergence = dernierePred && dernierePred.date !== todayStrConv
+    ? dernierePred.time
+    : (dernierePred && dernierePred.date === todayStrConv && predHistory.length >= 2 ? predHistory[predHistory.length-2].time : BASE_TIME);
+  const fiabilite = fiabilitePlanPonderee(todayStrConv);
+  // Pas de base 15% de l'écart restant vers la borne, modulé 0..1 par la
+  // fiabilité (à fiabilité 0, la convergence est gelée : pas de mouvement).
+  const PAS_CONVERGENCE_BASE = 0.15;
+  const pas = PAS_CONVERGENCE_BASE * fiabilite;
+  let estimate = estimates.length > 0
+    ? departConvergence + (borneBrute - departConvergence) * pas
+    : departConvergence; // pas de nouvelle donnée de qualité aujourd'hui : l'estimation ne bouge pas
+  // Clamp : l'estimation lissée ne peut jamais dépasser la borne brute
+  // (tolérance) — ni être plus optimiste, ni être plus pessimiste que ce que
+  // les séances mesurent réellement.
+  const borneMin = Math.min(borneBrute, BASE_TIME);
+  const borneMax = Math.max(borneBrute, BASE_TIME);
+  estimate = Math.min(Math.max(estimate, borneMin), borneMax);
 
   // 20/07/2026, bug remonté par Laurent (plan Marathon affichant un écart
   // de +3h11'30" avec l'estimation) : `target` était codé en dur à 48.5*60
@@ -2928,13 +3037,14 @@ function predict10K() {
   // Enregistrer l\'estimation du jour dans l\'historique
   const todayStr = today();
   const lastEntry = predHistory[predHistory.length-1];
+  const entryDuJour = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION, borneMin: Math.round(borneMin), borneMax: Math.round(borneMax) };
   if (!lastEntry || lastEntry.date !== todayStr) {
-    predHistory.push({ date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION });
+    predHistory.push(entryDuJour);
     if (predHistory.length > 80) predHistory.shift();
     save(clePourPlan("lk_pred_history"), predHistory);
   } else if (lastEntry.date === todayStr && lastEntry.time !== Math.round(estimate)) {
     // Mettre à jour l'entrée du jour si l'estimation a changé
-    predHistory[predHistory.length-1] = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION };
+    predHistory[predHistory.length-1] = entryDuJour;
     save(clePourPlan("lk_pred_history"), predHistory);
   }
 
@@ -2949,6 +3059,10 @@ function predict10K() {
     target: fmtTime(target), gap: Math.round(gap),
     gapStr: (gap>0?"+":"")+fmtTime(Math.abs(Math.round(gap))),
     onTrack: gap<=30, confidence, method, details,
+    // Bornes de tolérance (mesure physio brute non lissée, cf. chantier
+    // convergence 22/07/2026) — utiles pour affichage graphe Stats.
+    borneBrute: Math.round(borneBrute), borneMin: Math.round(borneMin), borneMax: Math.round(borneMax),
+    fiabilite: Math.round(fiabilite*100),
   };
 }
 
@@ -5266,8 +5380,13 @@ function renderStats() {
     const W = 340, H = 120, PAD = {t:16,r:40,b:28,l:44};
     const iW = W-PAD.l-PAD.r, iH = H-PAD.t-PAD.b;
     const times = predHistory.map(p=>p.time);
-    const minT = Math.min(...times,TARGET)-30;
-    const maxT = Math.max(...times,BASE)+30;
+    // Échelle Y étendue pour englober les bornes de tolérance (borneMin/Max,
+    // chantier convergence 22/07/2026) — absentes sur les entrées d'un
+    // ancien predictorVersion, d'où le fallback sur p.time.
+    const bornesBasses = predHistory.map(p=>p.borneMin??p.time);
+    const bornesHautes = predHistory.map(p=>p.borneMax??p.time);
+    const minT = Math.min(...times,...bornesBasses,TARGET)-30;
+    const maxT = Math.max(...times,...bornesHautes,BASE)+30;
     const xScale = i => PAD.l+(i/(predHistory.length-1))*iW;
     const yScale = t => PAD.t+iH-((t-minT)/(maxT-minT))*iH;
     const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
@@ -5276,6 +5395,15 @@ function renderStats() {
     svg.style.display="block";
     const mk=(tag,attrs)=>{const e=document.createElementNS("http://www.w3.org/2000/svg",tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));return e;};
     svg.appendChild(mk("rect",{x:0,y:0,width:W,height:H,fill:"var(--bg)"}));
+    // Bande de tolérance (mesure physio brute, plafond/plancher de la
+    // convergence) — dessinée avant la ligne d'estimation pour rester en
+    // arrière-plan. N'affiche la bande que si au moins une entrée a des
+    // bornes réelles distinctes du point (sinon rien à montrer).
+    if (predHistory.some(p=>p.borneMin!=null && p.borneMax!=null && p.borneMin!==p.borneMax)) {
+      const topPoints = predHistory.map((p,i)=>`${xScale(i)},${yScale(p.borneMax??p.time)}`).join(" ");
+      const bottomPoints = predHistory.slice().reverse().map((p,i)=>`${xScale(predHistory.length-1-i)},${yScale(p.borneMin??p.time)}`).join(" ");
+      svg.appendChild(mk("polygon",{points:`${topPoints} ${bottomPoints}`,fill:"rgba(var(--accent-rgb),0.10)"}));
+    }
     const yTarget=yScale(TARGET);
     svg.appendChild(mk("line",{x1:PAD.l,y1:yTarget,x2:W-PAD.r,y2:yTarget,stroke:"rgba(var(--accent-rgb),0.27)",strokeWidth:"1","stroke-dasharray":"4,3"}));
     const tl=document.createElementNS("http://www.w3.org/2000/svg","text");
