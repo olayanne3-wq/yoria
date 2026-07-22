@@ -901,11 +901,18 @@ function obtenirSeancesPlanifieesManquees() {
     return { nbConsecutivesRatees: 0, dernieresSeances: [] };
   }
 
-  // Les 2 dernières séances passées, dans l'ordre chronologique
+  // Les 2 dernières séances passées, dans l'ordre chronologique.
+  // Utilise statutEffectif (22/07/2026, cf. fiabilitePlanPonderee même
+  // correctif) plutôt que statuses[s.uid] directement — une séance passée
+  // jamais cochée (statutEffectif="😴") est un vrai signal de
+  // désengagement pour ce calcul, pas une absence de donnée à ignorer.
+  // Avant ce correctif, toutesRatees (❌ strict) ne se déclenchait jamais
+  // pour des séances simplement oubliées, malgré l'intention documentée
+  // ci-dessus ("détecter un enchaînement PRÉVUES et RATÉES").
   const deuxDernieres = seancesPassees.slice(-2);
-  const statutsRecents = deuxDernieres.map(s => ({ date: s.date, type: s.type, statut: statuses[s.uid] || '—' }));
+  const statutsRecents = deuxDernieres.map(s => ({ date: s.date, type: s.type, statut: s.statutEffectif || '—' }));
 
-  const toutesRatees = statutsRecents.every(s => s.statut === '❌');
+  const toutesRatees = statutsRecents.every(s => s.statut === '❌' || s.statut === '😴');
 
   return {
     nbConsecutivesRatees: toutesRatees ? 2 : 0,
@@ -2772,15 +2779,26 @@ if ((stravaActivities.length > 0 || nbSaisiesManuelles() > 0) && (predHistory.le
 // Décroissance : demi-vie ≈ 3 semaines (poids divisé par 2 tous les 21j).
 function fiabilitePlanPonderee(dateStr) {
   const HALF_LIFE_JOURS = 21;
-  const seancesPassees = ALL_SESSIONS.filter(s => s.date <= dateStr && statuses[s.uid]);
+  // Bug corrigé le 22/07/2026 (repéré en vérifiant l'extension de
+  // statutEffectif aux consommateurs de statuses[uid]) : ce filtre excluait
+  // totalement les séances passées jamais cochées explicitement — le 😴
+  // automatique (recalculerAllSessions()) n'existe QUE sur
+  // s.statutEffectif, jamais écrit dans statuses[uid] lui-même. Résultat :
+  // une séance oubliée (jamais cochée) était invisible du calcul plutôt que
+  // de compter comme un signal de désengagement (score 0), faisant
+  // artificiellement remonter la fiabilité mesurée — alors que le principe
+  // validé était justement qu'une séance non traitée doit peser comme un
+  // raté, cohérent avec §16 de l'inventaire (chantier "étendre
+  // statutEffectif aux autres lecteurs de statuses[uid]").
+  const seancesPassees = ALL_SESSIONS.filter(s => s.date <= dateStr && s.statutEffectif && s.statutEffectif !== "—");
   if (!seancesPassees.length) return 1; // pas d'historique : pas de raison de freiner
   let poidsTotal = 0, poidsReussite = 0;
   seancesPassees.forEach(s => {
     const joursEcart = Math.max(0, (new Date(dateStr) - new Date(s.date)) / 86400000);
     const poids = Math.pow(0.5, joursEcart / HALF_LIFE_JOURS);
     poidsTotal += poids;
-    const st = statuses[s.uid];
-    // ✅ = 1 (pleine confiance), ⚠️ = 0.5 (partiel), ❌ = 0 (raté)
+    const st = s.statutEffectif;
+    // ✅ = 1 (pleine confiance), ⚠️ = 0.5 (partiel), ❌/😴 = 0 (raté/sauté)
     const score = st === "✅" ? 1 : st === "⚠️" ? 0.5 : 0;
     poidsReussite += poids * score;
   });
