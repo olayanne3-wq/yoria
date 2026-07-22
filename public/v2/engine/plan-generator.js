@@ -1113,7 +1113,33 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
   // n'a aucun sens ici, cette semaine n'a qu'une seule vraie séance
   // structurée). Le jour d'origine (quel que soit son type — ef, longue,
   // qualite) est réassigné explicitement au type test.
-  const premierJour = Math.min(...Object.keys(assignment).map(Number));
+  //
+  // BUG corrigé le 22/07/2026 : Math.min(...Object.keys(assignment)) donne
+  // le plus petit jourIndex ISO (0=lundi...6=dimanche) de la SEMAINE
+  // CALENDAIRE, sans tenir compte de dateDebut réel du plan. Si le plan
+  // démarre en cours de semaine (ex. mercredi), v1-bridge.js neutralise en
+  // "REPOS" tout jour dont la date calculée tombe avant dateDebut (même
+  // garde-fou documenté là-bas) — le test se retrouvait placé sur un jour
+  // neutralisé, donc jamais affiché du tout côté dashboard. Calcul du
+  // premier jour UTILE : le plus petit jourIndex de assignment dont la
+  // date réelle (lundi de la semaine + jourIndex) tombe bien à partir de
+  // dateDebut — même logique que le garde-fou de v1-bridge.js
+  // (avantDebutDuPlan), reproduite ici pour rester cohérent.
+  const dateDebutPlan = new Date(params.dateDebut + 'T00:00:00Z');
+  const jourSemaineISODebut = (dateDebutPlan.getUTCDay() + 6) % 7; // 0=lundi...6=dimanche
+  const lundiDeLaSemaine = new Date(dateDebutPlan);
+  lundiDeLaSemaine.setUTCDate(dateDebutPlan.getUTCDate() - jourSemaineISODebut);
+
+  const joursUtiles = Object.keys(assignment)
+    .map(Number)
+    .filter(j => {
+      const dateJour = new Date(lundiDeLaSemaine);
+      dateJour.setUTCDate(lundiDeLaSemaine.getUTCDate() + j);
+      return dateJour >= dateDebutPlan;
+    });
+  const premierJour = joursUtiles.length > 0
+    ? Math.min(...joursUtiles)
+    : Math.min(...Object.keys(assignment).map(Number)); // repli si aucun jour utile (cas limite improbable)
 
   for (const [jour, seance] of Object.entries(assignment)) {
     if (Number(jour) === premierJour) {
