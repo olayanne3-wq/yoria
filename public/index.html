@@ -2302,7 +2302,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 6; // Incrémenté : bande de tolérance = incertitude autour de l'estimation (±confidence), pas l'intervalle BASE↔borneBrute (22/07/2026)
+const PREDICTOR_VERSION = 7; // Incrémenté : calculerBorneBruteAtDate() inclut désormais SEUIL et la vraie pondération Lavandou (bug réel : convergence figée sur BASE_TIME_REFERENCE malgré séances SEUIL/VMA validées, 22/07/2026)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2579,19 +2579,25 @@ function renderLapRow(lap, i, sessionType) {
 
 // Renommée le 22/07/2026 (ex predict10KAtDate) : ne renvoie plus l'estimation
 // affichée mais la BORNE BRUTE (mesure physio pure, non lissée) à une date
-// donnée — sert de plafond/plancher de tolérance à predict10KConvergentAtDate
-// ci-dessous, même rôle que borneBrute dans predict10K(). Note : version
-// simplifiée par rapport à predict10K() (pas de SEUIL ni garde-fou
-// d'exclusion), écart connu et accepté pour la reconstruction rétroactive
-// (cf. commentaire garde-fou dans predict10K : le SEUIL n'a de toute façon
-// qu'un poids de 0.10, impact marginal sur la borne).
+// donnée — sert de plafond/plancher de tolérance à la convergence
+// progressive dans predict10K() et rebuildPredHistorySequentielle()
+// ci-dessous, même rôle que borneBrute dans predict10K().
+//
+// Réécrite le 22/07/2026 (bug réel découvert sur un compte de test avec
+// séances SEUIL+VMA validées) : la version précédente dupliquait une
+// logique SIMPLIFIÉE sans SEUIL et avec un lavendouWeight à paliers fixes
+// (10%/30%/100%) au lieu de la vraie décroissance temporelle de
+// predict10K() — la borne brute utilisée par la convergence divergeait
+// donc de l'estimation réellement affichée sur le dashboard, empêchant
+// une convergence cohérente (graphe Stats plat malgré des séances de
+// qualité validées). Réutilise maintenant weightedAvgByEffortDuration()
+// (helper partagé, extrait de predict10K() le même jour) pour SPEC/SEUIL/
+// VMA, avec la même formule de lavendouWeight — seule différence
+// structurelle assumée avec predict10K() : pas de garde-fou d'exclusion
+// (écart >20% vs référence) ni de prise en compte de "séance intensive
+// récente" (dateVmaRecente/dateSpecRecente, qui dépend de "aujourd'hui",
+// non pertinent pour une date passée reconstruite rétroactivement).
 function calculerBorneBruteAtDate(dateStr) {
-  // Calcule l\'estimation 10K en ne prenant que les activités du plan actuel
-  // (depuis dateDebutPlan) et antérieures à dateStr — même correctif que
-  // predict10K() (docs/v2-methodologie/convergence-v1-v2.md, section 7bis/
-  // 7quater), sinon cette fonction (utilisée par rebuildPredHistory pour
-  // reconstruire l'historique jour par jour) remonterait aussi des séances
-  // d'un plan antérieur.
   const BASE_TIME = BASE_TIME_REFERENCE;
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
   const runs = stravaActivities.filter(a =>
@@ -2601,46 +2607,39 @@ function calculerBorneBruteAtDate(dateStr) {
   );
   const estimates = [];
 
-  // Laps virtuels manuels (docs/source-donnees-seances.md, section 2) : une
-  // saisie manuelle prime automatiquement sur Strava pour sa date — on
-  // l'exclut donc de specRunsAvecSeance/vmaRunsAvecSeance ci-dessous via
-  // datesManuellesParType, et on l'injecte séparément à poids égal.
-  function manualLapsPourType(sessionType) {
-    return ALL_SESSIONS.filter(sess =>
-      sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
-      sess.date <= dateStr && (!dateDebutPlan || sess.date >= dateDebutPlan) &&
-      statuses[sess.uid]!=="❌"
-    ).map(sess => ({ average_speed: manualPerf[sess.uid].average_speed }));
-  }
-  const manualSpecLaps = manualLapsPourType("SPEC");
-  const manualVmaLaps = manualLapsPourType("VMA");
-  const datesManuellesSpec = new Set(manualSpecLaps.length ? ALL_SESSIONS.filter(sess=>sess.type==="SPEC"&&manualPerf[sess.uid]?.average_speed).map(sess=>sess.date) : []);
-  const datesManuellesVma = new Set(manualVmaLaps.length ? ALL_SESSIONS.filter(sess=>sess.type==="VMA"&&manualPerf[sess.uid]?.average_speed).map(sess=>sess.date) : []);
+  const specData = weightedAvgByEffortDuration("SPEC", runs, dateDebutPlan);
+  if (specData) estimates.push({ value: DISTANCE_M_REFERENCE / specData.speed, weight: 0.45 });
 
-  // SPEC → allure directe
-  const specRunsAvecSeance = runs.filter(r=>!datesManuellesSpec.has(r.start_date_local?.slice(0,10))).map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="SPEC") })).filter(({s}) => s && statuses[s.uid]!=="❌");
-  const specLaps = specRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles)).concat(manualSpecLaps);
-  if (specLaps.length > 0) {
-    const avgSpeed = specLaps.reduce((s,l)=>s+l.average_speed,0)/specLaps.length;
-    estimates.push({ value: 10000/avgSpeed, weight: 0.45 });
+  const seuilData = weightedAvgByEffortDuration("SEUIL", runs, dateDebutPlan);
+  if (seuilData && seuilData.runs.length >= 3) {
+    const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
+    const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
+    const riegelSeuil = totalEffortTime * Math.pow(DISTANCE_M_REFERENCE/totalEffortDist, 1.06);
+    estimates.push({ value: riegelSeuil, weight: 0.10 });
   }
 
-  // VMA → vitesse × 0.87
-  const vmaRunsAvecSeance = runs.filter(r=>!datesManuellesVma.has(r.start_date_local?.slice(0,10))).map(r => ({ r, s: ALL_SESSIONS.find(s => s.date===r.start_date_local?.slice(0,10) && s.type==="VMA") })).filter(({s}) => s && statuses[s.uid]!=="❌");
-  const vmaLaps = vmaRunsAvecSeance.flatMap(({r,s}) => getLapsAffichage(r, s.structureIntervalles)).concat(manualVmaLaps);
-  if (vmaLaps.length > 0) {
-    const avgSpeed = vmaLaps.reduce((s,l)=>s+l.average_speed,0)/vmaLaps.length;
-    estimates.push({ value: 10000/(avgSpeed*0.87), weight: 0.35 });
-  }
+  const vmaData = weightedAvgByEffortDuration("VMA", runs, dateDebutPlan);
+  if (vmaData) estimates.push({ value: DISTANCE_M_REFERENCE / (vmaData.speed * 0.87), weight: 0.35 });
 
   if (estimates.length === 0) return BASE_TIME;
 
-  const totalWeight = estimates.reduce((s,e)=>s+e.weight,0);
-  const weighted = estimates.reduce((s,e)=>s+e.value*e.weight,0)/totalWeight;
-  const hasVma = vmaLaps.length > 0;
-  const hasSpec = specLaps.length > 0;
-  const lavWeight = (hasVma && hasSpec) ? 0.10 : (hasVma || hasSpec) ? 0.30 : 1.00;
-  return Math.round(BASE_TIME * lavWeight + weighted * (1 - lavWeight));
+  // Pondération Lavandou (même formule que predict10K(), sans le garde-fou
+  // "séance récente" qui n'a pas de sens pour une date passée reconstruite).
+  const hasVma = vmaData !== null;
+  const hasSpec = specData !== null;
+  const hasSeuil = seuilData && seuilData.laps.length > 0;
+  const semainesEcoulees = dateDebutPlan
+    ? Math.floor((new Date(dateStr) - new Date(dateDebutPlan)) / (7*86400000)) + 1
+    : 1;
+  const POIDS_DEPART = 0.90, POIDS_PLANCHER = 0.10, DUREE_DECROISSANCE_SEMAINES = 8;
+  const progression = Math.min(Math.max((semainesEcoulees - 1) / (DUREE_DECROISSANCE_SEMAINES - 1), 0), 1);
+  let lavendouWeight = POIDS_DEPART - progression * (POIDS_DEPART - POIDS_PLANCHER);
+  if (!hasVma && !hasSpec && hasSeuil) lavendouWeight = Math.max(lavendouWeight, 0.70);
+  if (!hasVma && !hasSpec && !hasSeuil) lavendouWeight = 1.00;
+
+  const totalWeight = estimates.reduce((s,e) => s+e.weight, 0);
+  const weighted = estimates.reduce((s,e) => s+e.value*e.weight, 0) / totalWeight;
+  return Math.round(BASE_TIME * lavendouWeight + weighted * (1 - lavendouWeight));
 }
 
 // nettoyerNotesMeteoDupliquees() retirée le 13 juillet 2026 — bouton UI
@@ -2770,6 +2769,100 @@ function fiabilitePlanPonderee(dateStr) {
   return poidsReussite / poidsTotal; // 0..1
 }
 
+// ── Helper partagé : vitesse moyenne pondérée par durée d'effort ───────────
+// Extrait de predict10K() le 22/07/2026 en fonction top-level (paramétrée par
+// runs/dateDebutPlan au lieu de les capturer par fermeture) — nécessaire pour
+// être réutilisée par calculerBorneBruteAtDate() ci-dessous, qui dupliquait
+// jusqu'ici une version simplifiée SANS SEUIL. Bug réel découvert le
+// 22/07/2026 (compte de test, séances SEUIL+VMA validées) : la borne brute
+// utilisée par la convergence progressive et le graphe Stats divergeait de
+// l'estimation réelle affichée sur le dashboard (qui, elle, passe par
+// predict10K() et inclut bien SEUIL) — la convergence ne reflétait donc
+// jamais correctement l'apport réel des séances SEUIL, et pouvait rester
+// figée sur BASE_TIME_REFERENCE malgré des séances de qualité validées.
+// Pour un type de séance, calcule la vitesse moyenne pondérée par la durée
+// totale d'effort de chaque séance (séances plus longues = plus de poids).
+function weightedAvgByEffortDuration(sessionType, runs, dateDebutPlan) {
+  // Une activité "appartient" au type sessionType selon deux méthodes,
+  // par ordre de priorité :
+  // 1. Si une séance du plan existe à cette date avec structureIntervalles
+  //    (structure programmée fidèlement sur la montre, section 2.8 du doc
+  //    de convergence) ET que son type correspond à sessionType : source
+  //    de vérité fiable, pas besoin de deviner par tolérance de vitesse.
+  //    Ajouté le 8 juillet 2026 : Laurent signale qu'une séance VMA ne se
+  //    reflétait plus du tout dans l'estimation — la détection par
+  //    detecterTypeEffort() recevait les laps de récup mélangés aux
+  //    efforts (même défaut que celui déjà corrigé pour l'affichage,
+  //    getLapsAffichage), faisant échouer la reconnaissance du type.
+  // 2. Sinon (pas de structure pour cette date, ancien plan), repli sur
+  //    l'ancienne détection par tolérance de vitesse (detecterTypeEffort),
+  //    indépendante de ce que le plan prévoyait ce jour-là — cf.
+  //    commentaire dans getEffortLaps. Bug trouvé le 6 juillet 2026 : une
+  //    séance SPEC à 4'49/km pouvait passer le test de tolérance VMA, qui
+  //    vise 4'10/km, et être comptée deux fois — corrigé en retenant
+  //    uniquement le type le plus proche, pas "dans la tolérance".
+  // Dates couvertes par une saisie manuelle (docs/source-donnees-seances.md,
+  // section 2) : la saisie manuelle prime automatiquement sur Strava pour
+  // ces dates-là, sans hiérarchie ni fusion — on exclut donc ici les
+  // activités Strava dont la date a une entrée manualPerf, pour éviter
+  // tout double comptage dans le poids agrégé.
+  const datesManuelles = new Set(
+    ALL_SESSIONS.filter(sess => sess.type===sessionType && manualPerf[sess.uid]?.average_speed).map(sess => sess.date)
+  );
+  const sessionRuns = SESSION_TARGETS[sessionType] ? runs.filter(r => {
+    if (!r.laps || r.laps.length < 4) return false;
+    const date = r.start_date_local?.slice(0,10);
+    if (datesManuelles.has(date)) return false;
+    const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+    if (planSess?.structureIntervalles && planSess.type === sessionType) return true;
+    if (planSess?.structureIntervalles) return false; // structure connue mais pour un AUTRE type : pas de repli sur la détection par tolérance, qui pourrait se tromper
+    const middle = r.laps.slice(1, -2);
+    if (!middle.length) return false;
+    const detection = detecterTypeEffort(middle);
+    return detection && detection.type === sessionType;
+  }) : [];
+
+  // Séances du même type validées avec une saisie manuelle (allure
+  // renseignée) — injectées comme un "lap virtuel" unique par séance dans
+  // le même agrégat pondéré par durée d'effort, à poids strictement égal
+  // aux laps Strava (aucune décote, section 2 du doc).
+  const manualSessions = ALL_SESSIONS.filter(sess =>
+    sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
+    (!dateDebutPlan || sess.date >= dateDebutPlan)
+  );
+
+  if (!sessionRuns.length && !manualSessions.length) return null;
+
+  let totalWeight = 0;
+  let weightedSpeed = 0;
+  let allLaps = [];
+
+  sessionRuns.forEach(r => {
+    const date = r.start_date_local?.slice(0,10);
+    const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
+    const laps = getLapsAffichage(r, planSess?.structureIntervalles);
+    if (!laps.length) return;
+    const effortDuration = laps.reduce((s,l) => s + l.distance / l.average_speed, 0);
+    const avgSpeed = laps.reduce((s,l) => s + l.average_speed, 0) / laps.length;
+    weightedSpeed += avgSpeed * effortDuration;
+    totalWeight += effortDuration;
+    allLaps = allLaps.concat(laps);
+  });
+
+  manualSessions.forEach(sess => {
+    const mp = manualPerf[sess.uid];
+    const distance = mp.distance || distanceEffortStructure(sess.structureIntervalles) || 0;
+    if (!distance) return; // pas de distance connue : lap virtuel impossible à pondérer, ignoré plutôt que fausser le calcul
+    const effortDuration = distance / mp.average_speed;
+    weightedSpeed += mp.average_speed * effortDuration;
+    totalWeight += effortDuration;
+    allLaps.push({ average_speed: mp.average_speed, distance, average_heartrate: mp.average_heartrate||null });
+  });
+
+  if (!totalWeight) return null;
+  return { speed: weightedSpeed / totalWeight, laps: allLaps, runs: sessionRuns, manualCount: manualSessions.length };
+}
+
 function predict10K() {
   const BASE_TIME = BASE_TIME_REFERENCE; // référence lue depuis le plan chargé
   // Ne prend en compte que les activités depuis le début du plan actuellement
@@ -2785,92 +2878,13 @@ function predict10K() {
   const estimates = [];
   const details = [];
 
-  // ── Helper : vitesse moyenne pondérée par durée d\'effort ─────────────────
-  // Pour un type de séance, calcule la vitesse moyenne pondérée par la durée
-  // totale d\'effort de chaque séance (séances plus longues = plus de poids)
-  function weightedAvgByEffortDuration(sessionType, factor) {
-    // Une activité "appartient" au type sessionType selon deux méthodes,
-    // par ordre de priorité :
-    // 1. Si une séance du plan existe à cette date avec structureIntervalles
-    //    (structure programmée fidèlement sur la montre, section 2.8 du doc
-    //    de convergence) ET que son type correspond à sessionType : source
-    //    de vérité fiable, pas besoin de deviner par tolérance de vitesse.
-    //    Ajouté le 8 juillet 2026 : Laurent signale qu'une séance VMA ne se
-    //    reflétait plus du tout dans l'estimation — la détection par
-    //    detecterTypeEffort() recevait les laps de récup mélangés aux
-    //    efforts (même défaut que celui déjà corrigé pour l'affichage,
-    //    getLapsAffichage), faisant échouer la reconnaissance du type.
-    // 2. Sinon (pas de structure pour cette date, ancien plan), repli sur
-    //    l'ancienne détection par tolérance de vitesse (detecterTypeEffort),
-    //    indépendante de ce que le plan prévoyait ce jour-là — cf.
-    //    commentaire dans getEffortLaps. Bug trouvé le 6 juillet 2026 : une
-    //    séance SPEC à 4'49/km pouvait passer le test de tolérance VMA, qui
-    //    vise 4'10/km, et être comptée deux fois — corrigé en retenant
-    //    uniquement le type le plus proche, pas "dans la tolérance".
-    // Dates couvertes par une saisie manuelle (docs/source-donnees-seances.md,
-    // section 2) : la saisie manuelle prime automatiquement sur Strava pour
-    // ces dates-là, sans hiérarchie ni fusion — on exclut donc ici les
-    // activités Strava dont la date a une entrée manualPerf, pour éviter
-    // tout double comptage dans le poids agrégé.
-    const datesManuelles = new Set(
-      ALL_SESSIONS.filter(sess => sess.type===sessionType && manualPerf[sess.uid]?.average_speed).map(sess => sess.date)
-    );
-    const sessionRuns = SESSION_TARGETS[sessionType] ? runs.filter(r => {
-      if (!r.laps || r.laps.length < 4) return false;
-      const date = r.start_date_local?.slice(0,10);
-      if (datesManuelles.has(date)) return false;
-      const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
-      if (planSess?.structureIntervalles && planSess.type === sessionType) return true;
-      if (planSess?.structureIntervalles) return false; // structure connue mais pour un AUTRE type : pas de repli sur la détection par tolérance, qui pourrait se tromper
-      const middle = r.laps.slice(1, -2);
-      if (!middle.length) return false;
-      const detection = detecterTypeEffort(middle);
-      return detection && detection.type === sessionType;
-    }) : [];
-
-    // Séances du même type validées avec une saisie manuelle (allure
-    // renseignée) — injectées comme un "lap virtuel" unique par séance dans
-    // le même agrégat pondéré par durée d'effort, à poids strictement égal
-    // aux laps Strava (aucune décote, section 2 du doc).
-    const manualSessions = ALL_SESSIONS.filter(sess =>
-      sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
-      (!dateDebutPlan || sess.date >= dateDebutPlan)
-    );
-
-    if (!sessionRuns.length && !manualSessions.length) return null;
-
-    let totalWeight = 0;
-    let weightedSpeed = 0;
-    let allLaps = [];
-
-    sessionRuns.forEach(r => {
-      const date = r.start_date_local?.slice(0,10);
-      const planSess = date ? ALL_SESSIONS.find(s => s.date === date) : null;
-      const laps = getLapsAffichage(r, planSess?.structureIntervalles);
-      if (!laps.length) return;
-      const effortDuration = laps.reduce((s,l) => s + l.distance / l.average_speed, 0);
-      const avgSpeed = laps.reduce((s,l) => s + l.average_speed, 0) / laps.length;
-      weightedSpeed += avgSpeed * effortDuration;
-      totalWeight += effortDuration;
-      allLaps = allLaps.concat(laps);
-    });
-
-    manualSessions.forEach(sess => {
-      const mp = manualPerf[sess.uid];
-      const distance = mp.distance || distanceEffortStructure(sess.structureIntervalles) || 0;
-      if (!distance) return; // pas de distance connue : lap virtuel impossible à pondérer, ignoré plutôt que fausser le calcul
-      const effortDuration = distance / mp.average_speed;
-      weightedSpeed += mp.average_speed * effortDuration;
-      totalWeight += effortDuration;
-      allLaps.push({ average_speed: mp.average_speed, distance, average_heartrate: mp.average_heartrate||null });
-    });
-
-    if (!totalWeight) return null;
-    return { speed: weightedSpeed / totalWeight, laps: allLaps, runs: sessionRuns, manualCount: manualSessions.length };
-  }
+  // Wrapper local — préserve la signature d'appel existante
+  // (weightedAvgByEffortDuration("SPEC")) utilisée plus bas dans cette
+  // fonction, sans avoir à réécrire chaque appel avec runs/dateDebutPlan.
+  const weightedAvg = (sessionType) => weightedAvgByEffortDuration(sessionType, runs, dateDebutPlan);
 
   // ── 1. SPEC → allure directe ──────────────────────────────────────────────
-  const specData = weightedAvgByEffortDuration("SPEC", 1);
+  const specData = weightedAvg("SPEC");
   if (specData) {
     const estimate10k = DISTANCE_M_REFERENCE / specData.speed;
     estimates.push({ value: estimate10k, weight: 0.45 });
@@ -2879,7 +2893,7 @@ function predict10K() {
   }
 
   // ── 2. SEUIL → contribue uniquement à partir de 3 séances ─────────────────
-  const seuilData = weightedAvgByEffortDuration("SEUIL", 1);
+  const seuilData = weightedAvg("SEUIL");
   if (seuilData && seuilData.runs.length >= 3) {
     const totalEffortTime = seuilData.laps.reduce((s,l) => s + l.distance/l.average_speed, 0);
     const totalEffortDist = seuilData.laps.reduce((s,l) => s + l.distance, 0);
@@ -2889,7 +2903,7 @@ function predict10K() {
   }
 
   // ── 3. VMA → vitesse × 0.87 ──────────────────────────────────────────────
-  const vmaData = weightedAvgByEffortDuration("VMA", 1);
+  const vmaData = weightedAvg("VMA");
   if (vmaData) {
     const estimate10k = DISTANCE_M_REFERENCE / (vmaData.speed * 0.87);
     estimates.push({ value: estimate10k, weight: 0.35 });
