@@ -29,7 +29,11 @@ const FAMILLE_VERS_TYPE_V1 = {
   'tempo-court': 'SEUIL', 'fartlek': 'SEUIL',
   'i-30-30': 'VMA', 'i-3min': 'VMA', 'vitesse': 'VMA', 'pyramidale': 'VMA', 'cotes': 'VMA',
   'allure-course': 'SPEC', 'allure-course-court': 'SPEC',
-  'test': 'TEST'
+  'test': 'TEST',
+  // Ajouté le 22/07/2026 : le test semi-Cooper (plan course, flux "pas de
+  // référence") retombait sur le repli 'SEUIL' faute de ce mapping —
+  // affichage trompeur (badge "SEUIL" au lieu de "TEST").
+  'test-semi-cooper': 'TEST'
 };
 
 function typeV1DepuisSeanceV2(seance) {
