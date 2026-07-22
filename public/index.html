@@ -648,9 +648,37 @@ let PLAN = window.__PLAN_GENERE__;
 // faite), seul le CONTENU de la séance (type, structureIntervalles,
 // contenu, kmEstime...) vient du swap le cas échéant.
 function recalculerAllSessions() {
+  // statutEffectif ajouté le 22/07/2026 (suite discussion avec Laurent sur
+  // le badge 😴) : "😴" (repos/sauté) auto-appliqué UNIQUEMENT à
+  // l'affichage/calcul, jamais écrit dans statuses[uid] lui-même — pour un
+  // jour déjà PASSÉ (s.date < today(), jamais le jour même) sans statut
+  // réellement saisi ("—" ou absent). Calculé ICI, au même endroit
+  // centralisateur que le fix des swaps ci-dessus, pour que TOUS les
+  // consommateurs de ALL_SESSIONS (stats, moteur de décision, garde du
+  // swap, badge visuel) voient la même valeur — avant ce changement, seul
+  // renderWeekDetail() calculait ce même badge dans son coin, invisible
+  // du reste de l'app (stats/moteur continuaient de compter ces séances
+  // comme "—", pas comme repos volontaire).
+  //
+  // Garde try/catch (pas typeof, cf. bug écran blanc du 22/07/2026 sur
+  // swappedSessions) : statuses est déclarée en "let" PLUS LOIN dans ce
+  // fichier (ligne ~699) — le tout premier appel à recalculerAllSessions()
+  // (ligne ~656, juste après cette fonction) a lieu AVANT cette
+  // déclaration, donc toute référence à statuses ici lève une vraie
+  // ReferenceError (temporal dead zone), pas juste "undefined".
+  let statutsActuels = {};
+  try { statutsActuels = statuses; } catch (e) { /* TDZ au tout premier appel, aucun statut n'existe encore de toute façon */ }
+  const aujourdhui = today();
+
   return PLAN.flatMap(w => w.sessions.map((s,i) => {
     const effSess = (typeof getEffectiveSession === 'function' ? getEffectiveSession(w, i) : null) || s;
-    return {...effSess, date: s.date, week:w.week, phase:w.phase, uid:`${w.week}-${i}`};
+    const uid = `${w.week}-${i}`;
+    const statutBrut = statutsActuels[uid];
+    const estPasse = s.date < aujourdhui;
+    const statutEffectif = (!statutBrut || statutBrut === "—") && estPasse && effSess.type !== "REPOS"
+      ? "😴"
+      : (statutBrut || "—");
+    return {...effSess, date: s.date, week:w.week, phase:w.phase, uid, statutEffectif};
   }));
 }
 let ALL_SESSIONS = recalculerAllSessions();
@@ -4988,8 +5016,19 @@ function renderWeekDetail(weekNum) {
       return hCard;
     }
 
-    const uidStatus = statuses[uid];
-    const isDoneSession = (uidStatus==="✅"||uidStatus==="⚠️") && effSess.type!=="REPOS";
+    // statutEffectif (22/07/2026) lu depuis ALL_SESSIONS[uid] — même
+    // calcul centralisé que la garde du swap ci-dessus (getAvailableSlots),
+    // plutôt que de le refaire localement ici comme dans une première
+    // tentative non aboutie : la valeur vient maintenant d'un seul endroit
+    // (recalculerAllSessions), garantissant la même lecture partout dans
+    // l'app (stats, moteur de décision, garde du swap, badge visuel ici).
+    const sessionDansAllSessions = ALL_SESSIONS.find(as => as.uid === uid);
+    const statutEffectif = sessionDansAllSessions?.statutEffectif ?? (statuses[uid] || "—");
+    // isDoneSession élargi (22/07/2026) : couvre désormais les 4 vrais
+    // statuts (✅/❌/⚠️/😴), pas seulement ✅/⚠️ — un badge doit apparaître
+    // peu importe le statut réel, c'est le bug remonté par Laurent ("on
+    // voit seulement l'onglet validé vert").
+    const isDoneSession = ["✅","❌","⚠️","😴"].includes(statutEffectif) && effSess.type!=="REPOS";
     let cardExpanded = false;
     const card=el("div",{style:{
       background:isToday?"var(--border-soft)":"var(--bg)",
@@ -5007,13 +5046,19 @@ function renderWeekDetail(weekNum) {
         isToday?el("span",{style:{background:"rgba(var(--accent-rgb),0.2)",color:"var(--accent)",fontSize:"13px",fontWeight:"700",padding:"1px 5px",borderRadius:"3px"}},"AUJOURD\'HUI"):null,
         badge(effSess.type),
         el("div",{style:{flex:"1"}}),
-        isDoneSession?el("span",{style:{
-          background:uidStatus==="✅"?"var(--accent2)":"var(--warn)",
-          color:uidStatus==="✅"?"#fff":"var(--bg)",
-          borderRadius:"50%",width:"20px",height:"20px",
-          display:"flex",alignItems:"center",justifyContent:"center",
-          fontSize:"14px",fontWeight:"900",flexShrink:"0"
-        }}, uidStatus==="✅"?"✓":"!") : null
+        // Badge de statut (22/07/2026) : rond coloré pour ✅/❌/⚠️, icône
+        // directe (pas de rond) pour 😴.
+        isDoneSession ? (
+          statutEffectif === "😴"
+            ? el("span",{style:{fontSize:"16px",flexShrink:"0"}}, "😴")
+            : el("span",{style:{
+                background:statutEffectif==="✅"?"var(--accent2)":"var(--warn)",
+                color:statutEffectif==="✅"?"#fff":"var(--bg)",
+                borderRadius:"50%",width:"20px",height:"20px",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:"14px",fontWeight:"900",flexShrink:"0"
+              }}, statutEffectif==="✅"?"✓":"!")
+        ) : null
       ),
       el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},effSess.session),
       (effSess.warmup||effSess.cooldown)?el("div",{style:{display:"flex",gap:"12px",marginBottom:"6px",flexWrap:"wrap"}},
@@ -6520,12 +6565,17 @@ function getAvailableSlots(week, excludeIdx) {
     // calendaire), pas par le contenu de la séance — un swap les
     // laisserait accrochées au mauvais jour après échange. Toute trace
     // d'activité réelle, peu importe sa forme, bloque désormais le swap
-    // dans les deux sens (source ET destination).
+    // dans les deux sens (source ET destination). Étendu le même jour :
+    // un jour PASSÉ (donc auto-😴, cf. statutEffectif dans
+    // recalculerAllSessions) est traité comme "déjà réalisé" au même
+    // titre qu'un vrai statut — on ne swap jamais un jour révolu.
+    const estPasseNonSaisi = s.date < today() && (!statuses[uid] || statuses[uid] === "—");
     const aTraceActivite = ["✅","⚠️","❌"].includes(statuses[uid])
       || !!sessionNotes[uid]
       || !!sessionRpe[uid]
-      || !!manualPerf[uid];
-    if (aTraceActivite) return null; // séance déjà réalisée ou annotée, jamais une cible d'échange
+      || !!manualPerf[uid]
+      || estPasseNonSaisi;
+    if (aTraceActivite) return null; // séance déjà réalisée, annotée, ou jour révolu — jamais une cible d'échange
     if (effective.type === "REPOS") return {idx:i, uid, date:s.date, label:"Repos"};
     if (hiddenSessions[uid]) return {idx:i, uid, date:s.date, label:effective.type+" (masquee)"};
     // Jour actif normal — libellé avec le vrai type de séance présente,
@@ -6581,8 +6631,11 @@ function showSessionMenu(week, slotIdx) {
     // Garde renforcée pour le déplacement uniquement (22/07/2026, cf.
     // getAvailableSlots) : une note/RPE/saisie manuelle sans statut posé
     // bloque aussi le déplacement — le bouton "Supprimer cette séance"
-    // garde sa propre règle (isDone seul), sémantique différente.
-    const aTraceActivite = isDone || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid];
+    // garde sa propre règle (isDone seul), sémantique différente. Étendu
+    // le même jour : un jour PASSÉ sans statut (donc auto-😴) bloque aussi.
+    const dateSlot = week.sessions[slotIdx]?.date;
+    const estPasseNonSaisi = dateSlot && dateSlot < today() && (!statuses[uid] || statuses[uid] === "—");
+    const aTraceActivite = isDone || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid] || estPasseNonSaisi;
     if (!aTraceActivite) {
       const moveBtn = document.createElement("button");
       moveBtn.style.cssText = btnStyle+"background:rgba(var(--accent-rgb),0.13);color:var(--accent);";
@@ -6591,18 +6644,12 @@ function showSessionMenu(week, slotIdx) {
       panel.appendChild(moveBtn);
     }
 
-    if (!isDone) {
-      const hideBtn = document.createElement("button");
-      hideBtn.style.cssText = btnStyle+"background:rgba(var(--warn-rgb),0.13);color:var(--warn);";
-      hideBtn.textContent = "Supprimer cette seance";
-      hideBtn.addEventListener("click", () => {
-        hiddenSessions[uid] = true;
-        save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
-        overlay.remove();
-        render();
-      });
-      panel.appendChild(hideBtn);
-    }
+    // Bouton "Supprimer cette séance" retiré le 22/07/2026 (demande
+    // explicite de Laurent) : une séance ne doit jamais pouvoir disparaître
+    // du plan — seul un statut (✅/❌/⚠️/😴) la caractérise. hiddenSessions
+    // et showRestoreMenu restent dans le code pour compatibilité avec les
+    // séances déjà masquées avant ce changement, mais plus aucun nouveau
+    // point d'entrée n'y mène.
   } else {
     const restoreBtn = document.createElement("button");
     restoreBtn.style.cssText = btnStyle+"background:rgba(var(--accent2-rgb),0.13);color:var(--accent2);";
