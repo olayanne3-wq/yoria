@@ -1,7 +1,8 @@
 // ============================================================
 // Yoria — Synchronisation localStorage ↔ Supabase
-// Source de vérité : public/v2/engine/sync-storage.js
-// Copie non-module dérivée : public/engine-classic-scripts/sync-storage.classic.js
+// Module ES pur, chargé via import() dynamique par index.html et
+// public/v2/index.html (pas de copie classic — sync-storage.classic.js
+// retiré le 19/07/2026, étape 3 du chantier de conversion module).
 // Chantier v2.5 migration, démarré le 13 juillet 2026.
 // ============================================================
 //
@@ -563,6 +564,29 @@ export async function mettreAJourPlanSupabase(planId, planBrutComplet) {
   await supabaseReady;
   if (!estUuidValide(planId)) return;
   try {
+    // Garde-fou plan Forme déjà clôturé (22/07/2026) — porté depuis
+    // sauvegarderPlan() (gist-sync.js, retiré le même jour avec le reste du
+    // système Gist v2). La clôture d'un plan Forme est censée être
+    // définitive (cf. commentaire historique dans gist-sync.js) : une fois
+    // dateCloture posée et sauvegardée, plus aucune écriture ne doit
+    // pouvoir la modifier ou modifier le reste du plan. Ce garde-fou
+    // n'existait qu'côté Gist jusqu'ici — jamais porté vers
+    // mettreAJourPlanSupabase() lors du passage v2.8, ce qui aurait permis
+    // silencieusement d'écraser un plan Forme clôturé via les chemins qui
+    // n'écrivaient QUE sur Gist (adaptation, modification d'objectif,
+    // toujours dans public/v2/index.html). Compare l'état AVANT la mise à
+    // jour (planExistant), pas l'objet reçu en paramètre — c'est bien la
+    // clôture DÉJÀ enregistrée en base qui doit bloquer, pas le fait que
+    // planBrutComplet contienne une dateCloture (sinon la clôture
+    // elle-même, première écriture qui la pose, serait bloquée).
+    const { data: planExistant, error: erreurLecture } = await supabase
+      .from('plans_actif')
+      .select('plan_brut')
+      .eq('id', planId)
+      .maybeSingle();
+    if (!erreurLecture && planExistant?.plan_brut?.mode === 'forme' && planExistant.plan_brut.dateCloture) {
+      throw new Error(`Ce plan est clôturé depuis le ${planExistant.plan_brut.dateCloture} et ne peut plus être modifié — il reste consultable en lecture seule.`);
+    }
     const payload = { plan_brut: planBrutComplet };
     if (planBrutComplet?.nom) payload.nom = planBrutComplet.nom;
     const { error } = await supabase.from('plans_actif').update(payload).eq('id', planId);
@@ -571,6 +595,7 @@ export async function mettreAJourPlanSupabase(planId, planBrutComplet) {
     }
   } catch (err) {
     console.warn('mettreAJourPlanSupabase a échoué :', err.message);
+    throw err;
   }
 }
 
