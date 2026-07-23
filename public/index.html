@@ -3876,6 +3876,51 @@ function renderDashboard() {
   // normalement, cohérent avec le comportement documenté en §8.1 point 7
   // ("le moteur pourra re-proposer... il ne insiste pas activement, il
   // réévalue simplement à chaque nouveau calcul").
+  // todaySessions calculé ici (avant moteurDecisionEl, qui en dépend via
+  // seanceQualiteAujourdhui) — CORRECTIF bug écran blanc du 23/07/2026 :
+  // initialement déclaré plus bas dans renderDashboard(), après
+  // moteurDecisionEl, causant une ReferenceError (temporal dead zone d'une
+  // const utilisée avant sa déclaration). Réutilisé tel quel plus bas
+  // (todayEl) — ne PAS redéclarer todaySessions une seconde fois.
+  const todaySessions=ALL_SESSIONS.filter(s=>s.date===today());
+
+  // Readiness pré-séance qualité (23/07/2026) — affichée UNIQUEMENT si
+  // aujourd'hui est un jour de séance qualité (VMA/SEUIL/SPEC), jamais les
+  // jours à venir. uid utilisé comme clé de stockage : s'il y a plusieurs
+  // séances qualité le même jour (rare), la readiness s'applique à la
+  // première trouvée — cas non observé en pratique, pas géré spécifiquement.
+  const seanceQualiteAujourdhui = todaySessions.find(s => ["VMA","SEUIL","SPEC"].includes(s.type));
+  let readinessEl = null;
+  if (seanceQualiteAujourdhui) {
+    const uidReadiness = seanceQualiteAujourdhui.uid;
+    let readinessVal = sessionReadiness[uidReadiness] || null;
+    const readinessRow = el("div",{style:{display:"flex",gap:"6px",width:"100%"}});
+    const rebuildReadiness = () => {
+      readinessRow.innerHTML = "";
+      READINESS_OPTIONS.forEach(o=>{
+        const rb = el("button",{title:o.label,style:{
+          flex:"1",padding:"8px 0",fontSize:"18px",cursor:"pointer",
+          background:readinessVal===o.v?"var(--accent)":"var(--border-soft)",
+          border:`1px solid ${readinessVal===o.v?"var(--accent)":"var(--border)"}`,borderRadius:"8px"
+        }}, o.e);
+        rb.addEventListener("click", avecRetourTactile((e)=>{
+          e.stopPropagation();
+          readinessVal = readinessVal===o.v ? null : o.v;
+          sessionReadiness[uidReadiness] = readinessVal;
+          save(clePourPlan("lk_session_readiness"), sessionReadiness);
+          rebuildReadiness();
+          render(); // recalcule moteurDecisionEl, qui lit sessionReadiness (cf. plus bas)
+        }));
+        readinessRow.appendChild(rb);
+      });
+    };
+    rebuildReadiness();
+    readinessEl = el("div",{style:{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
+      el("div",{style:{fontSize:"12px",color:"var(--text2)",marginBottom:"6px"}},"Comment tu te sens pour ta séance du jour ?"),
+      readinessRow
+    );
+  }
+
   const moteurDecisionEl = (() => {
     if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.estPlanRepli) return null;
     if (typeof DecisionEngineApply === 'undefined') return null; // scripts pas encore chargés, jamais planter le dashboard pour ça
@@ -4070,45 +4115,7 @@ function renderDashboard() {
     return wrapper;
   }
   const total=ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
-  const todaySessions=ALL_SESSIONS.filter(s=>s.date===today());
   const pred=currentPred||predict10K();
-
-  // Readiness pré-séance qualité (23/07/2026) — affichée UNIQUEMENT si
-  // aujourd'hui est un jour de séance qualité (VMA/SEUIL/SPEC), jamais les
-  // jours à venir. uid utilisé comme clé de stockage : s'il y a plusieurs
-  // séances qualité le même jour (rare), la readiness s'applique à la
-  // première trouvée — cas non observé en pratique, pas géré spécifiquement.
-  const seanceQualiteAujourdhui = todaySessions.find(s => ["VMA","SEUIL","SPEC"].includes(s.type));
-  let readinessEl = null;
-  if (seanceQualiteAujourdhui) {
-    const uidReadiness = seanceQualiteAujourdhui.uid;
-    let readinessVal = sessionReadiness[uidReadiness] || null;
-    const readinessRow = el("div",{style:{display:"flex",gap:"6px",width:"100%"}});
-    const rebuildReadiness = () => {
-      readinessRow.innerHTML = "";
-      READINESS_OPTIONS.forEach(o=>{
-        const rb = el("button",{title:o.label,style:{
-          flex:"1",padding:"8px 0",fontSize:"18px",cursor:"pointer",
-          background:readinessVal===o.v?"var(--accent)":"var(--border-soft)",
-          border:`1px solid ${readinessVal===o.v?"var(--accent)":"var(--border)"}`,borderRadius:"8px"
-        }}, o.e);
-        rb.addEventListener("click", avecRetourTactile((e)=>{
-          e.stopPropagation();
-          readinessVal = readinessVal===o.v ? null : o.v;
-          sessionReadiness[uidReadiness] = readinessVal;
-          save(clePourPlan("lk_session_readiness"), sessionReadiness);
-          rebuildReadiness();
-          render(); // recalcule moteurDecisionEl, qui lit sessionReadiness (cf. plus bas)
-        }));
-        readinessRow.appendChild(rb);
-      });
-    };
-    rebuildReadiness();
-    readinessEl = el("div",{style:{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"10px",padding:"12px 14px",marginBottom:"12px"}},
-      el("div",{style:{fontSize:"12px",color:"var(--text2)",marginBottom:"6px"}},"Comment tu te sens pour ta séance du jour ?"),
-      readinessRow
-    );
-  }
 
   const heroPred = el("div",{style:{background:"linear-gradient(135deg,var(--bg) 0%,var(--border-soft) 100%)",borderRadius:"16px",padding:"16px",marginBottom:"12px",border:"1px solid rgba(var(--accent-rgb),0.2)",marginTop:"8px"}},
     // ── Header : course ──────────────────────────────────────────────────────
