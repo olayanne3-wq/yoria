@@ -2320,7 +2320,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 11; // DEBUG TEMPORAIRE (22/07/2026) — logs de diagnostic dans rebuildPredHistorySequentielle, à retirer une fois le bug de convergence figée identifié
+const PREDICTOR_VERSION = 12; // Incrémenté : fiabilitePlanPonderee() recalcule statutEffectif PAR RAPPORT À dateStr au lieu de lire le champ figé sur "aujourd'hui" — bug racine de la convergence bloquée sur BASE_TIME_REFERENCE malgré des séances validées (22/07/2026, diagnostiqué via logs de debug en production)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2721,17 +2721,9 @@ function rebuildPredHistorySequentielle(startDate, endDate) {
     const dateStr = d.toISOString().slice(0,10);
     const borneBrute = calculerBorneBruteAtDate(dateStr);
     const fiabilite = fiabilitePlanPonderee(dateStr);
-    const nouvelleDonnee = aDesNouvellesDonneesQualite(dateStr);
-    // DEBUG TEMPORAIRE (22/07/2026, à retirer après diagnostic)
-    if (["2026-07-08","2026-07-17","2026-07-22"].includes(dateStr)) {
-      console.log(`[DEBUG ${dateStr}] borneBrute=${borneBrute} fiabilite=${fiabilite} nouvelleDonnee=${nouvelleDonnee} estimateCourante(avant)=${estimateCourante}`);
-    }
-    if (nouvelleDonnee) {
+    if (aDesNouvellesDonneesQualite(dateStr)) {
       const pas = PAS_CONVERGENCE_BASE * fiabilite;
       estimateCourante = estimateCourante + (borneBrute - estimateCourante) * pas;
-    }
-    if (["2026-07-08","2026-07-17","2026-07-22"].includes(dateStr)) {
-      console.log(`[DEBUG ${dateStr}] estimateCourante(après)=${estimateCourante}`);
     }
     const borneMin = Math.min(borneBrute, BASE_TIME_REFERENCE);
     const borneMax = Math.max(borneBrute, BASE_TIME_REFERENCE);
@@ -2805,25 +2797,39 @@ if ((stravaActivities.length > 0 || nbSaisiesManuelles() > 0) && (predHistory.le
 // Décroissance : demi-vie ≈ 3 semaines (poids divisé par 2 tous les 21j).
 function fiabilitePlanPonderee(dateStr) {
   const HALF_LIFE_JOURS = 21;
-  // Bug corrigé le 22/07/2026 (repéré en vérifiant l'extension de
-  // statutEffectif aux consommateurs de statuses[uid]) : ce filtre excluait
-  // totalement les séances passées jamais cochées explicitement — le 😴
-  // automatique (recalculerAllSessions()) n'existe QUE sur
-  // s.statutEffectif, jamais écrit dans statuses[uid] lui-même. Résultat :
-  // une séance oubliée (jamais cochée) était invisible du calcul plutôt que
-  // de compter comme un signal de désengagement (score 0), faisant
-  // artificiellement remonter la fiabilité mesurée — alors que le principe
-  // validé était justement qu'une séance non traitée doit peser comme un
-  // raté, cohérent avec §16 de l'inventaire (chantier "étendre
-  // statutEffectif aux autres lecteurs de statuses[uid]").
-  const seancesPassees = ALL_SESSIONS.filter(s => s.date <= dateStr && s.statutEffectif && s.statutEffectif !== "—");
+  // Bug corrigé le 22/07/2026, DEUXIÈME correctif du jour (le premier avait
+  // remplacé statuses[s.uid] par s.statutEffectif — correct pour "aujourd'hui"
+  // mais CASSAIT la reconstruction rétroactive) : s.statutEffectif est un
+  // champ FIGÉ, calculé une seule fois par recalculerAllSessions() par
+  // rapport à today() réel — jamais recalculé pour une dateStr passée
+  // arbitraire. Dans rebuildPredHistorySequentielle() (boucle jour par
+  // jour depuis le début du plan), cette fonction est appelée pour CHAQUE
+  // date passée simulée — lire le champ figé donnait alors un résultat
+  // insensé pour toute date différente d'aujourd'hui (fiabilité mesurée à
+  // 0 même 2-3 jours après le début du plan, malgré des séances déjà
+  // validées ce jour-là), bloquant tout pas de convergence dès la première
+  // itération de la boucle et donc toute la suite (state séquentiel).
+  // Recalcule maintenant statutEffectif localement, PAR RAPPORT À dateStr
+  // (même logique que recalculerAllSessions, paramétrée par date au lieu
+  // de today() implicite), plutôt que de lire le champ déjà calculé.
+  const seancesPassees = ALL_SESSIONS.filter(s => {
+    if (s.date > dateStr) return false;
+    const statutBrut = statuses[s.uid];
+    const estPasseParRapportADate = s.date < dateStr;
+    const statutEffectifADate = (!statutBrut || statutBrut === "—") && estPasseParRapportADate && s.type !== "REPOS"
+      ? "😴"
+      : (statutBrut || "—");
+    return statutEffectifADate !== "—";
+  });
   if (!seancesPassees.length) return 1; // pas d'historique : pas de raison de freiner
   let poidsTotal = 0, poidsReussite = 0;
   seancesPassees.forEach(s => {
+    const statutBrut = statuses[s.uid];
+    const estPasseParRapportADate = s.date < dateStr;
+    const st = (!statutBrut || statutBrut === "—") && estPasseParRapportADate && s.type !== "REPOS" ? "😴" : (statutBrut || "—");
     const joursEcart = Math.max(0, (new Date(dateStr) - new Date(s.date)) / 86400000);
     const poids = Math.pow(0.5, joursEcart / HALF_LIFE_JOURS);
     poidsTotal += poids;
-    const st = s.statutEffectif;
     // ✅ = 1 (pleine confiance), ⚠️ = 0.5 (partiel), ❌/😴 = 0 (raté/sauté)
     const score = st === "✅" ? 1 : st === "⚠️" ? 0.5 : 0;
     poidsReussite += poids * score;
