@@ -2320,7 +2320,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 10; // Incrémenté : repli sport_type=="Run" en plus de type=="Run" dans les filtres d'activités du prédicteur, certaines activités étaient invisibles selon la source de synchro (22/07/2026)
+const PREDICTOR_VERSION = 11; // DEBUG TEMPORAIRE (22/07/2026) — logs de diagnostic dans rebuildPredHistorySequentielle, à retirer une fois le bug de convergence figée identifié
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2721,9 +2721,17 @@ function rebuildPredHistorySequentielle(startDate, endDate) {
     const dateStr = d.toISOString().slice(0,10);
     const borneBrute = calculerBorneBruteAtDate(dateStr);
     const fiabilite = fiabilitePlanPonderee(dateStr);
-    if (aDesNouvellesDonneesQualite(dateStr)) {
+    const nouvelleDonnee = aDesNouvellesDonneesQualite(dateStr);
+    // DEBUG TEMPORAIRE (22/07/2026, à retirer après diagnostic)
+    if (["2026-07-08","2026-07-17","2026-07-22"].includes(dateStr)) {
+      console.log(`[DEBUG ${dateStr}] borneBrute=${borneBrute} fiabilite=${fiabilite} nouvelleDonnee=${nouvelleDonnee} estimateCourante(avant)=${estimateCourante}`);
+    }
+    if (nouvelleDonnee) {
       const pas = PAS_CONVERGENCE_BASE * fiabilite;
       estimateCourante = estimateCourante + (borneBrute - estimateCourante) * pas;
+    }
+    if (["2026-07-08","2026-07-17","2026-07-22"].includes(dateStr)) {
+      console.log(`[DEBUG ${dateStr}] estimateCourante(après)=${estimateCourante}`);
     }
     const borneMin = Math.min(borneBrute, BASE_TIME_REFERENCE);
     const borneMax = Math.max(borneBrute, BASE_TIME_REFERENCE);
