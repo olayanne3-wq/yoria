@@ -428,7 +428,7 @@ Par ordre de dépendance, pas nécessairement de priorité :
 2. **§9.1 — brancher le coach IA** sur `RunnerState`/`EngagementState`/`EngineDecision` plutôt que son calcul ACWR informel actuel.
 3. **§10.2 — coder les deux garde-fous** avant tout ajout de règle supplémentaire au catalogue.
 4. **Champs profil manquants** : `fcRepos` et `sexe` n'existent pas encore dans `profilCoureur` — actuellement contournés (valeur d'exemple 55 pour `fcRepos`, repli sur `'autre'` — moyenne des constantes — pour `sexe`). Ajout formel du champ profil + saisie utilisateur, pas urgent mais nécessaire avant toute mise en avant publique du moteur.
-5. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité, à concevoir à part.
+5. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité, à concevoir à part. **Livré le 23/07/2026, cf. inventaire §8.**
 6. Modules non commencés du catalogue complet (§7 doc archi) : surentraînement combiné, progression, taper irrégulier, objectif à risque — à reprendre seulement une fois les 3 règles actuelles éprouvées sur un usage réel prolongé (cf. §7.2).
 
 ## 12. État d'implémentation réel (17 juillet 2026)
@@ -494,7 +494,7 @@ Sans lien avec le moteur de décision, mais découverte pendant cette même sess
 
 Par ordre de dépendance, ce qui reste du §11.7 initial :
 
-1. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité (VMA/SEUIL/SPEC/TEST), à concevoir à part. `reduire_charge` continue de ne cibler que EF/LONGUE.
+1. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité (VMA/SEUIL/SPEC/TEST), à concevoir à part. **Livré le 23/07/2026** — `reduire_charge` cible désormais aussi les séances qualité (réduction structurelle du nombre de répétitions/blocs), cf. inventaire §8.
 2. **Modules non commencés** du catalogue complet (§7 doc archi) : surentraînement combiné, progression, taper irrégulier, objectif à risque — à reprendre une fois les règles actuelles éprouvées sur un usage réel prolongé (cf. §7.2). Modules 2/3/4 (SessionAnalysis/WeekAnalysis/TrendAnalysis) tous codés depuis le 17/07/2026 (cf. inventaire §27/§30/§31, §13.4 ci-dessus) et `weekAnalysis`/`trendAnalysis` déjà branchés dans l'input du RuleEngine (inventaire §32) — la donnée n'est donc plus le facteur bloquant pour ces règles, reste la conception/codage des règles elles-mêmes.
 
 Hors périmètre moteur de décision, mais lié à ce jour de session : réinstaller le build TWA déjà signé et validé le 16/07/2026 pour corriger la régression du §12.6 (procédure complète en inventaire §22.2, pas besoin de repartir de zéro).
@@ -509,7 +509,7 @@ Ajoutées à `decision-engine-rules.classic.js`, catalogue passé de 3 à 6 règ
 
 - **R-050 ACWR élevé** (sécurité, priorité 85) — lit `runnerState.charge.ratio` déjà calculé par le Module 1, seuils 1.3 (→ -15%)/1.5 (→ -25%) conformes au doc archi §5.2. Placée juste sous R-024s (fatigue, 90) pour laisser primer le message fatigue en cas de double déclenchement, mais se déclenche seule quand le ratio dépasse le seuil sans que la fatigue linéaire ait franchi 75 (les deux mappings ne sont pas parfaitement alignés).
 - **R-060 Tendance fatigue en hausse** (sécurité, priorité 80) — rappelle `calculerRunnerState()` à 3 dates de référence (J, J-4, J-7, même principe que `calculerHistoriqueCharge()` déjà existant), se déclenche si croissance stricte + écart ≥8 points + aucun point n'a franchi 75 (sinon R-024s aurait déjà matché). **Bug trouvé et corrigé le jour même** : la première version ne recevait jamais `coureurOptions` (fcMax/fcRepos/sexe) depuis `evaluerRegles()`, donc ne pouvait jamais réellement se déclencher — corrigé en passant `optionsRunnerStateActuel()` en plus de `runnerState`/`engagementState` dans l'appel côté `calculerEtatMoteurDecision()`.
-- **R-070 Séances planifiées ratées consécutives** (engagement, priorité 55) — signal plus direct que R-040 : 2 séances *prévues au plan* marquées ❌ d'affilée, pas juste une baisse de régularité globale sur 14j. Calculée en dehors du RuleEngine (nouvelle fonction `obtenirSeancesPlanifieesManquees()` côté `index.html`, lit `ALL_SESSIONS`/`statuses`) puis transmise en input à `evaluerRegles()` — le RuleEngine reste isolé du plan, cf. principe déjà en place pour les autres règles.
+- **R-070 Séances planifiées ratées consécutives** (engagement, priorité 55 à l'origine, **relevée à 70 et transformée en `reduire_charge` le 23/07/2026**, cf. inventaire §8) — signal plus direct que R-040 : 2 séances *prévues au plan* marquées ❌ d'affilée, pas juste une baisse de régularité globale sur 14j. Calculée en dehors du RuleEngine (nouvelle fonction `obtenirSeancesPlanifieesManquees()` côté `index.html`, lit `ALL_SESSIONS`/`statuses`) puis transmise en input à `evaluerRegles()` — le RuleEngine reste isolé du plan, cf. principe déjà en place pour les autres règles.
 
 ### 13.2 Module 2 (SessionAnalyzer) — livré, testé, corrigé en profondeur
 
@@ -540,9 +540,9 @@ Nouveau fichier `decision-engine-session-analysis.classic.js`. Détail de concep
 
 ### 13.4 Prochaines étapes logiques
 
-1. **§13.1 point R-070** — pas encore observé se déclencher en conditions réelles (comme les autres règles avant elle).
+1. **§13.1 point R-070** — transformée en `reduire_charge` le 23/07/2026 (cf. inventaire §8) ; le point "pas encore observée se déclencher" est résolu par ce même changement (testée en conditions réelles ce jour-là, cf. mémoire de session).
 2. **Modules 3/4** (WeekAnalyzer/TrendAnalyzer) — codés le 17/07/2026 (session ultérieure, cf. inventaire §30/§31), branchés dans l'input du RuleEngine (`weekAnalysis`/`trendAnalysis`, cf. inventaire §32) mais **aucune règle ne les consomme encore** — les données sont disponibles, inertes. R-060 (§13.1) continue de rappeler directement le Module 1 à plusieurs dates plutôt que de consommer `trendAnalysis` — ce chantier n'a pas été fait pendant l'intégration, à faire si une règle basée sur `trendAnalysis` est conçue plus tard (les deux mécanismes coexistent, ne sont pas redondants au sens strict : R-060 regarde la fatigue seule sur 3 points fixes J/J-4/J-7, `TrendAnalyzer` croise plusieurs signaux sur une fenêtre de semaines calendaires).
-3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité — toujours reporté, `reduire_charge` ne cible toujours que EF/LONGUE/RECUP.
+3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de qualité — **livré le 23/07/2026**, `reduire_charge` cible désormais aussi les séances qualité en second recours (repli EF/LONGUE si aucune qualité n'a de marge), cf. inventaire §8.
 4. **Reste du catalogue théorique** (doc archi §7) — signaux combinés de surentraînement, taper irrégulier, objectif à risque, plaisir déclaré, etc. — nécessitent pour la plupart de nouvelles règles s'appuyant sur `weekAnalysis`/`trendAnalysis` (désormais disponibles, cf. point 2) ou `GoalFeasibility` (non codé).
 
 ## 14. Chantier RPE unifié (17/07/2026, session ultérieure)
@@ -607,9 +607,11 @@ Seuil -10% calibré à dire d'expert (aucune littérature trouvée sur un
 seuil absolu de 30km/sem, non transposable). Détail : inventaire §38.1.
 
 **Catalogue de règles à jour (7 règles actives)** : R-006 (100) > R-024s
-(90) > R-050 (85) > R-062 (82) > R-060 (80) > R-070 (55) > R-080 (52) >
-R-040 (50). R-062, R-070, R-080 n'ont jamais été observées se déclencher
-en conditions réelles à ce jour.
+(90) > R-050 (85) > R-062 (82) > R-060 (80) > R-070 (70, relevée depuis 55
+le 23/07/2026) > R-080 (52) > R-040 (50). R-062, R-080 n'ont jamais été
+observées se déclencher en conditions réelles à ce jour — R-070, elle,
+transformée en `reduire_charge` et observée en conditions réelles le
+23/07/2026 (cf. inventaire §8).
 
 ### 15.3 Monotonie de charge (Foster) — calculée et affichée, pas de règle
 
@@ -636,14 +638,16 @@ helper de test conservé dans l'inventaire §38.2 pour réutilisation future.
 
 ### 15.5 Prochaines étapes logiques (mise à jour)
 
-1. **R-062/R-070/R-080** — toujours aucune observée en conditions
-   réelles ; surveiller au fil des prochaines semaines.
+1. **R-062/R-080** — toujours aucune observée en conditions
+   réelles ; surveiller au fil des prochaines semaines. R-070 en revanche
+   a été transformée en `reduire_charge` et observée le 23/07/2026 (cf.
+   inventaire §8) — retirée de cette liste.
 2. **Test recuperationEstimee/ACWR** (§15.4) — à refaire avec un
    échantillon plus large avant de décider définitivement si une règle est
    pertinente.
 3. **§11.4 — algorithme de réduction d'intervalles** pour les séances de
-   qualité — toujours reporté, `reduire_charge` ne cible toujours que
-   EF/LONGUE/RECUP.
+   qualité — **livré le 23/07/2026** (réduction du nombre de
+   répétitions/blocs, jamais l'allure ni la récup), cf. inventaire §8.
 4. **Reste du catalogue théorique** (doc archi §7) — `GoalFeasibility`
    toujours non codé ; les signaux combinés restants du catalogue
    pourraient s'appuyer sur `progressionVsPrecedente` (Module 3, toujours
