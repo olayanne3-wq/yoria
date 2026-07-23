@@ -328,12 +328,18 @@
   // en-tête : pas de proposition plutôt qu'une cible hasardeuse).
   //
   // Retourne { semaine, seance, jourIndex, dateStr, viaQualite?: bool } ou
-  // null si aucune cible sûre. Priorité : EF/LONGUE d'abord (réduction
-  // linéaire simple), puis QUALITE avec marge structurelle disponible en
-  // dernier recours (cf. conception 23/07/2026) — jamais l'inverse, une
-  // réduction sur EF/LONGUE est toujours préférable quand elle existe.
+  // null si aucune cible sûre. Priorité par défaut : EF/LONGUE d'abord
+  // (réduction linéaire simple), puis QUALITE avec marge structurelle
+  // disponible en dernier recours (cf. conception 23/07/2026).
+  //
+  // cibleQualitePrioritaire (23/07/2026, R-070) : INVERSE cet ordre — cherche
+  // d'abord une séance qualité avec marge, EF/LONGUE seulement en repli. Cas
+  // d'usage : le signal qui a produit la décision concerne spécifiquement les
+  // séances de qualité (ex. séances qualité ratées consécutives) — alléger
+  // une EF ne répondrait pas au problème réel. Paramètre optionnel, false par
+  // défaut pour ne rien changer au comportement existant de R-024s/R-050.
   // --------------------------------------------------------------------------
-  function trouverProchaineSeanceCible(planBrut, dateReference, niveau) {
+  function trouverProchaineSeanceCible(planBrut, dateReference, niveau, cibleQualitePrioritaire) {
     if (!planBrut || !Array.isArray(planBrut.semaines) || !planBrut.dateDebut) return null;
 
     const aujourdhui = new Date(dateReference || new Date().toISOString()).toISOString().slice(0, 10);
@@ -361,20 +367,23 @@
     const joursAvenir = reconstruireJoursAvenirDeLaSemaine(planBrut, semaineCourante, dateReference);
     if (joursAvenir.length === 0) return null;
 
-    const cible = joursAvenir.find(({ seance }) => TYPES_REDUCTION_SURE.includes(seance.type));
-    if (cible) {
-      return { semaine: semaineCourante, seance: cible.seance, jourIndex: cible.jourIndex, dateStr: cible.dateStr };
+    const trouverCibleQualite = () => {
+      const c = joursAvenir.find(({ seance }) =>
+        seance.type === 'qualite' && seanceQualiteAEncoreDeLaMarge(seance, niveau || 'intermediaire')
+      );
+      return c ? { semaine: semaineCourante, seance: c.seance, jourIndex: c.jourIndex, dateStr: c.dateStr, viaQualite: true } : null;
+    };
+    const trouverCibleSure = () => {
+      const c = joursAvenir.find(({ seance }) => TYPES_REDUCTION_SURE.includes(seance.type));
+      return c ? { semaine: semaineCourante, seance: c.seance, jourIndex: c.jourIndex, dateStr: c.dateStr } : null;
+    };
+
+    if (cibleQualitePrioritaire) {
+      // R-070 : qualité d'abord, EF/LONGUE en repli si aucune qualité n'a de marge.
+      return trouverCibleQualite() || trouverCibleSure();
     }
-
-    // Aucune EF/LONGUE disponible cette semaine : chercher une séance
-    // qualité qui a encore de la marge de réduction structurelle avant de
-    // refuser complètement (cf. conception 23/07/2026).
-    const cibleQualite = joursAvenir.find(({ seance }) =>
-      seance.type === 'qualite' && seanceQualiteAEncoreDeLaMarge(seance, niveau || 'intermediaire')
-    );
-    if (!cibleQualite) return null; // aucune cible sûre, ni EF/LONGUE ni qualité avec marge
-
-    return { semaine: semaineCourante, seance: cibleQualite.seance, jourIndex: cibleQualite.jourIndex, dateStr: cibleQualite.dateStr, viaQualite: true };
+    // Comportement par défaut (R-024s/R-050) : EF/LONGUE d'abord, qualité en dernier recours.
+    return trouverCibleSure() || trouverCibleQualite();
   }
 
   // --------------------------------------------------------------------------
@@ -426,7 +435,7 @@
       return { succes: false, raison: 'Ce type de décision est informatif, rien à appliquer au plan.' };
     }
 
-    const cible = trouverProchaineSeanceCible(planBrut, dateReference, niveau);
+    const cible = trouverProchaineSeanceCible(planBrut, dateReference, niveau, decision.cibleQualitePrioritaire === true);
     if (!cible) {
       return { succes: false, raison: 'Aucune séance cible sûre trouvée cette semaine (EF/LONGUE absentes, et aucune qualité avec marge de réduction structurelle).' };
     }
