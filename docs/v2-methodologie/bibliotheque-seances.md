@@ -629,6 +629,18 @@ Suite à un audit de la variété perçue en phase Construction (17/07/2026) : c
 
 **Audit de non-conflit avec les limites déjà validées** (17/07/2026, sur GEM'AUBAGNE) : le volume ajouté par les strides (~0,3km/semaine sur un plan à 40-42,5km) est trop marginal pour affecter la limite Daniels sur le seuil (≤10% du volume hebdo en T) ou la distribution 80/20 (Seiler) déjà vérifiées conformes sur ce plan — pas de nouveau garde-fou nécessaire.
 
+## 42. Pourquoi la progression des répétitions repart à `base` à chaque nouvelle phase
+
+Question soulevée en concevant le futur algorithme de réduction d'intervalles pour le moteur de décision (23/07/2026) : `reduireSelonNiveauProgression()` fait toujours repartir le nombre de répétitions à `base` au début de chaque nouvelle phase, plutôt que de continuer depuis le niveau atteint en fin de phase précédente (`semaineDansPhase` est calculé relativement au début de la phase courante, jamais depuis le début du plan). Comportement jamais justifié explicitement dans le code ni ailleurs dans ce document — recherché spécifiquement pour confirmer que ce n'est pas un raccourci non intentionnel.
+
+**Confirmé par la littérature de périodisation** (convergent sur plusieurs sources : TrainerRoad, TrainingPeaks, NASM, mesostrength.com) :
+
+- Chaque phase (mésocycle) cible une **adaptation physiologique différente**, pas juste "plus du même stimulus" — cohérent avec la rotation des sous-types déjà en place ici (`ROTATION_SOUS_TYPE`), qui change aussi de nature d'un phase à l'autre (Construction : `seuil-court`/`i-30-30` ; Spécifique : introduit `pyramidale`/`seuil-negatif`, structurellement plus exigeants).
+- Pratique recommandée explicitement : **"start every mesocycle at roughly minimum effective volume"** — redémarrer chaque bloc à un volume conservateur, même après un bloc précédent terminé plus haut, pour laisser le temps de l'adaptation initiale au nouveau stimulus avant de charger.
+- Une phase de décharge/récupération précède généralement la transition entre mésocycles — repartir à `base` est cohérent avec le fait qu'on sort d'un creux, pas du pic de la phase précédente.
+
+**Conclusion retenue** : ce n'est pas un défaut de conception, c'est la pratique standard en périodisation appliquée à chaque nouveau mésocycle. Confirme au passage que `base` (par niveau/sous-type) est un repère pertinent — c'est déjà le seuil que la littérature qualifie de "conservateur mais suffisant" pour amorcer une nouvelle phase, donc un bon candidat de plancher absolu pour toute réduction ponctuelle de charge (ex. moteur de décision) : ne jamais descendre en dessous de ce que le moteur lui-même juge acceptable pour démarrer une phase.
+
 ## Sources consultées
 
 - Jack Daniels' Running Formula — zones VDOT (E/M/T/I/R, adaptées en Récup/E/C/T/I/V dans ce document ; M devient C "Allure course objectif", généralisée à toute distance et non réservée au marathon, et Récup ajoutée comme zone distincte — corrections validées sur plan réel)
@@ -637,3 +649,4 @@ Suite à un audit de la variété perçue en phase Construction (17/07/2026) : c
 - The Running Channel, TrainingPeaks, Marathon Handbook — structuration et taper marathon
 - CorrerJuntos, HikingManual, Trainero — structuration semi-marathon en 12 semaines
 - Tradition Lydiard (base aérobique moderne), Runners Connect, Coach Saltmarsh — strides comme stimulus neuromusculaire de phase de base (section 41)
+- TrainerRoad, TrainingPeaks, NASM, mesostrength.com — périodisation par mésocycle, redémarrage conservateur à chaque nouvelle phase (section 42)
