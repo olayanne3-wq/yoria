@@ -3899,9 +3899,9 @@ function renderDashboard() {
       readinessRow.innerHTML = "";
       READINESS_OPTIONS.forEach(o=>{
         const rb = el("button",{title:o.label,style:{
-          flex:"1",padding:"8px 0",fontSize:"18px",cursor:"pointer",
-          background:readinessVal===o.v?"var(--accent)":"var(--border-soft)",
-          border:`1px solid ${readinessVal===o.v?"var(--accent)":"var(--border)"}`,borderRadius:"8px"
+          flex:"1",padding:"10px 0",fontSize:"20px",cursor:"pointer",
+          background:readinessVal===o.v?"var(--accent2)":"var(--border-soft)",
+          border:`1px solid ${readinessVal===o.v?"var(--accent2)":"var(--border)"}`,borderRadius:"8px"
         }}, o.e);
         rb.addEventListener("click", avecRetourTactile((e)=>{
           e.stopPropagation();
@@ -3916,7 +3916,10 @@ function renderDashboard() {
     };
     rebuildReadiness();
     readinessEl = el("div",{style:{background:"rgba(var(--accent2-rgb),0.1)",border:"1px solid rgba(var(--accent2-rgb),0.3)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
-      el("div",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)",marginBottom:"8px"}},"Comment tu te sens pour ta séance du jour ?"),
+      el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px"}},
+        el("span",{style:{fontSize:"20px"}},"⚡"),
+        el("span",{style:{color:"var(--accent2)",fontSize:"15px",fontWeight:"700"}},"Comment tu te sens aujourd'hui ?")
+      ),
       readinessRow
     );
   }
@@ -4779,7 +4782,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,readinessEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,readinessEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
