@@ -347,16 +347,40 @@ S6...) :
    - R-080 (déficit volume durable, 3 semaines ≤−10% vs plan, priorité 52)
 
 `DecisionEngineApply` + carte UI : détection automatique, application sur
-clic explicite uniquement, `reduire_charge` cible EF/LONGUE/RECUP
-uniquement (jamais les séances de qualité — algorithme dédié nécessaire
-pour ça, non fait). Garde-fous anti-cumul : −30% max par décision, plafond
-cumulé 25%/14j glissants (journal `planBrut.historiqueReductionsMoteur`).
+clic explicite uniquement, `reduire_charge` cible EF/LONGUE/RECUP en
+priorité, séances de qualité en second recours si aucune EF/LONGUE
+disponible cette semaine (réduction structurelle du nombre de
+répétitions/blocs, jamais l'allure ni la récup — cf. plus bas). Garde-fous
+anti-cumul : −30% max par décision, plafond cumulé 25%/14j glissants
+(journal `planBrut.historiqueReductionsMoteur`, sur l'ampleur RÉELLEMENT
+appliquée, pas la demandée).
 **Titre de la carte** distingue désormais deux cas (22/07/2026) : "Yoria
 te propose un ajustement" uniquement quand une vraie action est possible
 (`reduire_charge`, bouton Appliquer visible) ; "Yoria a repéré un signal à
 surveiller" pour les décisions purement informatives (`alerter_*`, R-060/
 R-062, seul "Ignorer" disponible) — l'ancien titre unique était trompeur
 pour ce second cas.
+
+**Réduction structurelle des séances qualité** (23/07/2026) : ne touche
+jamais à l'allure ni à la récup — seul le nombre de répétitions/blocs est
+réduit, jamais sous le plancher `base(niveau, sousType)` (justifié par la
+littérature de périodisation, redémarrage conservateur à chaque
+mésocycle — cf. `bibliotheque-seances.md` §42). Trois sous-cas :
+bloc unique répété (i-3min, seuil, vitesse...) → retire des répétitions ;
+pyramide → retire des paliers depuis la fin, plancher = pyramide
+`debutant` (`[2,3,4]`) quel que soit le niveau réel ; i-30-30 → réduit
+`repsParSerie` en premier, `nbSeries` seulement en dernier recours. Les
+séances à bloc continu unique (tempo-court, seuil-negatif) n'ont pas de
+structure à casser, traitées comme EF/LONGUE (réduction linéaire simple).
+L'ampleur réellement appliquée (après arrondi à l'unité entière la plus
+proche) diffère souvent de l'ampleur demandée par la règle — c'est cette
+valeur réelle qui alimente `kmEstime` et le journal de cumul, jamais la
+brute. Tables `base`/`cap` par sous-type/niveau dupliquées depuis
+`plan-generator.js` dans `decision-engine-apply.classic.js` (elles n'y
+sont pas exportées, déclarées localement dans chaque `case` du switch) —
+risque de divergence documenté en commentaire, à répercuter si
+`plan-generator.js` change une valeur `base`. Validé par 29 tests
+unitaires + test en conditions réelles navigateur (clone du plan).
 
 Coach IA branché sur le moteur : lit `RunnerState`/`EngineDecision` du jour,
 ne recalcule jamais un ratio séparé, peut commenter la décision mais jamais
@@ -470,8 +494,6 @@ progressive") :
   unifié avec la logique déjà utilisée par la reconstruction rétroactive.
 
 **Non couvert / reporté** :
-- Réduction d'intervalles pour séances de qualité (VMA/SEUIL/SPEC) —
-  algorithme dédié nécessaire, pas encore conçu
 - Saisie de plaisir par séance (PACES-S) — EngagementCalculator tourne sur
   régularité comportementale seule
 - R-062/R-070/R-080 jamais observées sur données réelles de Laurent — à
