@@ -21,7 +21,10 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.21", title:"Estimation plus fidèle (VDOT), allures qui suivent ta progression, sync 100% Supabase", current:true, notes:[
+      { ver:"v2.22", title:"Correction du calcul de progression de l'estimation", current:true, notes:[
+        "🐛 L'estimation pouvait rester bloquée sur ta référence de départ pendant plusieurs semaines malgré des séances de qualité validées — un calcul interne ne prenait pas correctement en compte l'historique au fil du temps",
+      ]},
+      { ver:"v2.21", title:"Estimation plus fidèle (VDOT), allures qui suivent ta progression, sync 100% Supabase", current:false, notes:[
         "🎯 L'allure de seuil compte maintenant pour ce qu'elle est vraiment — l'ancienne méthode (Riegel) traitait une séance de seuil comme un effort maximal et sous-estimait ta vitesse réelle de plusieurs minutes sur 10K",
         "📈 Tes allures d'entraînement (endurance, seuil, VMA) se resserrent maintenant automatiquement au fil du plan à mesure que ta forme progresse, au lieu de rester figées sur ta référence de départ",
         "☁️ La sauvegarde et la synchronisation entre appareils passent maintenant à 100% par ton compte — plus besoin de token GitHub, un vestige de l'ancien système a été retiré",
