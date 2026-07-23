@@ -328,7 +328,8 @@ S6...) :
 4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines
 5. **RuleEngine** — catalogue de règles actif :
    - R-006 (pic de séance), R-024s (fatigue élevée), R-040 (désengagement),
-     R-050 (ACWR élevé), R-070 (séances ratées consécutives)
+     R-050 (ACWR élevé), R-060 (tendance fatigue sur 3 mesures), R-070
+     (séances ratées consécutives, priorité 70)
    - **R-060 (tendance fatigue en hausse)** — méthode revue le 22/07/2026 :
      échantillonnage quotidien sur 8 jours (J à J-7) comparé par moitiés
      (moyenne J-7..J-4 vs J-3..J), seuil écart ≥6, au lieu de l'ancienne
@@ -345,6 +346,40 @@ S6...) :
      des dates différentes la métrique `fatigue` déjà calculée là-bas.
    - R-062 (fatigue persistante 3 semaines, priorité 82)
    - R-080 (déficit volume durable, 3 semaines ≤−10% vs plan, priorité 52)
+
+**R-070 devient `reduire_charge`** (23/07/2026, comble un manque identifié :
+aucune règle n'ajustait le plan face à un comportement réel, seules les
+données physiologiques — TRIMP/ACWR — le faisaient). Ampleur fixe −15%
+(signal binaire ≥2 séances ratées, pas de palier gradué). Cible directement
+la prochaine séance QUALITÉ (pas EF/LONGUE en priorité comme R-024s/R-050)
+via le flag `cibleQualitePrioritaire` sur `trouverProchaineSeanceCible`,
+avec repli sur EF/LONGUE si aucune qualité n'a de marge. Priorité 70 : reste
+sous R-006/R-024s/R-050 (charge mesurée toujours prioritaire sur
+comportement déclaré), au-dessus de R-080/R-040 (informatives). R-080 reste
+volontairement informative. Hors scope actée : aucune gestion du "rebond"
+après l'allègement (accélération si succès répétés, lissage de la remontée
+après une réduction) — chantier futur séparé.
+
+**Readiness pré-séance qualité** (23/07/2026) : sélecteur 3 boutons (🪫Fatigué
+/😐Normal/🔋En forme), distinct du RPE (rétrospectif). Affiché uniquement le
+jour même d'une séance qualité (VMA/SEUIL/SPEC), et seulement tant que cette
+séance n'a pas déjà un statut renseigné (masqué après validation — la
+question "comment tu te sens POUR cette séance" n'a plus de sens une fois
+la séance faite/ratée/adaptée). "Normal" est une vraie valeur par défaut,
+enregistrée dès l'affichage si rien n'est encore choisi (pas juste un
+repère visuel) — sans risque concret, "normal"/"forme" n'ont de toute façon
+aucun effet sur la modulation. Stockage simple sans historique
+(`sessionReadiness`, clé par uid, même pattern que `sessionRpe`).
+
+Modulation (post-traitement dans `DecisionEngineApply`, jamais une nouvelle
+règle du `RuleEngine`) : si une décision `reduire_charge` existe déjà ET
+readiness=Fatigué, l'ampleur est poussée au palier suivant déjà connu du
+système (−15→−25), jamais au-delà, jamais si déjà à −25, jamais si
+readiness=Normal/En forme (ne module jamais à la baisse). Si aucune décision
+`reduire_charge` n'existe (RuleEngine muet) ET readiness=Fatigué : jamais de
+réduction automatique du plan, affichage d'un message d'invitation à la
+prudence à la place ("Écoute ton corps aujourd'hui", pas de bouton
+Appliquer). Validé en conditions réelles le 24/07/2026 (vraie séance VMA).
 
 `DecisionEngineApply` + carte UI : détection automatique, application sur
 clic explicite uniquement, `reduire_charge` cible EF/LONGUE/RECUP en
@@ -803,6 +838,15 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
   comme bloquant et Gist comme best-effort**, jamais l'inverse (cf. §5)
 - **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
   sans demande explicite
+- **Toute date "métier" (jour courant, séance du jour, clôture) doit être
+  calculée en fuseau LOCAL du navigateur, jamais via
+  `toISOString().slice(0,10)`** (toujours UTC) — sinon décalage d'un jour
+  entre minuit et l'heure de décalage UTC locale (ex. 00h-02h en France
+  l'été). Utiliser `getFullYear()`/`getMonth()`/`getDate()`, ou `setDate()`
+  pour un delta de jours (gère aussi le changement heure été/hiver, cf.
+  bug `today()` corrigé le 23/07/2026). L'UTC explicite reste correct et
+  volontaire pour les calculs de plage basés sur `dateDebut` du plan (déjà
+  une donnée stockée, pas "aujourd'hui").
 
 ## 16. État des chantiers ouverts
 
@@ -812,13 +856,13 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
 | Courir un vrai test demi-Cooper pour valider la prédiction 10K | 🔜 `RATIO_VMA_VERS_10K` (0.90) et `PACE_RATIOS.E` (1.225) corrigés le 22/07/2026 sur base théorique faute de vraies données — à comparer avec la prédiction 10K du premier vrai test demi-Cooper couru par Laurent (pas simulé) |
+| Utiliser la vraie heure de séance pour la météo passée | 🔜 Identifié le 23/07/2026 : `handleHistorical` (`api/weather.js`) utilise toujours 18h (repli 12h puis minuit), jamais la vraie heure de la séance (disponible via `start_date_local` Strava) — peut fausser l'affichage pour un coureur matinal. `timezone:"Europe/Paris"` aussi fixé en dur côté serveur, à revoir si utilisateurs hors zone (v2.5) |
 | Réécrire le swap directement dans `plan_actif` | 🔜 Suggestion de Laurent (22/07/2026), pas commencé. Complexité identifiée : annulation d'un swap, interaction avec les régénérations de plan, séparation `plans_actif`/`plans_original`, chemin de sauvegarde, interaction avec `reduire_charge` sur une séance swappée |
 | Publier une app iOS (Capacitor) | 🔜 Piste identifiée le 22/07/2026, pas de code. Pas urgent tant qu'aucun besoin iOS confirmé — TWA Android actuelle suffit |
 | Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation, pour protéger le code différenciant (moteur de décision, calibrations). Reste public pendant le développement solo/bêta (lecture directe économise des tokens Claude) |
 | Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production depuis le 22/07/2026, pas encore éprouvés sur plusieurs semaines — vérifier le rythme du pas de convergence (`PAS_CONVERGENCE_BASE=0.15`) et la fidélité de la formule VDOT reconstruite |
-| Ajuster le plan automatiquement en cas de séances qualité ratées | 🔜 Identifié le 23/07/2026 : R-070 (séances ratées consécutives) et R-080 (déficit volume durable) sont purement informatives, ne produisent jamais `reduire_charge` — seules R-024s (fatigue) et R-050 (ACWR) ajustent le plan. Écart entre l'intuition attendue et le comportement réel du moteur. Pas encore priorisé ni conçu |
-| Surveiller si R-062/R-070/R-080 se déclenchent un jour | 🔜 Jamais observées sur les données réelles de Laurent |
-| Recalculer la modulation readiness -15→-25 en conditions réelles | 🔜 Validée par tests unitaires (23/07/2026), jamais observée en réel faute de décision `reduire_charge` active sur les données de Laurent |
+| Surveiller si R-062/R-080 se déclenchent un jour | 🔜 Jamais observées sur les données réelles de Laurent |
+| Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Identifié le 23/07/2026, lié à R-070 : ni accélération (progression plus rapide après succès répétés) ni lissage de la remontée (une réduction ponctuelle 4→3 reps peut être suivie d'un saut 3→5 à la prochaine séance qualité si ça tombe sur un palier de progression) — nécessiterait de faire persister la dernière ampleur appliquée entre deux séances qualité, vraie extension structurelle. Pas pire que la situation actuelle (le saut existe déjà sans réduction), pas priorisé |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
