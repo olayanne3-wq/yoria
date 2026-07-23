@@ -2320,7 +2320,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 8; // Incrémenté : SEUIL utilise désormais la formule Daniels-Gilbert (VDOT) au lieu de Riegel, structurellement moins pessimiste sur les efforts sous-maximaux (22/07/2026)
+const PREDICTOR_VERSION = 9; // Incrémenté : la convergence n'avance plus à chaque chargement du dashboard, seulement sur une vraie nouvelle séance de qualité du jour (22/07/2026)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -3192,7 +3192,18 @@ function predict10K() {
   // fiabilité (à fiabilité 0, la convergence est gelée : pas de mouvement).
   const PAS_CONVERGENCE_BASE = 0.15;
   const pas = PAS_CONVERGENCE_BASE * fiabilite;
-  let estimate = estimates.length > 0
+  // Bug corrigé le 22/07/2026 (signalé par Laurent : l'estimation gagnait
+  // quelques secondes à chaque chargement du dashboard, sans nouvelle
+  // séance) — la condition précédente (`estimates.length > 0`) vérifiait
+  // juste "existe-t-il AU MOINS UNE source SPEC/SEUIL/VMA au global",
+  // presque toujours vraie dès qu'un historique existe, peu importe si une
+  // séance a eu lieu AUJOURD'HUI. Résultat : la convergence avançait d'un
+  // petit pas à chaque simple ouverture de l'app. Remplacé par
+  // aDesNouvellesDonneesQualite(todayStrConv) — même fonction déjà
+  // utilisée par rebuildPredHistorySequentielle() pour la reconstruction
+  // rétroactive, mais jamais réutilisée ici jusqu'à présent : deux logiques
+  // divergentes pour le même concept, maintenant unifiées.
+  let estimate = aDesNouvellesDonneesQualite(todayStrConv)
     ? departConvergence + (borneBrute - departConvergence) * pas
     : departConvergence; // pas de nouvelle donnée de qualité aujourd'hui : l'estimation ne bouge pas
   // Clamp : l'estimation lissée ne peut jamais dépasser la borne brute
