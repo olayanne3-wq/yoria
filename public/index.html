@@ -4350,6 +4350,7 @@ function renderDashboard() {
 
     todayEl=el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"Aujourd\'hui"),
+      readinessEl,
       ...todaySessions.filter(s=>s.type!=="REPOS").map(s=>{
         const st=STYPES[s.type]||STYPES.REPOS;
         const isRest=s.type==="REPOS";
@@ -4782,7 +4783,7 @@ function renderDashboard() {
   // principal (décision d'emplacement tranchée le 6 juillet 2026).
   const selecteurPlanEl = renderSelecteurPlan();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",readinessEl,bilanEl,phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
