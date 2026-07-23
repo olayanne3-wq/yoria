@@ -2320,7 +2320,7 @@ function analyserSeanceQualite(seance) {
 // PRÉDICTION 10K — v3
 // ══════════════════════════════════════════════════════════════════════════════
 const EFFORT_PACE_THRESHOLD = 5.5 * 60;
-const PREDICTOR_VERSION = 9; // Incrémenté : la convergence n'avance plus à chaque chargement du dashboard, seulement sur une vraie nouvelle séance de qualité du jour (22/07/2026)
+const PREDICTOR_VERSION = 10; // Incrémenté : repli sport_type=="Run" en plus de type=="Run" dans les filtres d'activités du prédicteur, certaines activités étaient invisibles selon la source de synchro (22/07/2026)
 
 
 // ── Score d'Économie normalisé ──────────────────────────────────────────────
@@ -2619,7 +2619,7 @@ function calculerBorneBruteAtDate(dateStr) {
   const BASE_TIME = BASE_TIME_REFERENCE;
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
   const runs = stravaActivities.filter(a =>
-    a.type === "Run" &&
+    (a.type === "Run" || a.sport_type === "Run") &&
     a.start_date_local?.slice(0,10) <= dateStr &&
     (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
   );
@@ -2697,10 +2697,17 @@ function nbSaisiesManuelles() {
 // date", sinon la convergence avancerait tous les jours même sans nouvelle
 // séance de qualité, ce que predict10K() ne fait pas non plus).
 function aDesNouvellesDonneesQualite(dateStr) {
+  // Bug corrigé le 22/07/2026 (Laurent : estimation retombée à
+  // BASE_TIME_REFERENCE malgré 3 séances SEUIL validées) — a.type==="Run"
+  // seul ratait les activités dont seul sport_type valait "Run" (cas
+  // rencontré selon la source de synchro, ex. montres tierces). Le
+  // filtrage à la synchro (ligne ~8409) garde déjà ces activités dans
+  // stravaActivities via ce même repli — ce filtre redondant ici les
+  // rejetait à tort, empêchant tout pas de convergence pour ces dates.
   return ALL_SESSIONS.some(s =>
     s.date === dateStr && (s.type==="SEUIL"||s.type==="VMA"||s.type==="SPEC") &&
     statuses[s.uid] && statuses[s.uid]!=="❌" &&
-    (stravaActivities.some(a=>a.type==="Run" && a.start_date_local?.slice(0,10)===dateStr) || manualPerf[s.uid]?.average_speed)
+    (stravaActivities.some(a=>(a.type==="Run"||a.sport_type==="Run") && a.start_date_local?.slice(0,10)===dateStr) || manualPerf[s.uid]?.average_speed)
   );
 }
 
@@ -3028,8 +3035,11 @@ function predict10K() {
   // section 7bis/7quater — même famille de problème : donnée non indexée
   // sur le plan affiché).
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  // Repli sport_type (22/07/2026, même correctif que calculerBorneBruteAtDate
+  // et aDesNouvellesDonneesQualite ci-dessus) — a.type seul ratait certaines
+  // activités selon la source de synchro.
   const runs = stravaActivities.filter(a =>
-    a.type === "Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+    (a.type === "Run" || a.sport_type === "Run") && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
   );
   const estimates = [];
   const details = [];
@@ -8547,8 +8557,11 @@ function matchActivitiesToPlan(activities) {
   // précédent peut se retrouver comparée à tort à une séance du plan
   // actuel qui tombe sur la même date calendaire.
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  // Repli sport_type (22/07/2026, même correctif que predict10K) — a.type
+  // seul ratait certaines activités selon la source de synchro, empêchant
+  // leur auto-validation.
   const runs = activities.filter(a =>
-    a.type==="Run" && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+    (a.type==="Run"||a.sport_type==="Run") && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
   );
   // Garde-fou ajouté le 11 juillet 2026 : Laurent signale des séances de
   // septembre (un plan futur) marquées ✅/⚠️/❌ à tort. Cause de fond
