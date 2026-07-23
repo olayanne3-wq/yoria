@@ -504,6 +504,25 @@ fichier) soit initialisée — accès protégé par un vrai `try/catch` (pas
 `typeof`, qui ne protège pas d'une temporal dead zone `let`/`const` du même
 scope — cause d'un bug d'écran blanc corrigé le 22/07/2026).
 
+**Audit complet des lecteurs de `statuses[uid]` (22/07/2026, chantier
+clos)** — les ~30 occurrences de `statuses[uid]` dans `index.html` passées
+en revue une par une. Deux vrais bugs trouvés et corrigés :
+`fiabilitePlanPonderee()` (excluait totalement les séances passées jamais
+cochées du calcul de fiabilité au lieu de les compter comme un signal de
+désengagement — faussait potentiellement la convergence du prédicteur et
+les allures dynamiques) et `obtenirSeancesPlanifieesManquees()` (R-070 du
+RuleEngine, même défaut — ne détectait jamais un enchaînement de séances
+"ratées" quand elles étaient simplement oubliées plutôt que cochées ❌).
+Bilan semaine (compteur 😴) et export PDF (détail par semaine) également
+corrigés pour cohérence d'affichage. Les ~26 autres occurrences vérifiées
+sont correctes par construction, regroupées en 4 catégories légitimes qui
+doivent rester sur le statut BRUT : boutons de sélection/écriture du
+statut lui-même, contexte "aujourd'hui" (le 😴 auto ne s'applique jamais au
+jour même par définition), compteurs stricts ✅/⚠️/❌ (une séance non
+cochée n'égale déjà aucun de ces statuts, donc correcte sans changement),
+et les gardes du swap (déjà réécrites le même jour avec un calcul local
+équivalent à `statutEffectif`).
+
 **Échange de séances (swap, `swappedSessions[uid] = uidB` bidirectionnel)**
 — étendu le 22/07/2026 : `getAvailableSlots()` propose désormais tous les
 jours de la semaine comme cible, pas seulement les jours repos/masqués
@@ -735,7 +754,6 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
 | Passage Stripe en clés live (commercialisation réelle) | 🔜 Quand prêt à lancer publiquement |
 | Validation empirique de `RATIO_VMA_VERS_10K` (0.90) et `PACE_RATIOS.E` (1.225) | 🔜 Corrigés le 22/07/2026 sur base théorique (littérature demi-Cooper) faute de vraies données — à revalider avec le premier vrai test semi-Cooper couru par Laurent (pas simulé) une fois disponible. |
 | Refonte swap : écrire directement dans `plan_actif` au lieu de `swappedSessions` séparé | 🔜 Discuté le 22/07/2026 (suggestion de Laurent) — éliminerait la classe de bug déjà rencontrée (oublier d'appliquer le swap à un nouvel endroit). Complexité identifiée avant de s'y lancer : annulation d'un swap (garder une trace de l'état d'origine), interaction avec les régénérations de plan (bloc suivant, adaptation, complétion post-test — risque d'écraser silencieusement un swap), séparation `plans_actif`/`plans_original`, chemin de sauvegarde (bloquant `LkSync` vs `save()` fire-and-forget actuel), interaction avec le moteur de décision (`reduire_charge` sur une séance swappée) et le jour du test semi-Cooper. Pas commencé. |
-| `statutEffectif` : étendre aux autres lecteurs de `statuses[uid]` | 🔜 Centralisé dans `ALL_SESSIONS`/`recalculerAllSessions()` et la garde du swap (22/07/2026), mais plusieurs autres lectures directes de `statuses[uid]` dans `index.html` (stats détaillées §Stats, moteur de décision R-040/R-070, prédicteur) ne tiennent pas encore compte du 😴 automatique — à auditer et étendre au cas par cas, pas fait en une passe pour limiter le risque de régression. |
 | App native (Capacitor) pour publication iOS | 🔜 Piste identifiée le 22/07/2026 (Laurent envisage la publication grand public) — Capacitor recommandé plutôt qu'un rewrite natif complet (React Native/Flutter), permettrait de réutiliser le code web existant quasi tel quel pour Android ET iOS. Pas de code, discussion uniquement. Pas urgent tant qu'aucun besoin iOS confirmé — TWA actuelle suffit pour Android grand public (Google ne pénalise pas ce mode de publication). |
 | Passage du repo GitHub en privé | 🔜 Décidé le 22/07/2026 : repo reste PUBLIC pendant le développement solo/bêta (économise des tokens pour Claude — lecture directe via `raw.githubusercontent.com`), bascule en privé prévue juste avant la commercialisation/lancement public, pour protéger le code métier différenciant (moteur de décision, calibrations) sans gêner le rythme de travail actuel. Vérifié : Vercel et le connecteur MCP GitHub (déjà authentifiés) continueront de fonctionner sans changement après le passage en privé. |
 | Convergence progressive et fix VDOT SEUIL — observation en conditions réelles | 🔜 Les deux chantiers du 22/07/2026 (convergence progressive du prédicteur, remplacement Riegel→VDOT pour SEUIL) sont en production mais pas encore éprouvés sur plusieurs semaines réelles — à surveiller, notamment le rythme du pas de convergence (`PAS_CONVERGENCE_BASE=0.15`, potentiellement trop lent) et la fidélité de la formule VDOT reconstruite (chapitre 5 du livre absent du fichier projet fourni, formule vérifiée par recherche web plutôt que lue directement). |
