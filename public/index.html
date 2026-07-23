@@ -3927,14 +3927,24 @@ function renderDashboard() {
   if (seanceQualiteAujourdhui) {
     const uidReadiness = seanceQualiteAujourdhui.uid;
     let readinessVal = sessionReadiness[uidReadiness] || null;
+    // Défaut VISUEL uniquement (23/07/2026, retour Laurent) : "Normal" est
+    // pré-sélectionné à l'écran pour ancrer le regard au centre, mais tant
+    // que le coureur n'a pas cliqué explicitement, RIEN n'est écrit dans
+    // sessionReadiness — cohérent avec "rien d'automatique" déjà appliqué
+    // partout ailleurs dans le moteur de décision. affichageSeulementDefaut
+    // distingue ce cas ("Normal" affiché mais jamais vraiment choisi) d'un
+    // vrai clic sur "Normal" (qui, lui, écrit bien dans sessionReadiness).
+    const valeurAffichee = () => readinessVal || 'normal';
+    const libelleActif = el("div",{style:{textAlign:"center",fontSize:"12px",color:"var(--text-muted)",marginTop:"6px"}});
     const readinessRow = el("div",{style:{display:"flex",gap:"6px",width:"100%"}});
     const rebuildReadiness = () => {
       readinessRow.innerHTML = "";
       READINESS_OPTIONS.forEach(o=>{
+        const estActif = valeurAffichee()===o.v;
         const rb = el("button",{title:o.label,style:{
           flex:"1",padding:"10px 0",fontSize:"20px",cursor:"pointer",
-          background:readinessVal===o.v?"var(--accent2)":"var(--border-soft)",
-          border:`1px solid ${readinessVal===o.v?"var(--accent2)":"var(--border)"}`,borderRadius:"8px"
+          background:estActif?"var(--accent2)":"var(--border-soft)",
+          border:`1px solid ${estActif?"var(--accent2)":"var(--border)"}`,borderRadius:"8px"
         }}, o.e);
         rb.addEventListener("click", avecRetourTactile((e)=>{
           e.stopPropagation();
@@ -3946,6 +3956,8 @@ function renderDashboard() {
         }));
         readinessRow.appendChild(rb);
       });
+      const optionActive = READINESS_OPTIONS.find(o => o.v === valeurAffichee());
+      libelleActif.textContent = optionActive ? optionActive.label : "";
     };
     rebuildReadiness();
     readinessEl = el("div",{style:{background:"rgba(var(--accent2-rgb),0.1)",border:"1px solid rgba(var(--accent2-rgb),0.3)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
@@ -3953,7 +3965,8 @@ function renderDashboard() {
         el("span",{style:{fontSize:"20px"}},"⚡"),
         el("span",{style:{color:"var(--accent2)",fontSize:"15px",fontWeight:"700"}},"Comment tu te sens aujourd'hui ?")
       ),
-      readinessRow
+      readinessRow,
+      libelleActif
     );
   }
 
