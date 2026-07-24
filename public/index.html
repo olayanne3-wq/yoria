@@ -8995,7 +8995,14 @@ function badge(type) {
 // RENDER
 // ══════════════════════════════════════════════════════════════════════════════
 function setView(v) {
-  view=v; render(); window.scrollTo(0,0);
+  // Scroll remis à 0 AVANT le render (24/07/2026, correctif tremblement nav)
+  // — auparavant scrollTo(0,0) arrivait après render(), donc le navigateur
+  // pouvait peindre une frame avec le nouveau contenu mais l'ancien scroll,
+  // faisant visiblement "sauter" la barre du bas (position: fixed) le temps
+  // que le scroll se stabilise. Scroller d'abord, sur l'ancien contenu
+  // encore affiché, élimine ce décalage d'une frame.
+  window.scrollTo(0,0);
+  view=v; render();
   // Fetcher les météos historiques manquantes pour les séances avec Strava
   if (v==="weekDetail") {
     const week = PLAN.find(w=>w.week===selectedWeek);
