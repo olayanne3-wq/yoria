@@ -9056,9 +9056,9 @@ function render() {
       el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",lineHeight:"1"}},titles[vueEffective]||""),
       vueEffective==="weekDetail"?el("div",{class:"muted",style:{fontSize:"13px",marginTop:"1px"}},phaseOf(selectedWeek).label):null
     ),
-    vueEffective==="help" ? null : boutonAide(),
     boutonSignalerProbleme(),
-    ESTMODEFORME ? null : el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"4px 10px",color:"var(--accent)",fontSize:"15px",fontWeight:"700"}},"J–"+countdown())
+    ESTMODEFORME ? null : el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"4px 10px",color:"var(--accent)",fontSize:"15px",fontWeight:"700"}},"J–"+countdown()),
+    vueEffective==="help" ? null : boutonAide()
   );
 
   // Calculé seulement pour les vues qui l'utilisent réellement (24/07/2026,
