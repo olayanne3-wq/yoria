@@ -2566,6 +2566,15 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       msgEl.style.color = 'var(--signal)';
       return;
     }
+    // Refus volontaire du moteur (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE)
+    // — improbable ici puisque planActuel a déjà été validé une première
+    // fois avec ces mêmes paramètres, mais protégé par cohérence (ex. si le
+    // volume de départ d'origine était en limite haute du seuil).
+    if (planPropre?.planInvalide) {
+      msgEl.textContent = planPropre.message ?? 'Ce plan ne peut plus être régénéré avec ces paramètres.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
 
     // Fusion intelligente (même correctif que regenererAvecNouvelObjectif(),
     // demandé par Laurent le 11 juillet 2026) : les semaines déjà PASSÉES
@@ -2638,6 +2647,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       nouveauPlan = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
     } catch (e) {
       msgEl.textContent = 'Erreur de génération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+    // Refus volontaire du moteur (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE)
+    // — improbable ici (le blocage dépend du volume/jours, pas de
+    // l'objectif seul modifié dans ce flux), mais protégé par cohérence.
+    if (nouveauPlan?.planInvalide) {
+      msgEl.textContent = nouveauPlan.message ?? 'Ce plan ne peut pas être régénéré avec ce nouvel objectif.';
       msgEl.style.color = 'var(--signal)';
       return;
     }
@@ -2826,6 +2843,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     } catch (err) {
       alert("Erreur de génération : " + err.message);
       console.error(err);
+      return;
+    }
+    // Refus volontaire du moteur (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE
+    // dans plan-generator.js) — le nombre de jours choisis et le volume de
+    // départ sont incompatibles pour la majorité du plan (séances EF/longue
+    // sans substance réelle). Affiché comme une alerte explicite, pas une
+    // simple erreur technique : la personne peut corriger directement en
+    // ajustant ses réponses au wizard.
+    if (plan?.planInvalide) {
+      alert(plan.message ?? "Ce plan n'est pas réalisable avec ces paramètres. Réduis le nombre de jours disponibles ou augmente ton volume de départ.");
       return;
     }
     plan.id = (window.crypto?.randomUUID) ? crypto.randomUUID() : ('plan-' + Date.now());
