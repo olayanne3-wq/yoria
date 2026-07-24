@@ -9051,8 +9051,15 @@ function render() {
     ESTMODEFORME ? null : el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"4px 10px",color:"var(--accent)",fontSize:"15px",fontWeight:"700"}},"J–"+countdown())
   );
 
-  // Calculer predict10K une seule fois — synchronise dashboard et graphique
-  currentPred = predict10K();
+  // Calculé seulement pour les vues qui l'utilisent réellement (24/07/2026,
+  // correctif lag) — avant, predict10K() tournait à CHAQUE render(), même
+  // pour aller vers Semaines/Paramètres/Aide qui ne l'affichent jamais.
+  // Chaque appelant garde son repli `currentPred || predict10K()` (cf.
+  // renderDashboard/renderStats/renderCourse/exportPdfRecap), donc rester
+  // à null pour les autres vues reste sans risque : le calcul se fera à la
+  // demande si jamais nécessaire ailleurs.
+  const VUES_AVEC_PRED = ["dashboard", "stats", "course"];
+  currentPred = VUES_AVEC_PRED.includes(vueEffective) ? predict10K() : null;
 
   let content;
   if (vueEffective==="dashboard") content=renderDashboard();
