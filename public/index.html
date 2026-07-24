@@ -9145,7 +9145,13 @@ function setView(v) {
       const date = r.start_date_local?.slice(0,10);
       if (date && historicalWeatherCache[date]===undefined && r.start_latlng?.length===2) {
         historicalWeatherCache[date] = null; // marqué comme en cours
-        const heureSeance = r.start_date_local ? new Date(r.start_date_local).getHours() : undefined;
+        // Heure extraite par découpage de chaîne, comme `date` ci-dessus —
+        // jamais via new Date(...).getHours() : start_date_local Strava est
+        // une heure locale mais souvent suffixée "Z", que JS interprète à
+        // tort comme UTC, puis .getHours() la reconvertit dans le fuseau du
+        // navigateur — décalage de +2h observé en été (18h37 devenait 20)
+        // avant ce correctif (24/07/2026).
+        const heureSeance = r.start_date_local ? parseInt(r.start_date_local.slice(11, 13), 10) : undefined;
         const temp = await fetchHistoricalWeather(date, r.start_latlng[0], r.start_latlng[1], heureSeance);
         if (temp !== null) {
           historicalWeatherCache[date] = temp;
