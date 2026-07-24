@@ -531,6 +531,21 @@ export const PLAFONDS_VOLUME = {
   'Marathon': { debutant: [35, 40], intermediaire: [45, 55], confirme: [55, 70] }
 };
 
+// Seuils minimums EF/longue (24/07/2026, décision avec Laurent) — en
+// dessous, une séance n'a plus de vraie substance d'entraînement (un EF de
+// quelques centaines de mètres n'apporte rien, une "longue" de moins de
+// 5km n'en est plus une). Utilisés pour détecter une combinaison
+// structurellement incompatible entre le nombre de jours disponibles et le
+// volume hebdomadaire (ex. beaucoup de jours choisis mais volume de départ
+// encore faible) — cf. PLAN_VOLUME_JOURS_INCOMPATIBLE plus bas dans
+// generatePlan(). Cette limite existait déjà comme simple avertissement
+// (VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION, seuil 2km, jamais bloquant) ;
+// elle devient ici un vrai critère de blocage quand le problème touche une
+// majorité de la phase Construction, pas juste une semaine isolée en début
+// de progression (montée en charge normale, pas un signe d'incompatibilité).
+export const VOLUME_MIN_EF_KM = 3;
+export const VOLUME_MIN_LONGUE_KM = 5;
+
 export const DUREE_AFFUTAGE_JOURS = {
   '5K': 7,
   '10K': 10,
@@ -1752,7 +1767,7 @@ function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTot
       if (warning) warnings.push({ ...warning, jour });
     }
   }
-  return { warnings };
+  return { warnings, kmLongue, kmParEF, nbEF, aLongue };
 }
 
 export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue }) {
@@ -1860,6 +1875,13 @@ export function generatePlan(profil, params) {
   const warningsSemaines = [];
   let semaineGlobale = 0;
   const nbApparitionsParSousType = {};
+  // Suivi des semaines de la phase Construction où EF et/ou longue tombent
+  // sous les seuils minimums (24/07/2026, cf. VOLUME_MIN_EF_KM/
+  // VOLUME_MIN_LONGUE_KM) — sert à détecter si le problème est structurel
+  // (majorité de la phase Construction concernée) plutôt qu'un simple creux
+  // ponctuel en tout début de progression, normal et non bloquant.
+  let nbSemainesConstructionTotal = 0;
+  let nbSemainesConstructionSousSeuil = 0;
   for (const phase of phasesAvecReacclimatation) {
     for (let i = 0; i < phase.semaines; i++) {
       semaineGlobale++;
@@ -1899,7 +1921,7 @@ export function generatePlan(profil, params) {
       }
 
       const volumeCibleSemaine = volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? 0;
-      const { warnings: warningsRepartition } = recalculerRepartitionEFLongue({
+      const { warnings: warningsRepartition, kmLongue, kmParEF, nbEF, aLongue } = recalculerRepartitionEFLongue({
         assignment,
         volumeCibleKm: volumeCibleSemaine,
         kmQualiteTotal,
@@ -1914,6 +1936,18 @@ export function generatePlan(profil, params) {
         });
       }
 
+      // Détection incompatibilité structurelle (24/07/2026) — seulement sur
+      // la phase Construction (motif répété, pas un creux ponctuel de
+      // début/fin de plan) et hors semaines de décharge (creux volontaire,
+      // pas un problème). Une longue sous le seuil n'est comptée que si le
+      // plan en a une (aLongue) ; idem EF (nbEF > 0).
+      if (phase.nom === 'Construction' && !dechargeSemaine) {
+        nbSemainesConstructionTotal++;
+        const longueSousSeuil = aLongue && kmLongue < VOLUME_MIN_LONGUE_KM;
+        const efSousSeuil = nbEF > 0 && kmParEF < VOLUME_MIN_EF_KM;
+        if (longueSousSeuil || efSousSeuil) nbSemainesConstructionSousSeuil++;
+      }
+
       semaines.push({
         semaineNum: semaineGlobale,
         phase: phase.nom,
@@ -1923,6 +1957,23 @@ export function generatePlan(profil, params) {
         warnings: warningsPlacement
       });
     }
+  }
+
+  // Blocage si le problème touche plus de la moitié de la phase Construction
+  // (24/07/2026, décision avec Laurent) — un signe que la combinaison jours
+  // disponibles / volume de départ est structurellement incompatible pour
+  // toute la durée du plan, pas juste un creux de début de progression.
+  // Pas d'exception JS (arrêterait tout l'appelant sans message exploitable) :
+  // un objet dédié, cohérent avec le pattern `warnings` déjà en place dans
+  // tout ce fichier, laissant à l'appelant (wizard, index.html) le choix de
+  // l'affichage et de la correction proposée (réduire les jours choisis ou
+  // augmenter le volume de départ).
+  if (nbSemainesConstructionTotal > 0 && nbSemainesConstructionSousSeuil > nbSemainesConstructionTotal / 2) {
+    return {
+      planInvalide: true,
+      code: 'VOLUME_JOURS_INCOMPATIBLE',
+      message: `Le volume de départ (${params.volumeActuel}km/semaine) est trop faible pour ${profil.joursDisponiblesHabituels.length} jours disponibles par semaine : ${nbSemainesConstructionSousSeuil} semaine(s) sur ${nbSemainesConstructionTotal} auraient des séances EF ou une sortie longue sans substance réelle (moins de ${VOLUME_MIN_EF_KM}km / ${VOLUME_MIN_LONGUE_KM}km). Réduis le nombre de jours disponibles ou augmente le volume de départ.`,
+    };
   }
 
   const warnings = [
