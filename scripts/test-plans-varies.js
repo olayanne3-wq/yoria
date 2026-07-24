@@ -280,6 +280,17 @@ function main() {
       continue;
     }
 
+    // Refus volontaire du moteur (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE
+    // dans plan-generator.js) — le moteur a détecté une combinaison
+    // jours/volume structurellement incompatible et a choisi de ne pas
+    // générer de plan plutôt que d'en produire un avec des séances sans
+    // substance. C'est un comportement voulu, pas une erreur : statut
+    // distinct 'REFUSÉ', ni OK ni FAIL.
+    if (plan?.planInvalide) {
+      resultats.push({ nom: profil.nom, statut: 'REFUSÉ', erreurs: [plan.message ?? plan.code], resume: null });
+      continue;
+    }
+
     const erreurs = REGLES.flatMap(regle => regle.fn(plan).map(msg => `[${regle.nom}] ${msg}`));
     resultats.push({
       nom: profil.nom,
@@ -293,19 +304,20 @@ function main() {
   console.log('\n=== Résumé ===\n');
   const largeurNom = Math.max(...resultats.map(r => r.nom.length), 20);
   console.log(
-    'Profil'.padEnd(largeurNom) + ' | Statut | Semaines | Volume max | Erreurs'
+    'Profil'.padEnd(largeurNom) + ' | Statut  | Semaines | Volume max | Erreurs'
   );
-  console.log('-'.repeat(largeurNom + 45));
+  console.log('-'.repeat(largeurNom + 46));
   for (const r of resultats) {
-    const statutAffiche = r.statut === 'OK' ? '✅ OK ' : '❌ FAIL';
+    const statutAffiche = r.statut === 'OK' ? '✅ OK   ' : r.statut === 'REFUSÉ' ? '🚫 REFUS' : '❌ FAIL ';
     const semaines = r.resume ? String(r.resume.nbSemaines).padEnd(8) : '-'.padEnd(8);
     const volume = r.resume ? r.resume.volumeMax.padEnd(10) : '-'.padEnd(10);
     const erreurResume = r.erreurs.length > 0 ? `${r.erreurs.length} erreur(s)` : '-';
     console.log(`${r.nom.padEnd(largeurNom)} | ${statutAffiche} | ${semaines} | ${volume} | ${erreurResume}`);
   }
 
-  // --- Détail des échecs uniquement ---
+  // --- Détail des échecs ET des refus (utile pour vérifier le message) ---
   const echecs = resultats.filter(r => r.statut === 'FAIL');
+  const refus = resultats.filter(r => r.statut === 'REFUSÉ');
   if (echecs.length > 0) {
     console.log('\n=== Détail des échecs ===\n');
     for (const r of echecs) {
@@ -314,8 +326,17 @@ function main() {
       console.log('');
     }
   }
+  if (refus.length > 0) {
+    console.log('\n=== Détail des refus volontaires du moteur ===\n');
+    for (const r of refus) {
+      console.log(`--- ${r.nom} ---`);
+      for (const err of r.erreurs) console.log(`  • ${err}`);
+      console.log('');
+    }
+  }
 
-  console.log(`\n${resultats.length - echecs.length}/${resultats.length} profils OK.\n`);
+  console.log(`\n${resultats.length - echecs.length - refus.length}/${resultats.length} profils OK` +
+    (refus.length > 0 ? ` (+ ${refus.length} refusé(s) volontairement par le moteur)` : '') + `.\n`);
   process.exit(echecs.length > 0 ? 1 : 0);
 }
 
