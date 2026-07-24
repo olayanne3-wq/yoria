@@ -1348,9 +1348,23 @@ let weatherTemp = null;
 let weatherDesc = "";
 let historicalWeatherCache = load("lk_weather_cache", {});
 
-async function fetchHistoricalWeather(date, lat, lon) {
+// timezone : fuseau du navigateur (Intl), transmis à l'API pour que la
+// météo passée soit interprétée dans le bon fuseau plutôt que le repli fixe
+// Europe/Paris côté serveur (24/07/2026, cf. inventaire §16). hour : heure
+// locale réelle de la séance si connue (ex. depuis start_date_local
+// Strava), pour cibler la bonne heure plutôt que le repli 18h/12h/minuit.
+function fuseauNavigateur() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch(e) { return null; }
+}
+
+async function fetchHistoricalWeather(date, lat, lon, hour) {
   try {
     const params = new URLSearchParams({ lat, lon, date, type: "historical" });
+    const timezone = fuseauNavigateur();
+    if (timezone) params.set("timezone", timezone);
+    if (Number.isInteger(hour) && hour >= 0 && hour <= 23) params.set("hour", hour);
     const resp = await fetch(`/api/weather?${params}`);
     const data = await resp.json();
     if (!data.disponible) return null;
@@ -9131,7 +9145,8 @@ function setView(v) {
       const date = r.start_date_local?.slice(0,10);
       if (date && historicalWeatherCache[date]===undefined && r.start_latlng?.length===2) {
         historicalWeatherCache[date] = null; // marqué comme en cours
-        const temp = await fetchHistoricalWeather(date, r.start_latlng[0], r.start_latlng[1]);
+        const heureSeance = r.start_date_local ? new Date(r.start_date_local).getHours() : undefined;
+        const temp = await fetchHistoricalWeather(date, r.start_latlng[0], r.start_latlng[1], heureSeance);
         if (temp !== null) {
           historicalWeatherCache[date] = temp;
           save("lk_weather_cache", historicalWeatherCache);
