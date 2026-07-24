@@ -438,6 +438,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         { niveau: 'intermediaire', joursDisponiblesHabituels: [1,2,3,4,5,6], renforcementMusculaire: true, fcMaxConnue: 181 },
         { distance: '10K', refDistance: '10K', tempsReference: '50:21', objectif: '48:30', dateDebut: '2026-06-22', dateCourse: '2026-09-06', volumeActuel: 30, contraintesPonctuelles: [], raceName: "10 km Gem'Aubagne", raceLocation: 'Aubagne', raceUrl: 'https://new.sportsnconnect.com/client/events/4qa4QCJ1DtZYPSzSCbjJJK-5-and-10-km-gemaubagne' }
       );
+      // Garde-fou (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE dans
+      // plan-generator.js) : ces paramètres historiques sont déjà validés
+      // OK (30km/6j/10K, testé), donc planInvalide ne devrait jamais se
+      // déclencher ici — mais si les seuils du moteur évoluaient un jour,
+      // mieux vaut un plan minimal explicite que planBrut.id qui plante sur
+      // {planInvalide:true} sans aucun champ attendu par le reste du code.
+      if (planBrut?.planInvalide) {
+        console.error('Plan de repli par défaut refusé par le moteur (ne devrait jamais arriver) :', planBrut.message);
+        planBrut = { semaines: [], estPlanRepli: true, id: 'plan-repli-defaut', warnings: [] };
+      }
       // Bug trouvé le 7 juillet 2026 : generatePlan() (le moteur pur)
       // n'assigne jamais d'id — seul le wizard v2 le fait
       // (crypto.randomUUID()) après génération. Sans id ici, clePourPlan()
