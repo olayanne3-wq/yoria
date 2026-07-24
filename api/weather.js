@@ -35,13 +35,14 @@ export default async function handler(req, res) {
     return handleCurrent(req, res, lat, lon);
   }
   if (type === "historical") {
-    const { hour } = req.query || {};
-    return handleHistorical(req, res, lat, lon, date, hour);
+    const { hour, timezone } = req.query || {};
+    return handleHistorical(req, res, lat, lon, date, hour, timezone);
   }
   return handleForecast(req, res, lat, lon, date);
 }
 
 const SEUIL_CHALEUR_C = 28;
+const TIMEZONE_DEFAUT = "Europe/Paris";
 
 async function handleForecast(req, res, lat, lon, date) {
   try {
@@ -123,7 +124,12 @@ async function handleCurrent(req, res, lat, lon) {
 // qu'une approximation fixe. Repli sur 18h puis 12h puis minuit si aucune
 // heure n'est fournie (ex. saisie manuelle sans horodatage) ou si l'heure
 // demandée n'a pas de valeur dans la réponse Open-Meteo.
-async function handleHistorical(req, res, lat, lon, date, hour) {
+//
+// timezone (24/07/2026) : paramètre optionnel transmis par l'appelant
+// (ex. fuseau du profil coureur, à terme). Repli sur TIMEZONE_DEFAUT
+// (Europe/Paris) si absent ou vide — comportement inchangé tant qu'aucun
+// appelant ne fournit ce paramètre explicitement.
+async function handleHistorical(req, res, lat, lon, date, hour, timezone) {
   if (!date) {
     return res.status(400).json({ error: "Paramètre date manquant pour type=historical" });
   }
@@ -134,7 +140,7 @@ async function handleHistorical(req, res, lat, lon, date, hour) {
       start_date: date,
       end_date: date,
       hourly: "temperature_2m",
-      timezone: "Europe/Paris"
+      timezone: timezone || TIMEZONE_DEFAUT
     });
     const resp = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
     if (!resp.ok) {
