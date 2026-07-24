@@ -763,6 +763,16 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+// Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
+// plusieurs activités Strava tombent le même jour qu'une séance du plan,
+// matchActivitiesToPlan() ne choisit plus automatiquement (risque de
+// mauvais matching, cf. discussion avec Laurent) : la séance reste "—"
+// avec une pastille visible, et le coureur choisit manuellement via
+// showSessionMenu(). {uid: {activityId, dateChoix, nbActivitesAuChoix}} —
+// nbActivitesAuChoix sert à redéclencher l'ambiguïté si une NOUVELLE
+// activité apparaît ce jour-là après le choix (resynchro Strava
+// ultérieure) : le choix n'est plus fiable si le contexte a changé.
+let choixActiviteAmbigue = load(clePourPlan("lk_choix_activite_ambigue"), {});
 let notesList = load(clePourPlan("lk_notes"), []);
 let sessionNotes = load(clePourPlan("lk_session_notes"), {}); // {uid: "texte"}
 // RPE unifié — 17/07/2026 (chantier "remonter le RPE au statut de séance",
@@ -5262,6 +5272,20 @@ function renderStatusRow(uid, dateSeance) {
   if (estFuture) {
     wrapper.appendChild(el("div",{style:{fontSize:"12px",color:"var(--text-muted)"}},"📅 Séance à venir — disponible le jour J"));
   }
+  // Pastille d'ambiguïté (24/07/2026) — plusieurs activités Strava ce jour,
+  // aucune validation automatique tant que le coureur n'a pas choisi
+  // laquelle associer (cf. obtenirActivitesAmbigues, showSessionMenu).
+  // N'affiche rien pour une séance déjà validée manuellement (statut posé
+  // indépendamment de Strava) — l'ambiguïté ne concerne que la validation
+  // automatique, pas une saisie déjà faite par ailleurs.
+  if (!estFuture && (!statuses[uid] || statuses[uid]==="—")) {
+    const { ambigu } = obtenirActivitesAmbigues(uid, dateSeance);
+    if (ambigu) {
+      wrapper.appendChild(el("div",{style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"4px"}},
+        "❓ Plusieurs activités ce jour — choisis la bonne dans le menu de la séance"
+      ));
+    }
+  }
   // Sélecteur RPE unifié — 17/07/2026, cf. déclaration de sessionRpe et
   // RPE_OPTIONS plus haut. Visible uniquement si un statut "la séance a eu
   // lieu" est déjà posé (✅/⚠️/❌) — noter un ressenti n'a pas de sens sur
@@ -7253,6 +7277,45 @@ function showSessionMenu(week, slotIdx) {
       panel.appendChild(undoBtn);
     }
 
+    // Choix manuel d'activité si ambigu (24/07/2026) — cf.
+    // obtenirActivitesAmbigues, matchActivitiesToPlan, renderStatusRow.
+    const dateSlotAmbigu = week.sessions[slotIdx]?.date;
+    const { ambigu, candidats } = obtenirActivitesAmbigues(uid, dateSlotAmbigu);
+    if (ambigu) {
+      const choixTitre = document.createElement("div");
+      choixTitre.style.cssText = "color:var(--text);font-size:14px;font-weight:700;margin:12px 0 8px;";
+      choixTitre.textContent = "❓ Plusieurs activités ce jour — choisis la bonne";
+      panel.appendChild(choixTitre);
+      candidats.forEach(activite => {
+        const dureeMin = Math.round(activite.moving_time / 60);
+        const allure = activite.average_speed > 0 ? fmtPace(activite.average_speed) : "—";
+        const distKm = activite.distance ? (activite.distance/1000).toFixed(1) : "—";
+        const choixBtn = document.createElement("button");
+        choixBtn.style.cssText = "width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--border-soft);color:var(--text);font-size:13px;cursor:pointer;margin-bottom:8px;text-align:left;display:flex;justify-content:space-between;align-items:center;";
+        const nomEl = document.createElement("span");
+        nomEl.style.fontWeight = "600";
+        nomEl.textContent = activite.name || "Course";
+        const detailEl = document.createElement("span");
+        detailEl.style.cssText = "color:var(--text-muted);font-size:12px;";
+        detailEl.textContent = `${distKm}km · ${dureeMin}min · ${allure}/km`;
+        choixBtn.appendChild(nomEl);
+        choixBtn.appendChild(detailEl);
+        choixBtn.addEventListener("click", () => {
+          choixActiviteAmbigue[uid] = { activityId: activite.id, dateChoix: today(), nbActivitesAuChoix: candidats.length };
+          save(clePourPlan("lk_choix_activite_ambigue"), choixActiviteAmbigue);
+          const sessionPourValidation = ALL_SESSIONS.find(s => s.uid === uid);
+          if (sessionPourValidation && (!statuses[uid] || statuses[uid]==="—")) {
+            const auto = autoValidate(sessionPourValidation, activite);
+            if (auto) statuses[uid] = auto;
+            save(clePourPlan("lk_statuses"), statuses);
+          }
+          overlay.remove();
+          render();
+        });
+        panel.appendChild(choixBtn);
+      });
+    }
+
     const isDone = ["✅","⚠️","❌"].includes(statuses[uid]);
     // Garde renforcée pour le déplacement uniquement (22/07/2026, cf.
     // getAvailableSlots) : une note/RPE/saisie manuelle sans statut posé
@@ -8848,6 +8911,24 @@ function validateReason(session, stravaRun) {
   return reasons.length ? reasons.join(" · ") : null;
 }
 
+// Activités Strava candidates pour une séance donnée, et statut
+// d'ambiguïté associé (24/07/2026) — réutilisée par renderStatusRow (pastille)
+// et showSessionMenu (choix manuel), pour ne jamais dupliquer la logique de
+// filtrage déjà présente dans matchActivitiesToPlan().
+function obtenirActivitesAmbigues(uid, dateSeance) {
+  if (!dateSeance || !stravaActivities?.length) return { ambigu: false, candidats: [] };
+  const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
+  const candidats = stravaActivities.filter(a =>
+    (a.type==="Run"||a.sport_type==="Run") &&
+    (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan) &&
+    a.start_date_local?.slice(0,10) === dateSeance
+  );
+  if (candidats.length <= 1) return { ambigu: false, candidats };
+  const choix = choixActiviteAmbigue[uid];
+  const choixValide = choix && choix.nbActivitesAuChoix === candidats.length;
+  return { ambigu: !choixValide, candidats };
+}
+
 function matchActivitiesToPlan(activities) {
   // Ne compare qu'aux activités depuis le début du plan actuellement affiché
   // — même principe que le filtre déjà appliqué à predict10K()/
@@ -8881,7 +8962,31 @@ function matchActivitiesToPlan(activities) {
   ALL_SESSIONS.forEach(s => {
     if (s.type==="REPOS"||s.type==="RACE") return;
     if (s.date > aujourdhui) return; // jamais de validation automatique sur une séance future
-    const match = runs.find(r=>r.start_date_local?.slice(0,10)===s.date);
+    // Plusieurs activités le même jour (24/07/2026) — matchActivitiesToPlan()
+    // choisissait auparavant systématiquement la PREMIÈRE activité trouvée
+    // (runs.find), sans aucun critère fiable de choix. Après discussion avec
+    // Laurent, un critère automatique (durée la plus proche de la cible,
+    // testé puis écarté) reste insuffisamment discriminant quand deux
+    // activités ont des durées proches — mieux vaut ne jamais deviner et
+    // laisser le coureur choisir manuellement (cf. showSessionMenu, bouton
+    // "Choisir l'activité"). Un seul candidat garde le comportement
+    // automatique historique.
+    const candidats = runs.filter(r=>r.start_date_local?.slice(0,10)===s.date);
+    let match = null;
+    if (candidats.length === 1) {
+      match = candidats[0];
+    } else if (candidats.length > 1) {
+      const choix = choixActiviteAmbigue[s.uid];
+      // Choix déjà fait ET toujours valide : le nombre de candidats n'a pas
+      // changé depuis le choix (aucune nouvelle activité Strava apparue ce
+      // jour-là) — sinon le choix est considéré périmé, l'ambiguïté est
+      // redéclenchée (décision explicite de Laurent le 24/07/2026).
+      if (choix && choix.nbActivitesAuChoix === candidats.length) {
+        match = candidats.find(r => String(r.id) === String(choix.activityId)) ?? null;
+      }
+      // Sinon : match reste null, la séance n'est jamais auto-validée —
+      // la pastille d'ambiguïté (cf. renderStatusRow) invite au choix manuel.
+    }
     if (match) {
       if (!statuses[s.uid] || statuses[s.uid]==="—") {
         const auto = autoValidate(s, match);
