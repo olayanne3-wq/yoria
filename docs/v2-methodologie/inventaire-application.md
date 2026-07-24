@@ -719,6 +719,39 @@ données restent indexées par `uid` (position calendaire), pas par le
 contenu de la séance, donc un swap les laisserait accrochées au mauvais
 jour après échange.
 
+**Choix manuel si plusieurs activités Strava le même jour (24/07/2026)** —
+`matchActivitiesToPlan()` associait auparavant systématiquement la
+PREMIÈRE activité Strava trouvée pour une date donnée (`runs.find()`),
+sans aucun critère de choix. Un critère automatique par proximité de durée
+avec la cible de la séance a été testé puis écarté (jugé insuffisamment
+discriminant quand deux activités ont des durées proches — décision de
+Laurent) : plutôt que deviner, le moteur ne valide plus automatiquement
+dès qu'il y a ambiguïté, et laisse le coureur choisir.
+- `obtenirActivitesAmbigues(uid, dateSeance)` — fonction utilitaire
+  partagée, retourne `{ambigu, candidats}`. Un seul candidat le jour J =
+  comportement automatique historique inchangé. Plusieurs candidats =
+  aucune validation automatique tant qu'aucun choix n'est mémorisé.
+- **Pastille visuelle** (`renderStatusRow`) : "❓ Plusieurs activités ce
+  jour — choisis la bonne dans le menu de la séance", affichée uniquement
+  tant que le statut reste "—" (une séance déjà validée manuellement,
+  indépendamment de Strava, n'affiche jamais la pastille).
+- **Choix manuel** (`showSessionMenu`) : liste des activités candidates du
+  jour (nom, distance, durée, allure), sélection au clic. Applique
+  `autoValidate()` immédiatement sur l'activité choisie.
+- **Mémorisation et redéclenchement** (`lk_choix_activite_ambigue`,
+  `{uid: {activityId, dateChoix, nbActivitesAuChoix}}`) — un choix reste
+  valide tant que le nombre de candidats du jour n'a pas changé. Si une
+  NOUVELLE activité Strava apparaît ce jour-là après le choix (resynchro
+  ultérieure), l'ambiguïté est redéclenchée : le contexte a changé, le
+  choix précédent n'est plus fiable (décision explicite de Laurent).
+- **Sans lien avec le calcul de charge/fatigue** — vérifié le 24/07/2026 :
+  `RunnerStateCalculator` (`obtenirHistoriqueACWR()`) lit `stravaActivities`
+  dans son intégralité, indépendamment de tout matching avec le plan.
+  Une activité non choisie dans une ambiguïté (ou une sortie totalement
+  hors-plan) compte donc déjà pleinement dans le calcul de fatigue/ACWR —
+  ce mécanisme ne concerne que la validation du statut d'UNE séance
+  précise du plan, jamais le calcul de charge globale.
+
 ## 10. Import FIT
 
 `adapterFitVersFormatActivite()`, `chargerFitParser()` (import ESM
