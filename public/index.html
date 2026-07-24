@@ -1327,9 +1327,10 @@ let weatherTemp = null;
 let weatherDesc = "";
 let historicalWeatherCache = load("lk_weather_cache", {});
 
-async function fetchHistoricalWeather(date, lat, lon) {
+async function fetchHistoricalWeather(date, lat, lon, hour) {
   try {
     const params = new URLSearchParams({ lat, lon, date, type: "historical" });
+    if (Number.isInteger(hour)) params.set("hour", hour);
     const resp = await fetch(`/api/weather?${params}`);
     const data = await resp.json();
     if (!data.disponible) return null;
@@ -9006,7 +9007,11 @@ function setView(v) {
       const date = r.start_date_local?.slice(0,10);
       if (date && historicalWeatherCache[date]===undefined && r.start_latlng?.length===2) {
         historicalWeatherCache[date] = null; // marqué comme en cours
-        const temp = await fetchHistoricalWeather(date, r.start_latlng[0], r.start_latlng[1]);
+        // Heure réelle de la séance (24/07/2026) : start_date_local Strava
+        // au format ISO "YYYY-MM-DDTHH:mm:ss" — on extrait l'heure locale
+        // plutôt que de garder l'approximation fixe 18h côté serveur.
+        const heureSeance = r.start_date_local ? Number(r.start_date_local.slice(11, 13)) : undefined;
+        const temp = await fetchHistoricalWeather(date, r.start_latlng[0], r.start_latlng[1], heureSeance);
         if (temp !== null) {
           historicalWeatherCache[date] = temp;
           save("lk_weather_cache", historicalWeatherCache);
