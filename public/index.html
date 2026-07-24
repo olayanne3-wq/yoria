@@ -1174,6 +1174,19 @@ function boutonSignalerProbleme() {
   }, "🐛");
 }
 
+// Factorisé le 24/07/2026 : accès à l'aide disponible sur chaque onglet
+// (avant, uniquement présent sur le dashboard) — même bouton réutilisé
+// dans le header générique des vues secondaires.
+function boutonAide() {
+  const b = el("button",{title:"Aide",style:{
+    background:"var(--border-soft)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"50%",
+    width:"26px",height:"26px",display:"flex",alignItems:"center",justifyContent:"center",
+    color:"var(--text-muted)",fontSize:"15px",fontWeight:"700",cursor:"pointer",flexShrink:"0"
+  }}, "?");
+  b.addEventListener("click",()=>{ setView("help"); });
+  return b;
+}
+
 function ouvrirSignalementProbleme() {
   const overlay = el("div", {style:{
     position:"fixed", inset:"0", background:"rgba(0,0,0,0.5)", zIndex:"1000",
@@ -4816,12 +4829,7 @@ function renderDashboard() {
     phaseEl.querySelector("span:last-child").style.transform = phaseOpen ? "rotate(90deg)" : "rotate(0deg)";
   });
 
-  const helpBtn = el("button",{style:{
-    background:"var(--border-soft)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"50%",
-    width:"26px",height:"26px",display:"flex",alignItems:"center",justifyContent:"center",
-    color:"var(--text-muted)",fontSize:"15px",fontWeight:"700",cursor:"pointer",flexShrink:"0"
-  }}, "?");
-  helpBtn.addEventListener("click",()=>{ setView("help"); });
+  const helpBtn = boutonAide();
 
   const dashHeaderEl = el("div",{style:{
     display:"flex",alignItems:"center",gap:"8px",
@@ -7547,17 +7555,21 @@ function exportPdfResultats() {
 // AIDE
 // ══════════════════════════════════════════════════════════════════════════════
 function renderHelp() {
+  const intro = el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"20px"}},
+    "Chaque jour, ton dashboard affiche la séance prévue. Une fois faite, tape sur le statut correspondant (✅ réussie, ⚠️ adaptée, ❌ ratée) pour l'enregistrer — c'est ce qui permet à Yoria d'ajuster la suite."
+  );
+
   const sections = [
     { icon:"⚡", color:"var(--accent)", title:"Dashboard",
       text:"Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Yoria selon ta progression." },
     { icon:"📅", color:"var(--accent)", title:"Semaines",
-      text:"Le detail de chaque semaine. Tape sur une seance pour la valider (reussie, adaptee ou ratee). Appui long (~1 sec) pour acceder au menu : deplacer vers un jour repos, supprimer ou restaurer. Une seance deplacee peut revenir a sa place en la deplacant de nouveau vers son jour original." },
+      text:"Le détail de chaque semaine. Tape sur une séance pour la valider. Appui long (~1 sec) pour la déplacer vers un autre jour ou l'échanger avec une autre — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
     { icon:"📊", color:"var(--accent)", title:"Stats",
-      text:"Ta progression vers l\'objectif, ton Indice d\'Économie (IE) et ta cadence par type de séance, ainsi qu\'un référentiel complet des allures et zones FC." },
+      text:"Ta progression vers l\'objectif, ton Indice d\'Économie (IE), ta cadence, et un référentiel complet des allures et zones FC." },
     { icon:"🏁", color:"var(--accent2)", title:"Course",
-      text:"Toutes les infos du jour J — horaires, checklist équipement, stratégie de course et allures de passage aux km clés." },
+      text:"Horaires, checklist équipement, stratégie et allures de passage le jour J. Absent en Mode Forme, qui n\'a pas de date de course." },
     { icon:"⚙️", color:"var(--text2)", title:"Paramètres",
-      text:"Ton profil (poids, taille, FC max, records personnels), ton objectif de temps, ton PPS, ta source de données (Strava, import FIT ou saisie manuelle), et la connexion Strava. Ta sauvegarde se fait automatiquement dans le cloud." },
+      text:"Ton profil, ton objectif, ta source de données, ta connexion Strava. Sauvegarde automatique dans le cloud." },
   ];
 
   const sectionCards = sections.map(s => el("div",{style:{marginBottom:"14px"}},
@@ -7568,23 +7580,63 @@ function renderHelp() {
     el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",paddingLeft:"24px"}},s.text)
   ));
 
+  const moteurItems = [
+    { title:"Estimation de temps",
+      text:"Combine tes séances VMA, SPEC et SEUIL pour estimer ton temps probable, avec une fourchette qui se resserre au fil des semaines." },
+    { title:"Indice d\'Économie (IE)",
+      text:"Compare ta FC réelle à ta FC théorique pour une allure donnée. Au-dessus de 100 : tu cours plus économiquement qu\'attendu." },
+    { title:"Cadence",
+      text:"Nombre de pas par minute, un indicateur de technique de course. Idéalement entre 170 et 180 spm : une cadence trop basse allonge le temps passé en l\'air à chaque foulée, donc l\'impact au sol. Une cadence stable ou en légère hausse au fil du plan est un bon signe." },
+    { title:"Ressenti (RPE)",
+      text:"Après une séance, indique comment tu l\'as vécue (🙂 Facile → 🥵 Maximal, échelle CR-10 de Borg). Complète ce que ta montre mesure par ce que ton corps a vraiment ressenti." },
+    { title:"Comment tu te sens avant la séance (readiness)",
+      text:"Le jour d\'une séance qualité, indique ton état (🪫 Fatigué, 😐 Normal, 🔋 En forme). Si tu es fatigué et qu\'un allègement est déjà proposé, il peut être renforcé. Sans allègement en cours, tu reçois juste une invitation à la prudence — rien n\'est modifié automatiquement." },
+    { title:"Carte d\'ajustement",
+      text:"Yoria surveille ta fatigue, ta charge et ta régularité. \"Yoria te propose un ajustement\" = une action concrète t\'est proposée (jamais sur une séance de qualité). \"Yoria a repéré un signal à surveiller\" = simple alerte, sans action à ce stade. Rien n\'est appliqué sans ton accord." },
+    { title:"Allures qui évoluent",
+      text:"Tes allures d\'entraînement se resserrent progressivement vers ton objectif à mesure que tes séances confirment ta progression, sans attendre la fin du plan." },
+  ];
+
+  const moteurCards = moteurItems.map(m => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},m.title),
+    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},m.text)
+  ));
+
+  const planTypeItems = [
+    { title:"Plan Course",
+      text:"Vers une date d\'objectif précise (5K, 10K, semi, marathon)." },
+    { title:"Mode Forme",
+      text:"Sans date de course, un cycle d\'entraînement continu qui se renouvelle par blocs de 4 semaines." },
+    { title:"Grand débutant",
+      text:"Si tu choisis ce niveau, ton plan démarre en alternance course/marche, avec une progression jusqu\'à atteindre 30 minutes de course continue." },
+  ];
+
+  const planTypeCards = planTypeItems.map(p => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},p.title),
+    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},p.text)
+  ));
+
+  const sourceItems = [
+    { title:"Strava",
+      text:"La plus simple si tu es déjà connecté (synchro automatique)." },
+    { title:"Import FIT",
+      text:"Pour les autres montres. Allure, distance et FC bien récupérées ; le détail effort/récupération d\'une séance qualité dépend du modèle." },
+    { title:"Saisie manuelle",
+      text:"Contrôle total, la plus fiable si tu préfères saisir toi-même." },
+    { title:"Multi-appareils",
+      text:"Tes données sont liées à ton compte (email + mot de passe), synchronisées automatiquement. Connecte-toi avec le même compte sur un nouvel appareil." },
+  ];
+
+  const sourceCards = sourceItems.map(s => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},s.title),
+    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},s.text)
+  ));
+
   const faqItems = [
-    { q:"Comment fonctionne l\'estimation de temps ?",
-      a:"Yoria combine tes performances sur les séances VMA, SPEC et SEUIL pour calculer une estimation de ton temps probable sur 10K, avec une fourchette de confiance qui se resserre au fil des semaines." },
-    { q:"Qu\'est-ce que l\'Indice d\'Économie (IE) ?",
-      a:"L\'IE compare ta FC réelle à ta FC théorique pour une allure donnée. Un score supérieur à 100 signifie que tu cours plus économiquement qu\'attendu — ton cœur travaille moins pour la même vitesse." },
+    { q:"Comment saisir mes records personnels ?",
+      a:"Dans Paramètres, renseigne un temps par distance (5K, 10K, Semi, Marathon). Une seule suffit pour démarrer (Yoria estime les autres), mais renseigner un record par distance donne des estimations plus fiables — chaque distance sollicite des qualités différentes, et Yoria n\'a plus besoin d\'extrapoler." },
     { q:"Pourquoi mes données ont disparu sur un nouvel appareil ?",
       a:"Tes données sont liées à ton compte (email + mot de passe) et synchronisées automatiquement dans le cloud. Connecte-toi avec le même compte sur ton nouvel appareil et tout réapparaît — plans, statuts, profil." },
-    { q:"À quoi sert la cadence affichée ?",
-      a:"La cadence (pas par minute) est un indicateur de technique de course. Idéalement entre 170 et 180 spm — une cadence stable ou en hausse au fil du plan indique une meilleure efficacité de foulée." },
-    { q:"Comment saisir mes records personnels ?",
-      a:"Dans Paramètres, renseigne un temps par distance (5K, 10K, Semi, Marathon) en heures/minutes/secondes — une seule distance suffit, Yoria estime les autres. Ça affine automatiquement tes allures d\'entraînement dans tous tes futurs plans." },
-    { q:"Import FIT, Strava ou saisie manuelle : quelle source choisir ?",
-      a:"Strava reste la plus simple si tu es déjà connecté (synchro automatique). L\'import FIT convient si tu n\'utilises pas Strava — allure, distance et FC sont toujours bien récupérées, mais le découpage précis d\'une séance qualité (effort/récupération) dépend du modèle de montre : certaines n\'enregistrent pas cette structure dans le fichier exporté, même si la séance a été suivie fidèlement. La saisie manuelle reste la plus fiable si tu veux un contrôle total." },
-    { q:"C\'est quoi la carte \"Yoria te propose un ajustement\" ?",
-      a:"C\'est le moteur de décision : il surveille ta fatigue, ta charge d\'entraînement et ta régularité, et propose parfois d\'alléger une prochaine séance EF/longue si les signaux l\'indiquent — jamais une séance de qualité, pour ne pas casser sa structure. Rien n\'est appliqué automatiquement : tu choisis d\'ignorer ou d\'appliquer la proposition. Le titre change en \"Yoria a repéré un signal à surveiller\" quand il s\'agit d\'une simple alerte de tendance (ex. fatigue en légère hausse) sans action concrète à proposer pour l\'instant — dans ce cas, seul \"Ignorer\" est disponible." },
-    { q:"À quoi sert le sélecteur \"Ressenti\" (RPE) après une séance ?",
-      a:"Le RPE (Rating of Perceived Exertion, ou \"ressenti d\'effort\") complète ce que Strava/ta montre mesurent (allure, FC) par ce que ton corps a vraiment ressenti — deux séances à l\'allure identique peuvent être très différentes un jour de fatigue ou de forme. Les 5 icônes correspondent à l\'échelle scientifique CR-10 de Borg (référence en sciences du sport) : 🙂 Facile (CR-10 1-2, conversation aisée) · 😐 Modéré (3-4, encore confortable) · 😓 Difficile (5-6, effort soutenu) · 😣 Très difficile (7-8, à la limite de ce que tu peux tenir) · 🥵 Maximal (9-10, tout donné). Ce ressenti aide Yoria à mieux estimer ta charge d\'entraînement réelle et à ajuster tes prochaines séances si besoin." },
   ];
 
   const faqCards = faqItems.map(f => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
@@ -7594,9 +7646,15 @@ function renderHelp() {
 
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
-    el("div",{style:{marginBottom:"20px"}},
-      card(...sectionCards)
-    ),
+    intro,
+    el("div",{class:"label"},"📱 Comprendre les écrans"),
+    el("div",{style:{marginBottom:"20px"}}, card(...sectionCards)),
+    el("div",{class:"label"},"🧠 Comprendre le moteur Yoria"),
+    el("div",{style:{marginBottom:"20px"}}, card(...moteurCards)),
+    el("div",{class:"label"},"🗂️ Types de plan"),
+    el("div",{style:{marginBottom:"20px"}}, card(...planTypeCards)),
+    el("div",{class:"label"},"🔗 Sources de données"),
+    el("div",{style:{marginBottom:"20px"}}, card(...sourceCards)),
     el("div",{class:"label"},"❓ Questions fréquentes"),
     card(...faqCards)
   );
@@ -8988,6 +9046,7 @@ function render() {
       el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",lineHeight:"1"}},titles[vueEffective]||""),
       vueEffective==="weekDetail"?el("div",{class:"muted",style:{fontSize:"13px",marginTop:"1px"}},phaseOf(selectedWeek).label):null
     ),
+    vueEffective==="help" ? null : boutonAide(),
     boutonSignalerProbleme(),
     ESTMODEFORME ? null : el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"4px 10px",color:"var(--accent)",fontSize:"15px",fontWeight:"700"}},"J–"+countdown())
   );
