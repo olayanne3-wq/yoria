@@ -21,7 +21,17 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.24", title:"Ajustement après séances ratées, fuseau horaire corrigé", current:true, notes:[
+      { ver:"v2.25", title:"Choix d'activité si ambiguë, navigation plus fluide, aide sur chaque écran", current:true, notes:[
+        "❓ Si Strava a enregistré plusieurs courses le même jour, l'app ne devine plus laquelle associer à ta séance — un menu te permet de choisir toi-même",
+        "🌦️ La météo affichée sur une séance passée reflète maintenant l'heure réelle à laquelle tu as couru, plus une heure fixe (18h)",
+        "🚫 Le moteur refuse désormais de créer un plan si le volume de départ est trop faible pour le nombre de jours choisis — il te propose de réduire les jours ou d'augmenter le volume, plutôt que de générer des séances sans substance",
+        "👆 Navigation par glissement (swipe) entre les principaux onglets de l'app",
+        "❓ Le bouton d'aide est désormais accessible depuis chaque écran, pas seulement le dashboard — et son contenu a été entièrement réorganisé pour être plus clair",
+        "💬 Le bouton de signalement change d'icône (bulle plutôt que chenille), pour mieux refléter qu'il sert aussi aux suggestions",
+        "✨ Boutons de statut et de ressenti agrandis pour être plus faciles à toucher",
+        "🐛 Correction d'un scintillement de la barre de navigation du bas à chaque changement d'écran",
+      ]},
+      { ver:"v2.24", title:"Ajustement après séances ratées, fuseau horaire corrigé", current:false, notes:[
         "🎯 Si tu rates deux séances de qualité prévues d'affilée, Yoria peut désormais te proposer d'alléger la prochaine plutôt que de simplement te le signaler",
         "🐛 L'app pouvait afficher la séance de la veille comme \"Aujourd'hui\" entre minuit et 2h du matin — corrigé",
         "🔋 Le sélecteur de ressenti est plus clair (question précisée, réponse par défaut, disparaît une fois la séance validée)",
