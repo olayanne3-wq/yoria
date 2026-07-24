@@ -1172,7 +1172,7 @@ function boutonSignalerProbleme() {
       color: "var(--text2)"
     },
     onClick: ouvrirSignalementProbleme
-  }, "🐛");
+  }, "💬");
 }
 
 // Factorisé le 24/07/2026 : accès à l'aide disponible sur chaque onglet
@@ -1281,7 +1281,7 @@ function ouvrirSignalementProbleme() {
     background:"var(--bg)", borderRadius:"12px", padding:"20px", maxWidth:"420px", width:"100%",
     border:"1px solid var(--border)"
   }},
-    el("div", {style:{fontSize:"16px", fontWeight:"700", marginBottom:"12px"}}, "🐛 Signaler un problème"),
+    el("div", {style:{fontSize:"16px", fontWeight:"700", marginBottom:"12px"}}, "💬 Signaler un problème"),
     typeRow,
     textarea,
     statutMsg,
@@ -7638,6 +7638,8 @@ function renderHelp() {
       a:"Dans Paramètres, renseigne un temps par distance (5K, 10K, Semi, Marathon). Une seule suffit pour démarrer (Yoria estime les autres), mais renseigner un record par distance donne des estimations plus fiables — chaque distance sollicite des qualités différentes, et Yoria n\'a plus besoin d\'extrapoler." },
     { q:"Pourquoi mes données ont disparu sur un nouvel appareil ?",
       a:"Tes données sont liées à ton compte (email + mot de passe) et synchronisées automatiquement dans le cloud. Connecte-toi avec le même compte sur ton nouvel appareil et tout réapparaît — plans, statuts, profil." },
+    { q:"À quoi sert le bouton 💬 en haut de l\'écran ?",
+      a:"Il permet de signaler un bug, une donnée qui te semble incorrecte, ou de proposer une suggestion — directement depuis n\'importe quel écran de l\'app." },
   ];
 
   const faqCards = faqItems.map(f => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
