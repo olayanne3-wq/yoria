@@ -48,7 +48,7 @@ yoria/
 │   ├── beta/                      # Page candidature bêta publique
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
 │   │                              # Onglets : Candidatures, Sélectionnés, Invités,
-│   │                              # Signalements, Statistiques
+│   │                              # Signalements, Comptes, Statistiques
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -880,6 +880,23 @@ et statut, changement de statut (`nouveau`/`en_cours`/`resolu`) via
 `<select>` inline par ligne. Sentry reste l'outil de diagnostic technique
 (stack traces, erreurs JS) ; `signalements` est l'outil de suivi produit
 (triage humain, statut).
+**Module "Comptes" (25/07/2026)** — nouvel onglet dans `beta-admin`
+(`👤 Comptes`), pour comprendre un bug signalé sans écrire de SQL manuel.
+Recherche un utilisateur par email (action `search_user_plan`,
+`api/beta-admin.js`) : liste tous les utilisateurs via l'API Admin
+Supabase (`/auth/v1/admin/users`, filtrée côté serveur — le filtre REST
+direct `email=eq.X` s'est révélé peu fiable en pratique), retrouve ses
+plans (`plans_actif`) et affiche le contenu détaillé de chaque séance
+(type, sous-type, texte complet déjà généré par le moteur — durées,
+allures, structure d'intervalles) en lecture seule. Vue volontairement
+SIMPLE : statuts/notes/RPE saisis dans l'app (`plan_donnees.data`) ne
+sont PAS affichés — ces données sont indexées par un `uid` calculé après
+traduction `v1-bridge.js` (position dans le tableau traduit, pas
+directement déductible de `plan_brut` seul), non reconstruit côté
+serveur pour ce premier jet. Deux options documentées pour un futur
+enrichissement si besoin réel : accès direct depuis chaque ligne de
+`signalements` (plutôt que recherche par email), et vue complète incluant
+les données moteur (fatigue/ACWR/décisions du `RuleEngine`).
 
 ## 12. Authentification Supabase
 
