@@ -4030,6 +4030,66 @@ function renderDashboard() {
 
   }
 
+// ── Journalisation decision_events / decision_outcomes (24/07/2026) ────────
+// Chantier de vision "coach adaptatif à mémoire par coureur" (cf.
+// docs/v2-methodologie/vision-coach-adaptatif.md) — étape 1 uniquement :
+// AMASSER la donnée, sans jamais la relire ni l'exploiter. Aucune règle du
+// RuleEngine, aucun garde-fou existant n'est touché par ce mécanisme — pur
+// best-effort, écriture non-bloquante, cohérent avec le pattern déjà en
+// place pour `signalements` (cf. ouvrirSignalementProbleme ci-dessus).
+//
+// Une seule ligne decision_events par décision/jour (anti-doublon par
+// idDecisionDuJour, même logique que lk_decision_moteur_ignoree) — évite
+// de réinsérer à chaque render(). L'id de la ligne insérée est mémorisé
+// localement (lk_dernier_decision_event_id) pour permettre de retrouver la
+// bonne ligne au moment d'un clic Appliquer/Ignorer, sans requête de
+// lecture supplémentaire.
+async function journaliserDecisionEvent(decision, etatMoteur, statut, idDecisionDuJour) {
+  if (!LkAuth?.supabase) return null;
+  const cleDernierEvent = clePourPlan("lk_dernier_decision_event_id");
+  const dejaJournalise = load(cleDernierEvent, null);
+  if (dejaJournalise && dejaJournalise.idDecisionDuJour === idDecisionDuJour) {
+    return dejaJournalise.eventId; // déjà inséré aujourd'hui pour cette décision, ne pas dupliquer
+  }
+  try {
+    const { data, error } = await LkAuth.supabase.from('decision_events').insert({
+      user_id: window.__UTILISATEUR__?.id || null,
+      plan_id: window.__PLAN_BRUT__?.id || null,
+      regle_id: decision.id || null,
+      priorite: typeof decision.priorite === 'number' ? decision.priorite : null,
+      type_decision: decision.type || null,
+      contexte: {
+        runnerState: etatMoteur?.runnerState || null,
+        engagementState: etatMoteur?.engagementState || null,
+        readiness: seanceQualiteAujourdhui ? sessionReadiness[seanceQualiteAujourdhui.uid] : null,
+        justification: decision.justification || null,
+      },
+      ampleur_demandee: typeof decision.ampleurPourcent === 'number' ? decision.ampleurPourcent : null,
+      ampleur_appliquee: null,
+      statut: statut,
+    }).select('id').single();
+    if (error || !data) return null;
+    save(cleDernierEvent, { idDecisionDuJour, eventId: data.id });
+    return data.id;
+  } catch (e) {
+    return null; // best-effort — jamais bloquer l'affichage de la carte pour ça
+  }
+}
+
+// Marque une ligne decision_events existante comme appliquée/ignorée, avec
+// l'ampleur réellement appliquée si connue. Best-effort, même principe.
+async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee) {
+  if (!LkAuth?.supabase || !eventId) return;
+  try {
+    await LkAuth.supabase.from('decision_events').update({
+      statut,
+      ampleur_appliquee: typeof ampleurAppliquee === 'number' ? ampleurAppliquee : null,
+    }).eq('id', eventId);
+  } catch (e) {
+    // best-effort, aucun impact sur le flux utilisateur si ça échoue
+  }
+}
+
   const moteurDecisionEl = (() => {
     if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.estPlanRepli) return null;
     if (typeof DecisionEngineApply === 'undefined') return null; // scripts pas encore chargés, jamais planter le dashboard pour ça
@@ -4088,6 +4148,14 @@ function renderDashboard() {
     const cleIgnoree = clePourPlan("lk_decision_moteur_ignoree");
     const ignoree = load(cleIgnoree, null);
     const idDecisionDuJour = decision.id + "_" + today();
+
+    // Journalisation best-effort (cf. journaliserDecisionEvent ci-dessus) —
+    // faite ici, AVANT le early-return sur "ignoree", pour capturer aussi
+    // les décisions jamais cliquées (signal important pour l'usage futur de
+    // cette donnée : savoir qu'une décision a été produite, pas seulement
+    // celles sur lesquelles le coureur a agi).
+    journaliserDecisionEvent(decision, etatMoteur, "proposee", idDecisionDuJour);
+
     if (ignoree === idDecisionDuJour) return null;
 
     // Pour une décision reduire_charge, vérifie qu'une cible sûre existe AVANT
@@ -4140,6 +4208,10 @@ function renderDashboard() {
               alert("Cet ajustement n'a pas pu être appliqué : " + resultat.raison);
               return;
             }
+            const dejaJournalise = load(clePourPlan("lk_dernier_decision_event_id"), null);
+            if (dejaJournalise?.eventId) {
+              mettreAJourStatutDecisionEvent(dejaJournalise.eventId, "appliquee", resultat.ampleurReelleAppliquee);
+            }
             window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
             PLAN = window.__PLAN_GENERE__;
             ALL_SESSIONS = recalculerAllSessions();
@@ -4153,6 +4225,10 @@ function renderDashboard() {
           feedback:true,
           onClick:()=>{
             save(cleIgnoree, idDecisionDuJour);
+            const dejaJournalise = load(clePourPlan("lk_dernier_decision_event_id"), null);
+            if (dejaJournalise?.eventId) {
+              mettreAJourStatutDecisionEvent(dejaJournalise.eventId, "ignoree", null);
+            }
             render();
           }
         },"Ignorer")
@@ -9318,6 +9394,70 @@ if (missingFns.length > 0) {
 // localStorage à ce stade. Chantier v2.5 migration, 13 juillet 2026,
 // cf. inventaire §8bis.
 render();
+
+// ── Observation a posteriori des decision_events (24/07/2026) ──────────────
+// Chantier de vision "coach adaptatif à mémoire" — même principe que
+// journaliserDecisionEvent (cf. plus haut) : best-effort, purement
+// collecte, aucune lecture n'exploite encore cette donnée. Une seule fois
+// par chargement de page (pas à chaque render(), qui peut être appelée très
+// souvent) — suffisant pour ce stade de simple collecte, pas besoin de
+// temps réel ici.
+//
+// Principe : pour chaque decision_events récent (7 derniers jours) sans
+// decision_outcomes associé, on regarde si une séance a eu lieu dans les
+// jours qui ont suivi la décision et si elle a désormais un statut connu
+// (ALL_SESSIONS/statutEffectif) — si oui, on enregistre le résultat. Best
+// effort total : aucune erreur ici ne doit jamais remonter à l'utilisateur.
+async function observerDecisionOutcomes() {
+  if (!LkAuth?.supabase || !window.__UTILISATEUR__?.id || !window.__PLAN_BRUT__?.id) return;
+  try {
+    const septJoursAvant = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: events, error } = await LkAuth.supabase.from('decision_events')
+      .select('id, created_at, statut')
+      .eq('user_id', window.__UTILISATEUR__.id)
+      .eq('plan_id', window.__PLAN_BRUT__.id)
+      .gte('created_at', septJoursAvant);
+    if (error || !Array.isArray(events) || events.length === 0) return;
+
+    // decision_events déjà pourvus d'un decision_outcomes — évite de
+    // ré-observer un événement déjà traité (une seule observation par
+    // decision_event, pas de mise à jour continue pour l'instant).
+    const { data: outcomesExistants } = await LkAuth.supabase.from('decision_outcomes')
+      .select('decision_event_id')
+      .in('decision_event_id', events.map(e => e.id));
+    const idsDejaObserves = new Set((outcomesExistants || []).map(o => o.decision_event_id));
+
+    for (const event of events) {
+      if (idsDejaObserves.has(event.id)) continue;
+      const dateDecision = event.created_at.slice(0, 10);
+      // Première séance avec un statut connu (statutEffectif hors "—")
+      // strictement après la date de la décision — approximation simple,
+      // volontairement pas de logique de "quelle séance visait la
+      // décision" (cette précision n'a de sens qu'au moment de
+      // l'exploitation future, hors scope ici).
+      const seanceSuivante = (ALL_SESSIONS || [])
+        .filter(s => s.date > dateDecision && s.statutEffectif && s.statutEffectif !== "—")
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+      if (!seanceSuivante) continue;
+
+      const delaiJours = Math.round((new Date(seanceSuivante.date) - new Date(dateDecision)) / (24 * 60 * 60 * 1000));
+      try {
+        await LkAuth.supabase.from('decision_outcomes').insert({
+          decision_event_id: event.id,
+          uid_seance_suivie: seanceSuivante.uid || null,
+          statut_seance: seanceSuivante.statutEffectif,
+          rpe: sessionRpe[seanceSuivante.uid] ?? null,
+          delai_jours: delaiJours,
+        });
+      } catch (e) {
+        // best-effort, on continue avec les événements suivants
+      }
+    }
+  } catch (e) {
+    // best-effort total — jamais d'impact sur le reste de l'app
+  }
+}
+observerDecisionOutcomes();
 
 // Bloque le bandeau natif de Chrome proposant "Installer l'application"
 // (17/07/2026, cf. inventaire — chantier UX identifié après un bug de
