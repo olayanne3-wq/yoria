@@ -12,6 +12,11 @@
 > `RuleEngine`) — ces dernières restent soumises aux conditions de
 > déclenchement en fin de document. Détail de l'implémentation : cf.
 > `docs/v2-methodologie/inventaire-application.md` §5 et §8.
+>
+> **Validée en conditions réelles le 24/07/2026** : une vraie décision
+> R-060 (alerter_tendance_fatigue) a déclenché la journalisation, vérifiée
+> en console — `decision_events` insérée avec contexte complet, statut
+> `proposee` → `ignoree` au clic. Chaîne de bout en bout fonctionnelle.
 
 ## Contexte
 
@@ -112,8 +117,21 @@ bloquant, jamais d'impact visible en cas d'échec) :
   `lk_decision_moteur_ignoree` déjà existant) — capture aussi les décisions
   jamais cliquées, pas seulement celles sur lesquelles le coureur agit.
 - `mettreAJourStatutDecisionEvent()` — bascule le statut à `appliquee`
-  (avec l'ampleur réellement appliquée, post-arrondi) ou `ignoree`, au clic
-  sur les boutons correspondants de la carte.
+  (avec l'ampleur réellement appliquée, post-arrondi), `ignoree`, ou
+  `refusee` (cf. ci-dessous, 24/07/2026), aux points d'interaction
+  correspondants.
+- **Statut `refusee` (24/07/2026)** — distingue une décision jamais tentée
+  (`proposee`/`ignoree`) d'une décision que le coureur a essayé d'appliquer
+  mais que `DecisionEngineApply.appliquerDecisionAuPlan` a refusée (ex.
+  plafond de réduction cumulée 25 %/14j atteint, aucune cible sûre restante
+  cette semaine). Sans ce statut, ces deux cas étaient indiscernables dans
+  le journal — utile plus tard pour distinguer "le coureur n'a jamais agi"
+  de "le coureur a voulu agir mais le garde-fou l'en a empêché". La raison
+  exacte du refus (`resultat.raison`) est stockée dans
+  `contexte.raisonRefus` (jsonb existant), pas une nouvelle colonne — évite
+  une migration de schéma pour un champ utilisé dans ce seul cas. Migration
+  associée : `migration-statut-refusee.sql` (élargit la contrainte `check`
+  sur `decision_events.statut`).
 - `observerDecisionOutcomes()` — appelée une fois par chargement de page
   (pas à chaque `render()`). Pour chaque `decision_events` des 7 derniers
   jours sans `decision_outcomes` associé, cherche la première séance
@@ -122,12 +140,16 @@ bloquant, jamais d'impact visible en cas d'échec) :
   volontairement simple (première séance suivante avec statut connu) — pas
   de logique pour déterminer PRÉCISÉMENT quelle séance visait la décision,
   cette précision n'a de sens qu'au moment de l'exploitation future.
+  **Non encore vérifiée en conditions réelles** (contrairement à
+  `decision_events`) — nécessite qu'une séance ait lieu après une décision
+  journalisée, puis un nouveau chargement de page.
 
 Schéma SQL complet (tables, index, RLS par propriétaire) dans
 `schema-decision-memory.sql`, à exécuter une fois dans Supabase (SQL
 Editor) — RLS : lecture/écriture strictement limitées au propriétaire
 (`decision_events.user_id = auth.uid()`, `decision_outcomes` via
-sous-requête sur `decision_event_id`).
+sous-requête sur `decision_event_id`). Migration `migration-statut-
+refusee.sql` à exécuter après (élargit `statut` à 4 valeurs).
 
 ## Principe d'apprentissage
 
