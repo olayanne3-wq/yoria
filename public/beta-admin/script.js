@@ -42,12 +42,14 @@ async function createSubscription(){const id=S.id;if(!id)return;const btn=$("[da
 function confirmSubscription(){const c=S.items.find(i=>i.id===S.id);if(!c)return;const msg=`Créer un abonnement Stripe gratuit (coupon 100%) pour :\n\n${c.first_name}\n${c.email}\n\nImportant : ${c.first_name} devra créer son compte Yoria avec exactement cette même adresse e-mail pour que l'abonnement se lie automatiquement.\n\nConfirmer ?`;if(confirm(msg))createSubscription()}
 
 /*
- * Module "Comptes" (25/07/2026) — recherche un utilisateur par email et
- * affiche ses plans en lecture seule (séances, statuts, notes, RPE).
- * Vue SIMPLE volontairement pour ce premier jet (cf. inventaire/vision) —
- * pas de données moteur internes (fatigue/ACWR/decisions), qui restent une
- * option documentée pour un futur enrichissement si un vrai besoin
- * apparaît. Réutilise req()/date()/esc() déjà définis plus haut.
+ * Module "Comptes" (25/07/2026, enrichi le 25/07/2026 avec statuts/RPE/
+ * notes réels + decision_events/decision_outcomes) — recherche un
+ * utilisateur par email et affiche ses plans en lecture seule. Les
+ * statuts/notes/RPE viennent désormais directement de l'API (déjà
+ * enrichis côté serveur via v1-bridge.js, mêmes uid que côté client —
+ * cf. api/beta-admin.js). Section "Décisions du moteur" en lecture seule
+ * depuis decision_events/decision_outcomes — aucune donnée Strava/token
+ * n'est jamais lue par ce module (principe strict acté le 25/07/2026).
  */
 async function searchAccount(){
   const email=$("#account-email").value.trim();
@@ -72,50 +74,57 @@ $("#account-email").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preve
 
 function renderAccount(r){
   const plans=r.plans||[];
+  const decisions=r.decisions||[];
+  let html=`<p><small>Compte : ${esc(r.user.email)} — ${plans.length} plan${plans.length>1?"s":""}</small></p>`;
   if(plans.length===0){
-    $("#account-result").innerHTML=`<div class="empty">Compte trouvé (${esc(r.user.email)}) mais aucun plan enregistré.</div>`;
-    return;
+    html+=`<div class="empty">Aucun plan enregistré.</div>`;
+  }else{
+    html+=plans.map(planCard).join("");
   }
-  $("#account-result").innerHTML=`<p><small>Compte : ${esc(r.user.email)} — ${plans.length} plan${plans.length>1?"s":""}</small></p>` +
-    plans.map(planCard).join("");
+  html+=decisionsCard(decisions);
+  $("#account-result").innerHTML=html;
 }
 
 function planCard(plan){
-  const pb=plan.planBrut||{};
-  const seances=extraireSeances(pb);
+  const seances=plan.seances||[];
   return `<article class="card">
     <h2>${esc(plan.nom||"Plan sans nom")} <small>(créé le ${esc(date(plan.createdAt))})</small></h2>
-    <p><small>Mode : ${esc(pb.mode||"course")}${pb.distance?" · "+esc(pb.distance):""}${pb.objectif?" · objectif "+esc(pb.objectif):""}</small></p>
-    <p><small>⚠️ Statuts/notes/RPE saisis dans l'app non inclus ici (indexage interne calculé après traduction v1-bridge, non reconstruit côté serveur) — se référer au signalement pour ce niveau de détail si nécessaire.</small></p>
+    <p><small>Mode : ${esc(plan.mode||"course")}${plan.distance?" · "+esc(plan.distance):""}${plan.objectif?" · objectif "+esc(plan.objectif):""}</small></p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Semaine</th><th>Jour</th><th>Type</th><th>Détail</th></tr></thead>
-      <tbody>${seances.map(s=>`<tr><td>${s.semaineNum}</td><td>${esc(s.jour)}</td><td>${esc(s.type)}${s.sousType?" · "+esc(s.sousType):""}</td><td style="max-width:420px;white-space:normal;"><small>${esc(s.contenu)||"—"}</small></td></tr>`).join("")}</tbody>
+      <thead><tr><th>Sem.</th><th>Jour</th><th>Date</th><th>Type</th><th>Détail</th><th>Statut</th><th>RPE</th><th>Note</th></tr></thead>
+      <tbody>${seances.map(s=>`<tr>
+        <td>${s.week}</td>
+        <td>${esc(s.day)}</td>
+        <td><small>${esc(s.date)}</small></td>
+        <td>${esc(s.type)}${s.sousType?" · "+esc(s.sousType):""}</td>
+        <td style="max-width:320px;white-space:normal;"><small>${esc([s.warmup,s.session,s.cooldown].filter(Boolean).join(" + "))||"—"}</small></td>
+        <td>${esc(s.statutLabel)}</td>
+        <td>${s.rpe!=null?esc(String(s.rpe)):"—"}</td>
+        <td><small>${esc(s.noteUtilisateur)||"—"}</small></td>
+      </tr>`).join("")}</tbody>
     </table></div>
   </article>`;
 }
 
-// Extrait une liste plate de séances depuis plan_brut.semaines[].assignment
-// — reflète la vraie structure brute (cf. inventaire §8 : assignment
-// indexé par jourIndex ISO 1-6, lundi absent), pas le format traduit
-// v1-bridge. Suffisant pour une vue lecture seule simple.
-function extraireSeances(planBrut){
-  const semaines=planBrut.semaines||[];
-  const JOURS=["","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-  const out=[];
-  for(const semaine of semaines){
-    const assignment=semaine.assignment||{};
-    for(const [jourIndex,seance] of Object.entries(assignment)){
-      if(!seance) continue;
-      out.push({
-        semaineNum: semaine.semaineNum,
-        jour: JOURS[jourIndex]||("Jour "+jourIndex),
-        type: seance.type||"—",
-        sousType: seance.sousType||null,
-        contenu: seance.contenu||"",
-      });
-    }
+function decisionsCard(decisions){
+  if(decisions.length===0){
+    return `<article class="card"><h2>Décisions du moteur</h2><div class="empty">Aucune décision journalisée (50 dernières, tous plans confondus).</div></article>`;
   }
-  return out;
+  return `<article class="card">
+    <h2>Décisions du moteur <small>(50 dernières)</small></h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Règle</th><th>Type</th><th>Statut</th><th>Ampleur</th><th>Fatigue/ACWR</th><th>Résultat observé</th></tr></thead>
+      <tbody>${decisions.map(d=>`<tr>
+        <td><small>${esc(date(d.createdAt))}</small></td>
+        <td>${esc(d.regleId)}</td>
+        <td><small>${esc(d.typeDecision)}</small></td>
+        <td>${esc(d.statut)}</td>
+        <td>${d.ampleurAppliquee!=null?esc(String(d.ampleurAppliquee))+"%":(d.ampleurDemandee!=null?"("+esc(String(d.ampleurDemandee))+"% demandé)":"—")}</td>
+        <td><small>${d.fatigue!=null?"fatigue "+esc(String(d.fatigue)):""}${d.acwr!=null?" · ACWR "+esc(String(d.acwr)):""}</small></td>
+        <td><small>${d.outcome?esc(d.outcome.statutSeance)+" (J+"+esc(String(d.outcome.delaiJours))+")":"—"}</small></td>
+      </tr>`).join("")}</tbody>
+    </table></div>
+  </article>`;
 }
 
 const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",statistics:"Statistiques"};
