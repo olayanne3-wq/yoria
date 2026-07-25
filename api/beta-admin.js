@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { traduirePlanVersFormatV1, construireAllSessions } from "../public/v2/engine/v1-bridge.js";
 
 const COOKIE = "yoria_beta_admin";
 const TTL = 28_800;
@@ -453,6 +454,10 @@ async function upsertAbonnementGratuit(config, email, stripeCustomerId, stripeSu
   return Array.isArray(rows) ? rows[0] : null;
 }
 
+// Libellés lisibles pour les statuts bruts stockés côté client
+// (index.html, SOPTS) — repris tels quels, jamais réinterprétés.
+const LIBELLES_STATUT = { "✅": "✅ Réussie", "❌": "❌ Ratée", "⚠️": "⚠️ Partielle", "😴": "😴 Non faite (auto)", "—": "— Pas de statut" };
+
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("X-Frame-Options", "DENY");
@@ -624,14 +629,24 @@ export default async function handler(request, response) {
     }
 
     /*
-     * Module "Comptes" (25/07/2026) — recherche un utilisateur par email et
-     * retourne son ou ses plans en lecture seule, pour permettre à Laurent
-     * de comprendre un bug signalé sans avoir à écrire de SQL manuellement
-     * (usage 1 uniquement : accès admin, jamais entre utilisateurs — cf.
-     * inventaire §16/discussion de conception). Vue SIMPLE pour ce premier
-     * jet : séances/statuts/notes/RPE, pas les données internes du moteur
-     * (fatigue/ACWR/décisions) — option documentée pour plus tard si
-     * besoin réel.
+     * Module "Comptes" (25/07/2026, enrichi le 25/07/2026 avec statuts/
+     * RPE/notes réels + decision_events/decision_outcomes) — recherche un
+     * utilisateur par email et retourne son ou ses plans en lecture seule,
+     * pour permettre à Laurent de comprendre un bug signalé sans avoir à
+     * écrire de SQL manuellement (usage 1 uniquement : accès admin, jamais
+     * entre utilisateurs — cf. inventaire §16/discussion de conception).
+     *
+     * uid réels via v1-bridge.js (traduirePlanVersFormatV1 +
+     * construireAllSessions) — réutilise EXACTEMENT la même logique que
+     * l'app cliente, importée directement (fonctions pures, aucune
+     * dépendance DOM) plutôt que réimplémentée ici, pour éliminer tout
+     * risque de divergence entre les deux copies (cf. inventaire §7,
+     * v1-bridge.js déjà documenté comme fragile si dupliqué/oublié).
+     *
+     * Aucune donnée Strava (token ou activité) n'est lue ici — décision de
+     * principe actée le 25/07/2026 : ce module ne doit utiliser QUE des
+     * données déjà stockées côté Yoria (Supabase), jamais rien qui touche,
+     * même indirectement, au compte Strava d'un testeur.
      *
      * L'API Admin Supabase (/auth/v1/admin/users?email=eq.X) a un
      * filtrage peu fiable en pratique (retours utilisateurs contradictoires
@@ -684,24 +699,107 @@ export default async function handler(request, response) {
 
         const plansAvecDonnees = await Promise.all(
           (plans || []).map(async (plan) => {
-            const donnees = await supabaseRequest(
+            const donneesResult = await supabaseRequest(
               config,
               `plan_donnees?plan_id=eq.${encodeURIComponent(plan.id)}&select=data`,
               { method: "GET" },
             );
+            const donnees = Array.isArray(donneesResult) && donneesResult[0] ? donneesResult[0].data : {};
+
+            // Traduction identique à celle utilisée côté client — mêmes
+            // uid, donc les clés de plan_donnees.data (lk_statuses,
+            // lk_session_notes, lk_rpe) matchent directement.
+            let seancesEnrichies = [];
+            try {
+              const planTraduit = traduirePlanVersFormatV1(plan.plan_brut);
+              const allSessions = construireAllSessions(planTraduit);
+              const statuses = donnees.lk_statuses || {};
+              const notes = donnees.lk_session_notes || {};
+              const rpe = donnees.lk_rpe || {};
+              seancesEnrichies = allSessions.map((s) => ({
+                week: s.week,
+                day: s.day,
+                date: s.date,
+                type: s.type,
+                sousType: s.sousType || null,
+                warmup: s.warmup,
+                session: s.session,
+                cooldown: s.cooldown,
+                notes: s.notes,
+                statut: statuses[s.uid] || "—",
+                statutLabel: LIBELLES_STATUT[statuses[s.uid]] || LIBELLES_STATUT["—"],
+                noteUtilisateur: notes[s.uid] || null,
+                rpe: rpe[s.uid] ?? null,
+              }));
+            } catch (erreurTraduction) {
+              // Best-effort : un plan à un format inattendu (ex. ancien
+              // format, mode Forme avec structure différente) ne doit pas
+              // faire échouer toute la recherche — repli sur une liste
+              // vide, avec le plan_brut brut toujours renvoyé en secours.
+              console.warn("Traduction v1-bridge échouée pour un plan :", erreurTraduction.message);
+            }
+
             return {
               id: plan.id,
               nom: plan.nom,
               createdAt: plan.created_at,
-              planBrut: plan.plan_brut,
-              donnees: Array.isArray(donnees) && donnees[0] ? donnees[0].data : {},
+              mode: plan.plan_brut?.mode || "course",
+              distance: plan.plan_brut?.distance || null,
+              objectif: plan.plan_brut?.objectif || null,
+              seances: seancesEnrichies,
             };
           }),
         );
 
+        // decision_events/decision_outcomes (25/07/2026) — même principe
+        // de lecture seule, best-effort. Ne lit QUE ce qui est déjà en
+        // base (aucun recalcul, aucun accès Strava) — cf. commentaire
+        // principal ci-dessus sur ce point de principe.
+        let decisions = [];
+        try {
+          const events = await supabaseRequest(
+            config,
+            `decision_events?user_id=eq.${encodeURIComponent(user.id)}&select=*&order=created_at.desc&limit=50`,
+            { method: "GET" },
+          );
+          const eventIds = (events || []).map((e) => e.id);
+          let outcomes = [];
+          if (eventIds.length > 0) {
+            const filtreIds = eventIds.map((id) => encodeURIComponent(id)).join(",");
+            outcomes = await supabaseRequest(
+              config,
+              `decision_outcomes?decision_event_id=in.(${filtreIds})&select=*`,
+              { method: "GET" },
+            );
+          }
+          const outcomesParEvent = new Map((outcomes || []).map((o) => [o.decision_event_id, o]));
+          decisions = (events || []).map((e) => ({
+            id: e.id,
+            createdAt: e.created_at,
+            regleId: e.regle_id,
+            typeDecision: e.type_decision,
+            statut: e.statut,
+            ampleurDemandee: e.ampleur_demandee,
+            ampleurAppliquee: e.ampleur_appliquee,
+            justification: e.contexte?.justification || null,
+            fatigue: e.contexte?.runnerState?.fatigue ?? null,
+            acwr: e.contexte?.runnerState?.charge?.ratio ?? null,
+            outcome: outcomesParEvent.get(e.id) ? {
+              statutSeance: outcomesParEvent.get(e.id).statut_seance,
+              rpe: outcomesParEvent.get(e.id).rpe,
+              delaiJours: outcomesParEvent.get(e.id).delai_jours,
+            } : null,
+          }));
+        } catch (erreurDecisions) {
+          // Best-effort — un souci sur decision_events ne doit jamais
+          // empêcher d'afficher les plans, qui restent l'info principale.
+          console.warn("Lecture decision_events échouée :", erreurDecisions.message);
+        }
+
         return json(response, 200, {
           user: { id: user.id, email: user.email },
           plans: plansAvecDonnees,
+          decisions,
         });
       } catch (error) {
         console.error("Erreur recherche compte :", error);
