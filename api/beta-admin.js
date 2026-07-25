@@ -577,13 +577,6 @@ export default async function handler(request, response) {
 
     const action = String(body.action || "");
 
-    /*
-     * Signalements — table et validations distinctes de beta_testers,
-     * traitées avant le bloc candidatures pour ne pas passer par la
-     * validation regex UUID stricte pensée pour beta_testers uniquement
-     * (les deux tables utilisent bien des UUID, mais les statuts et le
-     * contexte métier diffèrent complètement).
-     */
     if (action === "update_signalement_statut") {
       const signalementId = String(body.id || "");
       const statut = String(body.statut || "");
@@ -631,6 +624,96 @@ export default async function handler(request, response) {
     }
 
     /*
+     * Module "Comptes" (25/07/2026) — recherche un utilisateur par email et
+     * retourne son ou ses plans en lecture seule, pour permettre à Laurent
+     * de comprendre un bug signalé sans avoir à écrire de SQL manuellement
+     * (usage 1 uniquement : accès admin, jamais entre utilisateurs — cf.
+     * inventaire §16/discussion de conception). Vue SIMPLE pour ce premier
+     * jet : séances/statuts/notes/RPE, pas les données internes du moteur
+     * (fatigue/ACWR/décisions) — option documentée pour plus tard si
+     * besoin réel.
+     *
+     * L'API Admin Supabase (/auth/v1/admin/users?email=eq.X) a un
+     * filtrage peu fiable en pratique (retours utilisateurs contradictoires
+     * selon les versions) — on liste tous les utilisateurs et on filtre
+     * côté serveur. Volume actuel de comptes très faible (bêta), donc pas
+     * un problème de performance à ce stade ; à revoir avec pagination
+     * explicite si la base de testeurs grossit significativement.
+     */
+    if (action === "search_user_plan") {
+      const email = String(body.email || "").trim().toLowerCase();
+
+      if (!email) {
+        return json(response, 400, {
+          message: "Adresse e-mail manquante.",
+        });
+      }
+
+      try {
+        const usersResponse = await fetch(
+          `${config.supabaseUrl}/auth/v1/admin/users`,
+          {
+            headers: {
+              apikey: config.supabaseKey,
+              Authorization: `Bearer ${config.supabaseKey}`,
+            },
+          },
+        );
+
+        if (!usersResponse.ok) {
+          throw new Error("Erreur lors de la recherche du compte.");
+        }
+
+        const usersData = await usersResponse.json();
+        const users = Array.isArray(usersData) ? usersData : usersData.users || [];
+        const user = users.find(
+          (u) => (u.email || "").toLowerCase() === email,
+        );
+
+        if (!user) {
+          return json(response, 404, {
+            message: "Aucun compte trouvé avec cette adresse e-mail.",
+          });
+        }
+
+        const plans = await supabaseRequest(
+          config,
+          `plans_actif?user_id=eq.${encodeURIComponent(user.id)}&select=id,nom,plan_brut,created_at&order=created_at.desc`,
+          { method: "GET" },
+        );
+
+        const plansAvecDonnees = await Promise.all(
+          (plans || []).map(async (plan) => {
+            const donnees = await supabaseRequest(
+              config,
+              `plan_donnees?plan_id=eq.${encodeURIComponent(plan.id)}&select=data`,
+              { method: "GET" },
+            );
+            return {
+              id: plan.id,
+              nom: plan.nom,
+              createdAt: plan.created_at,
+              planBrut: plan.plan_brut,
+              donnees: Array.isArray(donnees) && donnees[0] ? donnees[0].data : {},
+            };
+          }),
+        );
+
+        return json(response, 200, {
+          user: { id: user.id, email: user.email },
+          plans: plansAvecDonnees,
+        });
+      } catch (error) {
+        console.error("Erreur recherche compte :", error);
+
+        return json(response, 500, {
+          message:
+            error.message || "La recherche n'a pas pu aboutir.",
+        });
+      }
+    }
+
+    /*
      * Le reste (candidatures beta_testers) — id/action/status classiques.
      */
     const id = String(body.id || "");
@@ -643,9 +726,6 @@ export default async function handler(request, response) {
       });
     }
 
-    /*
-     * Action spéciale : envoyer l'invitation Brevo.
-     */
     if (action === "send_invitation") {
       if (
         !config.brevoApiKey ||
@@ -740,12 +820,6 @@ export default async function handler(request, response) {
       }
     }
 
-    /*
-     * Action spéciale : créer un abonnement Stripe gratuit (coupon 100%)
-     * pour un testeur/ami, sans passer par un vrai paiement. Utilisable
-     * au-delà de la seule bêta — le coupon n'est pas nommé "beta" pour
-     * cette raison (cf. décision 21/07/2026).
-     */
     if (action === "create_free_subscription") {
       if (
         !config.stripeSecretKey ||
@@ -806,9 +880,6 @@ export default async function handler(request, response) {
       }
     }
 
-    /*
-     * Changement classique de statut.
-     */
     if (!STATUSES.has(status)) {
       return json(response, 400, {
         message: "Statut invalide.",
