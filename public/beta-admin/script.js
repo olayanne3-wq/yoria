@@ -40,6 +40,83 @@ async function sendInvitation(){const id=S.id;if(!id)return;const btn=$("[data-s
 function confirmInvitation(){const c=S.items.find(i=>i.id===S.id);if(!c)return;const msg=c.invited_at?`Une invitation a déjà été envoyée à ${c.email} le ${date(c.invited_at)}.\n\nSouhaites-tu vraiment la renvoyer ?`:`Envoyer l'invitation à :\n\n${c.first_name}\n${c.email}\n\nConfirmer l'envoi ?`;if(confirm(msg))sendInvitation()}
 async function createSubscription(){const id=S.id;if(!id)return;const btn=$("[data-create-subscription]");const label=btn?.textContent;if(btn){btn.disabled=true;btn.textContent="Création en cours…"}try{const r=await req({method:"PATCH",body:JSON.stringify({id,action:"create_free_subscription"})});alert(r.message||"Abonnement gratuit créé.")}catch(e){alert(e.message)}finally{const current=$("[data-create-subscription]");if(current){current.disabled=false;current.textContent=label||"💳 Créer abonnement gratuit"}}}
 function confirmSubscription(){const c=S.items.find(i=>i.id===S.id);if(!c)return;const msg=`Créer un abonnement Stripe gratuit (coupon 100%) pour :\n\n${c.first_name}\n${c.email}\n\nImportant : ${c.first_name} devra créer son compte Yoria avec exactement cette même adresse e-mail pour que l'abonnement se lie automatiquement.\n\nConfirmer ?`;if(confirm(msg))createSubscription()}
-const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",statistics:"Statistiques"};
+
+/*
+ * Module "Comptes" (25/07/2026) — recherche un utilisateur par email et
+ * affiche ses plans en lecture seule (séances, statuts, notes, RPE).
+ * Vue SIMPLE volontairement pour ce premier jet (cf. inventaire/vision) —
+ * pas de données moteur internes (fatigue/ACWR/decisions), qui restent une
+ * option documentée pour un futur enrichissement si un vrai besoin
+ * apparaît. Réutilise req()/date()/esc() déjà définis plus haut.
+ */
+async function searchAccount(){
+  const email=$("#account-email").value.trim();
+  if(!email){ $("#account-status").hidden=false; $("#account-status").className="notice error"; $("#account-status").textContent="Saisis une adresse e-mail."; return; }
+  const btn=$("#account-search");
+  btn.disabled=true; btn.textContent="Recherche…";
+  $("#account-status").hidden=true;
+  $("#account-result").innerHTML="";
+  try{
+    const r=await req({method:"PATCH",body:JSON.stringify({action:"search_user_plan",email})});
+    renderAccount(r);
+  }catch(e){
+    $("#account-status").hidden=false;
+    $("#account-status").className="notice error";
+    $("#account-status").textContent=e.message;
+  }finally{
+    btn.disabled=false; btn.textContent="Rechercher";
+  }
+}
+$("#account-search").onclick=searchAccount;
+$("#account-email").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); searchAccount(); } });
+
+function renderAccount(r){
+  const plans=r.plans||[];
+  if(plans.length===0){
+    $("#account-result").innerHTML=`<div class="empty">Compte trouvé (${esc(r.user.email)}) mais aucun plan enregistré.</div>`;
+    return;
+  }
+  $("#account-result").innerHTML=`<p><small>Compte : ${esc(r.user.email)} — ${plans.length} plan${plans.length>1?"s":""}</small></p>` +
+    plans.map(planCard).join("");
+}
+
+function planCard(plan){
+  const pb=plan.planBrut||{};
+  const donnees=plan.donnees||{};
+  const seances=extraireSeances(pb);
+  return `<article class="card">
+    <h2>${esc(plan.nom||"Plan sans nom")} <small>(créé le ${esc(date(plan.createdAt))})</small></h2>
+    <p><small>Mode : ${esc(pb.mode||"course")}${pb.distance?" · "+esc(pb.distance):""}${pb.objectif?" · objectif "+esc(pb.objectif):""}</small></p>
+    <p><small>⚠️ Vue simplifiée : structure des séances (type, semaine, jour) uniquement. Les statuts/notes/RPE saisis dans l'app utilisent un indexage interne (uid de position, calculé après traduction v1-bridge) non reconstruit ici — se référer directement au signalement ou demander une capture d'écran du testeur si le statut précis d'une séance est nécessaire au diagnostic.</small></p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Semaine</th><th>Jour</th><th>Type</th></tr></thead>
+      <tbody>${seances.map(s=>`<tr><td>${s.semaineNum}</td><td>${esc(s.jour)}</td><td>${esc(s.type)}</td></tr>`).join("")}</tbody>
+    </table></div>
+  </article>`;
+}
+
+// Extrait une liste plate de séances depuis plan_brut.semaines[].assignment
+// — reflète la vraie structure brute (cf. inventaire §8 : assignment
+// indexé par jourIndex ISO 1-6, lundi absent), pas le format traduit
+// v1-bridge. Suffisant pour une vue lecture seule simple.
+function extraireSeances(planBrut){
+  const semaines=planBrut.semaines||[];
+  const JOURS=["","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+  const out=[];
+  for(const semaine of semaines){
+    const assignment=semaine.assignment||{};
+    for(const [jourIndex,seance] of Object.entries(assignment)){
+      if(!seance) continue;
+      out.push({
+        semaineNum: semaine.semaineNum,
+        jour: JOURS[jourIndex]||("Jour "+jourIndex),
+        type: seance.type||"—",
+      });
+    }
+  }
+  return out;
+}
+
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
