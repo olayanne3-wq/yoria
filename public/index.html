@@ -4076,15 +4076,38 @@ async function journaliserDecisionEvent(decision, etatMoteur, statut, idDecision
   }
 }
 
-// Marque une ligne decision_events existante comme appliquée/ignorée, avec
-// l'ampleur réellement appliquée si connue. Best-effort, même principe.
-async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee) {
+// Marque une ligne decision_events existante comme appliquée/ignorée/
+// refusée, avec l'ampleur réellement appliquée si connue. Best-effort,
+// même principe.
+//
+// "refusee" (24/07/2026) : distingue une décision jamais tentée
+// (proposee/ignoree) d'une décision que le coureur a essayé d'appliquer
+// mais que DecisionEngineApply a refusée (ex. plafond de réduction
+// cumulée atteint, plus de cible sûre) — sans ce statut, ces deux cas
+// étaient indiscernables dans le journal (la ligne restait à "proposee").
+// raisonRefus stockée dans contexte.raisonRefus (jsonb existant) plutôt
+// qu'une nouvelle colonne — évite une migration de schéma pour un champ
+// utilisé seulement dans ce cas précis.
+async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee, raisonRefus) {
   if (!LkAuth?.supabase || !eventId) return;
   try {
-    await LkAuth.supabase.from('decision_events').update({
+    const payload = {
       statut,
       ampleur_appliquee: typeof ampleurAppliquee === 'number' ? ampleurAppliquee : null,
-    }).eq('id', eventId);
+    };
+    if (statut === 'refusee' && raisonRefus) {
+      // Lecture du contexte existant nécessaire (update ne fusionne pas un
+      // jsonb automatiquement) — best-effort, si cette lecture échoue on
+      // écrit quand même le statut sans le détail de la raison plutôt que
+      // de bloquer toute la mise à jour.
+      try {
+        const { data } = await LkAuth.supabase.from('decision_events').select('contexte').eq('id', eventId).single();
+        payload.contexte = { ...(data?.contexte || {}), raisonRefus };
+      } catch (e) {
+        // contexte non enrichi, le statut "refusee" seul reste écrit ci-dessous
+      }
+    }
+    await LkAuth.supabase.from('decision_events').update(payload).eq('id', eventId);
   } catch (e) {
     // best-effort, aucun impact sur le flux utilisateur si ça échoue
   }
@@ -4200,6 +4223,10 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee)
             const resultat = DecisionEngineApply.appliquerDecisionAuPlan(window.__PLAN_BRUT__, decision, new Date().toISOString(), niveauCoureur);
             if (!resultat.succes) {
               console.warn("Application de la décision du moteur refusée :", resultat.raison);
+              const dejaJournaliseRefus = load(clePourPlan("lk_dernier_decision_event_id"), null);
+              if (dejaJournaliseRefus?.eventId) {
+                mettreAJourStatutDecisionEvent(dejaJournaliseRefus.eventId, "refusee", null, resultat.raison);
+              }
               // Garde-fou §10.2 : un refus (ex. plafond de réduction cumulée
               // atteint) doit rester visible au coureur, jamais un clic
               // silencieux sans effet apparent — cf. principe "sécurité
