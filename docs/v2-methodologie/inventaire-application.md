@@ -213,6 +213,21 @@ Forme déjà clôturé (`dateCloture` posée) ne peut plus être écrasé via
 Gist jusqu'ici, absente côté Supabase (bug potentiel découvert en
 vérifiant l'impact du retrait, corrigé avant qu'il ne cause de régression
 réelle).
+**Journalisation `decision_events`/`decision_outcomes` (24/07/2026)** —
+étape 1 du chantier de vision "coach adaptatif à mémoire par coureur" (cf.
+§16 et `docs/v2-methodologie/vision-coach-adaptatif.md`) : deux nouvelles
+tables Supabase, écriture best-effort uniquement, aucune lecture
+n'exploite encore cette donnée. `decision_events` journalise chaque
+décision produite par le `RuleEngine` (proposée/appliquée/ignorée, avec
+contexte complet — `runnerState`/`engagementState`/readiness). Écrit
+depuis `moteurDecisionEl` (`journaliserDecisionEvent`,
+`mettreAJourStatutDecisionEvent`), anti-doublon par décision/jour
+(`lk_dernier_decision_event_id`). `decision_outcomes` lie une décision à
+la première séance ultérieure avec un statut connu (statut, RPE, délai en
+jours) — observée une fois par chargement de page
+(`observerDecisionOutcomes`), pas à chaque `render()`. RLS strictement
+par propriétaire sur les deux tables. Schéma SQL complet dans
+`schema-decision-memory.sql` (racine du repo).
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -1008,7 +1023,7 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
 | Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation, pour protéger le code différenciant (moteur de décision, calibrations). Reste public pendant le développement solo/bêta (lecture directe économise des tokens Claude) |
 | Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production depuis le 22/07/2026, pas encore éprouvés sur plusieurs semaines — vérifier le rythme du pas de convergence (`PAS_CONVERGENCE_BASE=0.15`) et la fidélité de la formule VDOT reconstruite |
 | Surveiller si R-062/R-080 se déclenchent un jour | 🔜 Jamais observées sur les données réelles de Laurent |
-| Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Vision consignée le 24/07/2026 dans `docs/v2-methodologie/vision-coach-adaptatif.md` — pas engagé. Ajoute une couche de mémoire/apprentissage par coureur au-dessus du moteur de règles actuel (qui reste seul décideur). Conditions de déclenchement avant tout code : moteur actuel stable sur plusieurs mois, plusieurs utilisateurs réels (l'apprentissage n'a pas de sens statistique à l'échelle d'un seul profil), chevauchement avec la mémoire déjà existante (`historiqueReductionsMoteur`, `predHistory`, etc.) explicitement tranché |
+| Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Étape 1 (collecte pure, `decision_events`/`decision_outcomes`) codée et déployée le 24/07/2026 — cf. §5. Reste non engagé pour la suite (`athlete_profiles`, `learned_parameters`, personnalisation du `RuleEngine`) : conditions de déclenchement toujours d'actualité (moteur stable sur plusieurs mois, plusieurs utilisateurs réels, chevauchement avec `historiqueReductionsMoteur`/`predHistory` explicitement tranché) — cf. `docs/v2-methodologie/vision-coach-adaptatif.md` |
 | Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Identifié le 23/07/2026, lié à R-070 : ni accélération (progression plus rapide après succès répétés) ni lissage de la remontée (une réduction ponctuelle 4→3 reps peut être suivie d'un saut 3→5 à la prochaine séance qualité si ça tombe sur un palier de progression) — nécessiterait de faire persister la dernière ampleur appliquée entre deux séances qualité, vraie extension structurelle. Pas pire que la situation actuelle (le saut existe déjà sans réduction), pas priorisé |
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
