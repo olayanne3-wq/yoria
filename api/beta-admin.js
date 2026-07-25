@@ -708,14 +708,14 @@ export default async function handler(request, response) {
 
             // Traduction identique à celle utilisée côté client — mêmes
             // uid, donc les clés de plan_donnees.data (lk_statuses,
-            // lk_session_notes, lk_rpe) matchent directement.
+            // lk_session_notes, lk_session_rpe) matchent directement.
             let seancesEnrichies = [];
             try {
               const planTraduit = traduirePlanVersFormatV1(plan.plan_brut);
               const allSessions = construireAllSessions(planTraduit);
               const statuses = donnees.lk_statuses || {};
               const notes = donnees.lk_session_notes || {};
-              const rpe = donnees.lk_rpe || {};
+              const rpe = donnees.lk_session_rpe || {};
               seancesEnrichies = allSessions.map((s) => ({
                 week: s.week,
                 day: s.day,
