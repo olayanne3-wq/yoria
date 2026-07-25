@@ -178,7 +178,7 @@ décisions à fort impact (ex. objectif) :
 
 ## Adapter plus que le volume (au-delà de `reduire_charge` actuel)
 
-D�placer une séance, remplacer une séance rapide, ajouter un jour de
+Déplacer une séance, remplacer une séance rapide, ajouter un jour de
 récupération, réduire uniquement l'intensité, modifier la semaine suivante,
 déclencher une semaine allégée, revoir l'objectif — toujours avec les mêmes
 garde-fous que le moteur actuel.
