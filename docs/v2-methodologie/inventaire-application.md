@@ -880,23 +880,48 @@ et statut, changement de statut (`nouveau`/`en_cours`/`resolu`) via
 `<select>` inline par ligne. Sentry reste l'outil de diagnostic technique
 (stack traces, erreurs JS) ; `signalements` est l'outil de suivi produit
 (triage humain, statut).
-**Module "Comptes" (25/07/2026)** — nouvel onglet dans `beta-admin`
-(`👤 Comptes`), pour comprendre un bug signalé sans écrire de SQL manuel.
-Recherche un utilisateur par email (action `search_user_plan`,
-`api/beta-admin.js`) : liste tous les utilisateurs via l'API Admin
-Supabase (`/auth/v1/admin/users`, filtrée côté serveur — le filtre REST
-direct `email=eq.X` s'est révélé peu fiable en pratique), retrouve ses
-plans (`plans_actif`) et affiche le contenu détaillé de chaque séance
-(type, sous-type, texte complet déjà généré par le moteur — durées,
-allures, structure d'intervalles) en lecture seule. Vue volontairement
-SIMPLE : statuts/notes/RPE saisis dans l'app (`plan_donnees.data`) ne
-sont PAS affichés — ces données sont indexées par un `uid` calculé après
-traduction `v1-bridge.js` (position dans le tableau traduit, pas
-directement déductible de `plan_brut` seul), non reconstruit côté
-serveur pour ce premier jet. Deux options documentées pour un futur
-enrichissement si besoin réel : accès direct depuis chaque ligne de
-`signalements` (plutôt que recherche par email), et vue complète incluant
-les données moteur (fatigue/ACWR/décisions du `RuleEngine`).
+
+**Module "Comptes" (25/07/2026, enrichi le même jour)** — nouvel onglet
+dans `beta-admin` (`👤 Comptes`), pour comprendre un bug signalé sans
+écrire de SQL manuel. Recherche un utilisateur par email (action
+`search_user_plan`, `api/beta-admin.js`) : liste tous les utilisateurs via
+l'API Admin Supabase (`/auth/v1/admin/users`, filtrée côté serveur — le
+filtre REST direct `email=eq.X` s'est révélé peu fiable en pratique),
+retrouve ses plans (`plans_actif`) et affiche chaque séance en lecture
+seule avec son contenu détaillé (type, sous-type, texte complet du
+moteur) ET ses statuts/RPE/notes réels (`plan_donnees.data`). Les uid
+utilisés pour ce matching sont calculés en réimportant DIRECTEMENT
+`traduirePlanVersFormatV1`/`construireAllSessions` depuis
+`v2/engine/v1-bridge.js` (import ES relatif `../public/v2/engine/
+v1-bridge.js` depuis `api/beta-admin.js`, fonctionnel car ce fichier est
+un module pur sans dépendance DOM et `package.json` déclare
+`"type": "module"`) — jamais une réimplémentation séparée côté serveur,
+pour éliminer tout risque de divergence avec la vraie traduction côté
+client (cf. §7, `v1-bridge.js` déjà documenté comme fragile si dupliqué).
+Bug rencontré au premier déploiement : clé RPE utilisée à tort
+(`lk_rpe` au lieu de la vraie clé `lk_session_rpe`) — corrigé après
+test réel, `lk_session_notes` était déjà correcte dès le départ.
+
+Section "Décisions du moteur" sur la même recherche : 50 dernières lignes
+de `decision_events` (avec `decision_outcomes` liée si disponible) pour
+l'utilisateur trouvé — règle, type, statut, ampleur, fatigue/ACWR au
+moment de la décision, résultat observé. Lecture seule, best-effort
+(n'empêche jamais l'affichage des plans si elle échoue).
+
+**Principe strict acté le 25/07/2026** : ce module ne doit JAMAIS lire ni
+utiliser les tokens Strava d'un testeur, ni déclencher un appel Strava en
+son nom — uniquement des données déjà stockées côté Yoria (Supabase). Les
+données moteur (fatigue/ACWR) affichées viennent donc exclusivement du
+`contexte` déjà journalisé dans `decision_events` au moment de chaque
+décision passée, jamais d'un recalcul en temps réel depuis les activités
+Strava du testeur.
+
+Deux options restent documentées pour un futur enrichissement, non
+retenues pour l'instant : accès direct depuis chaque ligne de
+`signalements` (bouton "Voir le plan" plutôt que recherche par email), et
+un `RunnerState` recalculé en direct (nécessiterait de facto un accès aux
+activités Strava déjà synchronisées du testeur — à retrancher soigneusement
+si un jour envisagé, cf. principe ci-dessus).
 
 ## 12. Authentification Supabase
 
@@ -1015,6 +1040,11 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
   erreur (cf. §7, bug `estTest`/`sousType` du 21/07/2026)
 - **Toute fonction qui modifie/supprime un plan doit traiter Supabase
   comme bloquant et Gist comme best-effort**, jamais l'inverse (cf. §5)
+- **Aucun outil admin (`beta-admin` et équivalents futurs) ne doit jamais
+  lire ou utiliser les tokens Strava d'un testeur, ni déclencher un appel
+  Strava en son nom** — uniquement des données déjà stockées côté Yoria
+  (Supabase). Principe strict acté le 25/07/2026 (cf. §11, module
+  Comptes).
 - **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
   sans demande explicite
 - **Toute date "métier" (jour courant, séance du jour, clôture) doit être
