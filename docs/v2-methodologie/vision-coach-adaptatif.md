@@ -4,6 +4,14 @@
 > pour ne pas perdre la réflexion, à réactiver explicitement quand les
 > conditions de déclenchement (cf. fin de document) seront réunies. Ne pas
 > commencer à coder cette brique sans revalidation explicite avec Laurent.
+>
+> **Étape 1 démarrée le 24/07/2026** : pure collecte de données
+> (`decision_events`/`decision_outcomes`), sans aucune exploitation. Ne
+> constitue PAS un début d'engagement sur les étapes suivantes
+> (`athlete_profiles`, `learned_parameters`, personnalisation du
+> `RuleEngine`) — ces dernières restent soumises aux conditions de
+> déclenchement en fin de document. Détail de l'implémentation : cf.
+> `docs/v2-methodologie/inventaire-application.md` §5 et §8.
 
 ## Contexte
 
@@ -55,26 +63,71 @@ Activités (Strava, Garmin, etc.)
 
 1. **Mémoire courte** — éviter les oscillations du moteur (chaque décision
    mémorisée : règle déclenchée, date, raison, séance concernée, adaptation
-   appliquée, durée de validité, statut). Chevauchement à clarifier avec
-   l'existant : `historiqueReductionsMoteur`, `lk_regression_allures_en_attente`,
-   `predHistory` jouent déjà partiellement ce rôle de façon éparpillée —
-   avant de créer `decision_events`, déterminer si ça remplace ou s'ajoute à
-   ces mécanismes.
+   appliquée, durée de validité, statut). **Implémentée en étape 1
+   (24/07/2026)** via `decision_events`/`decision_outcomes`, en écriture
+   pure — aucune lecture ne l'exploite encore. Chevauchement avec l'existant
+   (`historiqueReductionsMoteur`, `lk_regression_allures_en_attente`,
+   `predHistory`) volontairement non tranché à ce stade : ces mécanismes
+   continuent de fonctionner sans changement, `decision_events` est un
+   journal parallèle, pas un remplacement — à trancher explicitement si/quand
+   l'étape 2 (exploitation) est engagée.
 2. **Profil personnel** — valeurs propres au coureur (récupération
    habituelle, fatigue normale, sensibilité chaleur, tolérance volume,
    tolérance séances rapides, RPE moyen, dérive cardiaque habituelle,
-   vitesse d'assimilation).
+   vitesse d'assimilation). **Non commencé** — décision explicite du
+   24/07/2026 de ne pas créer `athlete_profiles` à ce stade : ces valeurs
+   sont toutes calculables a posteriori depuis `decision_events`/
+   `decision_outcomes` une fois qu'il y aura assez d'historique, donc rien
+   n'est perdu à attendre. Seule exception qui justifierait une collecte
+   immédiate : un champ déclaratif (ressenti du coureur, non déductible
+   d'une activité) — aucun identifié pour l'instant.
 3. **Mémoire longue** — historique complet des décisions avec contexte,
-   décision, résultat obtenu, efficacité.
+   décision, résultat obtenu, efficacité. Même implémentation que le point 1
+   (`decision_events`/`decision_outcomes` couvrent aussi ce rôle — pas de
+   distinction technique entre "mémoire courte" et "mémoire longue" dans
+   l'implémentation actuelle, une seule paire de tables sert les deux
+   usages).
 
 ## Tables proposées (Supabase)
 
 - `athlete_profiles` — une ligne par utilisateur, paramètres personnalisés
-- `decision_events` — historique complet des décisions
+  — **non créée**, cf. point 2 ci-dessus
+- `decision_events` — historique complet des décisions — **créée et
+  alimentée depuis le 24/07/2026**
 - `decision_outcomes` — résultat réel (séance réalisée, RPE, fatigue,
-  douleur, réussite)
+  douleur, réussite) — **créée et alimentée depuis le 24/07/2026**
 - `learned_parameters` — paramètres appris progressivement, chacun avec
-  valeur / confiance / nombre d'observations
+  valeur / confiance / nombre d'observations — **non créée**
+
+## Détail de l'implémentation étape 1 (24/07/2026)
+
+Écriture depuis `public/index.html`, best-effort systématique (jamais
+bloquant, jamais d'impact visible en cas d'échec) :
+
+- `journaliserDecisionEvent()` — insère une ligne `decision_events` dès
+  qu'une décision est produite et affichée (carte du dashboard), avec le
+  contexte complet au moment T (`runnerState`, `engagementState`,
+  readiness du jour, justification). Statut initial `proposee`. Anti-doublon
+  par décision/jour (`lk_dernier_decision_event_id`, même logique que
+  `lk_decision_moteur_ignoree` déjà existant) — capture aussi les décisions
+  jamais cliquées, pas seulement celles sur lesquelles le coureur agit.
+- `mettreAJourStatutDecisionEvent()` — bascule le statut à `appliquee`
+  (avec l'ampleur réellement appliquée, post-arrondi) ou `ignoree`, au clic
+  sur les boutons correspondants de la carte.
+- `observerDecisionOutcomes()` — appelée une fois par chargement de page
+  (pas à chaque `render()`). Pour chaque `decision_events` des 7 derniers
+  jours sans `decision_outcomes` associé, cherche la première séance
+  ultérieure avec un statut connu (`statutEffectif`) et enregistre le
+  résultat (statut, RPE, délai en jours). Association décision→séance
+  volontairement simple (première séance suivante avec statut connu) — pas
+  de logique pour déterminer PRÉCISÉMENT quelle séance visait la décision,
+  cette précision n'a de sens qu'au moment de l'exploitation future.
+
+Schéma SQL complet (tables, index, RLS par propriétaire) dans
+`schema-decision-memory.sql`, à exécuter une fois dans Supabase (SQL
+Editor) — RLS : lecture/écriture strictement limitées au propriétaire
+(`decision_events.user_id = auth.uid()`, `decision_outcomes` via
+sous-requête sur `decision_event_id`).
 
 ## Principe d'apprentissage
 
@@ -103,7 +156,7 @@ décisions à fort impact (ex. objectif) :
 
 ## Adapter plus que le volume (au-delà de `reduire_charge` actuel)
 
-Déplacer une séance, remplacer une séance rapide, ajouter un jour de
+D�placer une séance, remplacer une séance rapide, ajouter un jour de
 récupération, réduire uniquement l'intensité, modifier la semaine suivante,
 déclencher une semaine allégée, revoir l'objectif — toujours avec les mêmes
 garde-fous que le moteur actuel.
@@ -123,9 +176,10 @@ fiable ne sera atteint qu'après plusieurs mois pour un seul profil. La
 vraie valeur de cette brique n'arrivera probablement qu'avec plusieurs
 utilisateurs réels (post-v2.5/commercialisation), où l'apprentissage a un
 sens statistique à l'échelle de la base d'utilisateurs (pas juste par
-individu).
+individu). C'est précisément pourquoi l'étape 1 se limite à la collecte :
+elle prépare le terrain sans dépendre du nombre d'utilisateurs.
 
-## Conditions de déclenchement (avant de coder quoi que ce soit)
+## Conditions de déclenchement (avant de coder les étapes suivantes)
 
 1. Le moteur de décision actuel (déterministe) est stable et éprouvé sur
    plusieurs mois de vraies données.
@@ -138,6 +192,7 @@ individu).
    plafonds de cumul) est spécifiée avec un exemple concret avant tout code.
 
 Si ces conditions sont réunies, prévoir une session de conception dédiée
-(pas un patch incrémental) — découpage suggéré : d'abord `decision_events`
-en lecture/écriture simple sans notion de confiance, avant d'introduire
-`learned_parameters` et la boucle d'apprentissage pondéré.
+(pas un patch incrémental) — découpage suggéré : d'abord exploiter en
+lecture simple `decision_events`/`decision_outcomes` déjà collectées
+(étape 1), avant d'introduire `athlete_profiles`/`learned_parameters` et la
+boucle d'apprentissage pondéré.
