@@ -82,15 +82,14 @@ function renderAccount(r){
 
 function planCard(plan){
   const pb=plan.planBrut||{};
-  const donnees=plan.donnees||{};
   const seances=extraireSeances(pb);
   return `<article class="card">
     <h2>${esc(plan.nom||"Plan sans nom")} <small>(créé le ${esc(date(plan.createdAt))})</small></h2>
     <p><small>Mode : ${esc(pb.mode||"course")}${pb.distance?" · "+esc(pb.distance):""}${pb.objectif?" · objectif "+esc(pb.objectif):""}</small></p>
-    <p><small>⚠️ Vue simplifiée : structure des séances (type, semaine, jour) uniquement. Les statuts/notes/RPE saisis dans l'app utilisent un indexage interne (uid de position, calculé après traduction v1-bridge) non reconstruit ici — se référer directement au signalement ou demander une capture d'écran du testeur si le statut précis d'une séance est nécessaire au diagnostic.</small></p>
+    <p><small>⚠️ Statuts/notes/RPE saisis dans l'app non inclus ici (indexage interne calculé après traduction v1-bridge, non reconstruit côté serveur) — se référer au signalement pour ce niveau de détail si nécessaire.</small></p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Semaine</th><th>Jour</th><th>Type</th></tr></thead>
-      <tbody>${seances.map(s=>`<tr><td>${s.semaineNum}</td><td>${esc(s.jour)}</td><td>${esc(s.type)}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>Semaine</th><th>Jour</th><th>Type</th><th>Détail</th></tr></thead>
+      <tbody>${seances.map(s=>`<tr><td>${s.semaineNum}</td><td>${esc(s.jour)}</td><td>${esc(s.type)}${s.sousType?" · "+esc(s.sousType):""}</td><td style="max-width:420px;white-space:normal;"><small>${esc(s.contenu)||"—"}</small></td></tr>`).join("")}</tbody>
     </table></div>
   </article>`;
 }
@@ -111,6 +110,8 @@ function extraireSeances(planBrut){
         semaineNum: semaine.semaineNum,
         jour: JOURS[jourIndex]||("Jour "+jourIndex),
         type: seance.type||"—",
+        sousType: seance.sousType||null,
+        contenu: seance.contenu||"",
       });
     }
   }
