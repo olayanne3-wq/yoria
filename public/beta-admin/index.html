@@ -17,6 +17,7 @@
       <button class="nav" data-view="selected">✓ Sélectionnés</button>
       <button class="nav" data-view="invited">✉ Invités</button>
       <button class="nav" data-view="signalements">🐛 Signalements</button>
+      <button class="nav" data-view="accounts">👤 Comptes</button>
       <button class="nav" data-view="statistics">↗ Statistiques</button>
     </nav>
     <a class="site-link" href="/beta" target="_blank" rel="noopener">Voir le site bêta</a>
@@ -108,6 +109,15 @@
           </table>
           <div id="signalements-empty" class="empty" hidden>Aucun signalement.</div>
         </div>
+      </section>
+
+      <section class="view" data-panel="accounts">
+        <div class="filters">
+          <input id="account-email" type="search" placeholder="Adresse e-mail du testeur">
+          <button id="account-search" class="secondary">Rechercher</button>
+        </div>
+        <div id="account-status" class="notice" hidden></div>
+        <div id="account-result"></div>
       </section>
 
       <section class="view" data-panel="statistics"><div id="statistics" class="grid2"></div></section>
