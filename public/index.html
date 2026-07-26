@@ -1108,6 +1108,23 @@ let githubToken = load("lk_github_token", "");
   if (urlToken || urlGistV2 || params.get("gist")) { window.history.replaceState({}, "", window.location.pathname); }
 })();
 let predHistory = load(clePourPlan("lk_pred_history"), []); // [{date, time, confidence}]
+// Purge ponctuelle (26/07/2026) des doublons déjà accumulés en production
+// par le bug corrigé le même jour dans predict10K() (cf. commentaire à cet
+// endroit) — sans cette purge, les entrées dupliquées existantes
+// continueraient de fausser weeksElapsed/k dans le calcul de projection
+// même après le fix qui empêche seulement les FUTURS doublons. Garde la
+// DERNIÈRE occurrence de chaque date (la plus à jour), retrie par date
+// croissante (l'ordre pouvait être mélangé par l'ancien bug). Idempotente
+// (aucun effet si predHistory est déjà propre) — pas besoin de marqueur.
+if (predHistory.length) {
+  const parDate = {};
+  predHistory.forEach(p => { parDate[p.date] = p; });
+  const nettoye = Object.values(parDate).sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  if (nettoye.length !== predHistory.length) {
+    predHistory = nettoye;
+    save(clePourPlan("lk_pred_history"), predHistory);
+  }
+}
 
 // Référence de performance connue (paramsOrigine.tempsReference du plan
 // chargé, cf. section 7bis du doc de convergence) plutôt que codée en dur.
@@ -3410,21 +3427,30 @@ function predict10K() {
 
   // Enregistrer l\'estimation du jour dans l\'historique
   const todayStr = today();
-  const lastEntry = predHistory[predHistory.length-1];
-  // Bande stockée = incertitude autour de l'estimation affichée (timeLow/
-  // timeHigh, liée à confidence), pas l'intervalle de convergence
-  // (BASE↔borneBrute) : ce dernier est structurellement plat au début du
-  // plan (borneMax=BASE tant que peu de données), ce qui donnait une bande
-  // plaquée contre le haut du graphe plutôt qu'un vrai relief symétrique au
-  // bas — retour de Laurent le 22/07/2026 après premier essai.
+  // Correctif 26/07/2026 (signalé par Laurent : projection très pessimiste
+  // malgré bonne progression réelle). Cause trouvée via log de debug :
+  // predHistory contenait des dizaines d'entrées dupliquées pour les mêmes
+  // 2 dates consécutives (ex. 23/07 et 24/07 répétées 8 fois d'affilée),
+  // au lieu d'une entrée par jour. L'ancien code ne vérifiait QUE la
+  // DERNIÈRE entrée du tableau (lastEntry.date !== todayStr) avant de push
+  // une nouvelle entrée — si predict10K() est appelée plusieurs fois dans
+  // la même journée avec le tableau pas encore à jour en mémoire (ex.
+  // rebuildPredHistory() et cet appel individuel qui s'entrelacent), la
+  // "dernière entrée" pouvait déjà être périmée, provoquant un doublon
+  // plutôt qu'une mise à jour. Ce bruit dilue weeksElapsed (jours réels
+  // couverts / 7) utilisé dans le calcul du rythme de progression (k),
+  // sous-estimant fortement la vitesse de progression réelle. Fix : chercher
+  // l'entrée existante pour todayStr PARTOUT dans le tableau (findIndex),
+  // pas seulement en dernière position — met à jour si trouvée, sinon push.
+  const idxEntryDuJour = predHistory.findIndex(p => p.date === todayStr);
   const entryDuJour = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION, borneMin: estimateLow, borneMax: estimateHigh };
-  if (!lastEntry || lastEntry.date !== todayStr) {
+  if (idxEntryDuJour === -1) {
     predHistory.push(entryDuJour);
     if (predHistory.length > 80) predHistory.shift();
     save(clePourPlan("lk_pred_history"), predHistory);
-  } else if (lastEntry.date === todayStr && lastEntry.time !== Math.round(estimate)) {
+  } else if (predHistory[idxEntryDuJour].time !== Math.round(estimate)) {
     // Mettre à jour l'entrée du jour si l'estimation a changé
-    predHistory[predHistory.length-1] = entryDuJour;
+    predHistory[idxEntryDuJour] = entryDuJour;
     save(clePourPlan("lk_pred_history"), predHistory);
   }
 
@@ -6614,21 +6640,6 @@ function renderStats() {
     const weeksTotal = joursRestants != null ? Math.max(1, joursRestants / 7) : PLAN.length;
     const projectedGain = Math.round(gainRealist * (1 - Math.exp(-k * weeksTotal)));
     const projectedTime = BASE_TIME_START - projectedGain;
-
-    // LOG TEMPORAIRE DE DEBUG (26/07/2026) — vérification projection trop
-    // pessimiste malgré bonne progression, à retirer une fois diagnostiqué.
-    console.log("[DEBUG PROJECTION]", {
-      currentTime_fmt: fmtTime(currentTime), currentTime,
-      BASE_TIME_START_fmt: fmtTime(BASE_TIME_START), BASE_TIME_START,
-      raceGoalTime_fmt: fmtTime(raceGoalTime), raceGoalTime,
-      gainMax, gainRealist, gainSoFar,
-      weeksElapsed, k,
-      joursRestants, weeksTotal,
-      projectedGain, projectedTime_fmt: fmtTime(projectedTime), projectedTime,
-      predHistoryLength: predHistory.length,
-      predHistory_dates: predHistory.map(p=>p.date),
-      predHistory_times: predHistory.map(p=>fmtTime(p.time))
-    });
 
     // Fourchette selon la quantité de données
     const oldestEntry = predHistory[0]?.date;
