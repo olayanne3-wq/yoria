@@ -1412,10 +1412,11 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       </div>
       <div id="sauvegardeMsg" style="margin-top:8px; font-size:13px;"></div>
 
-      <!-- Actions avancées : repliées par défaut, moins utilisées au quotidien -->
-      <div style="margin-top:14px;">
-        <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleActionsAvancees()">⚙️ Plus d'options</span>
-        <div id="blocActionsAvancees" style="display:none; margin-top:12px;">
+      <!-- Actions avancées : toujours visibles (26/07/2026, demande Laurent
+           — le double repli "Plus d'options" > accordéon ne se justifiait
+           pas, un seul niveau de repli suffit désormais via l'accordéon
+           "Modifier mon plan" ci-dessous). -->
+      <div style="margin-top:20px;">
 
           <div style="margin-top:14px;">
             <button class="btn-mini" onclick="lancerAnalyseAdaptation()">🔄 Analyser les résultats et adapter le plan</button>
@@ -1478,7 +1479,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
           </div>
 
-        </div>
       </div>
 
       <div class="block-label" style="margin-top:20px;">Allures et FC par zone</div>
@@ -2574,11 +2574,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // — l'ordre affiché diffère de l'ordre de stockage, et l'index changerait
     // après une suppression)
     window.__plansSauvegardes = plans;
-  }
-
-  function toggleActionsAvancees() {
-    const bloc = document.getElementById('blocActionsAvancees');
-    bloc.style.display = bloc.style.display !== 'none' ? 'none' : 'block';
   }
 
   // Accordéon "Modifier mon plan" (26/07/2026) : un seul levier ouvert à la
