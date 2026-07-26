@@ -5949,23 +5949,27 @@ function renderWeekDetail(weekNum) {
     // peu importe le statut réel, c'est le bug remonté par Laurent ("on
     // voit seulement l'onglet validé vert").
     const isDoneSession = ["✅","❌","⚠️","😴"].includes(statutEffectif) && effSess.type!=="REPOS";
-    let cardExpanded = false;
     const card=el("div",{style:{
       background:isToday?"var(--border-soft)":"var(--bg)",
       border:`1px solid ${isToday?"rgba(var(--accent-rgb),0.2)":st.colorSoft+"0.13)"}`,
       borderTop:`3px solid ${st.color}`,
       borderRadius:"12px",
       boxShadow:`0 6px 24px ${st.colorSoft}0.1), 0 2px 8px rgba(0,0,0,0.4)`,
-      padding:"12px 14px",marginBottom:"8px",
-      opacity:isDoneSession?"0.7":"1",
-      cursor:isDoneSession?"pointer":"default",
-      transition:"opacity 0.2s ease"
+      padding:"12px 14px",marginBottom:"8px"
     }},
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
         el("div",{style:{color:isPast?"var(--text-muted)":"var(--text2)",fontSize:"13px",fontWeight:"700",minWidth:"60px"}},s.day+" "+s.date.slice(8)),
         isToday?el("span",{style:{background:"rgba(var(--accent-rgb),0.2)",color:"var(--accent)",fontSize:"13px",fontWeight:"700",padding:"1px 5px",borderRadius:"3px"}},"AUJOURD\'HUI"):null,
         badge(effSess.type),
         el("div",{style:{flex:"1"}}),
+        // Refonte ergonomique (26/07/2026, cohérente avec la carte
+        // "Aujourd'hui") : icônes ⌚/✏️ compactes affichées uniquement pour
+        // une séance non encore validée ET pas future (mêmes règles que le
+        // bloc saisie manuelle/notes plus bas). Remplacent l'ancien bouton
+        // pleine largeur "📱 À programmer sur ta montre" et la ligne "✏️
+        // Saisir ou corriger manuellement".
+        (!isDoneSession && s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE" && effSess.structureIntervalles) ? renderIconeStructureMontre(effSess.structureIntervalles) : null,
+        (!isDoneSession && s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE") ? renderIconeSaisieManuelle(uid, s, stravaRun) : null,
         // Badge de statut (22/07/2026) : rond coloré pour ✅/❌/⚠️, icône
         // directe (pas de rond) pour 😴.
         isDoneSession ? (
@@ -5986,74 +5990,50 @@ function renderWeekDetail(weekNum) {
         effSess.cooldown?el("div",{class:"muted",style:{fontSize:"13px"}},"◀ "+effSess.cooldown):null
       ):null,
       effSess.notes?el("div",{style:{color:"rgba(var(--accent-rgb),0.8)",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+effSess.notes):null,
-      effSess.structureIntervalles?renderBoutonStructureAProgrammer(effSess.structureIntervalles):null,
-      stravaRun?el("div",{style:{background:"rgba(var(--warn-rgb),0.07)",border:"1px solid rgba(var(--warn-rgb),0.2)",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
+      // Allures/FC cibles remontées ici, sans repli (26/07/2026) — cohérent
+      // avec la carte "Aujourd'hui", seulement si séance non validée et non
+      // future (rien à cibler pour une séance qui n'a pas encore de plan
+      // proche, cf. décision garde-fou plus haut).
+      (!isDoneSession && s.date<=today() && PACE_REFS[effSess.type]) ? el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",padding:"10px 12px",marginBottom:"8px"}},
+        el("div",{style:{color:"var(--accent)",fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"8px",fontWeight:"700"}},"⚡ Allures cibles"),
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
-          el("span",{class:"muted",style:{fontSize:"13px"}},
-            (stravaRun.start_date_local||"").slice(11,16)+" · départ"
-          ),
-          el("a",{href:"https://www.strava.com/activities/"+stravaRun.id_str,target:"_blank",style:{color:"var(--warn)",fontSize:"13px",fontWeight:"700",textDecoration:"none"}},"Voir sur Strava 🔗")
+          el("span",{class:"muted",style:{fontSize:"14px"}},"Effort"),
+          el("div",{style:{textAlign:"right"}},
+            el("span",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700"}},PACE_REFS[effSess.type].effort),
+            el("span",{class:"muted",style:{fontSize:"13px",marginLeft:"6px"}},PACE_REFS[effSess.type].tolerance)
+          )
         ),
-        el("div",{style:{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:effortLaps.length>0?"8px":"0"}},
-          el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"15px",fontWeight:"700"}},(stravaRun.distance/1000).toFixed(2)+"km"),el("div",{class:"muted",style:{fontSize:"14px"}},"distance")),
-          el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"15px",fontWeight:"700"}},fmtTime(stravaRun.moving_time)),el("div",{class:"muted",style:{fontSize:"14px"}},"durée")),
-          (()=>{
-            // Si séance intensive avec laps d\'effort : afficher l\'allure/FC de l\'effort seul (hors échauffement/récup)
-            const isIntensive = effortLaps.length > 0;
-            const dispPace = isIntensive ? effortLaps.reduce((s,l)=>s+l.average_speed,0)/effortLaps.length : stravaRun.average_speed;
-            const dispHr = isIntensive ? (effortLaps.filter(l=>l.average_heartrate).length ? effortLaps.filter(l=>l.average_heartrate).reduce((s,l)=>s+l.average_heartrate,0)/effortLaps.filter(l=>l.average_heartrate).length : null) : stravaRun.average_heartrate;
-            const paceLabel = isIntensive ? "allure intervalles" : "allure moy.";
-            return el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"15px",fontWeight:"700"}},fmtPace(dispPace)+"/km"),el("div",{class:"muted",style:{fontSize:"14px"}},paceLabel));
-          })(),
-          (()=>{
-            const isIntensive = effortLaps.length > 0;
-            const dispHr = isIntensive ? (effortLaps.filter(l=>l.average_heartrate).length ? effortLaps.filter(l=>l.average_heartrate).reduce((s,l)=>s+l.average_heartrate,0)/effortLaps.filter(l=>l.average_heartrate).length : null) : stravaRun.average_heartrate;
-            const hrLabel = isIntensive ? "FC intervalles" : "FC moy.";
-            return dispHr ? el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"15px",fontWeight:"700"}},Math.round(dispHr)+" bpm"),el("div",{class:"muted",style:{fontSize:"14px"}},hrLabel)) : null;
-          })(),
-          stravaRun.max_heartrate?el("div",{},el("div",{style:{color:"var(--warn)",fontSize:"15px",fontWeight:"700"}},Math.round(stravaRun.max_heartrate)+" bpm"),el("div",{class:"muted",style:{fontSize:"14px"}},"FC max")):null
-        ),
-        (()=>{
-          const isIntensiveFc = effortLaps.length > 0;
-          const fcHrVals = isIntensiveFc ? effortLaps.filter(l=>l.average_heartrate) : null;
-          const fcDispHr = isIntensiveFc
-            ? (fcHrVals.length ? Math.round(fcHrVals.reduce((s,l)=>s+l.average_heartrate,0)/fcHrVals.length) : null)
-            : (stravaRun.average_heartrate ? Math.round(stravaRun.average_heartrate) : null);
-          const fcLabel = isIntensiveFc ? "FC intervalles " : "FC moy. ";
-          if (!FC_ZONES[effSess.type] || !fcDispHr) return null;
-          return el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"6px 0",borderTop:"1px solid rgba(var(--warn-rgb),0.13)",marginBottom:effortLaps.length>0?"8px":"0"}},
-            el("span",{style:{fontSize:"15px"}},fcStatus(effSess.type,fcDispHr)||""),
-            el("span",{class:"muted",style:{fontSize:"13px"}},fcLabel+fcDispHr+" bpm · cible "+FC_ZONES[effSess.type].min+"–"+FC_ZONES[effSess.type].max+" bpm")
-          );
-        })(),
-        stravaRun&&stravaRun.start_latlng?.length===2&&s.date?
-          el("div",{style:{fontSize:"13px",color:"var(--text2)",paddingTop:"4px",paddingBottom:"4px"}},
-            historicalWeatherCache[s.date]!=null
-              ? "🌡️ "+historicalWeatherCache[s.date]+"°C au départ"+(historicalWeatherCache[s.date]>28?" 🔥":"")
-              : el("span",{style:{color:"var(--text-muted)",fontStyle:"italic"}},"🌡️ Chargement météo...")
-          ):null,
-        effortLaps.length>0?el("div",{style:{borderTop:"1px solid rgba(var(--warn-rgb),0.13)",paddingTop:"8px"}},
-          el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
-            el("div",{class:"muted",style:{fontSize:"14px",textTransform:"uppercase",letterSpacing:"0.5px"}},
-              "Répétitions ("+effortLaps.length+(effSess.structureIntervalles ? "/"+aplatirRepetitionsAttendues(effSess.structureIntervalles).length : "")+")"),
-            (()=>{
-              const target = SESSION_TARGETS[effSess.type];
-              if (!target) return null;
-              const inTarget = effortLaps.filter(l=>(1000/l.average_speed)<=target.okPace).length;
-              const color = inTarget===effortLaps.length?"var(--accent2)":inTarget>0?"var(--warn)":"var(--warn)";
-              return el("span",{style:{color,fontSize:"13px",fontWeight:"700"}},inTarget+"/"+effortLaps.length+" dans la cible");
-            })()
-          ),
-          el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"6px"}},
-            SESSION_TARGETS[effSess.type] ? "cible "+SESSION_TARGETS[effSess.type].effort+" "+SESSION_TARGETS[effSess.type].tolerance : ""
-          ),
-          ...(() => {
-            const { driftEl } = computeFcDrift(effortLaps);
-            const rows = effortLaps.map((lap,i)=>renderLapRow(lap,i,effSess.type));
-            return driftEl ? [...rows, driftEl] : rows;
-          })()
+        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+          el("span",{class:"muted",style:{fontSize:"14px"}},"Récupération"),
+          el("span",{class:"muted",style:{fontSize:"15px",fontWeight:"700"}},PACE_REFS[effSess.type].recup)
+        )
+      ) : null,
+      (!isDoneSession && s.date<=today() && FC_ZONES[effSess.type]) ? el("div",{style:{background:FC_ZONES[effSess.type].color+"11",border:"1px solid "+FC_ZONES[effSess.type].color+"33",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
+        el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"FC cible"),
+        el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+          el("div",{style:{color:FC_ZONES[effSess.type].color,fontSize:"15px",fontWeight:"700"}},FC_ZONES[effSess.type].min+"–"+FC_ZONES[effSess.type].max+" bpm"),
+          el("div",{class:"muted",style:{fontSize:"13px"}},FC_ZONES[effSess.type].label+" · FC max "+FC_MAX)
+        )
+      ) : null,
+      // Refonte ergonomique (26/07/2026) : le résumé Strava enrichi est
+      // remplacé par renderBlocRealise (même fonction que la carte
+      // "Aujourd'hui") — résumé toujours visible + laps repliés + lien
+      // Corriger, plutôt que ce bloc entièrement affiché ou entièrement cousu
+      // au système "childrenToHide" plus bas. Affiché seulement si la séance
+      // est validée (✅/⚠️/❌/😴) ou a une donnée quelconque (Strava/manuelle),
+      // jamais pour une séance future.
+      (s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE" && (isDoneSession || stravaRun || manualPerf[uid]))
+        ? renderBlocRealise(uid, effSess, stravaRun, effortLaps, manualPerf[uid])
+        : null,
+      // Météo au départ (spécifique à cette vue, absente de la carte du
+      // jour) — affichée seulement si une activité Strava géolocalisée
+      // existe pour cette séance.
+      stravaRun&&stravaRun.start_latlng?.length===2&&s.date?
+        el("div",{style:{fontSize:"13px",color:"var(--text2)",paddingTop:"4px",paddingBottom:"4px"}},
+          historicalWeatherCache[s.date]!=null
+            ? "🌡️ "+historicalWeatherCache[s.date]+"°C au départ"+(historicalWeatherCache[s.date]>28?" 🔥":"")
+            : el("span",{style:{color:"var(--text-muted)",fontStyle:"italic"}},"🌡️ Chargement météo...")
         ):null
-      ):null
     );
 
     // effSess.type==="RACE" : aucun bloc dédié ici — effSess.session
@@ -6077,56 +6057,26 @@ function renderWeekDetail(weekNum) {
       }
       const statusRow=renderStatusRow(uid, s.date);
       card.appendChild(statusRow);
-      // Saisie/correction manuelle (docs/source-donnees-seances.md) — même
-      // bloc que sur la carte du jour, pour pouvoir corriger une séance
-      // passée depuis le détail de semaine.
-      card.appendChild(renderManualPerfRow(uid, s, stravaRun));
-      const noteInput=el("input",{type:"text",placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"14px",outline:"none",width:"100%"}});
-      noteInput.value=sessionNotes[uid]||"";
-      noteInput.addEventListener("change",()=>{
-        if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
-        else{delete sessionNotes[uid];}
-        save(clePourPlan("lk_session_notes"),sessionNotes);
-      });
-      if(sessionNotes[uid]){card.appendChild(el("div",{style:{color:"var(--text2)",fontSize:"14px",fontStyle:"italic",marginTop:"4px"}},"💬 "+sessionNotes[uid]));}
-      card.appendChild(noteInput);
-    }
-
-    // Si séance terminée : afficher un résumé compact + détail repliable au clic
-    if (isDoneSession) {
-      // children[0] = header, children[1] = titre séance, le reste = détails
-      const childrenToHide = Array.from(card.children).slice(2);
-      childrenToHide.forEach(c => { c.style.display = "none"; });
-
-      // Mini résumé Strava (distance globale, allure/FC de l\'effort si intensive)
-      if (stravaRun) {
-        const isIntensiveSummary = effortLaps.length > 0;
-        const summaryPace = isIntensiveSummary ? effortLaps.reduce((s,l)=>s+l.average_speed,0)/effortLaps.length : stravaRun.average_speed;
-        const summaryHrVals = isIntensiveSummary ? effortLaps.filter(l=>l.average_heartrate) : null;
-        const summaryHr = isIntensiveSummary
-          ? (summaryHrVals.length ? summaryHrVals.reduce((s,l)=>s+l.average_heartrate,0)/summaryHrVals.length : null)
-          : stravaRun.average_heartrate;
-        const summaryRow = el("div",{style:{display:"flex",alignItems:"center",gap:"14px",paddingTop:"6px",borderTop:"1px solid rgba(var(--text-rgb),0.4)"}},
-          el("span",{style:{color:"var(--accent)",fontSize:"14px",fontWeight:"700"}},(stravaRun.distance/1000).toFixed(1)+" km"),
-          el("span",{style:{color:"var(--accent)",fontSize:"14px",fontWeight:"700"}},fmtPace(summaryPace)+"/km"),
-          summaryHr?el("span",{style:{color:"var(--accent)",fontSize:"14px",fontWeight:"700"}},Math.round(summaryHr)+" bpm"):null,
-          el("div",{style:{flex:"1"}}),
-          el("span",{class:"muted",style:{fontSize:"13px"}},"détails ›")
-        );
-        summaryRow.dataset.summaryRow = "1";
-        card.appendChild(summaryRow);
-        // Réordonner : le résumé doit être juste après le titre, avant les détails cachés
-        card.insertBefore(summaryRow, childrenToHide[0] || null);
+      // Correctif 26/07/2026 (signalé par Laurent) : saisie manuelle et
+      // notes n'ont pas de sens pour une séance FUTURE (rien ne s'est
+      // encore passé) — même garde que renderStatusRow (estFuture), qui ne
+      // bloquait jusqu'ici que les boutons de statut, pas ces deux blocs.
+      const estFutureSeance = s.date > today();
+      if (!estFutureSeance) {
+        // Saisie/correction manuelle (docs/source-donnees-seances.md) — même
+        // bloc que sur la carte du jour, pour pouvoir corriger une séance
+        // passée depuis le détail de semaine.
+        card.appendChild(renderManualPerfRow(uid, s, stravaRun));
+        const noteInput=el("input",{type:"text",placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"14px",outline:"none",width:"100%"}});
+        noteInput.value=sessionNotes[uid]||"";
+        noteInput.addEventListener("change",()=>{
+          if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
+          else{delete sessionNotes[uid];}
+          save(clePourPlan("lk_session_notes"),sessionNotes);
+        });
+        if(sessionNotes[uid]){card.appendChild(el("div",{style:{color:"var(--text2)",fontSize:"14px",fontStyle:"italic",marginTop:"4px"}},"💬 "+sessionNotes[uid]));}
+        card.appendChild(noteInput);
       }
-
-      card.addEventListener("click", (e)=>{
-        if (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT") return;
-        cardExpanded = !cardExpanded;
-        card.style.opacity = cardExpanded ? "1" : "0.7";
-        childrenToHide.forEach(c => { c.style.display = cardExpanded ? "" : "none"; });
-        const summaryEl = card.querySelector('[data-summary-row]');
-        if (summaryEl) summaryEl.style.display = cardExpanded ? "none" : "flex";
-      });
     }
 
     // Appui long : menu gestion seance
