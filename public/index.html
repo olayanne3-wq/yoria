@@ -4695,10 +4695,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               el("div",{style:{color:"var(--text2)",fontSize:"14px"}},(STYPES[nextSess.type]?.short||nextSess.type)+" · "+nextSess.session)
             ),
             el("span",{style:{color:"var(--text2)",fontSize:"18px"}},"›")
-          ):null,
-          !isRest && !isDone ? el("button",{style:{width:"100%",marginTop:"8px",background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",padding:"8px",color:"var(--accent)",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
-            onClick:()=>{ selectedWeek=s.week; setView("weekDetail"); }
-          },"Voir la semaine →") : null
+          ):null
         );
         return card;
       })
@@ -5089,7 +5086,11 @@ function renderIconeStructureMontre(structure) {
   const lignes = renderStructureAProgrammer(structure);
   if (!lignes) return null;
   const wrap = el("div",{style:{position:"relative"}});
-  const icone = el("span",{title:"Structure à programmer sur ta montre",style:{color:"var(--text-muted)",cursor:"pointer",fontSize:"16px",lineHeight:"1"}},"⌚");
+  const icone = el("span",{title:"Structure à programmer sur ta montre",style:{
+    color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
+    background:"var(--border-soft)",border:"1px solid var(--border)",
+    borderRadius:"6px",padding:"5px 7px",display:"inline-flex"
+  }},"⌚");
   const popover = el("div",{style:{
     display:"none",position:"absolute",top:"24px",right:"0",zIndex:"20",
     background:"var(--bg)",boxShadow:"0 4px 16px var(--shadow1), 0 2px 6px var(--shadow2)",
@@ -5452,10 +5453,11 @@ function renderIconeSaisieManuelle(uid, s, stravaRun) {
   const wrap = el("div",{style:{position:"relative"}});
   const manuelExiste = !!manualPerf[uid];
   const icone = el("span",{title: manuelExiste ? "Saisie manuelle active" : "Saisir ou corriger manuellement", style:{
-    cursor:"pointer",fontSize:"14px",lineHeight:"1",
-    background: manuelExiste ? "var(--accent)" : "transparent",
+    cursor:"pointer",fontSize:"15px",lineHeight:"1",display:"inline-flex",
+    background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
     color: manuelExiste ? "#F8FAFC" : "var(--text-muted)",
-    borderRadius:"6px",padding: manuelExiste ? "3px 6px" : "3px 2px"
+    border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
+    borderRadius:"6px",padding:"5px 7px"
   }},"✏️");
   const popover = el("div",{style:{
     display:"none",position:"absolute",top:"24px",right:"0",zIndex:"20",
