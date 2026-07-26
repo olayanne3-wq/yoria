@@ -698,11 +698,6 @@ function recalculerAllSessions() {
     const statutEffectif = (!statutBrut || statutBrut === "—") && estPasse && effSess.type !== "REPOS"
       ? "😴"
       : (statutBrut || "—");
-    // LOG TEMPORAIRE DE DEBUG (26/07/2026) — bug badge 😴 sur séances déjà
-    // validées, à retirer une fois la cause identifiée.
-    if (statutEffectif === "😴" && estPasse) {
-      console.log("[DEBUG 😴]", {uid, date:s.date, type:effSess.type, statutBrut, clePlanActuelle: clePourPlan("lk_statuses"), statusesKeys: Object.keys(statutsActuels).length, presentDansStatuses: uid in statutsActuels});
-    }
     return {...effSess, date: s.date, week:w.week, phase:w.phase, uid, statutEffectif};
   }));
 }
@@ -5289,6 +5284,7 @@ function renderTestSemiCooperRow(uid, seance, stravaRun) {
     save(clePourPlan("lk_resultat_test_forme"), { refTimeSeconds, refDistanceKm, vmaKmh, distanceMetres, dateTest: today() });
     statuses[uid] = "✅";
     save(clePourPlan("lk_statuses"), statuses);
+    ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
     render();
   };
 
@@ -5357,6 +5353,19 @@ function renderStatusRow(uid, dateSeance) {
     b.addEventListener("click",avecRetourTactile(()=>{
       if (estFuture && opt!=="—") return;
       statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses);
+      // Bug corrigé le 26/07/2026 (signalé par Laurent : badge 😴 restait
+      // affiché sur des séances passées pourtant déjà validées ✅/⚠️/❌,
+      // dans la vue Semaine). Cause identifiée via log de debug :
+      // ALL_SESSIONS (et son champ statutEffectif calculé par
+      // recalculerAllSessions) n'était JAMAIS recalculée à cet endroit —
+      // seul render() était rappelé, qui redessine depuis la valeur déjà en
+      // mémoire sans jamais la rafraîchir. Le "😴" auto-inféré (séance
+      // passée sans statut saisi, cf. recalculerAllSessions) restait donc
+      // figé même après avoir cliqué un vrai statut, jusqu'au prochain des
+      // rares recalculs complets (changement de plan, swap...). Recalcul
+      // immédiat ici, avant tout render(), pour que statutEffectif reflète
+      // toujours le tout dernier clic.
+      ALL_SESSIONS = recalculerAllSessions();
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
       // cette carte (render() reconstruit toute la vue). Corrigé : met à
@@ -5629,6 +5638,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       save(clePourPlan("lk_manual_perf"), manualPerf);
       delete statuses[uid];
       save(clePourPlan("lk_statuses"), statuses);
+      ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
       if (avaitAllure) rebuildPredHistory(); // ré-agréger sans cette saisie (Strava reprend la main s'il existe)
       expanded = false;
       formWrap.style.display = "none";
@@ -7576,6 +7586,7 @@ function showSessionMenu(week, slotIdx) {
             const auto = autoValidate(sessionPourValidation, activite);
             if (auto) statuses[uid] = auto;
             save(clePourPlan("lk_statuses"), statuses);
+            ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
           }
           overlay.remove();
           render();
@@ -9266,6 +9277,14 @@ function matchActivitiesToPlan(activities) {
     }
   });
   save(clePourPlan("lk_statuses"),statuses);
+  // Correctif 26/07/2026 (bug badge 😴 sur séances déjà validées) : la
+  // synchro Strava auto-valide des statuts (ligne ~9278) sans jamais
+  // recalculer ALL_SESSIONS ensuite — c'est le cas le plus fréquent en
+  // pratique (synchro en arrière-plan, pas un clic manuel), donc
+  // statutEffectif restait figé sur l'ancienne valeur (souvent 😴
+  // auto-inféré pour une séance passée) même après une auto-validation
+  // réussie. Recalcul systématique ici, avant tout render().
+  ALL_SESSIONS = recalculerAllSessions();
   if (statutDuJourChange) {
     coachMsg = null; coachDate = "";
     save(clePourPlan("lk_coach_msg"), null);
