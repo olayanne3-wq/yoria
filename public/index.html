@@ -698,6 +698,11 @@ function recalculerAllSessions() {
     const statutEffectif = (!statutBrut || statutBrut === "—") && estPasse && effSess.type !== "REPOS"
       ? "😴"
       : (statutBrut || "—");
+    // LOG TEMPORAIRE DE DEBUG (26/07/2026) — bug badge 😴 sur séances déjà
+    // validées, à retirer une fois la cause identifiée.
+    if (statutEffectif === "😴" && estPasse) {
+      console.log("[DEBUG 😴]", {uid, date:s.date, type:effSess.type, statutBrut, clePlanActuelle: clePourPlan("lk_statuses"), statusesKeys: Object.keys(statutsActuels).length, presentDansStatuses: uid in statutsActuels});
+    }
     return {...effSess, date: s.date, week:w.week, phase:w.phase, uid, statutEffectif};
   }));
 }
