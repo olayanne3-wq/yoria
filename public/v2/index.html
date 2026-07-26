@@ -1427,6 +1427,25 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
             <div id="adaptationMsg" style="margin-top:6px; font-size:13px;"></div>
           </div>
 
+          <!-- Simulation changement de jours d'entraînement (26/07/2026,
+               conçu avec Laurent) : réutilise le composant .days-grid déjà
+               présent dans le wizard (renderDays/toggleDayCycle) au lieu
+               d'en construire un nouveau. Simulation LIVE dès qu'on touche
+               la grille (voir simulerImpactJours()) — le vrai plan n'est
+               jamais modifié tant que le bouton "Appliquer" n'a pas été
+               cliqué explicitement. -->
+          <div style="margin-top:14px;">
+            <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleModifierJours()">📅 Modifier mes jours d'entraînement</span>
+            <div id="blocModifierJours" style="display:none; margin-top:12px;">
+              <p class="sub" style="margin-top:0; font-size:12px;">Change tes jours dispo (ou juste ta sortie longue) à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas. Reclique sur un jour sélectionné pour en faire ta sortie longue.</p>
+              <div class="count-badge">● <span id="dayCountSimulation">3</span> séances / semaine</div>
+              <div class="days-grid" id="daysGridSimulation"></div>
+              <div id="simulationImpact" style="margin-top:14px;"></div>
+              <button class="btn-mini" id="btnAppliquerJours" style="margin-top:10px;" onclick="appliquerChangementJours()" disabled>Appliquer à partir de la semaine prochaine</button>
+              <div id="modifierJoursMsg" style="margin-top:6px; font-size:13px;"></div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -2617,6 +2636,208 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         await afficherPlansSauvegardes();
       } catch (e) {
         console.warn('Re-sauvegarde après adaptation échouée :', e.message);
+      }
+    }
+  }
+
+  // ── Simulation changement de jours d'entraînement (26/07/2026) ──────────
+  // Conçu avec Laurent : le coureur doit augmenter/diminuer son nombre de
+  // séances/semaine (contrainte réelle) et veut voir l'impact sur l'objectif
+  // AVANT de valider. Réutilise le composant .days-grid + toggleDayCycle
+  // déjà présents dans ce fichier (cf. renderDays ligne ~1561) plutôt que
+  // d'en construire un nouveau.
+  //
+  // Limite assumée sur la donnée de départ : contrairement à ce qui était
+  // envisagé en conception ("partir de la vraie forme actuelle mesurée via
+  // predict10K()"), ce fichier (wizard, public/v2/index.html) n'a PAS accès
+  // à predict10K() ni à stravaActivities — cette logique vit uniquement
+  // dans public/index.html (l'app principale). Dupliquer predict10K() ici
+  // serait lourd et risquerait une désynchronisation entre les deux
+  // fichiers. Repli assumé : utilise plan.paramsOrigine.tempsReference (la
+  // référence connue du plan), cohérent avec ce que font déjà
+  // lancerAnalyseAdaptation()/regenererAvecNouvelObjectif() juste au-dessus,
+  // qui reposent aussi sur les paramètres du plan plutôt qu'une mesure en
+  // temps réel. Toujours accompagné d'un avertissement explicite de
+  // fiabilité limitée à l'écran (cf. simulerImpactJours ci-dessous).
+
+  // Engine (plan-generator.js) exporte formatPace mais pas de formatteur
+  // mm:ss pour un temps de course complet — petit helper local pour
+  // l'affichage de la simulation ci-dessous.
+  function formatTimeMinSec(totalSeconds) {
+    const m = Math.floor(totalSeconds / 60);
+    const s = Math.round(totalSeconds % 60);
+    return `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function toggleModifierJours() {
+    const bloc = document.getElementById('blocModifierJours');
+    if (!dernierPlanGenere) { alert("Génère ou charge d'abord un plan."); return; }
+    const visible = bloc.style.display !== 'none';
+    bloc.style.display = visible ? 'none' : 'block';
+    if (!visible) {
+      renderDaysSimulation();
+      document.getElementById('modifierJoursMsg').textContent = '';
+    }
+  }
+
+  function renderDaysSimulation() {
+    const plan = dernierPlanGenere;
+    const days = ['L','M','M','J','V','S','D'];
+    const joursActuels = plan?.profilOrigine?.joursDisponiblesHabituels ?? [1,3,5];
+    const jourLongueActuel = plan?.profilOrigine?.jourLongueChoisi ?? Math.max(...joursActuels);
+    const grid = document.getElementById('daysGridSimulation');
+    grid.innerHTML = '';
+    days.forEach((d,i)=>{
+      const el = document.createElement('div');
+      const estSelectionne = joursActuels.includes(i);
+      const estLongue = estSelectionne && i === jourLongueActuel;
+      el.className = 'day' + (estSelectionne ? ' selected' : '') + (estLongue ? ' longue' : '');
+      el.dataset.dayIndex = i;
+      el.innerHTML = `<span class="d">${d}</span><span>${estLongue ? '★' : '●'}</span>`;
+      el.onclick = () => { toggleDayCycle(el, grid); updateDayCountSimulation(); simulerImpactJours(); };
+      grid.appendChild(el);
+    });
+    updateDayCountSimulation();
+    simulerImpactJours();
+  }
+
+  function updateDayCountSimulation() {
+    const n = document.querySelectorAll('#daysGridSimulation .day.selected').length;
+    document.getElementById('dayCountSimulation').textContent = n;
+  }
+
+  // Règle de pouce actée le 26/07/2026 (pas de modèle scientifique rigoureux
+  // — jugé disproportionné vu l'incertitude déjà admise du modèle de
+  // projection existant, cf. mémoire "Projection au jour J" du même jour) :
+  // le rythme de progression est supposé proportionnel au nombre de séances
+  // QUALITÉ (VMA/SEUIL/SPEC) par semaine — nbQualiteFor(), déjà exportée par
+  // plan-generator.js, donne ce nombre directement sans avoir à générer un
+  // plan complet. Ex. 2→1 séance qualité/semaine divise le gain projeté par 2.
+  function simulerImpactJours() {
+    const impactEl = document.getElementById('simulationImpact');
+    const btnAppliquer = document.getElementById('btnAppliquerJours');
+    const plan = dernierPlanGenere;
+    const joursSelectionnes = [...document.querySelectorAll('#daysGridSimulation .day.selected')]
+      .map(el => parseInt(el.dataset.dayIndex));
+    const jourLongueEl = document.querySelector('#daysGridSimulation .day.longue');
+    const jourLongueSelectionne = jourLongueEl ? parseInt(jourLongueEl.dataset.dayIndex) : null;
+
+    if (joursSelectionnes.length < 2) {
+      impactEl.innerHTML = `<div class="flag"><span class="ico">⚠️</span><span>Au moins 2 jours sont nécessaires.</span></div>`;
+      btnAppliquer.disabled = true;
+      return;
+    }
+
+    const niveau = plan?.profilOrigine?.niveau ?? 'intermediaire';
+    const joursActuels = plan?.profilOrigine?.joursDisponiblesHabituels ?? [];
+    const nbQualiteActuel = Engine.nbQualiteFor(joursActuels.length, niveau);
+    const nbQualiteSimule = Engine.nbQualiteFor(joursSelectionnes.length, niveau);
+
+    const refTimeSeconds = Engine.parseTimeToSeconds(plan?.paramsOrigine?.tempsReference ?? '50:00');
+    const objectifTimeSeconds = Engine.parseTimeToSeconds(plan?.paramsOrigine?.objectif ?? plan?.paramsOrigine?.tempsReference ?? '50:00');
+    const gainVise = refTimeSeconds - objectifTimeSeconds;
+
+    let projectionHtml;
+    if (nbQualiteActuel === 0 || gainVise <= 0) {
+      projectionHtml = `<span class="v">Pas assez de données sur ce plan pour simuler.</span>`;
+    } else {
+      const ratio = nbQualiteSimule / nbQualiteActuel;
+      const gainProjeteSimule = Math.round(gainVise * Math.min(ratio, 1));
+      const nouvelObjectifSimule = refTimeSeconds - gainProjeteSimule;
+      const deltaVsObjectifActuel = nouvelObjectifSimule - objectifTimeSeconds;
+      const signeDelta = deltaVsObjectifActuel <= 0 ? '−' : '+';
+      const couleurDelta = deltaVsObjectifActuel <= 0 ? 'var(--pace)' : 'var(--signal)';
+      projectionHtml = `
+        <div class="bib-row"><span class="k">Séances qualité/semaine</span><span class="v">${nbQualiteActuel} → ${nbQualiteSimule}</span></div>
+        <div class="bib-row"><span class="k">Objectif estimé avec ce changement</span><span class="v accent">${formatTimeMinSec(nouvelObjectifSimule)}</span></div>
+        <div class="bib-row"><span class="k">Écart vs objectif actuel du plan</span><span class="v" style="color:${couleurDelta};">${signeDelta}${formatTimeMinSec(Math.abs(deltaVsObjectifActuel))}</span></div>
+      `;
+    }
+
+    impactEl.innerHTML = `
+      <div class="block-label" style="margin-top:0;">Impact estimé sur l'objectif</div>
+      <div class="bib">${projectionHtml}</div>
+      <div class="flag" style="margin-top:10px;">
+        <span class="ico">📐</span>
+        <span>Estimation approximative — basée sur le nombre de séances qualité/semaine, pas sur un vrai recalcul complet. À prendre comme ordre de grandeur, pas comme une prévision précise.</span>
+      </div>
+    `;
+    btnAppliquer.disabled = false;
+    btnAppliquer.dataset.jours = JSON.stringify(joursSelectionnes);
+    btnAppliquer.dataset.jourLongue = jourLongueSelectionne !== null ? String(jourLongueSelectionne) : '';
+  }
+
+  // Applique le changement à partir de la SEMAINE SUIVANTE uniquement — la
+  // semaine en cours et toutes les précédentes gardent leur contenu
+  // original inchangé (coupure nette, pas de fusion semaine par semaine
+  // complexe comme lancerAnalyseAdaptation/regenererAvecNouvelObjectif :
+  // décision actée le 26/07/2026 pour garder ce chantier simple).
+  async function appliquerChangementJours() {
+    const msgEl = document.getElementById('modifierJoursMsg');
+    const btnAppliquer = document.getElementById('btnAppliquerJours');
+    const plan = dernierPlanGenere;
+    if (!plan) return;
+    if (!plan.profilOrigine || !plan.paramsOrigine) {
+      msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const joursSelectionnes = JSON.parse(btnAppliquer.dataset.jours || '[]');
+    const jourLongueStr = btnAppliquer.dataset.jourLongue;
+    const jourLongueSelectionne = jourLongueStr ? parseInt(jourLongueStr) : null;
+    if (joursSelectionnes.length < 2) {
+      msgEl.textContent = 'Au moins 2 jours sont nécessaires.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouveauProfil = { ...plan.profilOrigine, joursDisponiblesHabituels: joursSelectionnes, jourLongueChoisi: jourLongueSelectionne };
+    let planPropre;
+    try {
+      planPropre = Engine.generatePlan(nouveauProfil, plan.paramsOrigine);
+    } catch (e) {
+      msgEl.textContent = 'Erreur de régénération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+    if (planPropre?.planInvalide) {
+      msgEl.textContent = planPropre.message ?? 'Ce plan ne peut pas être régénéré avec ces jours.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    // Coupure nette à la semaine suivante : tout ce qui est semaine
+    // courante ou antérieure garde son vrai contenu original (planActuel),
+    // tout le reste (semaine suivante incluse) vient du plan régénéré avec
+    // les nouveaux jours.
+    const semaineCharniere = semaineActuelleOuProchaine(plan) + 1;
+    planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
+      if (semaineNouvelle.semaineNum < semaineCharniere) {
+        const semaineAncienne = plan.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
+        return semaineAncienne || semaineNouvelle;
+      }
+      return semaineNouvelle;
+    });
+
+    planPropre.id = plan.id;
+    planPropre.nom = plan.nom;
+    planPropre.statuses = plan.statuses;
+    planPropre.profilOrigine = nouveauProfil;
+    planPropre.paramsOrigine = plan.paramsOrigine;
+
+    dernierPlanGenere = planPropre;
+    renderResults(planPropre);
+    document.getElementById('blocModifierJours').style.display = 'none';
+    msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
+    msgEl.style.color = 'var(--pace)';
+
+    if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && planPropre.id) {
+      try {
+        await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
+        await afficherPlansSauvegardes();
+      } catch (e) {
+        console.warn('Re-sauvegarde après changement de jours échouée :', e.message);
       }
     }
   }
