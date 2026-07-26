@@ -6615,6 +6615,21 @@ function renderStats() {
     const projectedGain = Math.round(gainRealist * (1 - Math.exp(-k * weeksTotal)));
     const projectedTime = BASE_TIME_START - projectedGain;
 
+    // LOG TEMPORAIRE DE DEBUG (26/07/2026) — vérification projection trop
+    // pessimiste malgré bonne progression, à retirer une fois diagnostiqué.
+    console.log("[DEBUG PROJECTION]", {
+      currentTime_fmt: fmtTime(currentTime), currentTime,
+      BASE_TIME_START_fmt: fmtTime(BASE_TIME_START), BASE_TIME_START,
+      raceGoalTime_fmt: fmtTime(raceGoalTime), raceGoalTime,
+      gainMax, gainRealist, gainSoFar,
+      weeksElapsed, k,
+      joursRestants, weeksTotal,
+      projectedGain, projectedTime_fmt: fmtTime(projectedTime), projectedTime,
+      predHistoryLength: predHistory.length,
+      predHistory_dates: predHistory.map(p=>p.date),
+      predHistory_times: predHistory.map(p=>fmtTime(p.time))
+    });
+
     // Fourchette selon la quantité de données
     const oldestEntry = predHistory[0]?.date;
     const newestEntry = predHistory[predHistory.length-1]?.date;
