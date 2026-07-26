@@ -6693,7 +6693,24 @@ function renderStats() {
                 ? "−"+fmtTime(raceGoalTime-projectedTime)+" d'avance"
                 : "+"+fmtTime(projectedTime-raceGoalTime)+" vs objectif"
             )
-          )
+          ),
+          // Contextualisation (26/07/2026, demande Laurent) : un verdict
+          // "❌ À risque" en tout début de plan peut décourager inutilement
+          // — la projection extrapole le rythme observé jusqu'ici sur tout
+          // le reste du plan, alors que ce rythme évolue souvent une fois en
+          // phase Spécifique/Affûtage (plus d'intensité, allures resserrées
+          // via le mécanisme d'allures dynamiques, cf. calculerReference-
+          // CouranteAllures). Affiché uniquement pour "❌ À risque" — un
+          // verdict favorable n'a pas besoin d'être nuancé. Ne change RIEN
+          // au calcul lui-même, purement informatif.
+          (projectedTime > raceGoalTime + 30) ? (() => {
+            const semaineCourante = currentWeek();
+            const dureeTotalePlan = PLAN.length;
+            if (!semaineCourante || !dureeTotalePlan) return null;
+            return el("div",{style:{marginTop:"8px",fontSize:"12px",color:"var(--text-muted)",fontStyle:"italic"}},
+              `Basé sur ${weeksElapsed<1?"moins d'une semaine":Math.round(weeksElapsed)+" semaine"+(Math.round(weeksElapsed)>1?"s":"")} de données sur les ${dureeTotalePlan} que compte le plan (semaine ${semaineCourante}/${dureeTotalePlan}) — le rythme de progression évolue souvent une fois en phase spécifique ou affûtage.`
+            );
+          })() : null
         ) : el("div",{style:{paddingTop:"8px",borderTop:"1px solid var(--border)"}},
           el("span",{class:"muted",style:{fontSize:"13px",fontStyle:"italic"}},"Verdict disponible à partir de 3 semaines de données")
         )
