@@ -6597,13 +6597,21 @@ function renderStats() {
     // Coefficient k calibré sur le gain réalisé à ce stade
     const weeksElapsed = Math.max(1, (predHistory.length - 1) / 7);
     const k = gainSoFar > 0 ? -Math.log(1 - Math.min(gainSoFar / gainRealist, 0.99)) / weeksElapsed : 0.1;
-    // 22/07/2026, remonté par Laurent : weeksTotal était codé en dur à 11
-    // (durée de son ancien plan 10K historique), jamais dérivé du plan
-    // réellement chargé — un plan de 9 semaines (comme le sien actuellement)
-    // faisait une projection sur une durée trop longue. Même famille de
-    // résidu que le bug déjà corrigé pour OBJECTIF_REFERENCE/target (cf.
-    // commentaire predict10K, 20/07/2026).
-    const weeksTotal = PLAN.length;
+    // Correctif 26/07/2026 (signalé par Laurent : verdict "à risque" trop
+    // pessimiste malgré une bonne progression réelle, cas concret semaine
+    // 3/9). Cause : weeksTotal = PLAN.length utilisait la durée TOTALE du
+    // plan (9 semaines) au lieu du temps RESTANT jusqu'à la course (6
+    // semaines dans ce cas) — le modèle extrapolait donc la progression sur
+    // une durée near-double de celle réellement disponible, sous-estimant
+    // fortement projectedGain. Même famille de résidu que le premier
+    // correctif du 22/07/2026 (qui avait remplacé "11" codé en dur par
+    // PLAN.length — un progrès, mais qui ne traitait toujours pas le cas
+    // "plan en cours", seulement "plan de durée différente"). Calculé ici
+    // depuis DATE_COURSE_REFERENCE (vraie date de course) moins aujourd'hui,
+    // plancher à 1 semaine pour éviter une division par zéro/négatif en
+    // toute fin de plan.
+    const joursRestants = DATE_COURSE_REFERENCE ? (new Date(DATE_COURSE_REFERENCE) - new Date(today())) / 86400000 : null;
+    const weeksTotal = joursRestants != null ? Math.max(1, joursRestants / 7) : PLAN.length;
     const projectedGain = Math.round(gainRealist * (1 - Math.exp(-k * weeksTotal)));
     const projectedTime = BASE_TIME_START - projectedGain;
 
@@ -6619,7 +6627,13 @@ function renderStats() {
     const hasVerdict = daySpan >= 21;
 
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
+      // Renommé le 26/07/2026 (signalé par Laurent : confusion avec
+      // "Estimation" du dashboard, qui reflète la forme ACTUELLE — ce bloc-ci
+      // est une PROJECTION pour le jour de la course, basée sur le rythme de
+      // progression observé, pas une mesure d'aujourd'hui. Les deux nombres
+      // sont légitimement différents par nature, mais l'ancien libellé
+      // "Trajectoire" ne le disait pas assez clairement.
+      el("div",{class:"label"},"🎯 Projection au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px"}},
         el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
           el("div",{},
@@ -6634,12 +6648,26 @@ function renderStats() {
             }},daySpan>=21?"Bonne":"Faible — peu de données")
           )
         ),
-        hasVerdict ? el("div",{style:{display:"flex",justifyContent:"space-between",paddingTop:"8px",borderTop:"1px solid var(--border)"}},
-          el("span",{class:"muted",style:{fontSize:"13px"}},"vs objectif "+fmtTime(raceGoalTime)),
-          el("span",{style:{
-            color:projectedTime<=raceGoalTime?"var(--accent2)":projectedTime<=raceGoalTime+30?"var(--warn)":"var(--warn)",
-            fontSize:"14px",fontWeight:"700"
-          }},projectedTime<=raceGoalTime?"✅ Atteignable !":projectedTime<=raceGoalTime+30?"⚠️ Serré":"❌ À risque")
+        // Écart chiffré ajouté le 26/07/2026 (signalé par Laurent : le
+        // verdict "❌ À risque" n'expliquait pas de combien) — même principe
+        // que le badge du dashboard (pred.gap), affiché juste sous le
+        // verdict plutôt qu'à la place, pour ne pas perdre le mot clé
+        // ✅/⚠️/❌ déjà lisible d'un coup d'œil.
+        hasVerdict ? el("div",{style:{paddingTop:"8px",borderTop:"1px solid var(--border)"}},
+          el("div",{style:{display:"flex",justifyContent:"space-between"}},
+            el("span",{class:"muted",style:{fontSize:"13px"}},"vs objectif "+fmtTime(raceGoalTime)),
+            el("span",{style:{
+              color:projectedTime<=raceGoalTime?"var(--accent2)":projectedTime<=raceGoalTime+30?"var(--warn)":"var(--warn)",
+              fontSize:"14px",fontWeight:"700"
+            }},projectedTime<=raceGoalTime?"✅ Atteignable !":projectedTime<=raceGoalTime+30?"⚠️ Serré":"❌ À risque")
+          ),
+          el("div",{style:{textAlign:"right",marginTop:"2px"}},
+            el("span",{class:"muted",style:{fontSize:"12px"}},
+              projectedTime<=raceGoalTime
+                ? "−"+fmtTime(raceGoalTime-projectedTime)+" d'avance"
+                : "+"+fmtTime(projectedTime-raceGoalTime)+" vs objectif"
+            )
+          )
         ) : el("div",{style:{paddingTop:"8px",borderTop:"1px solid var(--border)"}},
           el("span",{class:"muted",style:{fontSize:"13px",fontStyle:"italic"}},"Verdict disponible à partir de 3 semaines de données")
         )
@@ -6650,7 +6678,7 @@ function renderStats() {
     const availDate = new Date(new Date(projOldest).getTime() + 21*86400000);
     const availStr = availDate.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
     progressionEl = el("div",{style:{marginBottom:"16px"}},
-      el("div",{class:"label"},"🎯 Trajectoire au "+fmtDate(DATE_COURSE_REFERENCE)),
+      el("div",{class:"label"},"🎯 Projection au "+fmtDate(DATE_COURSE_REFERENCE)),
       el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px",textAlign:"center"}},
         el("div",{style:{fontSize:"24px",marginBottom:"8px"}},"📊"),
         el("div",{style:{color:"var(--text)",fontSize:"14px",fontWeight:"600",marginBottom:"4px"}},"Données insuffisantes"),
