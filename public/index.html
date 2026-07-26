@@ -5344,13 +5344,19 @@ function renderTestSemiCooperRow(uid, seance, stravaRun) {
 
 function renderStatusRow(uid, dateSeance) {
   const wrapper = el("div",{style:{display:"flex",flexDirection:"column",gap:"8px",marginTop:"4px",width:"100%"}});
-  const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"nowrap",width:"100%"}});
-  // Blocage séances futures (17.4, 15/07/2026) — un statut (fait/raté/adapté)
-  // n'a de sens que pour une séance déjà passée ou en cours (aujourd'hui).
-  // "—" (annuler) reste toujours cliquable : si une séance a été validée par
-  // erreur puis que sa date est déplacée dans le futur (déplacement de
-  // séance), il faut pouvoir revenir à "non renseigné" sans être bloqué.
   const estFuture = dateSeance && dateSeance > today();
+  // Correctif 26/07/2026 (demande Laurent) : une séance future n'affiche
+  // plus du tout la rangée de boutons statut (auparavant affichée
+  // désactivée/grisée). Le bouton "—" n'a plus besoin de rester cliquable
+  // pour "annuler un statut mal placé après déplacement" — vérifié que
+  // getAvailableSlots() bloque déjà tout swap impliquant une séance ayant
+  // un vrai statut posé (aTraceActivite), dans les deux sens : ce cas ne
+  // peut donc jamais se produire.
+  if (estFuture) {
+    wrapper.appendChild(el("div",{style:{fontSize:"12px",color:"var(--text-muted)"}},"📅 Séance à venir — disponible le jour J"));
+    return wrapper;
+  }
+  const statusRow=el("div",{style:{display:"flex",gap:"6px",flexWrap:"nowrap",width:"100%"}});
   const boutons = [];
   const majApparenceBoutons = () => {
     const cur = statuses[uid]||"—";
@@ -5369,12 +5375,9 @@ function renderStatusRow(uid, dateSeance) {
   };
   SOPTS.forEach(opt=>{
     const cur=statuses[uid]||"—";
-    const desactive = estFuture && opt!=="—";
-    const b=el("button",{style:{flex:"1",background:cur===opt?SCOLORS[opt]:"var(--border-soft)",border:`1px solid ${cur===opt?SCOLORS[opt]:"var(--border)"}`,borderRadius:"8px",padding:"8px 0",cursor:desactive?"not-allowed":"pointer",color:cur===opt?"#F8FAFC":"var(--text-muted)",fontSize:"32px",fontWeight:cur===opt?"700":"400",opacity:desactive?"0.35":"1"}},opt==="—"?"–":opt);
-    if (desactive) b.disabled = true;
+    const b=el("button",{style:{flex:"1",background:cur===opt?SCOLORS[opt]:"var(--border-soft)",border:`1px solid ${cur===opt?SCOLORS[opt]:"var(--border)"}`,borderRadius:"8px",padding:"8px 0",cursor:"pointer",color:cur===opt?"#F8FAFC":"var(--text-muted)",fontSize:"32px",fontWeight:cur===opt?"700":"400"}},opt==="—"?"–":opt);
     boutons.push({ b, opt });
     b.addEventListener("click",avecRetourTactile(()=>{
-      if (estFuture && opt!=="—") return;
       statuses[uid]=opt; save(clePourPlan("lk_statuses"),statuses);
       // Bug corrigé le 26/07/2026 (signalé par Laurent : badge 😴 restait
       // affiché sur des séances passées pourtant déjà validées ✅/⚠️/❌,
@@ -5417,16 +5420,13 @@ function renderStatusRow(uid, dateSeance) {
     statusRow.appendChild(b);
   });
   wrapper.appendChild(statusRow);
-  if (estFuture) {
-    wrapper.appendChild(el("div",{style:{fontSize:"12px",color:"var(--text-muted)"}},"📅 Séance à venir — disponible le jour J"));
-  }
   // Pastille d'ambiguïté (24/07/2026) — plusieurs activités Strava ce jour,
   // aucune validation automatique tant que le coureur n'a pas choisi
   // laquelle associer (cf. obtenirActivitesAmbigues, showSessionMenu).
   // N'affiche rien pour une séance déjà validée manuellement (statut posé
   // indépendamment de Strava) — l'ambiguïté ne concerne que la validation
   // automatique, pas une saisie déjà faite par ailleurs.
-  if (!estFuture && (!statuses[uid] || statuses[uid]==="—")) {
+  if (!statuses[uid] || statuses[uid]==="—") {
     const { ambigu } = obtenirActivitesAmbigues(uid, dateSeance);
     if (ambigu) {
       wrapper.appendChild(el("div",{style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"4px"}},
