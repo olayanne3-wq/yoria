@@ -1399,6 +1399,13 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <div class="bib-row"><span class="k">Zone FC</span><span class="v" id="resFcMax">—</span></div>
       </div>
 
+      <!-- Déplacé le 26/07/2026 (demande Laurent) : les avertissements
+           étaient tout en bas de l'écran, après le plan complet — invisibles
+           sans scroller tout le contenu. Remontés juste après le récap, qui
+           affiche déjà le compteur d'alertes (resultsWarnCount), pour que le
+           détail suive immédiatement le signal. -->
+      <div id="resWarnings"></div>
+
       <!-- Actions principales : toujours visibles -->
       <div style="display:flex; gap:10px; margin-top:16px;">
         <button class="btn-mini" style="flex:1; border-color:var(--signal); color:var(--signal);" onclick="exporterPDF()">📄 PDF</button>
@@ -1410,40 +1417,65 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleActionsAvancees()">⚙️ Plus d'options</span>
         <div id="blocActionsAvancees" style="display:none; margin-top:12px;">
 
-          <div>
-            <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleModifierObjectif()">✏️ Modifier l'objectif de ce plan</span>
-            <div id="blocModifierObjectif" style="display:none; margin-top:10px;">
-              <div class="date-field">
-                <input type="text" id="nouvelObjectifInput" placeholder="Nouveau temps visé (ex. 47:30)">
-              </div>
-              <button class="btn-mini" style="margin-top:8px;" onclick="regenererAvecNouvelObjectif()">Régénérer avec ce nouvel objectif</button>
-              <div id="modifierObjectifMsg" style="margin-top:6px; font-size:13px;"></div>
-            </div>
-          </div>
-
           <div style="margin-top:14px;">
             <button class="btn-mini" onclick="lancerAnalyseAdaptation()">🔄 Analyser les résultats et adapter le plan</button>
             <p class="sub" style="margin-top:6px; font-size:12px;">Réduit automatiquement la semaine suivante quand plusieurs séances dures ont été ratées/adaptées — jamais sur une séance isolée, jamais un changement d'objectif.</p>
             <div id="adaptationMsg" style="margin-top:6px; font-size:13px;"></div>
           </div>
 
-          <!-- Simulation changement de jours d'entraînement (26/07/2026,
-               conçu avec Laurent) : réutilise le composant .days-grid déjà
-               présent dans le wizard (renderDays/toggleDayCycle) au lieu
-               d'en construire un nouveau. Simulation LIVE dès qu'on touche
-               la grille (voir simulerImpactJours()) — le vrai plan n'est
-               jamais modifié tant que le bouton "Appliquer" n'a pas été
-               cliqué explicitement. -->
-          <div style="margin-top:14px;">
-            <span class="btn-mini" style="cursor:pointer; display:inline-block;" onclick="toggleModifierJours()">📅 Modifier mes jours d'entraînement</span>
-            <div id="blocModifierJours" style="display:none; margin-top:12px;">
-              <p class="sub" style="margin-top:0; font-size:12px;">Change tes jours dispo (ou juste ta sortie longue) à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas. Reclique sur un jour sélectionné pour en faire ta sortie longue.</p>
+          <!-- Accordéon "Modifier mon plan" (26/07/2026, conçu avec Laurent) :
+               regroupe les 3 leviers de simulation (objectif/jours/volume),
+               un seul ouvert à la fois (toggleAccordionLevier). Chaque
+               levier suit le même principe : simulation LIVE de l'impact
+               sur l'objectif, jamais appliqué tant que le bouton "Appliquer"
+               dédié n'est pas cliqué. Décision actée : un seul levier
+               modifiable à la fois plutôt qu'une simulation combinée
+               (jugé plus simple à comprendre, cf. discussion — une
+               simulation combinée cumulerait plusieurs approximations déjà
+               reconnues comme grossières individuellement).
+          -->
+          <div style="margin-top:16px; border:1px solid rgba(var(--paper-rgb,255,255,255),0.12); border-radius:10px; overflow:hidden;">
+            <div style="padding:10px 14px; font-size:13px; font-weight:600;">Modifier mon plan</div>
+
+            <div class="accordion-head" data-levier="objectif" onclick="toggleAccordionLevier('objectif')" style="border-top:1px solid rgba(var(--paper-rgb,255,255,255),0.08); padding:10px 14px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+              <span>🎯 Objectif de temps</span>
+              <span class="accordion-chevron" id="chevron-objectif">▾</span>
+            </div>
+            <div id="levier-objectif" style="display:none; padding:0 14px 14px;">
+              <div class="date-field" style="margin-top:6px;">
+                <input type="text" id="nouvelObjectifInput" placeholder="Nouveau temps visé (ex. 47:30)">
+              </div>
+              <button class="btn-mini" style="margin-top:8px;" onclick="regenererAvecNouvelObjectif()">Régénérer avec ce nouvel objectif</button>
+              <div id="modifierObjectifMsg" style="margin-top:6px; font-size:13px;"></div>
+            </div>
+
+            <div class="accordion-head" data-levier="jours" onclick="toggleAccordionLevier('jours')" style="border-top:1px solid rgba(var(--paper-rgb,255,255,255),0.08); padding:10px 14px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+              <span>📅 Jours d'entraînement</span>
+              <span class="accordion-chevron" id="chevron-jours">▾</span>
+            </div>
+            <div id="levier-jours" style="display:none; padding:0 14px 14px;">
+              <p class="sub" style="margin-top:6px; font-size:12px;">Change tes jours dispo (ou juste ta sortie longue) à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas. Reclique sur un jour sélectionné pour en faire ta sortie longue.</p>
               <div class="count-badge">● <span id="dayCountSimulation">3</span> séances / semaine</div>
               <div class="days-grid" id="daysGridSimulation"></div>
-              <div id="simulationImpact" style="margin-top:14px;"></div>
+              <div id="simulationImpactJours" style="margin-top:14px;"></div>
               <button class="btn-mini" id="btnAppliquerJours" style="margin-top:10px;" onclick="appliquerChangementJours()" disabled>Appliquer à partir de la semaine prochaine</button>
               <div id="modifierJoursMsg" style="margin-top:6px; font-size:13px;"></div>
             </div>
+
+            <div class="accordion-head" data-levier="volume" onclick="toggleAccordionLevier('volume')" style="border-top:1px solid rgba(var(--paper-rgb,255,255,255),0.08); padding:10px 14px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+              <span>📊 Volume (km/semaine)</span>
+              <span class="accordion-chevron" id="chevron-volume">▾</span>
+            </div>
+            <div id="levier-volume" style="display:none; padding:0 14px 14px;">
+              <p class="sub" style="margin-top:6px; font-size:12px;">Change ton volume de départ à partir de la semaine prochaine.</p>
+              <div class="date-field" style="margin-top:6px;">
+                <input type="number" id="nouveauVolumeInput" placeholder="Volume de départ (km)" oninput="simulerImpactVolume()">
+              </div>
+              <div id="simulationImpactVolume" style="margin-top:14px;"></div>
+              <button class="btn-mini" id="btnAppliquerVolume" style="margin-top:10px;" onclick="appliquerChangementVolume()" disabled>Appliquer à partir de la semaine prochaine</button>
+              <div id="modifierVolumeMsg" style="margin-top:6px; font-size:13px;"></div>
+            </div>
+
           </div>
 
         </div>
@@ -1454,8 +1486,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
       <div class="block-label" style="margin-top:20px;">Plan complet</div>
       <div id="resPlanComplet"></div>
-
-      <div id="resWarnings"></div>
     </div>
 
   </div>
@@ -2551,14 +2581,37 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     bloc.style.display = bloc.style.display !== 'none' ? 'none' : 'block';
   }
 
-  function toggleModifierObjectif() {
-    const bloc = document.getElementById('blocModifierObjectif');
+  // Accordéon "Modifier mon plan" (26/07/2026) : un seul levier ouvert à la
+  // fois — ouvrir un levier ferme automatiquement les deux autres. Chaque
+  // levier a son propre contenu pré-rempli/reconstruit à l'ouverture
+  // (nouvelObjectifInput, renderDaysSimulation, nouveauVolumeInput).
+  const LEVIERS = ['objectif', 'jours', 'volume'];
+
+  function toggleAccordionLevier(levier) {
     if (!dernierPlanGenere) { alert("Génère ou charge d'abord un plan."); return; }
-    const visible = bloc.style.display !== 'none';
-    bloc.style.display = visible ? 'none' : 'block';
-    if (!visible) {
+    const blocCible = document.getElementById('levier-' + levier);
+    const etaitOuvert = blocCible.style.display !== 'none';
+
+    LEVIERS.forEach(l => {
+      const bloc = document.getElementById('levier-' + l);
+      const chevron = document.getElementById('chevron-' + l);
+      const ouvrir = l === levier && !etaitOuvert;
+      bloc.style.display = ouvrir ? 'block' : 'none';
+      chevron.textContent = ouvrir ? '▴' : '▾';
+    });
+
+    if (etaitOuvert) return; // on vient de refermer, rien à préremplir
+
+    if (levier === 'objectif') {
       document.getElementById('nouvelObjectifInput').value = dernierPlanGenere.paramsOrigine?.objectif ?? dernierPlanGenere.objectif ?? '';
       document.getElementById('modifierObjectifMsg').textContent = '';
+    } else if (levier === 'jours') {
+      renderDaysSimulation();
+      document.getElementById('modifierJoursMsg').textContent = '';
+    } else if (levier === 'volume') {
+      document.getElementById('nouveauVolumeInput').value = dernierPlanGenere.paramsOrigine?.volumeActuel ?? '';
+      document.getElementById('modifierVolumeMsg').textContent = '';
+      simulerImpactVolume();
     }
   }
 
@@ -2669,17 +2722,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     return `${m}:${String(s).padStart(2,'0')}`;
   }
 
-  function toggleModifierJours() {
-    const bloc = document.getElementById('blocModifierJours');
-    if (!dernierPlanGenere) { alert("Génère ou charge d'abord un plan."); return; }
-    const visible = bloc.style.display !== 'none';
-    bloc.style.display = visible ? 'none' : 'block';
-    if (!visible) {
-      renderDaysSimulation();
-      document.getElementById('modifierJoursMsg').textContent = '';
-    }
-  }
-
   function renderDaysSimulation() {
     const plan = dernierPlanGenere;
     const days = ['L','M','M','J','V','S','D'];
@@ -2714,7 +2756,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // plan-generator.js, donne ce nombre directement sans avoir à générer un
   // plan complet. Ex. 2→1 séance qualité/semaine divise le gain projeté par 2.
   function simulerImpactJours() {
-    const impactEl = document.getElementById('simulationImpact');
+    const impactEl = document.getElementById('simulationImpactJours');
     const btnAppliquer = document.getElementById('btnAppliquerJours');
     const plan = dernierPlanGenere;
     const joursSelectionnes = [...document.querySelectorAll('#daysGridSimulation .day.selected')]
@@ -2765,6 +2807,133 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     btnAppliquer.disabled = false;
     btnAppliquer.dataset.jours = JSON.stringify(joursSelectionnes);
     btnAppliquer.dataset.jourLongue = jourLongueSelectionne !== null ? String(jourLongueSelectionne) : '';
+  }
+
+  // Levier Volume (26/07/2026) : même règle de pouce que Jours (rythme de
+  // progression proportionnel au nombre de séances qualité/semaine), mais le
+  // volume seul NE change PAS ce nombre — augmenter ou réduire le volume de
+  // départ (paramsOrigine.volumeActuel) influence surtout l'endurance
+  // (EF/LONGUE), pas directement les séances qualité qui font progresser
+  // l'allure dans ce modèle. D'où un avertissement spécifique, honnête sur
+  // cette limite plutôt que de laisser croire à un vrai effet vitesse —
+  // décision actée avec Laurent le 26/07/2026 : garder la même mécanique
+  // partout (cohérence) plutôt qu'inventer un nouvel indicateur (endurance/
+  // blessure) qui demanderait un tout nouveau modèle non disponible.
+  function simulerImpactVolume() {
+    const impactEl = document.getElementById('simulationImpactVolume');
+    const btnAppliquer = document.getElementById('btnAppliquerVolume');
+    const plan = dernierPlanGenere;
+    const input = document.getElementById('nouveauVolumeInput');
+    const nouveauVolume = parseFloat(input.value);
+
+    if (!nouveauVolume || nouveauVolume <= 0) {
+      impactEl.innerHTML = '';
+      btnAppliquer.disabled = true;
+      return;
+    }
+
+    const volumeActuel = plan?.paramsOrigine?.volumeActuel ?? null;
+    const niveau = plan?.profilOrigine?.niveau ?? 'intermediaire';
+    const joursActuels = plan?.profilOrigine?.joursDisponiblesHabituels ?? [];
+    // Le nombre de séances qualité ne change PAS avec le volume seul (cf.
+    // commentaire ci-dessus) — nbQualite reste identique avant/après,
+    // l'objectif estimé ne bouge donc quasiment pas : c'est voulu, pas un bug.
+    const nbQualite = Engine.nbQualiteFor(joursActuels.length, niveau);
+
+    const refTimeSeconds = Engine.parseTimeToSeconds(plan?.paramsOrigine?.tempsReference ?? '50:00');
+    const objectifTimeSeconds = Engine.parseTimeToSeconds(plan?.paramsOrigine?.objectif ?? plan?.paramsOrigine?.tempsReference ?? '50:00');
+
+    const deltaVolume = volumeActuel != null ? nouveauVolume - volumeActuel : null;
+    const signeVolume = deltaVolume != null && deltaVolume >= 0 ? '+' : '';
+
+    let projectionHtml;
+    if (nbQualite === 0) {
+      projectionHtml = `<span class="v">Pas assez de données sur ce plan pour simuler.</span>`;
+    } else {
+      projectionHtml = `
+        <div class="bib-row"><span class="k">Volume de départ</span><span class="v">${volumeActuel != null ? volumeActuel + 'km' : '—'} → ${nouveauVolume}km${deltaVolume != null ? ` (${signeVolume}${deltaVolume}km)` : ''}</span></div>
+        <div class="bib-row"><span class="k">Objectif estimé avec ce changement</span><span class="v accent">${formatTimeMinSec(objectifTimeSeconds)}</span></div>
+      `;
+    }
+
+    impactEl.innerHTML = `
+      <div class="block-label" style="margin-top:0;">Impact estimé sur l'objectif</div>
+      <div class="bib">${projectionHtml}</div>
+      <div class="flag" style="margin-top:10px;">
+        <span class="ico">📐</span>
+        <span>Le volume seul influence peu l'allure dans cette estimation — ce sont surtout les séances qualité (VMA/SEUIL) qui la font progresser. Un volume plus élevé aide surtout l'endurance et la résistance à la fatigue.</span>
+      </div>
+    `;
+    btnAppliquer.disabled = false;
+    btnAppliquer.dataset.volume = String(nouveauVolume);
+  }
+
+  // Même principe de coupure nette que appliquerChangementJours() : semaine
+  // en cours et précédentes inchangées, seul le volume à partir de la
+  // semaine suivante change.
+  async function appliquerChangementVolume() {
+    const msgEl = document.getElementById('modifierVolumeMsg');
+    const btnAppliquer = document.getElementById('btnAppliquerVolume');
+    const plan = dernierPlanGenere;
+    if (!plan) return;
+    if (!plan.profilOrigine || !plan.paramsOrigine) {
+      msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouveauVolume = parseFloat(btnAppliquer.dataset.volume || '0');
+    if (!nouveauVolume || nouveauVolume <= 0) {
+      msgEl.textContent = 'Renseigne un volume valide.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouveauxParams = { ...plan.paramsOrigine, volumeActuel: nouveauVolume };
+    let planPropre;
+    try {
+      planPropre = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
+    } catch (e) {
+      msgEl.textContent = 'Erreur de régénération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+    if (planPropre?.planInvalide) {
+      msgEl.textContent = planPropre.message ?? 'Ce plan ne peut pas être régénéré avec ce volume.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const semaineCharniere = semaineActuelleOuProchaine(plan) + 1;
+    planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
+      if (semaineNouvelle.semaineNum < semaineCharniere) {
+        const semaineAncienne = plan.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
+        return semaineAncienne || semaineNouvelle;
+      }
+      return semaineNouvelle;
+    });
+
+    planPropre.id = plan.id;
+    planPropre.nom = plan.nom;
+    planPropre.statuses = plan.statuses;
+    planPropre.profilOrigine = plan.profilOrigine;
+    planPropre.paramsOrigine = nouveauxParams;
+
+    dernierPlanGenere = planPropre;
+    renderResults(planPropre);
+    document.getElementById('levier-volume').style.display = 'none';
+    document.getElementById('chevron-volume').textContent = '▾';
+    msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
+    msgEl.style.color = 'var(--pace)';
+
+    if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && planPropre.id) {
+      try {
+        await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
+        await afficherPlansSauvegardes();
+      } catch (e) {
+        console.warn('Re-sauvegarde après changement de volume échouée :', e.message);
+      }
+    }
   }
 
   // Applique le changement à partir de la SEMAINE SUIVANTE uniquement — la
@@ -2828,7 +2997,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
     dernierPlanGenere = planPropre;
     renderResults(planPropre);
-    document.getElementById('blocModifierJours').style.display = 'none';
+    document.getElementById('levier-jours').style.display = 'none';
+    document.getElementById('chevron-jours').textContent = '▾';
     msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
     msgEl.style.color = 'var(--pace)';
 
@@ -2914,7 +3084,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
     dernierPlanGenere = nouveauPlan;
     renderResults(nouveauPlan);
-    document.getElementById('blocModifierObjectif').style.display = 'none';
+    document.getElementById('levier-objectif').style.display = 'none';
+    document.getElementById('chevron-objectif').textContent = '▾';
     msgEl.textContent = '';
 
     if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && nouveauPlan.id) {
