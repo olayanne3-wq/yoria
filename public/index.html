@@ -955,12 +955,19 @@ function obtenirHistoriqueACWR() {
 // lui-même ait besoin d'accéder au plan.
 function obtenirSeancesPlanifieesManquees() {
   const aujourdhui = new Date().toISOString().slice(0, 10);
-  // Séances passées (date <= aujourd'hui), triées chronologiquement, avec un
-  // statut déjà renseigné (les séances futures n'ont jamais de statut) —
-  // ignore les séances non encore échues pour ne jamais compter un "à venir"
-  // comme une séance manquée.
+  // Bug corrigé le 27/07/2026 (signalé par Laurent : la carte affichait "2
+  // séances de qualité ratées d'affilée" en citant un EF et une LONGUE — ni
+  // l'une ni l'autre n'est une séance qualité). Cause : ce filtre sur
+  // seancesPassees ne restreignait JAMAIS aux types VMA/SEUIL/SPEC malgré
+  // le libellé R-070 ("Séances de qualité ratées consécutives") et le
+  // commentaire de conception dans decision-engine-rules.classic.js
+  // ("le signal dit précisément 'tu rates tes séances de qualité', alléger
+  // une EF ne répond pas à ce problème") — la fonction regardait en réalité
+  // les 2 dernières séances passées, peu importe leur type. Ajout du filtre
+  // sur les mêmes types qualité utilisés partout ailleurs dans ce fichier
+  // (cf. ["VMA","SEUIL","SPEC"], ex. ligne ~4028).
   const seancesPassees = ALL_SESSIONS
-    .filter(s => s.date && s.date <= aujourdhui)
+    .filter(s => s.date && s.date <= aujourdhui && ["VMA","SEUIL","SPEC"].includes(s.type))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (seancesPassees.length < 2) {
