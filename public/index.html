@@ -1999,7 +1999,19 @@ function analyserSemaineActuelle(weekNum, semainePrecedenteAnalyse) {
 // cf. decision-engine-trend-analysis.classic.js).
 function analyserTendance(fenetreSemaines) {
   if (typeof DecisionEngineTrendAnalysis === 'undefined') return null;
-  const semaineActuelleNum = currentWeek();
+  // Bug corrigé le 27/07/2026 (signalé par Laurent : R-080 affichait un
+  // écart moyen de -50.5% alors que ses 3 vraies dernières semaines
+  // complètes montraient -3%/-14%/-37%, moyenne réelle ~-18%). Cause :
+  // cette boucle allait jusqu'à semaineActuelleNum INCLUSE — la semaine EN
+  // COURS, pas encore terminée. Un lundi matin, le volume déjà réalisé
+  // cette semaine est quasi nul comparé au volume prévu de la semaine
+  // COMPLÈTE, donnant un écart proche de -100% qui tire fortement la
+  // moyenne glissante vers le bas jusqu'au dimanche soir suivant — signal
+  // structurellement faux, pas un vrai déficit d'assiduité. Même principe
+  // déjà appliqué ailleurs dans ce fichier pour les allures dynamiques
+  // (derniereSemainePaireComplete, cf. verifierEtAppliquerAlluresDynamiques) :
+  // ne jamais analyser une semaine avant qu'elle soit entièrement passée.
+  const semaineActuelleNum = currentWeek() - 1;
   const premiereSemaineNum = Math.max(1, semaineActuelleNum - fenetreSemaines + 1);
 
   const historiqueSemaines = [];
