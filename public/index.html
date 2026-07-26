@@ -509,6 +509,11 @@ if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
     swappedSessions = load(clePourPlan("lk_swapped_sessions"), {});
     notesList = load(clePourPlan("lk_notes"), []);
     sessionNotes = load(clePourPlan("lk_session_notes"), {});
+    // Correctif 26/07/2026 (bug badge 😴) : ALL_SESSIONS n'était jamais
+    // recalculée après ce rechargement de statuses depuis Supabase (autre
+    // appareil) — render() redessinait avec statutEffectif figé sur
+    // l'ancienne valeur (souvent 😴 auto-inféré à tort).
+    if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
     render();
   });
 }
@@ -745,6 +750,24 @@ function clePourPlan(cle) {
 let view = "dashboard";
 let selectedWeek = 1;
 let statuses = load(clePourPlan("lk_statuses"), {});
+// Correctif 26/07/2026 (bug badge 😴 persistant sur séances déjà validées,
+// visible même après un rechargement complet de l'app) : cause racine
+// trouvée — "let ALL_SESSIONS = recalculerAllSessions()" (ligne ~709) est
+// exécutée AVANT que "statuses" ne soit chargée depuis localStorage (ici).
+// recalculerAllSessions() protège l'accès à statuses par un try/catch
+// (contre la temporal dead zone), mais au tout premier appel statuses
+// n'est simplement pas encore déclarée : le catch avale l'erreur et
+// statutsActuels reste à {} — donc le tout premier calcul de
+// statutEffectif se fait avec TOUS les statuts vides, produisant à tort
+// un "😴" pour chaque séance passée. Comme rien ne rappelait
+// recalculerAllSessions() juste après ce chargement, ALL_SESSIONS restait
+// figée sur ce premier calcul erroné jusqu'à un des rares recalculs
+// complets ailleurs dans l'app (changement de plan, swap, ou syncStrava()
+// qui passe par un autre chemin) — d'où le symptôme observé : seule une
+// synchro Strava manuelle "corrigeait" l'affichage. Recalcul immédiat ici,
+// juste après le vrai chargement de statuses, pour que le tout premier
+// rendu de l'app soit déjà correct.
+if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Source de données par défaut affichée sur la carte du jour (docs/
 // source-donnees-seances.md) — "strava" | "manuel" | "montre" | "gpx".
 // N'est PAS un mode exclusif : la correction manuelle reste toujours
