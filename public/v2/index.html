@@ -1444,8 +1444,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
             </div>
             <div id="levier-objectif" style="display:none; padding:0 14px 14px;">
               <div class="date-field" style="margin-top:6px;">
-                <input type="text" id="nouvelObjectifInput" placeholder="Nouveau temps visé (ex. 47:30)">
+                <input type="text" id="nouvelObjectifInput" placeholder="Nouveau temps visé (ex. 47:30)" oninput="verifierFaisabiliteNouvelObjectif()">
               </div>
+              <div id="feasibiliteNouvelObjectif" style="margin-top:8px;"></div>
               <button class="btn-mini" style="margin-top:8px;" onclick="regenererAvecNouvelObjectif()">Régénérer avec ce nouvel objectif</button>
               <div id="modifierObjectifMsg" style="margin-top:6px; font-size:13px;"></div>
             </div>
@@ -2600,6 +2601,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if (levier === 'objectif') {
       document.getElementById('nouvelObjectifInput').value = dernierPlanGenere.paramsOrigine?.objectif ?? dernierPlanGenere.objectif ?? '';
       document.getElementById('modifierObjectifMsg').textContent = '';
+      verifierFaisabiliteNouvelObjectif();
     } else if (levier === 'jours') {
       renderDaysSimulation();
       document.getElementById('modifierJoursMsg').textContent = '';
@@ -3005,6 +3007,54 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         console.warn('Re-sauvegarde après changement de jours échouée :', e.message);
       }
     }
+  }
+
+  // Garde-fou faisabilité (26/07/2026, demandé par Laurent après avoir testé
+  // le levier Objectif sans aucun avertissement) : réutilise EXACTEMENT la
+  // même logique que le formulaire de création du wizard (cf. plus haut,
+  // categoriserAmpleurObjectif + seuil "ambitieuse sur <12 semaines"), pour
+  // rester cohérent avec ce que le coureur a déjà vu au moment de créer son
+  // plan. Avertit seulement — ne bloque jamais la régénération (décision
+  // actée : le coureur reste seul juge, comme partout ailleurs dans l'app,
+  // ex. saisie manuelle qui prime sur Strava sans confirmation).
+  function verifierFaisabiliteNouvelObjectif() {
+    const el = document.getElementById('feasibiliteNouvelObjectif');
+    const plan = dernierPlanGenere;
+    const valeur = document.getElementById('nouvelObjectifInput').value.trim();
+    if (!plan?.paramsOrigine || !valeur) { el.innerHTML = ''; return; }
+
+    const refSeconds = Engine.parseTimeToSeconds(plan.paramsOrigine.tempsReference);
+    const objSeconds = Engine.parseTimeToSeconds(valeur);
+    if (!refSeconds || !objSeconds) { el.innerHTML = ''; return; }
+
+    // Semaines RESTANTES jusqu'à la course (pas la durée totale du plan) —
+    // même correctif de principe que celui appliqué le même jour à la
+    // projection de l'app principale (public/index.html) : extrapoler sur
+    // la durée totale plutôt que le temps réellement disponible sous-estime
+    // la difficulté d'un objectif tardif dans le plan.
+    let semainesRestantes = null;
+    if (plan.dateCourse) {
+      const joursRestants = (new Date(plan.dateCourse) - new Date()) / 86400000;
+      semainesRestantes = Math.max(1, Math.round(joursRestants / 7));
+    }
+
+    let html, ico, couleur;
+    if (objSeconds >= refSeconds) {
+      html = "L'objectif n'est pas plus rapide que ton temps de référence actuel — vérifie la valeur saisie.";
+      ico = '⚠️'; couleur = 'var(--signal)';
+    } else {
+      const ampleur = Engine.categoriserAmpleurObjectif(refSeconds, objSeconds);
+      const gainPct = Math.round((refSeconds - objSeconds) / refSeconds * 100);
+      if (ampleur === 'ambitieuse' && semainesRestantes !== null && semainesRestantes < 12) {
+        html = `Objectif ambitieux (${gainPct}% de gain visé) sur seulement ${semainesRestantes} semaines restantes — marge de progression serrée.`;
+        ico = '⚠️'; couleur = 'var(--signal)';
+      } else {
+        const qualif = ampleur === 'faible' ? 'prudent' : (ampleur === 'moderee' ? 'réaliste' : 'ambitieux mais jouable');
+        html = `Objectif ${qualif}${semainesRestantes !== null ? ` sur ${semainesRestantes} semaines restantes` : ''}.`;
+        ico = '✅'; couleur = 'var(--pace)';
+      }
+    }
+    el.innerHTML = `<div class="flag" style="border-color:${couleur};"><span class="ico">${ico}</span><span>${html}</span></div>`;
   }
 
   async function regenererAvecNouvelObjectif() {
