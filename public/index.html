@@ -435,7 +435,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // "aucun plan" est un état parfaitement normal à afficher clairement,
       // pas à masquer derrière un plan qui n'a jamais existé pour ce compte.
       planBrut = generatePlan(
-        { niveau: 'intermediaire', joursDisponiblesHabituels: [1,2,3,4,5,6], renforcementMusculaire: true, fcMaxConnue: 181 },
+        { niveau: 'intermediaire', joursDisponiblesHabituels: [1,2,3,4,5,6], fcMaxConnue: 181 },
         { distance: '10K', refDistance: '10K', tempsReference: '50:21', objectif: '48:30', dateDebut: '2026-06-22', dateCourse: '2026-09-06', volumeActuel: 30, contraintesPonctuelles: [], raceName: "10 km Gem'Aubagne", raceLocation: 'Aubagne', raceUrl: 'https://new.sportsnconnect.com/client/events/4qa4QCJ1DtZYPSzSCbjJJK-5-and-10-km-gemaubagne' }
       );
       // Garde-fou (24/07/2026, cf. VOLUME_JOURS_INCOMPATIBLE dans
@@ -3626,8 +3626,7 @@ function renderDashboard() {
           niveau: profilStocke?.niveau || 'intermediaire',
           anneeNaissance: profilStocke?.anneeNaissance || undefined,
           fcMaxConnue: profilStocke?.fcMax || undefined,
-          joursDisponiblesHabituels: joursDisponibles,
-          renforcementMusculaire: false
+          joursDisponiblesHabituels: joursDisponibles
         };
 
         // tempsReference/refDistance/volumeActuel/accent ne sont pas non plus
@@ -3725,7 +3724,6 @@ function renderDashboard() {
           anneeNaissance: profilStocke?.anneeNaissance || undefined,
           fcMaxConnue: profilStocke?.fcMax || undefined,
           joursDisponiblesHabituels: joursDisponibles,
-          renforcementMusculaire: false,
           // Volume de départ : pas de trace fiable de ce qui a été saisi au
           // wizard pour ce plan (mêmes limites que blocSuivantEl un peu
           // plus haut — profilOrigine/paramsOrigine non stockés sur le plan
@@ -5283,7 +5281,6 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
     anneeNaissance: profilStocke?.anneeNaissance || undefined,
     fcMaxConnue: profilStocke?.fcMax || undefined,
     joursDisponiblesHabituels: joursDisponibles,
-    renforcementMusculaire: false,
     palierMarcheCourse: nouveauPalierId
   };
   const params = {
