@@ -587,7 +587,7 @@ function distanceCirculaire(a, b) {
   return Math.min(diff, 7 - diff);
 }
 
-export function placerSemaine({ joursDisponibles, niveau, renforcementActif, modulation = {}, forcerAucuneQualite = false, jourLongueChoisi = null }) {
+export function placerSemaine({ joursDisponibles, niveau, modulation = {}, forcerAucuneQualite = false, jourLongueChoisi = null }) {
   const days = [...joursDisponibles].sort((a, b) => a - b);
   const nb = days.length;
   const warnings = [];
@@ -675,14 +675,6 @@ export function placerSemaine({ joursDisponibles, niveau, renforcementActif, mod
         code: 'ECART_RECUPERATION_INSUFFISANT',
         message: `Moins de 48h de récupération entre la fin d'une semaine (jour ${hardDays[hardDays.length - 1]}) et le début de la suivante (jour ${hardDays[0]}).`
       });
-    }
-  }
-
-  if (renforcementActif) {
-    const lendemainLongue = (longueDay + 1) % 7;
-    const jourRepos = Object.keys(assignment).length < 7 && !assignment[lendemainLongue] ? lendemainLongue : null;
-    if (jourRepos !== null) {
-      assignment[jourRepos] = { type: 'repos', renfo: true, contenu: 'Repos + renforcement musculaire (25-30min)', kmEstime: 0 };
     }
   }
 
@@ -1133,7 +1125,6 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
   const { assignment, warnings: warningsPlacement } = placerSemaine({
     joursDisponibles: profil.joursDisponiblesHabituels,
     niveau: profil.niveau,
-    renforcementActif: profil.renforcementMusculaire,
     modulation: {},
     forcerAucuneQualite: false,
     jourLongueChoisi: profil.jourLongueChoisi ?? null
@@ -1622,7 +1613,6 @@ export function generatePlan(profil, params) {
       const { assignment, warnings: warningsPlacement } = placerSemaine({
         joursDisponibles: profil.joursDisponiblesHabituels,
         niveau: profil.niveau,
-        renforcementActif: profil.renforcementMusculaire,
         modulation,
         forcerAucuneQualite: phase.nom === 'Reacclimatation',
         jourLongueChoisi: profil.jourLongueChoisi ?? null
