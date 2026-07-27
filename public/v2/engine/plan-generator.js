@@ -51,35 +51,9 @@ export function riegelPredict(t1Seconds, d1Km, d2Km) {
   return t1Seconds * Math.pow(d2Km / d1Km, 1.06);
 }
 
-// ── Formules Daniels-Gilbert (22/07/2026) ───────────────────────────────────
-// Riegel suppose que la performance de départ est un effort MAXIMAL (un
-// record), ce qui en fait un mauvais outil pour extrapoler depuis une
-// séance de SEUIL — allure volontairement sous-maximale, tenue à environ
-// 86-88 % du VO2max, jamais "à fond" (Daniels' Running Formula, chapitre 4,
-// section Threshold Running). Appliquer Riegel à une allure seuil revient à
-// traiter cette allure comme si c'était déjà la limite du coureur, ce qui
-// sous-estime systématiquement sa vraie vitesse sur une autre distance —
-// bug réel constaté le 22/07/2026 (Laurent) : un bon seuil à 4:59/km
-// donnait une estimation 10K de 52:58 via Riegel, contre 49:15 avec la
-// méthode ci-dessous (~4 minutes d'écart), alors que la même séance
-// faisait par ailleurs progresser les autres sources (VMA, SPEC).
-//
-// Ces deux fonctions sont les équations Daniels-Gilbert originales,
-// publiées dans Daniels' Running Formula et utilisées pour construire les
-// tables VDOT du chapitre 5 (non disponible dans le fichier projet fourni
-// à Claude — équations vérifiées par recherche web le 22/07/2026 auprès de
-// plusieurs calculateurs VDOT tiers indépendants qui citent la même
-// formule caractéristique, cohérente avec les pourcentages VO2max déjà
-// confirmés dans le chapitre 4 du livre : seuil ≈ 86-88% VO2max, tenable
-// environ 60 minutes en course).
-//
-// Coût en oxygène d'une vitesse donnée (v en m/min) → VO2 en ml/kg/min.
 export function vo2FromVelocity(v) {
   return -4.60 + 0.182258 * v + 0.000104 * v * v;
 }
-// Inverse de vo2FromVelocity — recherche par dichotomie, la fonction étant
-// strictement croissante sur la plage de vitesses de course (100-500 m/min
-// couvre largement tout du jogging au sprint).
 export function velocityFromVo2(vo2) {
   let lo = 100, hi = 500;
   for (let i = 0; i < 60; i++) {
@@ -88,57 +62,34 @@ export function velocityFromVo2(vo2) {
   }
   return (lo + hi) / 2;
 }
-// Fraction du VO2max soutenable pour une durée d'effort donnée (t en
-// minutes) — plus l'effort est long, plus cette fraction diminue (on ne
-// peut pas tenir 100% du VO2max plus d'environ 10-11 minutes).
 export function pctVo2MaxPourDuree(tMinutes) {
   return 0.8 + 0.1894393 * Math.exp(-0.012778 * tMinutes) + 0.2989558 * Math.exp(-0.1932605 * tMinutes);
 }
-// Calcule un VDOT (indice de forme unique) à partir d'une vitesse tenue à
-// une intensité connue pendant une durée connue — ex. allure seuil (vSeuil,
-// tenable ~60min en course chez Daniels) → VDOT représentatif du coureur.
 export function vdotDepuisEffortSousMaximal(vitesseKmMin, dureeMinTenableEnCourse) {
   const vo2 = vo2FromVelocity(vitesseKmMin);
   const pct = pctVo2MaxPourDuree(dureeMinTenableEnCourse);
   return vo2 / pct;
 }
-// Convertit un VDOT en vitesse (m/min) pour une distance cible donnée, par
-// résolution itérative (la durée de la course cible dépend elle-même de la
-// vitesse qu'on cherche — quelques itérations suffisent à converger,
-// exactement comme pour construire les tables VDOT du livre).
 export function vitesseDepuisVdotEtDistance(vdot, distanceM) {
-  let dureeMinEstimee = distanceM / 200; // estimation grossière de départ (~200 m/min)
+  let dureeMinEstimee = distanceM / 200;
   for (let i = 0; i < 20; i++) {
     const pct = pctVo2MaxPourDuree(dureeMinEstimee);
     const vo2Cible = vdot * pct;
     const v = velocityFromVo2(vo2Cible);
     dureeMinEstimee = distanceM / v;
   }
-  return distanceM / dureeMinEstimee; // m/min
+  return distanceM / dureeMinEstimee;
 }
 
 export const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
 
-// ---------------------------------------------------------------------------
-// Section 6 (zones d'allure) — ratios calibrés sur le plan réel validé
-// (Laurent V., 10K réf 50'21" -> allures observées EF/Seuil/VMA)
-// ---------------------------------------------------------------------------
-
 export const PACE_RATIOS = {
   recup: 1.33,
-  E: 1.225,   // milieu de la fourchette observée 1.19-1.26
+  E: 1.225,
   T: 0.99,
   I: 0.855,
   V: 0.80
 };
-
-// ---------------------------------------------------------------------------
-// Jalons narratifs de transition (doc convergence-v1-v2.md, section 2.5) —
-// banque de variantes par jalon, tirée au sort à la génération du plan.
-// Fusionnées dans le champ `contenu` de la séance concernée, jamais un champ
-// séparé (cohérent avec la décision 2.1 : contenu unique plutôt que
-// warmup/session/cooldown/notes éclatés).
-// ---------------------------------------------------------------------------
 
 export const JALONS_TRANSITION = {
   'derniere-longue-avant-affutage': [
@@ -159,19 +110,6 @@ export const JALONS_TRANSITION = {
   ]
 };
 
-/**
- * Détecte les transitions de phase dans le plan déjà construit et injecte une
- * note (piochée aléatoirement dans JALONS_TRANSITION) dans le contenu de la
- * séance concernée. Mute `semaines` en place (ajoute la note au contenu
- * existant), ne retourne rien.
- *
- * Règles de détection (génériques, aucune date/phase codée en dur) :
- * - Début de phase : phase de la semaine différente de la semaine précédente
- * - Fin de phase avant Affûtage : dernière semaine où phase !== 'Affutage'
- * - Dernière longue avant Affûtage : dernière séance de type 'longue' de
- *   cette même semaine de transition
- * - Dernière semaine du plan entier : jalon "avant course"
- */
 export function injecterJalonsTransition(semaines) {
   const piocher = (cle) => {
     const variantes = JALONS_TRANSITION[cle];
@@ -187,8 +125,6 @@ export function injecterJalonsTransition(semaines) {
     const precedente = idx > 0 ? semaines[idx - 1] : null;
     const suivante = idx < semaines.length - 1 ? semaines[idx + 1] : null;
 
-    // Début de phase (jamais sur la toute première semaine du plan : ce
-    // n'est pas une "transition", juste le départ)
     if (precedente && semaine.phase !== precedente.phase) {
       if (semaine.phase === 'Affutage') {
         const premierJour = Object.values(semaine.assignment)[0];
@@ -199,19 +135,14 @@ export function injecterJalonsTransition(semaines) {
       }
     }
 
-    // Dernière semaine avant Affûtage : note sur la dernière séance longue
     if (suivante && suivante.phase === 'Affutage' && semaine.phase !== 'Affutage') {
       const jours = Object.values(semaine.assignment);
       const derniereLongue = [...jours].reverse().find(j => j.type === 'longue');
       ajouterNote(derniereLongue, piocher('derniere-longue-avant-affutage'));
     }
 
-    // Dernière semaine du plan entier (semaine de course)
     if (idx === semaines.length - 1) {
       const jours = Object.values(semaine.assignment);
-      // Note sur toutes les séances EF de la semaine de course (hors la
-      // séance de course elle-même, traitée séparément — cf. 2.7, non
-      // implémenté à ce stade)
       jours.forEach(j => {
         if (j.type === 'ef') ajouterNote(j, piocher('derniere-semaine-avant-course'));
       });
@@ -219,16 +150,6 @@ export function injecterJalonsTransition(semaines) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Notes pratiques par famille de séance (doc convergence-v1-v2.md, section
-// 2.3) — même mécanisme que JALONS_TRANSITION (banque de variantes tirée au
-// sort, fusionnée dans `contenu`), déclenché par le type/sous-type de séance
-// plutôt qu'une transition de phase.
-// ---------------------------------------------------------------------------
-
-// Regroupe un sousType de séance qualité (cf. ROTATION_SOUS_TYPE) en famille
-// pour le choix de la banque de notes. 'test' n'a pas de note pratique ici :
-// traité à part (2.6, cohérence narrative de la semaine test).
 export const FAMILLE_SOUS_TYPE = {
   'seuil-court': 'seuil', 'seuil': 'seuil', 'seuil-negatif': 'seuil',
   'tempo-court': 'seuil', 'seuil-2min': 'seuil',
@@ -440,62 +361,19 @@ export function computeAllures({ refTimeSeconds, refDistanceKm, objectifTimeSeco
   return allures;
 }
 
-// ── Allures dynamiques (22/07/2026) ─────────────────────────────────────────
-// Jusqu'ici, les allures d'entraînement (E/T/I/etc., via computeAllures())
-// restaient calibrées sur plan.paramsOrigine.tempsReference — la référence
-// de forme mesurée à la CRÉATION du plan, jamais mise à jour ensuite même
-// quand le prédicteur (predict10K(), index.html) détecte une vraie
-// progression. Résultat concret signalé par Laurent : sur un plan visant
-// 45:00 avec une référence de départ à 50:19, les allures restaient
-// calibrées sur 50:19 pendant toute la durée du plan, sans jamais se
-// resserrer vers ce qui serait nécessaire pour l'objectif — même après
-// plusieurs semaines de progression réelle mesurée par le prédicteur.
-//
-// Fonction pure (aucune dépendance à des globales d'index.html) : reçoit
-// l'historique de prédiction pertinent et calcule s'il faut, et vers
-// quelle valeur, recalibrer la référence utilisée par computeAllures().
-// Le calcul lui-même (predict10K(), fiabilitePlanPonderee()) reste dans
-// index.html — cette fonction ne fait que la décision de recalibrage à
-// partir de deux points de mesure déjà calculés.
-//
-// Principes validés avec Laurent le 22/07/2026 :
-// - Rythme : évalué à la fin de chaque semaine PAIRE du plan (S2, S4, S6...)
-//   — pas un rythme calendaire glissant, aligné sur les vraies limites de
-//   semaines du plan pour rester lisible ("recalculé après S4").
-// - Seuil de signification : 1% de l'estimation actuelle, pour ignorer le
-//   bruit de mesure normal d'une semaine à l'autre.
-// - Progression (estimation plus rapide, au-delà du seuil) : appliquée
-//   immédiatement, sans confirmation supplémentaire — le risque d'aller
-//   trop vite est faible ici, puisqu'on ne fait que suivre une amélioration
-//   déjà mesurée et déjà passée par les garde-fous du prédicteur lui-même
-//   (fiabilitePlanPonderee, clamp borneBrute).
-// - Régression (estimation plus lente, au-delà du seuil) : appliquée
-//   SEULEMENT si confirmée sur 2 périodes de 2 semaines consécutives — pour
-//   éviter de redurcir... non, d'assouplir les allures sur la base d'un
-//   simple accident ponctuel (mauvaise semaine, maladie passagère).
-//
-// @param estimationActuelle - predict10K().time à la date d'évaluation (secondes)
-// @param estimationPeriodePrecedente - même valeur, 2 semaines plus tôt (secondes), ou null si pas encore disponible
-// @param regressionDejaEnAttente - { depuis: estimation, semaineNum } si une régression a déjà été détectée à la période précédente sans être encore confirmée, sinon null
-// @returns { nouvelleReference: number|null, statut: 'progression'|'regression_confirmee'|'regression_en_attente'|'stable'|'insuffisant', messageUtilisateur: string|null }
 export function calculerReferenceCouranteAllures({ estimationActuelle, estimationPeriodePrecedente, referenceActuellementUtilisee, regressionDejaEnAttente }) {
   if (estimationPeriodePrecedente == null) {
     return { nouvelleReference: null, statut: 'insuffisant', messageUtilisateur: null };
   }
 
-  const delta = estimationActuelle - estimationPeriodePrecedente; // <0 = progression, >0 = régression
+  const delta = estimationActuelle - estimationPeriodePrecedente;
   const seuil = estimationActuelle * 0.01;
 
   if (Math.abs(delta) <= seuil) {
-    // Pas assez significatif pour être une vraie tendance — mais si une
-    // régression était en attente de confirmation, elle est annulée (pas de
-    // 3e chance : il faut 2 périodes CONSÉCUTIVES, un retour au stable
-    // remet le compteur à zéro).
     return { nouvelleReference: null, statut: 'stable', messageUtilisateur: null };
   }
 
   if (delta < 0) {
-    // Progression confirmée par le seuil — appliquée immédiatement.
     return {
       nouvelleReference: estimationActuelle,
       statut: 'progression',
@@ -503,7 +381,6 @@ export function calculerReferenceCouranteAllures({ estimationActuelle, estimatio
     };
   }
 
-  // Régression : besoin de confirmation sur 2 périodes consécutives.
   if (regressionDejaEnAttente) {
     return {
       nouvelleReference: estimationActuelle,
@@ -515,9 +392,6 @@ export function calculerReferenceCouranteAllures({ estimationActuelle, estimatio
   return { nouvelleReference: null, statut: 'regression_en_attente', messageUtilisateur: null };
 }
 
-// Petit helper local de formatage — évite une dépendance croisée avec
-// fmtTime() (index.html), qui a une signature légèrement différente et
-// n'est pas exportée par ce module.
 function fmtMinSec(totalSeconds) {
   const m = Math.floor(totalSeconds / 60);
   const s = Math.round(totalSeconds % 60);
@@ -531,18 +405,6 @@ export const PLAFONDS_VOLUME = {
   'Marathon': { debutant: [35, 40], intermediaire: [45, 55], confirme: [55, 70] }
 };
 
-// Seuils minimums EF/longue (24/07/2026, décision avec Laurent) — en
-// dessous, une séance n'a plus de vraie substance d'entraînement (un EF de
-// quelques centaines de mètres n'apporte rien, une "longue" de moins de
-// 5km n'en est plus une). Utilisés pour détecter une combinaison
-// structurellement incompatible entre le nombre de jours disponibles et le
-// volume hebdomadaire (ex. beaucoup de jours choisis mais volume de départ
-// encore faible) — cf. PLAN_VOLUME_JOURS_INCOMPATIBLE plus bas dans
-// generatePlan(). Cette limite existait déjà comme simple avertissement
-// (VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION, seuil 2km, jamais bloquant) ;
-// elle devient ici un vrai critère de blocage quand le problème touche une
-// majorité de la phase Construction, pas juste une semaine isolée en début
-// de progression (montée en charge normale, pas un signe d'incompatibilité).
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
@@ -561,6 +423,25 @@ export function categoriserAmpleurObjectif(refTimeSeconds, objectifTimeSeconds) 
   if (gain < 0.05) return 'faible';
   if (gain <= 0.10) return 'moderee';
   return 'ambitieuse';
+}
+
+// Phase du plan (Construction/Specifique/Affutage/...) correspondant à une
+// date donnée — fonction pure en LECTURE SEULE, sans dépendance DOM ni
+// variable globale (27/07/2026, cf. inventaire §16, chantiers "pondérer
+// Spécifique/Affûtage dans la Projection" et "changement de date de
+// course"). Utilisée à la fois côté dashboard classic (index.html, sur
+// window.__PLAN_BRUT__) et côté wizard (v2/index.html, sur
+// dernierPlanGenere) — d'où sa place ici plutôt que dupliquée dans les
+// deux fichiers consommateurs. Retourne null si dateDebut ou semaines
+// sont absents (plan de repli, Mode Forme sans notion de phases
+// identiques, etc.) — jamais bloquant pour l'appelant.
+export function phaseAtDate(plan, dateStr) {
+  if (!plan?.dateDebut || !Array.isArray(plan.semaines)) return null;
+  const debut = new Date(plan.dateDebut + "T00:00:00Z");
+  const cible = new Date(dateStr + "T00:00:00Z");
+  const semaineNum = Math.floor((cible - debut) / (7*86400000)) + 1;
+  const semaineInfo = plan.semaines.find(s => s.semaineNum === semaineNum);
+  return semaineInfo?.phase ?? null;
 }
 
 export function computePhases({ dateDebut, dateCourse, distance, niveau, ampleurObjectif }) {
@@ -1216,45 +1097,13 @@ export function genererContenuTest({ distance, alluresSec }) {
   return { sousType: 'test', contenu, kmEstime, distanceTestKm, structureIntervalles };
 }
 
-// ---------------------------------------------------------------------------
-// Test semi-Cooper préliminaire (plan course) — flux "je n'ai pas de
-// référence" côté wizard course (21/07/2026, décision avec Laurent).
-// Même principe que plan-forme.js (generatePlanFormeAvecTest /
-// completerBlocApresTest) mais contraint par dateCourse : la suite ne peut
-// pas être un bloc de taille fixe, elle doit respecter le nombre de
-// semaines réellement restantes jusqu'à la course. Semaine 1 = test seul
-// (enAttenteTest: true), semaines 2 à N générées ensuite en ré-appelant
-// generatePlan() normalement avec dateDebut décalé de 7 jours — computePhases
-// recalcule alors totalSemaines tout seul à partir du temps restant, pas de
-// duplication du pipeline de phases/volume ici.
-// ---------------------------------------------------------------------------
-
 const DUREE_TEST_SEMI_COOPER_MIN = 6;
 const DUREE_ECHAUFFEMENT_TEST_SEMI_COOPER_MIN = 15;
 const DUREE_RETOUR_CALME_TEST_SEMI_COOPER_MIN = 10;
 
-// Ratio documenté (littérature demi-Cooper) : un coureur tient environ 90%
-// de sa VMA sur 10K — indépendant de PACE_RATIOS.I, qui lui est calibré sur
-// des séances VMA classiques (répétitions courtes avec récupération, cf.
-// commentaire sur PACE_RATIOS plus haut) et ne représente pas la même
-// notion de "vitesse proche de VMA" qu'un effort continu de 6 minutes.
 const RATIO_VMA_VERS_10K = 0.90;
 
 export function estimerReferenceDepuisSemiCooper(distanceMetres) {
-  // BUG corrigé le 22/07/2026 (signalé par Laurent, allures EF/10K
-  // incohérentes avec la VMA réelle) : le calcul assimilait à tort la
-  // vitesse du test demi-Cooper à l'allure I du système Daniels
-  // (PACE_RATIOS.I=0.855, calibré empiriquement sur les séances VMA
-  // classiques de Laurent — répétitions courtes avec récupération), puis
-  // en déduisait le 10K par ce même ratio. Ces deux "vitesses proches de
-  // VMA" ne sont pas équivalentes : un effort maximal CONTINU de 6 minutes
-  // (demi-Cooper) est mécaniquement plus lent qu'une répétition VMA courte
-  // avec récupération. Chaîner les deux ratios amplifiait l'écart et
-  // sous-estimait fortement le 10K équivalent (ex. VMA=11km/h donnait un
-  // 10K en 1h03'48 au lieu de ~1h00'36 attendu). Corrigé : conversion
-  // directe VMA -> 10K via le ratio documenté de la littérature du test
-  // demi-Cooper (~90% de la VMA tenue sur 10K), sans passer par
-  // PACE_RATIOS.I qui n'a pas vocation à représenter ce protocole précis.
   const vmaKmh = distanceMetres / 100;
   const allure10kKmh = vmaKmh * RATIO_VMA_VERS_10K;
   const allure10kSecKm = 3600 / allure10kKmh;
@@ -1280,14 +1129,6 @@ function genererContenuFootingLibrePreTest() {
   };
 }
 
-/**
- * Génère uniquement la semaine 1 d'un plan course quand aucune référence de
- * temps n'est fournie (params.tempsReference absent). Retourne
- * enAttenteTest: true — index.html doit détecter ce champ pour proposer la
- * suite (saisie/détection du résultat, puis completerPlanApresTestSemiCooper).
- * dateCourse est conservée dès cette étape pour permettre le calcul du
- * nombre de semaines restantes à l'étape suivante.
- */
 export function generatePlanAvecTestSemiCooper(profil, params) {
   const { assignment, warnings: warningsPlacement } = placerSemaine({
     joursDisponibles: profil.joursDisponiblesHabituels,
@@ -1298,26 +1139,8 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
     jourLongueChoisi: profil.jourLongueChoisi ?? null
   });
 
-  // Placement du test sur le PREMIER jour disponible de la semaine
-  // (22/07/2026, demande explicite de Laurent) — pas forcément le jour
-  // "qualité" désigné par placerSemaine() (son algorithme d'espacement
-  // n'a aucun sens ici, cette semaine n'a qu'une seule vraie séance
-  // structurée). Le jour d'origine (quel que soit son type — ef, longue,
-  // qualite) est réassigné explicitement au type test.
-  //
-  // BUG corrigé le 22/07/2026 : Math.min(...Object.keys(assignment)) donne
-  // le plus petit jourIndex ISO (0=lundi...6=dimanche) de la SEMAINE
-  // CALENDAIRE, sans tenir compte de dateDebut réel du plan. Si le plan
-  // démarre en cours de semaine (ex. mercredi), v1-bridge.js neutralise en
-  // "REPOS" tout jour dont la date calculée tombe avant dateDebut (même
-  // garde-fou documenté là-bas) — le test se retrouvait placé sur un jour
-  // neutralisé, donc jamais affiché du tout côté dashboard. Calcul du
-  // premier jour UTILE : le plus petit jourIndex de assignment dont la
-  // date réelle (lundi de la semaine + jourIndex) tombe bien à partir de
-  // dateDebut — même logique que le garde-fou de v1-bridge.js
-  // (avantDebutDuPlan), reproduite ici pour rester cohérent.
   const dateDebutPlan = new Date(params.dateDebut + 'T00:00:00Z');
-  const jourSemaineISODebut = (dateDebutPlan.getUTCDay() + 6) % 7; // 0=lundi...6=dimanche
+  const jourSemaineISODebut = (dateDebutPlan.getUTCDay() + 6) % 7;
   const lundiDeLaSemaine = new Date(dateDebutPlan);
   lundiDeLaSemaine.setUTCDate(dateDebutPlan.getUTCDate() - jourSemaineISODebut);
 
@@ -1330,7 +1153,7 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
     });
   const premierJour = joursUtiles.length > 0
     ? Math.min(...joursUtiles)
-    : Math.min(...Object.keys(assignment).map(Number)); // repli si aucun jour utile (cas limite improbable)
+    : Math.min(...Object.keys(assignment).map(Number));
 
   for (const [jour, seance] of Object.entries(assignment)) {
     if (Number(jour) === premierJour) {
@@ -1347,11 +1170,6 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
       seance.contenu = contenu;
       seance.kmEstime = kmEstime;
     } else if (seance.type === 'qualite') {
-      // BUG corrigé le 22/07/2026 : cette semaine n'a qu'une seule vraie
-      // séance structurée (le test) — tout autre jour "qualite" désigné
-      // par placerSemaine() (nbQualiteFor peut renvoyer 2) restait sans
-      // aucun contenu. Retypé en 'ef' (footing libre), cohérent avec
-      // l'affichage.
       seance.type = 'ef';
       delete seance.indexQualite;
       delete seance.sousType;
@@ -1389,28 +1207,11 @@ export function generatePlanAvecTestSemiCooper(profil, params) {
     })(),
     semaines: [semaine1],
     warnings: warningsPlacement,
-    // Conservés pour completerPlanApresTestSemiCooper (reconstruction de
-    // profil/params complets, même limite documentée que
-    // changerPalierGrandDebutant côté Mode Forme : ce plan partiel ne
-    // retient pas tout params/profil, seulement ce qui suit).
     paramsOrigine: { ...params, dateDebut: params.dateDebut },
     profilOrigine: { ...profil }
   };
 }
 
-/**
- * Complète un plan course partiel (enAttenteTest: true, une seule semaine)
- * une fois le résultat du test semi-Cooper connu. Ré-appelle generatePlan()
- * normalement avec dateDebut décalé de 7 jours (semaine 2 du plan réel) —
- * computePhases recalcule alors totalSemaines depuis le temps réellement
- * restant jusqu'à dateCourse, pas un bloc de taille fixe comme en Mode
- * Forme. La semaine 1 (test + footings libres déjà réalisés) n'est jamais
- * régénérée, conforme au principe transverse de l'app (ne jamais modifier
- * rétroactivement une semaine déjà passée).
- *
- * resultatTest : { refTimeSeconds, refDistanceKm } — sortie de
- * estimerReferenceDepuisSemiCooper().
- */
 export function completerPlanApresTestSemiCooper(planPartiel, resultatTest) {
   if (!planPartiel.enAttenteTest) {
     throw new Error("Ce plan n'est pas en attente de test — rien à compléter.");
@@ -1420,16 +1221,6 @@ export function completerPlanApresTestSemiCooper(planPartiel, resultatTest) {
   dateDebutSuite.setDate(dateDebutSuite.getDate() + 7);
   const dateDebutSuiteStr = dateDebutSuite.toISOString().slice(0, 10);
 
-  // BUG corrigé le 22/07/2026 : paramsOrigine.objectif est la valeur par
-  // défaut affichée par le champ neutralisé du wizard (jamais choisie par
-  // l'utilisateur, cf. activerFluxTestCourse qui grise ce champ) — la
-  // reprendre telle quelle faussait allure C, categoriserAmpleurObjectif
-  // et calculerStrategieCourse (jour de course + onglet Course), puisque
-  // computeAllures() dérive l'allure course directement de
-  // objectifTimeSeconds. Corrigé : objectif recalculé par Riegel depuis le
-  // vrai résultat du test, sur la distance réellement visée — aucun "gain"
-  // arbitraire, cohérent avec le principe du flux "pas de référence" (le
-  // coureur n'a jamais formulé d'objectif volontaire à ce stade).
   const distanceCibleKm = KM_BY_DISTANCE[planPartiel.paramsOrigine?.distance] ?? 10;
   const objectifTimeSeconds = riegelPredict(resultatTest.refTimeSeconds, resultatTest.refDistanceKm, distanceCibleKm);
 
@@ -1443,22 +1234,8 @@ export function completerPlanApresTestSemiCooper(planPartiel, resultatTest) {
 
   const planSuite = generatePlan(planPartiel.profilOrigine, paramsSuite);
 
-  // Renumérotation : le plan généré pour la suite recommence à semaineNum=1,
-  // il faut le décaler à partir de 2 pour s'enchaîner après la semaine 1
-  // (test) déjà existante.
   const semainesRenumerotees = planSuite.semaines.map(s => ({ ...s, semaineNum: s.semaineNum + 1 }));
 
-  // Recalcul des footings de la semaine 1 (22/07/2026) — jusqu'ici,
-  // semaine 1 restait figée avec "Footing libre, à l'écoute des
-  // sensations" (genererContenuFootingLibrePreTest) même après la
-  // complétion du test, alors que les vraies allures sont désormais
-  // connues. Seul le jour du test (estTest:true) n'est jamais touché — le
-  // coureur l'a déjà réalisé, conforme au principe transverse de l'app
-  // (ne jamais modifier rétroactivement une séance déjà passée). Durée
-  // fixe à 40min (valeur raisonnable sous le plafond EF de 75min,
-  // cf. DUREE_MAX_EF_MIN) : pas de volumeCibleKm connu pour cette semaine
-  // (jamais eu de cible hebdo, semaine de test), donc pas de vraie
-  // progression de volume à respecter ici, juste une allure correcte.
   const allSecondsPreTest = planSuite.allures ? computeAllures({
     refTimeSeconds: parseTimeToSeconds(paramsSuite.tempsReference),
     refDistanceKm: KM_BY_DISTANCE[paramsSuite.refDistance ?? paramsSuite.distance],
@@ -1484,19 +1261,10 @@ export function completerPlanApresTestSemiCooper(planPartiel, resultatTest) {
   return {
     ...planSuite,
     enAttenteTest: false,
-    dateDebut: planPartiel.dateDebut, // date de début réelle du plan complet, pas celle de la suite
+    dateDebut: planPartiel.dateDebut,
     dureeSemaines: (planSuite.dureeSemaines ?? 0) + 1,
     semaines: [semaine1Recalculee, ...semainesRenumerotees],
     warnings: [...(planPartiel.warnings ?? []), ...(planSuite.warnings ?? [])],
-    // BUG corrigé le 22/07/2026 : mettre ces deux champs à undefined ici
-    // cassait BASE_TIME_REFERENCE côté index.html (app principale), qui lit
-    // window.__PLAN_BRUT__.paramsOrigine.tempsReference pour afficher
-    // "Estimation" — sans lui, ce repli retombait sur 3021s (50'21", valeur
-    // historique codée en dur). Conservés avec les VRAIES valeurs finales
-    // (tempsReference/objectif recalculés ci-dessus depuis le test, pas les
-    // valeurs par défaut du wizard d'origine), cohérent avec un plan
-    // généré normalement (generateAndShowResults pose aussi ces deux
-    // champs après coup, cf. wizard).
     paramsOrigine: paramsSuite,
     profilOrigine: planPartiel.profilOrigine
   };
@@ -1534,11 +1302,6 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
       { from: d * 0.5, to: d * 0.8, note: "Allure cible soutenue", offsetSecKm: -2 },
     ], "Dernier effort, tout donner");
   } else if (distanceKmCourse <= 25) {
-    // Semi — bornes km FIXES (20/07/2026, demande explicite de Laurent :
-    // plus lisible en course que des pourcentages calculés). Miroir exact
-    // du même changement côté index.html (calculerStrategieCourse) —
-    // cf. commentaire en tête de cette fonction sur la nécessité de
-    // garder les deux alignées.
     const d = distanceKmCourse;
     return calculerSplitsCalibres(d, tempsObjectifSec, [
       { from: 0, to: 5, note: "Départ prudent", offsetSecKm: 5 },
@@ -1546,9 +1309,6 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
       { from: 10, to: 15, note: "Allure cible, régularité", offsetSecKm: -0.5 },
     ], "Ajuste au ressenti en fin de course");
   } else {
-    // Marathon — bornes km FIXES (20/07/2026, même demande, paliers non
-    // uniformes actés avec Laurent). Miroir exact du même changement côté
-    // index.html.
     const d = distanceKmCourse;
     return calculerSplitsCalibres(d, tempsObjectifSec, [
       { from: 0, to: 5, note: "Marge de sécurité, ne pars pas trop vite", offsetSecKm: 6 },
@@ -1603,27 +1363,6 @@ export function placerSeanceCourse(plan, alluresSec) {
   dernierJour.estCourse = true;
 }
 
-// ---------------------------------------------------------------------------
-// Neutralisation des jours suivant la course, dans la même semaine (fix du
-// 20/07/2026, bug documenté depuis le 19/07/2026 — cf. inventaire §29 /
-// mémoire session).
-//
-// placerSeanceCourse() ne remplace que le jour EXACT de dateCourse. Si ce
-// jour n'est pas le dernier jour généré de la dernière semaine (ex. course
-// un samedi alors que le plan génère aussi un dimanche cette semaine-là),
-// les jours suivants gardaient leur type normal (EF/longue/qualité) — une
-// sortie longue le lendemain d'une course, par exemple, ce qui n'a aucun
-// sens sportif.
-//
-// injecterApprocheCourse() gère symétriquement les jours AVANT la course
-// (repères J-X) ; rien n'existait pour les jours APRÈS jusqu'à ce correctif.
-// Doit s'exécuter après placerSeanceCourse (a besoin de savoir quel jour
-// est estCourse), avant injecterApprocheCourse (l'ordre entre les deux
-// n'a pas d'importance fonctionnelle : ils touchent des jours disjoints —
-// avant vs après le jour de course — mais placé ici par cohérence de
-// lecture, dans le même ordre que l'appel dans generatePlan).
-// ---------------------------------------------------------------------------
-
 export function neutraliserJoursApresCourse(plan) {
   const derniereSemaine = plan.semaines[plan.semaines.length - 1];
   if (!derniereSemaine) return;
@@ -1634,8 +1373,8 @@ export function neutraliserJoursApresCourse(plan) {
 
   for (const [jourStr, jour] of Object.entries(derniereSemaine.assignment)) {
     const jourNum = Number(jourStr);
-    if (jourNum <= jourCourseNum) continue; // jour de course lui-même et jours avant : non concernés
-    if (jour.estCourse) continue; // garde-fou, ne devrait jamais arriver (un seul jour de course)
+    if (jourNum <= jourCourseNum) continue;
+    if (jour.estCourse) continue;
 
     jour.type = 'repos';
     jour.sousType = undefined;
@@ -1875,11 +1614,6 @@ export function generatePlan(profil, params) {
   const warningsSemaines = [];
   let semaineGlobale = 0;
   const nbApparitionsParSousType = {};
-  // Suivi des semaines de la phase Construction où EF et/ou longue tombent
-  // sous les seuils minimums (24/07/2026, cf. VOLUME_MIN_EF_KM/
-  // VOLUME_MIN_LONGUE_KM) — sert à détecter si le problème est structurel
-  // (majorité de la phase Construction concernée) plutôt qu'un simple creux
-  // ponctuel en tout début de progression, normal et non bloquant.
   let nbSemainesConstructionTotal = 0;
   let nbSemainesConstructionSousSeuil = 0;
   for (const phase of phasesAvecReacclimatation) {
@@ -1936,11 +1670,6 @@ export function generatePlan(profil, params) {
         });
       }
 
-      // Détection incompatibilité structurelle (24/07/2026) — seulement sur
-      // la phase Construction (motif répété, pas un creux ponctuel de
-      // début/fin de plan) et hors semaines de décharge (creux volontaire,
-      // pas un problème). Une longue sous le seuil n'est comptée que si le
-      // plan en a une (aLongue) ; idem EF (nbEF > 0).
       if (phase.nom === 'Construction' && !dechargeSemaine) {
         nbSemainesConstructionTotal++;
         const longueSousSeuil = aLongue && kmLongue < VOLUME_MIN_LONGUE_KM;
@@ -1959,15 +1688,6 @@ export function generatePlan(profil, params) {
     }
   }
 
-  // Blocage si le problème touche plus de la moitié de la phase Construction
-  // (24/07/2026, décision avec Laurent) — un signe que la combinaison jours
-  // disponibles / volume de départ est structurellement incompatible pour
-  // toute la durée du plan, pas juste un creux de début de progression.
-  // Pas d'exception JS (arrêterait tout l'appelant sans message exploitable) :
-  // un objet dédié, cohérent avec le pattern `warnings` déjà en place dans
-  // tout ce fichier, laissant à l'appelant (wizard, index.html) le choix de
-  // l'affichage et de la correction proposée (réduire les jours choisis ou
-  // augmenter le volume de départ).
   if (nbSemainesConstructionTotal > 0 && nbSemainesConstructionSousSeuil > nbSemainesConstructionTotal / 2) {
     return {
       planInvalide: true,
