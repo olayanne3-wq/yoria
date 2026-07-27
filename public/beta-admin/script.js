@@ -4,7 +4,7 @@ const L={pending:"En attente",selected:"Sélectionné",invited:"Invité",active:
 const LV={debutant:"Débutant",intermediaire:"Intermédiaire",confirme:"Confirmé",competiteur:"Compétiteur"};
 const D={"5-km":"5 km","10-km":"10 km","semi-marathon":"Semi-marathon",marathon:"Marathon",trail:"Trail",debutant:"Je débute"};
 const P={android:"Android",iphone:"iPhone"};
-const TS={bug:"🐛 Bug",donnee_incorrecte:"📊 Donnée incorrecte",suggestion:"💡 Suggestion",autre:"❓ Autre"};
+const TS={bug:"🐛 Bug",donnee_incorrecte:"📊 Donnée incorrecte",suggestion:"💡 Suggestion",autre:"❓ Autre",collision_moteur:"🔀 Collision moteur"};
 const SS={nouveau:"Nouveau",en_cours:"En cours",resolu:"Résolu"};
 const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const date=v=>v?new Intl.DateTimeFormat("fr-FR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(v)):"—";
