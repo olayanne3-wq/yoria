@@ -21,7 +21,18 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.25", title:"Choix d'activité si ambiguë, navigation plus fluide, aide sur chaque écran", current:true, notes:[
+      { ver:"v2.26", title:"Carte du jour et vue Semaine simplifiées, corrections de fiabilité", current:true, notes:[
+        "🗓️ Carte du jour : les icônes montre/stylo n'apparaissent que si la séance n'est pas encore validée, les allures et FC cibles sont affichées directement — plus besoin d'ouvrir quoi que ce soit",
+        "✅ Une fois la séance validée, le résultat (distance, allure, répétitions) s'affiche automatiquement, avec un lien discret pour corriger",
+        "📅 La vue Semaine suit désormais la même logique — impossible de saisir un statut, une note ou une performance sur une séance qui n'a pas encore eu lieu",
+        "🎯 La page Stats distingue mieux \"où tu en es maintenant\" (Estimation) de \"où tu seras probablement le jour de la course\" (Projection), avec l'écart chiffré affiché sous le verdict",
+        "🧭 Wizard : un accordéon regroupe la modification d'objectif, de jours d'entraînement ou de volume, avec simulation de l'impact avant de valider — le changement ne s'applique qu'à partir de la semaine suivante",
+        "🐛 Correction d'un badge \"séance sautée\" qui pouvait rester affiché sur une séance pourtant déjà validée",
+        "🐛 Correction d'une alerte de baisse de régularité qui pouvait se déclencher à tort en tout début de semaine",
+        "🐛 Correction d'une proposition d'allègement qui pouvait citer par erreur une séance facile comme si c'était une séance de qualité ratée",
+        "🐛 Correction d'une projection d'objectif qui pouvait être plus pessimiste que ta progression réelle",
+      ]},
+      { ver:"v2.25", title:"Choix d'activité si ambiguë, navigation plus fluide, aide sur chaque écran", current:false, notes:[
         "❓ Si Strava a enregistré plusieurs courses le même jour, l'app ne devine plus laquelle associer à ta séance — un menu te permet de choisir toi-même",
         "🌦️ La météo affichée sur une séance passée reflète maintenant l'heure réelle à laquelle tu as couru, plus une heure fixe (18h)",
         "🚫 Le moteur refuse désormais de créer un plan si le volume de départ est trop faible pour le nombre de jours choisis — il te propose de réduire les jours ou d'augmenter le volume, plutôt que de générer des séances sans substance",
