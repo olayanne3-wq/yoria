@@ -2596,7 +2596,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // fois — ouvrir un levier ferme automatiquement les deux autres. Chaque
   // levier a son propre contenu pré-rempli/reconstruit à l'ouverture
   // (nouvelObjectifInput, renderDaysSimulation, nouveauVolumeInput).
-  const LEVIERS = ['objectif', 'jours', 'volume'];
+  const LEVIERS = ['objectif', 'jours', 'volume', 'dateCourse'];
 
   function toggleAccordionLevier(levier) {
     if (!dernierPlanGenere) { alert("Génère ou charge d'abord un plan."); return; }
@@ -2624,6 +2624,11 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       document.getElementById('nouveauVolumeInput').value = dernierPlanGenere.paramsOrigine?.volumeActuel ?? '';
       document.getElementById('modifierVolumeMsg').textContent = '';
       simulerImpactVolume();
+    } else if (levier === 'dateCourse') {
+      document.getElementById('nouvelleDateCourseInput').value = dernierPlanGenere.paramsOrigine?.dateCourse ?? dernierPlanGenere.dateCourse ?? '';
+      document.getElementById('modifierDateCourseMsg').textContent = '';
+      document.getElementById('simulationImpactDateCourse').innerHTML = '';
+      document.getElementById('btnAppliquerDateCourse').disabled = true;
     }
   }
 
