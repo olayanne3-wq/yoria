@@ -2898,6 +2898,27 @@ function aDesNouvellesDonneesQualite(dateStr) {
   );
 }
 
+// Phase du plan (Construction/Specifique/Affutage/...) correspondant à une
+// date donnée — 27/07/2026, pour permettre d'observer plus tard si le
+// rythme de progression change réellement une fois en phase Spécifique/
+// Affûtage (cf. inventaire §16, chantier "pondérer différemment les
+// semaines à venir dans la Projection au jour J"). Fonction pure en
+// LECTURE SEULE : ne change rien au calcul de predict10K() lui-même,
+// juste une étiquette ajoutée à chaque entrée predHistory pour permettre
+// une analyse rétroactive une fois plus de données disponibles. Retourne
+// null si le plan brut ou sa date de début sont indisponibles (plan de
+// repli, Mode Forme sans notion de phases identiques, etc.) — jamais
+// bloquant pour l'écriture de l'entrée elle-même.
+function phaseAtDate(dateStr) {
+  const plan = window.__PLAN_BRUT__;
+  if (!plan?.dateDebut || !Array.isArray(plan.semaines)) return null;
+  const debut = new Date(plan.dateDebut + "T00:00:00Z");
+  const cible = new Date(dateStr + "T00:00:00Z");
+  const semaineNum = Math.floor((cible - debut) / (7*86400000)) + 1;
+  const semaineInfo = plan.semaines.find(s => s.semaineNum === semaineNum);
+  return semaineInfo?.phase ?? null;
+}
+
 function rebuildPredHistorySequentielle(startDate, endDate) {
   const PAS_CONVERGENCE_BASE = 0.15;
   const newHistory = [];
@@ -2928,6 +2949,7 @@ function rebuildPredHistorySequentielle(startDate, endDate) {
       date: dateStr, time: Math.round(estimateClampee), confidence,
       predictorVersion: PREDICTOR_VERSION,
       borneMin: Math.round(estimateClampee) - margin, borneMax: Math.round(estimateClampee) + margin,
+      phase: phaseAtDate(dateStr),
     });
     d.setDate(d.getDate()+1);
   }
@@ -3462,7 +3484,7 @@ function predict10K() {
   // l'entrée existante pour todayStr PARTOUT dans le tableau (findIndex),
   // pas seulement en dernière position — met à jour si trouvée, sinon push.
   const idxEntryDuJour = predHistory.findIndex(p => p.date === todayStr);
-  const entryDuJour = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION, borneMin: estimateLow, borneMax: estimateHigh };
+  const entryDuJour = { date: todayStr, time: Math.round(estimate), confidence, predictorVersion: PREDICTOR_VERSION, borneMin: estimateLow, borneMax: estimateHigh, phase: phaseAtDate(todayStr) };
   if (idxEntryDuJour === -1) {
     predHistory.push(entryDuJour);
     if (predHistory.length > 80) predHistory.shift();
