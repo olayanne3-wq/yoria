@@ -14,7 +14,7 @@
 
 **Yoria** — PWA + Android TWA de coaching à la course à pied, génère des
 plans d'entraînement adaptatifs. Développeur solo : Laurent, objectif
-personnel semi-marathon le 1er novembre 2026.
+personnel semi-marathon le 6 septembre 2026.
 
 - Repo GitHub : `olayanne3-wq/yoria` (branche `main`)
 - Déployé sur Vercel, domaine `yoria.run`
