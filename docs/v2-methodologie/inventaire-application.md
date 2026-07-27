@@ -325,7 +325,10 @@ par propriétaire sur les deux tables. Schéma SQL complet dans
 Pipeline de génération :
 1. `computePhases` — découpage en phases (base, construction, affûtage...)
 2. `computeVolumeProgression` — progression du volume hebdo
-3. `placerSemaine` — répartition des séances dans la semaine
+3. `placerSemaine` — répartition des séances dans la semaine (fonctionnalité
+   "renforcement musculaire" retirée le 27/07/2026, peu utilisée dans
+   Yoria — supprimée de `placerSemaine`, du profil coureur, et des deux
+   wizards, course et Mode Forme)
 4. `genererContenuQualite` — contenu détaillé séance qualité (12 sous-types,
    paramétrés par niveau — voir `bibliotheque-seances.md`)
 5. `genererContenuLongue`, `genererContenuTest`, `genererContenuRace`
