@@ -1053,12 +1053,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <p class="sub">Sélectionne tes créneaux possibles, le plan placera les séances clés dessus.</p>
         <div class="count-badge">● <span id="dayCountForme">3</span> séances / semaine</div>
         <div class="days-grid" id="daysGridForme"></div>
-
-        <div class="block-label" style="margin-top:22px;">Renforcement musculaire</div>
-        <div class="toggle-row">
-          <span class="label">Inclure dans le plan</span>
-          <div class="switch" id="renfoSwitchForme" onclick="toggleRenfoForme()"></div>
-        </div>
       </div>
 
       <!-- FORME STEP 4: Accent -->
@@ -1355,12 +1349,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <div class="count-badge">● <span id="dayCount">3</span> séances / semaine</div>
       <div class="days-grid" id="daysGrid"></div>
       <p class="sub" style="margin-top:10px; font-size:13px;">Reclique sur un jour sélectionné pour en faire ta sortie longue</p>
-
-      <div class="block-label" style="margin-top:22px;">Renforcement musculaire</div>
-      <div class="toggle-row">
-        <span class="label">Inclure dans le plan</span>
-        <div class="switch" id="renfoSwitch" onclick="toggleRenfoWizard()"></div>
-      </div>
     </div>
 
     <!-- STEP 9: Récap / bib -->
@@ -1615,12 +1603,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       lap.className = 'lap' + (i < current ? ' done' : '') + (i === current ? ' current' : '');
       track.appendChild(lap);
     }
-  }
-
-  let renfoOn = false;
-  function toggleRenfoWizard(){
-    renfoOn = !renfoOn;
-    document.getElementById('renfoSwitch').classList.toggle('on', renfoOn);
   }
 
   function renderDays(){
@@ -2063,7 +2045,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // coureur n'a pas re-cliqué pour en désigner un, auquel cas
       // placerSemaine() garde son placement automatique actuel.
       jourLongueChoisi: jourLongueChoisi,
-      renforcementMusculaire: renfoOn,
       // Palier de départ toujours 0 à la création d'un plan marche-course —
       // la progression se fait ensuite depuis le dashboard, pas ici.
       palierMarcheCourse: grandDebutant ? 0 : undefined
@@ -2263,7 +2244,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         if (r && !a.estTest) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
       }
       else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; }
-      else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos' + (a.renfo ? ' <span class="tag">+ RENFO</span>' : ''); }
+      else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos'; }
       const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
 
       return `<div class="day-row"><div class="dname">${d}</div><div style="flex:1;"><div class="badge ${badgeClass}"><span>${label}</span></div>${detailHtml}</div></div>`;
@@ -4206,13 +4187,12 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // jours, accent. Réutilise le même pattern visuel/interaction que le
   // wizard course (options/days-grid/strava-card), mais des champs/fonctions
   // distincts (suffixe Forme) pour ne jamais interférer avec l'état du
-  // wizard course (ex. currentDist, renfoOn) — les deux flux ne cohabitent
+  // wizard course (ex. currentDist) — les deux flux ne cohabitent
   // jamais dans la même session, mais mieux vaut ne pas partager d'état
   // mutable entre les deux par prudence.
   // ===========================================================================
   const totalStepsForme = 4;
   let currentForme = 1;
-  let renfoOnForme = false;
   let accentChoisi = 'vma';
 
   function renderTrackForme() {
@@ -4287,11 +4267,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.querySelectorAll('.opt[data-group="accent-forme"]').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
     accentChoisi = el.dataset.value;
-  }
-
-  function toggleRenfoForme() {
-    renfoOnForme = !renfoOnForme;
-    document.getElementById('renfoSwitchForme').classList.toggle('on', renfoOnForme);
   }
 
   function renderDaysForme() {
@@ -4410,7 +4385,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       anneeNaissance: profilStocke?.anneeNaissance || undefined,
       fcMaxConnue: profilStocke?.fcMax || undefined,
       joursDisponiblesHabituels: joursDisponibles,
-      renforcementMusculaire: false,
       palierMarcheCourse: 0
     };
     const params = {
@@ -4499,7 +4473,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       anneeNaissance: profilStockeForme?.anneeNaissance || undefined,
       fcMaxConnue: profilStockeForme?.fcMax || undefined,
       joursDisponiblesHabituels: joursDisponibles,
-      renforcementMusculaire: renfoOnForme,
       palierMarcheCourse: profilStockeForme?.niveau === 'grand-debutant' ? 0 : undefined
     };
 
