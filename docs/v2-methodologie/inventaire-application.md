@@ -103,6 +103,39 @@ correctif : écran "Consulter un plan existant" jamais affiché
 (v2/index.html), dashboard retombant sur le plan de repli par défaut
 malgré un vrai plan existant en base (index.html).
 
+**Écran "Consulter un plan" — accordéon "Modifier mon plan" (26-27/07/2026,
+`public/v2/index.html`)** — regroupe 3 leviers de simulation d'un plan
+actif (Objectif, Jours d'entraînement, Volume km/semaine), un seul ouvert à
+la fois (`toggleAccordionLevier`) — décision actée de ne pas permettre une
+simulation combinée (chaque approximation déjà admise comme grossière
+individuellement, les cumuler aurait aggravé l'incertitude). Chaque levier :
+simulation LIVE de l'impact sur l'objectif avant validation, jamais
+appliqué tant que le bouton "Appliquer" dédié n'est pas cliqué. Application
+à partir de la SEMAINE SUIVANTE uniquement — coupure nette, la semaine en
+cours et les précédentes gardent leur contenu original (pas de fusion
+semaine par semaine comme `lancerAnalyseAdaptation`/
+`regenererAvecNouvelObjectif`). Règle de pouce pour Jours/Volume (pas de
+modèle scientifique rigoureux, jugé disproportionné) : rythme de
+progression proportionnel au nombre de séances QUALITÉ/semaine
+(`Engine.nbQualiteFor`, déjà exportée par `plan-generator.js`), toujours
+accompagné d'un avertissement de fiabilité limitée. Limite assumée : le
+wizard n'a pas accès à `predict10K()` (vit uniquement dans
+`public/index.html`) — repli sur `paramsOrigine.tempsReference`, cohérent
+avec ce que font déjà les autres actions de cet écran. Levier Volume :
+avertit explicitement que le volume seul influence peu l'allure projetée
+dans ce modèle (ce sont les séances qualité qui comptent) plutôt que de
+laisser une fausse impression d'impact. Levier Objectif : garde-fou de
+faisabilité en direct (`verifierFaisabiliteNouvelObjectif`, réutilise
+`categoriserAmpleurObjectif` déjà utilisée dans le formulaire de création),
+avertit seulement, ne bloque jamais — et précise explicitement que changer
+l'objectif ne fait bouger QUE l'allure course (`allures.C`), jamais VMA/
+SEUIL/EF qui dépendent uniquement de la forme réellement mesurée (cf. §7,
+allures dynamiques). Double repli "Plus d'options" > accordéon retiré le
+26/07/2026 (un seul niveau de repli suffit désormais). Avertissements du
+plan (`plan.warnings`) remontés juste après le récap, avant les actions —
+auparavant tout en bas de l'écran, après le plan complet, invisibles sans
+scroller tout le contenu.
+
 ## 4. Écrans de l'app principale (`index.html`)
 
 Fonctions de rendu (`render*`) :
@@ -159,6 +192,29 @@ Aide qui ne l'affichent jamais. Désormais calculé uniquement pour
 `dashboard`/`stats`/`course` (`VUES_AVEC_PRED`). Chaque appelant garde son
 repli `currentPred || predict10K()` existant, donc aucun risque si un
 usage futur en dépendait ailleurs.
+
+**Carte du jour et vue Semaine, refonte ergonomique (26/07/2026)** —
+principe "rien à ouvrir" appliqué aux deux écrans, remplace l'ancien
+système de tiroirs repliés par défaut. Icônes ⌚ (structure à programmer
+sur la montre, `renderIconeStructureMontre`) et ✏️ (saisie manuelle,
+`renderIconeSaisieManuelle`) affichées en popover compact dans le header de
+la séance, uniquement tant qu'elle n'est pas validée — disparaissent dès
+qu'un statut est posé. Allures/FC cibles affichées directement sous la
+séance, sans repli. Une fois validée (✅/⚠️/❌), `renderBlocRealise` affiche
+automatiquement le résumé chiffré (distance/durée/allure/FC) + un lien
+discret "✏️ Corriger", les répétitions individuelles restant seules
+repliées derrière "▼ détail" (seul repli conservé, pour ne pas noyer la
+carte avec dix lignes de laps par défaut). Cas sans Strava ni saisie
+manuelle existante : le clic sur un statut ouvre automatiquement le
+formulaire de saisie manuelle, une seule fois (pas de réouverture si une
+saisie existe déjà). `renderStatusRow` masque complètement la rangée de
+boutons statut pour une séance future (au lieu de l'afficher désactivée) —
+vérifié que `getAvailableSlots()` bloque déjà tout swap impliquant une
+séance ayant un vrai statut posé, aucun besoin de garder le bouton "—"
+accessible sur une séance future. Vue Semaine : saisie manuelle et notes
+bloquées sur une séance future (même garde que le statut), ancien système
+de repli "carte entière cliquable" retiré (redondant avec le repli fin des
+laps désormais suffisant).
 
 ## 5. Persistance
 
@@ -430,7 +486,22 @@ que le flux Mode Forme, jamais `generatePlan()` classique avec
    répétitions dans zone `okPace`)
 3. **WeekAnalyzer** — bilan hebdomadaire (volume, séances, charge,
    récupération estimée)
-4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines
+4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines,
+   alimenté par `analyserTendance(fenetreSemaines)` (index.html). **Bug
+   corrigé le 27/07/2026** (signalé par Laurent : R-080 affichait un écart
+   moyen de -50.5% alors que les 3 vraies dernières semaines complètes
+   montraient -3%/-14%/-37%, moyenne réelle ~-18%, sous le seuil de
+   déclenchement) : la boucle de `analyserTendance()` incluait la semaine EN
+   COURS (non terminée) dans sa fenêtre glissante — un lundi matin, le
+   volume déjà réalisé cette semaine est quasi nul comparé au volume prévu
+   de la semaine complète, donnant un écart proche de -100% qui fausse
+   fortement la moyenne jusqu'au dimanche soir suivant. Corrigé en excluant
+   systématiquement la semaine en cours (`currentWeek() - 1` comme borne
+   haute), même principe que `derniereSemainePaireComplete` déjà appliqué
+   aux allures dynamiques (§8 plus haut) : ne jamais analyser une semaine
+   avant qu'elle soit entièrement passée. `obtenirHistoriqueMonotonie()`
+   (graphique Stats, pas d'alerte automatique) garde volontairement la
+   semaine en cours — hors scope de ce correctif.
 5. **RuleEngine** — catalogue de règles actif :
    - R-006 (pic de séance), R-024s (fatigue élevée), R-040 (désengagement),
      R-050 (ACWR élevé), R-060 (tendance fatigue sur 3 mesures), R-070
@@ -464,6 +535,15 @@ comportement déclaré), au-dessus de R-080/R-040 (informatives). R-080 reste
 volontairement informative. Hors scope actée : aucune gestion du "rebond"
 après l'allègement (accélération si succès répétés, lissage de la remontée
 après une réduction) — chantier futur séparé.
+
+**Bug corrigé le 27/07/2026** (signalé par Laurent : la carte citait un EF
+et une LONGUE comme "2 séances de qualité ratées d'affilée") :
+`obtenirSeancesPlanifieesManquees()` (index.html) alimente R-070 en entrée
+mais ne filtrait en réalité JAMAIS sur le type des séances — elle prenait
+les 2 dernières séances passées, peu importe leur type, contredisant le
+libellé de la règle et sa conception documentée ci-dessus. Corrigé par
+l'ajout d'un filtre `["VMA","SEUIL","SPEC"]` sur `seancesPassees`, cohérent
+avec la liste des types qualité déjà utilisée ailleurs dans ce même fichier.
 
 **Readiness pré-séance qualité** (23/07/2026) : sélecteur 3 boutons (🪫Fatigué
 /😐Normal/🔋En forme), distinct du RPE (rétrospectif). Affiché uniquement le
@@ -1069,10 +1149,11 @@ calcul si le temps donné venait d'une autre distance) — sélecteur compact
 | Publier une app iOS (Capacitor) | 🔜 Piste identifiée le 22/07/2026, pas de code. Pas urgent tant qu'aucun besoin iOS confirmé — TWA Android actuelle suffit |
 | Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation, pour protéger le code différenciant (moteur de décision, calibrations). Reste public pendant le développement solo/bêta (lecture directe économise des tokens Claude) |
 | Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production depuis le 22/07/2026, pas encore éprouvés sur plusieurs semaines — vérifier le rythme du pas de convergence (`PAS_CONVERGENCE_BASE=0.15`) et la fidélité de la formule VDOT reconstruite |
-| Surveiller si R-062/R-080 se déclenchent un jour | 🔜 Jamais observées sur les données réelles de Laurent |
 | Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Étape 1 (collecte pure, `decision_events`/`decision_outcomes`) codée et déployée le 24/07/2026 — cf. §5. Reste non engagé pour la suite (`athlete_profiles`, `learned_parameters`, personnalisation du `RuleEngine`) : conditions de déclenchement toujours d'actualité (moteur stable sur plusieurs mois, plusieurs utilisateurs réels, chevauchement avec `historiqueReductionsMoteur`/`predHistory` explicitement tranché) — cf. `docs/v2-methodologie/vision-coach-adaptatif.md` |
 | Résoudre le chooser "Ouvrir avec Chrome" systématique sur Xiaomi/HyperOS | 🔜 Diagnostiqué le 25/07/2026 sur un Xiaomi 11 Lite 5G (HyperOS) : `assetlinks.json` correct, `adb shell pm get-app-links` confirme `yoria.run: verified`, `AutoVerify=true`, Chrome bien défini comme navigateur par défaut — toutes les causes standards Android éliminées une à une (cache Chrome, valeurs par défaut app, désinstall/réinstall complète). Cause probable : particularité connue de la surcouche Xiaomi/HyperOS qui contourne la vérification Digital Asset Links standard, indépendamment de sa configuration. Solution envisagée (migration vers Capacitor, WebView native) écartée pour l'instant : casserait le workflow de déploiement actuel (push direct sur `yoria.run` visible immédiatement) au profit d'un cycle de republication Play Store à chaque changement, sauf investissement dans une solution de mise à jour OTA tierce (ex. Capgo) — jugé disproportionné tant qu'il n'y a qu'un testeur. À réévaluer si le problème se confirme répandu sur d'autres appareils Xiaomi/Android, ou lors du passage à plusieurs utilisateurs réels. |
 | Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Identifié le 23/07/2026, lié à R-070 : ni accélération (progression plus rapide après succès répétés) ni lissage de la remontée (une réduction ponctuelle 4→3 reps peut être suivie d'un saut 3→5 à la prochaine séance qualité si ça tombe sur un palier de progression) — nécessiterait de faire persister la dernière ampleur appliquée entre deux séances qualité, vraie extension structurelle. Pas pire que la situation actuelle (le saut existe déjà sans réduction), pas priorisé |
+| Centraliser sur le dashboard le signal d'adaptation du wizard | 🔜 Identifié le 26/07/2026 : `analyserAdaptations()`/`appliquerAdaptations()` (wizard, plan-generator.js) détectent un déficit comportemental (statuts ✅/⚠️/❌ des séances qualité/longue) totalement indépendant du moteur de décision de l'app principale (RunnerStateCalculator, physiologique) — les deux signaux sont jugés complémentaires (gardés tous les deux) mais le second reste invisible depuis le dashboard, déclenché manuellement dans le wizard sans aucune trace ensuite. Vrai chantier de conception : synchroniser ou faire tourner `analyserAdaptations` côté dashboard, décider si les deux signaux se combinent en une seule carte ou restent séparés |
+| Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Identifié le 26/07/2026 : le modèle extrapole uniformément le rythme de progression observé sur tout le reste du plan, alors qu'il évolue souvent une fois en phase Spécifique/Affûtage (plus d'intensité). Contextualisation textuelle du verdict "à risque" déjà livrée le 26/07/2026 (rappelle le nombre de semaines de données disponibles) — la pondération réelle du modèle reste un chantier à part, nécessite de définir combien ces phases apportent en plus (donnée non disponible actuellement) |
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
 `bibliotheque-seances.md`.
