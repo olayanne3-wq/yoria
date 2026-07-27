@@ -1479,6 +1479,20 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
               <div id="modifierVolumeMsg" style="margin-top:6px; font-size:13px;"></div>
             </div>
 
+            <div class="accordion-head" data-levier="dateCourse" onclick="toggleAccordionLevier('dateCourse')" style="border-top:1px solid rgba(var(--paper-rgb,255,255,255),0.08); padding:10px 14px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+              <span>📆 Date de course</span>
+              <span class="accordion-chevron" id="chevron-dateCourse">▾</span>
+            </div>
+            <div id="levier-dateCourse" style="display:none; padding:0 14px 14px;">
+              <p class="sub" style="margin-top:6px; font-size:12px;">Change la date de ta course à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas.</p>
+              <div class="date-field" style="margin-top:6px;">
+                <input type="date" id="nouvelleDateCourseInput" oninput="simulerImpactDateCourse()">
+              </div>
+              <div id="simulationImpactDateCourse" style="margin-top:14px;"></div>
+              <button class="btn-mini" id="btnAppliquerDateCourse" style="margin-top:10px;" onclick="appliquerChangementDateCourse()" disabled>Appliquer à partir de la semaine prochaine</button>
+              <div id="modifierDateCourseMsg" style="margin-top:6px; font-size:13px;"></div>
+            </div>
+
           </div>
 
       </div>
@@ -2930,6 +2944,222 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         await afficherPlansSauvegardes();
       } catch (e) {
         console.warn('Re-sauvegarde après changement de volume échouée :', e.message);
+      }
+    }
+  }
+
+  // ── Levier "Date de course" (27/07/2026, conçu avec Laurent) ───────────
+  // Contrairement aux 3 leviers Objectif/Jours/Volume (qui ne touchent
+  // jamais dateCourse ni la durée totale du plan), ce levier modifie
+  // dateCourse elle-même, donc touche potentiellement toute la structure
+  // de phases (Engine.computePhases recalculerait Construction/Specifique/
+  // Affûtage en fonction du temps réellement restant). Version SIMPLE
+  // retenue pour cette première implémentation (décision actée le
+  // 27/07/2026, cf. inventaire §16) : même pattern de régénération complète
+  // que les 3 leviers existants (Engine.generatePlan() rappelé en entier),
+  // PAS de vrai "point de reprise" dans computeVolumeProgression — le cycle
+  // de décharge (s % 4 === 0) peut donc se désynchroniser légèrement après
+  // le changement, considéré comme un défaut mineur acceptable plutôt
+  // qu'une incohérence physiologique grave (à la différence des règles de
+  // phase ci-dessous, qui elles sont bloquantes).
+  //
+  // Règles de phase actées le 27/07/2026 (jamais un simple recalcul brut) :
+  // 1) Décalage ≥ 8-9 semaines : on RECOMMANDE de créer un nouveau plan
+  //    plutôt que prolonger l'existant, mais on n'empêche pas de continuer.
+  // 2) Phase Specifique en cours : jamais de retour en Construction, quel
+  //    que soit ce que le recalcul brut donnerait — la suite reste en
+  //    Specifique (prolongée) ou avance vers Affûtage selon le temps dispo.
+  // 3) Phase Affutage en cours, décalage ≤ 1 semaine : reste en Affûtage
+  //    tel quel, avertissement informatif seulement, pas de recalcul.
+  // 4) Phase Affutage en cours, décalage > 1 semaine : repasse en
+  //    Specifique pour la durée nécessaire, afin qu'un vrai Affûtage de
+  //    durée normale se recalcule juste avant la nouvelle date.
+  // 5) Anticipation : si le changement est fait pendant qu'on est encore
+  //    en Specifique, la prolongation directe suffit — même règle que 2.
+  function simulerImpactDateCourse() {
+    const impactEl = document.getElementById('simulationImpactDateCourse');
+    const btnAppliquer = document.getElementById('btnAppliquerDateCourse');
+    const plan = dernierPlanGenere;
+    const input = document.getElementById('nouvelleDateCourseInput');
+    const nouvelleDateCourse = input.value;
+
+    if (!nouvelleDateCourse || !plan?.dateCourse) {
+      impactEl.innerHTML = '';
+      btnAppliquer.disabled = true;
+      return;
+    }
+
+    const ancienneDate = new Date(plan.dateCourse + 'T00:00:00Z');
+    const nouvelleDate = new Date(nouvelleDateCourse + 'T00:00:00Z');
+    const deltaJours = Math.round((nouvelleDate - ancienneDate) / 86400000);
+    const deltaSemaines = deltaJours / 7;
+
+    if (deltaJours === 0) {
+      impactEl.innerHTML = `<span class="v">C'est déjà la date actuelle.</span>`;
+      btnAppliquer.disabled = true;
+      return;
+    }
+    if (nouvelleDate < new Date()) {
+      impactEl.innerHTML = `<div class="flag"><span class="ico">⚠️</span><span>La nouvelle date ne peut pas être dans le passé.</span></div>`;
+      btnAppliquer.disabled = true;
+      return;
+    }
+
+    const semaineNumActuelle = semaineActuelleOuProchaine(plan);
+    const phaseActuelle = plan.semaines.find(s => s.semaineNum === semaineNumActuelle)?.phase ?? null;
+
+    const signeDelta = deltaJours >= 0 ? '+' : '';
+    let messages = [];
+
+    if (Math.abs(deltaSemaines) >= 8) {
+      messages.push({ ico: '📋', texte: `Décalage important (${signeDelta}${Math.round(deltaSemaines)} semaines) — on te recommande plutôt de créer un nouveau plan pour repartir sur une progression cohérente. Tu peux tout de même prolonger celui-ci si tu préfères.` });
+    }
+
+    if (phaseActuelle === 'Specifique') {
+      messages.push({ ico: '🎯', texte: `Tu es en phase Spécifique — la suite du plan restera au minimum en Spécifique, jamais un retour en Construction.` });
+    } else if (phaseActuelle === 'Affutage') {
+      if (Math.abs(deltaSemaines) <= 1) {
+        messages.push({ ico: '🪶', texte: `Tu es en Affûtage — ce léger décalage ne change pas ta phase actuelle.` });
+      } else {
+        messages.push({ ico: '🔁', texte: `Tu es en Affûtage — vu l'ampleur du décalage, le plan repassera en Spécifique le temps qu'il faut pour recalculer un Affûtage de durée normale juste avant la nouvelle date.` });
+      }
+    }
+
+    impactEl.innerHTML = `
+      <div class="block-label" style="margin-top:0;">Impact du changement de date</div>
+      <div class="bib">
+        <div class="bib-row"><span class="k">Date de course</span><span class="v">${plan.dateCourse} → ${nouvelleDateCourse} (${signeDelta}${deltaJours}j)</span></div>
+      </div>
+      ${messages.map(m => `<div class="flag" style="margin-top:10px;"><span class="ico">${m.ico}</span><span>${m.texte}</span></div>`).join('')}
+    `;
+    btnAppliquer.disabled = false;
+    btnAppliquer.dataset.dateCourse = nouvelleDateCourse;
+  }
+
+  // Applique les règles de phase 2-5 ci-dessus sur le plan fraîchement
+  // régénéré par Engine.generatePlan(), qui lui ne les connaît pas — on
+  // post-traite ici, dans le wizard, plutôt que de modifier
+  // Engine.computePhases() (qui reste le moteur générique utilisé partout
+  // ailleurs, pas de raison de lui ajouter la connaissance de ce cas
+  // particulier). N'écrase les semaines futures QUE si une règle de phase
+  // est violée par le recalcul brut — sinon le plan régénéré est gardé tel
+  // quel.
+  function appliquerReglesPhase(planRegenere, phaseActuelle, semaineCharniere) {
+    if (phaseActuelle !== 'Specifique' && phaseActuelle !== 'Affutage') return planRegenere;
+
+    const aUneConstructionApresCharniere = planRegenere.semaines.some(s =>
+      s.semaineNum >= semaineCharniere && s.phase === 'Construction'
+    );
+    if (!aUneConstructionApresCharniere) return planRegenere;
+
+    // Retour en Construction détecté après la charnière alors qu'on était
+    // déjà en Specifique/Affutage : on convertit ces semaines en Specifique
+    // plutôt que de les laisser régresser. Approche simple assumée (cf.
+    // décision "version simple" du 27/07/2026) : on ne réécrit que
+    // l'étiquette de phase, pas le contenu détaillé des séances (qui reste
+    // celui généré pour 'Construction') — imparfait mais rare (uniquement
+    // les cas où le décalage est trop court pour laisser une vraie
+    // Specifique), et visible/corrigeable si besoin plutôt que silencieux.
+    planRegenere.semaines.forEach(s => {
+      if (s.semaineNum >= semaineCharniere && s.phase === 'Construction') {
+        s.phase = 'Specifique';
+      }
+    });
+    planRegenere.phases = planRegenere.phases.map(p =>
+      p.nom === 'Construction' ? { ...p, nom: 'Specifique' } : p
+    );
+
+    return planRegenere;
+  }
+
+  async function appliquerChangementDateCourse() {
+    const msgEl = document.getElementById('modifierDateCourseMsg');
+    const btnAppliquer = document.getElementById('btnAppliquerDateCourse');
+    const plan = dernierPlanGenere;
+    if (!plan) return;
+    if (!plan.profilOrigine || !plan.paramsOrigine) {
+      msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const nouvelleDateCourse = btnAppliquer.dataset.dateCourse;
+    if (!nouvelleDateCourse) {
+      msgEl.textContent = 'Choisis une date valide.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    const semaineNumActuelle = semaineActuelleOuProchaine(plan);
+    const phaseActuelle = plan.semaines.find(s => s.semaineNum === semaineNumActuelle)?.phase ?? null;
+    const semaineCharniere = semaineNumActuelle + 1;
+
+    // Règle 3 : Affûtage + décalage ≤ 1 semaine → pas de recalcul du tout,
+    // seule dateCourse change (avertissement déjà donné dans la simulation).
+    const ancienneDate = new Date(plan.dateCourse + 'T00:00:00Z');
+    const nouvelleDate = new Date(nouvelleDateCourse + 'T00:00:00Z');
+    const deltaSemaines = Math.round((nouvelleDate - ancienneDate) / 86400000) / 7;
+
+    if (phaseActuelle === 'Affutage' && Math.abs(deltaSemaines) <= 1) {
+      plan.dateCourse = nouvelleDateCourse;
+      plan.paramsOrigine = { ...plan.paramsOrigine, dateCourse: nouvelleDateCourse };
+      dernierPlanGenere = plan;
+      renderResults(plan);
+      document.getElementById('levier-dateCourse').style.display = 'none';
+      document.getElementById('chevron-dateCourse').textContent = '▾';
+      msgEl.textContent = `✅ Date de course mise à jour (léger décalage, ta phase actuelle ne change pas).`;
+      msgEl.style.color = 'var(--pace)';
+      if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && plan.id) {
+        try { await window.LkSync.mettreAJourPlanSupabase(plan.id, plan); await afficherPlansSauvegardes(); }
+        catch (e) { console.warn('Re-sauvegarde après changement de date échouée :', e.message); }
+      }
+      return;
+    }
+
+    const nouveauxParams = { ...plan.paramsOrigine, dateCourse: nouvelleDateCourse };
+    let planPropre;
+    try {
+      planPropre = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
+    } catch (e) {
+      msgEl.textContent = 'Erreur de régénération : ' + e.message;
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+    if (planPropre?.planInvalide) {
+      msgEl.textContent = planPropre.message ?? 'Ce plan ne peut pas être régénéré avec cette date.';
+      msgEl.style.color = 'var(--signal)';
+      return;
+    }
+
+    planPropre = appliquerReglesPhase(planPropre, phaseActuelle, semaineCharniere);
+
+    planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
+      if (semaineNouvelle.semaineNum < semaineCharniere) {
+        const semaineAncienne = plan.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
+        return semaineAncienne || semaineNouvelle;
+      }
+      return semaineNouvelle;
+    });
+
+    planPropre.id = plan.id;
+    planPropre.nom = plan.nom;
+    planPropre.statuses = plan.statuses;
+    planPropre.profilOrigine = plan.profilOrigine;
+    planPropre.paramsOrigine = nouveauxParams;
+
+    dernierPlanGenere = planPropre;
+    renderResults(planPropre);
+    document.getElementById('levier-dateCourse').style.display = 'none';
+    document.getElementById('chevron-dateCourse').textContent = '▾';
+    msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
+    msgEl.style.color = 'var(--pace)';
+
+    if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && planPropre.id) {
+      try {
+        await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
+        await afficherPlansSauvegardes();
+      } catch (e) {
+        console.warn('Re-sauvegarde après changement de date échouée :', e.message);
       }
     }
   }
