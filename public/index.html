@@ -3942,6 +3942,33 @@ function renderDashboard() {
   // "Ignorer" ne mémorise le refus que pour CETTE semaine précise (pas
   // définitif pour tout le plan) — si une nouvelle semaine tombe plus tard
   // dans la même situation, une nouvelle proposition apparaît normalement.
+  // ── Garde-fou d'exclusion adaptation comportementale / moteur physio
+  // (27/07/2026, cf. inventaire §16) ──────────────────────────────────────
+  // Calcul LÉGER, en lecture seule, de la semaine actuellement ciblée par
+  // une décision reduire_charge du moteur physio (si elle existe et n'est
+  // pas déjà ignorée) — nécessaire ici, AVANT adaptationEl, pour qu'il
+  // puisse se taire sur cette même semaine plutôt que de proposer une
+  // action concurrente. Ne journalise rien (journaliserDecisionEvent reste
+  // strictement dans moteurDecisionEl, pas dupliqué ici) et ne calcule que
+  // ce qui est nécessaire pour la comparaison de semaineNum — le calcul
+  // complet (readiness, modulation, cibleInfo réelle) reste dans
+  // moteurDecisionEl plus bas, qui est la seule source de vérité pour
+  // l'affichage/application de la décision physio elle-même.
+  const semaineCiblePhysioActive = (() => {
+    if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.estPlanRepli) return null;
+    if (typeof DecisionEngineApply === 'undefined') return null;
+    const etatMoteurLeger = calculerEtatMoteurDecision();
+    const decisionLegere = etatMoteurLeger ? etatMoteurLeger.decision : null;
+    if (!decisionLegere || decisionLegere.type !== 'reduire_charge') return null;
+    const cleIgnoreeLegere = clePourPlan("lk_decision_moteur_ignoree");
+    const ignoreeLegere = load(cleIgnoreeLegere, null);
+    const idDecisionDuJourLegere = decisionLegere.id + "_" + today();
+    if (ignoreeLegere === idDecisionDuJourLegere) return null; // ignorée par le coureur : ne bloque plus le comportemental
+    const niveauCoureurLeger = profilCoureur?.niveau || 'intermediaire';
+    const cibleLegere = DecisionEngineApply.trouverProchaineSeanceCible(window.__PLAN_BRUT__, new Date().toISOString(), niveauCoureurLeger, decisionLegere.cibleQualitePrioritaire === true);
+    return cibleLegere ? cibleLegere.semaine.semaineNum : null;
+  })();
+
   const adaptationEl = (() => {
     if (!window.__PLAN_BRUT__) return null;
     // synchronise les statuts (variable séparée côté index.html, préfixée
@@ -3950,7 +3977,31 @@ function renderDashboard() {
     window.__PLAN_BRUT__.statuses = statuses;
     const { semainesAAdapter } = analyserAdaptations(window.__PLAN_BRUT__);
     const semainesIgnorees = load(clePourPlan("lk_adaptations_ignorees"), []);
-    const semaineNumsAProposer = [...semainesAAdapter.keys()].filter(n => !semainesIgnorees.includes(n));
+    let semaineNumsAProposer = [...semainesAAdapter.keys()].filter(n => !semainesIgnorees.includes(n));
+
+    // Garde-fou (27/07/2026) : le physio est prioritaire — si la décision
+    // reduire_charge active cible la même semaine que celle proposée ici,
+    // on se tait sur cette semaine plutôt que de proposer deux actions
+    // concurrentes sur la même semaine. Collision journalisée une fois par
+    // semaine/jour (anti-doublon même principe que lk_dernier_decision_event_id)
+    // pour permettre d'observer si/quand ça arrive réellement (cf. §16).
+    if (semaineCiblePhysioActive !== null && semaineNumsAProposer.includes(semaineCiblePhysioActive)) {
+      const cleCollisionJournalisee = clePourPlan("lk_derniere_collision_signalee");
+      const idCollisionDuJour = "collision_S" + semaineCiblePhysioActive + "_" + today();
+      if (load(cleCollisionJournalisee, null) !== idCollisionDuJour && LkAuth?.supabase) {
+        save(cleCollisionJournalisee, idCollisionDuJour);
+        LkAuth.supabase.from('signalements').insert({
+          type: 'collision_moteur',
+          message: "Collision détectée : le moteur physio et l'adaptation comportementale ciblaient tous deux la semaine " + semaineCiblePhysioActive + " le même jour.",
+          contexte: { semaineNum: semaineCiblePhysioActive, planId: window.__PLAN_BRUT__?.id || null },
+          user_id: window.__UTILISATEUR__?.id || null,
+          email: window.__UTILISATEUR__?.email || null,
+          statut: 'nouveau',
+        }).then(() => {}).catch(e => console.warn("Journalisation collision moteur/adaptation échouée :", e.message));
+      }
+      semaineNumsAProposer = semaineNumsAProposer.filter(n => n !== semaineCiblePhysioActive);
+    }
+
     if (semaineNumsAProposer.length === 0) return null;
     const semaineNum = semaineNumsAProposer[0]; // une seule proposition à la fois, la plus proche
 
