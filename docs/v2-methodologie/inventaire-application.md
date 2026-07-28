@@ -609,6 +609,47 @@ Coach IA branché sur le moteur : lit `RunnerState`/`EngineDecision` du jour,
 ne recalcule jamais un ratio séparé, peut commenter la décision mais jamais
 en produire une différente.
 
+**Ton du coach — franchise sur signal objectif (27/07/2026)** — jusqu'ici,
+les consignes de `consigneChargeInterne` (`fetchCoachMsg()`, `index.html`)
+édulcoraient systématiquement le message dès qu'un vrai signal du moteur
+existait ("sans culpabiliser"/"sans dramatiser"), y compris pour des
+décisions sérieuses (`reduire_charge`, `alerter_blessure_potentielle`,
+`alerter_risque_decrochage`) — le coach restait toujours doux, même quand
+le moteur avait objectivement détecté un problème. Revu à la demande de
+Laurent : principe retenu, bienveillant sur la FORME (jamais dur, jamais
+culpabilisant), honnête sur le FOND quand le moteur a réellement détecté
+quelque chose — jamais l'inverse (une critique inventée sans signal réel).
+Reste strictement cohérent avec le principe déjà en place plus haut : "le
+coach IA devient un habillage du moteur, jamais un second décideur" — la
+franchise n'est jamais laissée à l'appréciation du LLM, seulement autorisée
+quand un signal factuel existe déjà. Deux nouveaux signaux ajoutés au même
+moment, jamais branchés au coach jusque-là :
+- `adaptationsConsecutivesMax >= 3` (`analyserAdaptations`,
+  plan-generator.js — système comportemental séparé du RuleEngine, cf.
+  garde-fou d'exclusion §16) : 3 semaines d'affilée de séances qualité/
+  longue difficiles.
+- FC moyenne des sorties EF/LONGUE de la semaine (`avgEfHr`, déjà calculée
+  par `weeklyReport()` et affichée sur le dashboard mais jamais comparée à
+  la zone attendue) vs `zoneFC.zonesParType.E` — signal si l'écart dépasse
+  5bpm au-dessus de la borne haute de la zone. Volontairement limité à EF/
+  LONGUE (pas les séances qualité, où la FC varie trop selon le moment de
+  l'effort pour qu'une simple moyenne soit fiable — décision actée avec
+  Laurent le 27/07/2026).
+
+**Bug corrigé le même jour** : le premier ajout du signal
+`adaptationsConsecutivesMax` appelait `analyserAdaptations(window
+.__PLAN_BRUT__)` en ne vérifiant que `if (window.__PLAN_BRUT__)`, sans
+vérifier que `plan.semaines` existe bien — `analyserAdaptations` fait
+`[...plan.semaines]`, qui lève une exception si `semaines` est absent/
+undefined. Cette exception se produit AVANT le `try/catch` de
+`fetchCoachMsg()` (qui n'entoure que l'appel réseau final, pas la
+construction du prompt), donc jamais rattrapée. Symptôme observé par
+Laurent : carte "Aujourd'hui" du dashboard disparue après un changement de
+plan (probablement un instant où `window.__PLAN_BRUT__` ne correspondait
+pas encore au plan réellement sélectionné). Corrigé en gardant aussi
+`?.semaines` dans la condition d'entrée (`window.__PLAN_BRUT__?.semaines`)
+avant tout appel à `analyserAdaptations`.
+
 Monotonie d'entraînement (Foster 1998) : calculée et affichée dans Stats,
 sans règle d'alerte (pas de seuils validés pour coureurs récréatifs).
 
