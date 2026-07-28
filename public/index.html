@@ -1164,7 +1164,7 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
       texteAuCentre = String(serieBrute);
       if (niveau > 0) {
         niveauPastille = niveau;
-        legendeSousBadge = "série active · record " + record;
+        legendeSousBadge = "série active<br>record " + record;
       } else if (serieBrute > 0) {
         legendeSousBadge = "série active";
       }
@@ -1213,8 +1213,17 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
 // entre badges et reste de l'app). ❌ ou absence de statut sur une séance
 // passée (statutEffectif=😴 implicite) casse la série.
 function calculerSerieMaxSeancesValidees(allSessions) {
+  const t = today();
+  // Exclut la séance du JOUR MÊME tant qu'elle n'a pas de vrai statut posé
+  // (✅/⚠️/❌/😴) — correctif 27/07/2026 (bug signalé par Laurent : une
+  // séance du jour sans statut ("—") cassait artificiellement une série
+  // qui aurait dû inclure la veille, affichant "0" au centre du badge
+  // alors que la série active était réellement en cours). Cohérent avec
+  // le principe transverse déjà en place ailleurs dans l'app : le jour
+  // même n'est jamais traité comme "passé" (cf. §15, statutEffectif
+  // ne bascule jamais en 😴 implicite le jour même).
   const passees = allSessions
-    .filter(s => s.type !== "REPOS" && s.date <= today())
+    .filter(s => s.type !== "REPOS" && (s.date < t || (s.date === t && ["✅","⚠️","❌","😴"].includes(s.statutEffectif))))
     .sort((a, b) => a.date.localeCompare(b.date));
   let serieActuelle = 0, serieMax = 0;
   for (const s of passees) {
@@ -1234,14 +1243,20 @@ function calculerSerieMaxSeancesValidees(allSessions) {
   return { serieMax, serieActuelle };
 }
 
-// Plus longue série de semaines complètes (done+adapted===total) — parcourt
-// toutes les semaines du plan déjà passées (semaine courante exclue, elle
-// n'est jamais "complète" avant la fin, même principe que analyserTendance
-// excluant déjà la semaine en cours, cf. §8).
+// Plus longue série de semaines complètes (done+adapted===total) —
+// parcourt le plan jusqu'à la semaine COURANTE incluse (correctif
+// 27/07/2026, suite au retour de Laurent : une semaine déjà entièrement
+// complétée — toutes ses séances prévues ont un statut — doit compter
+// même si les 7 jours calendaires ne sont pas encore tous écoulés, par ex.
+// un plan à 4 séances/semaine dont la dernière tombe un vendredi ; le
+// samedi/dimanche restants ne changent rien à "complète"). weeklyReport()
+// reste la seule source de vérité pour "complète" — total=0 (aucune
+// séance prévue cette semaine-là) continue d'être ignoré, cohérent avec
+// le comportement précédent.
 function calculerSerieMaxSemainesCompletes() {
   const cw = currentWeek();
   let serieActuelle = 0, serieMax = 0;
-  for (let w = 1; w < cw; w++) {
+  for (let w = 1; w <= cw; w++) {
     const report = weeklyReport(w);
     if (!report || report.total === 0) continue;
     if (report.done + report.adapted === report.total) {
