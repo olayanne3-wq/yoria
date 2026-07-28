@@ -2221,7 +2221,7 @@ async function fetchCoachMsg() {
   // appréciation inventée par le LLM) : 3 semaines d'affilée avec des
   // séances qualité/longue difficiles est un vrai motif de franchise,
   // pas juste un aléa ponctuel à minimiser.
-  if (window.__PLAN_BRUT__) {
+  if (window.__PLAN_BRUT__?.semaines) {
     window.__PLAN_BRUT__.statuses = statuses;
     const { adaptationsConsecutivesMax } = analyserAdaptations(window.__PLAN_BRUT__);
     if (adaptationsConsecutivesMax >= 3) {
