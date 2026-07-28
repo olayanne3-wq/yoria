@@ -1152,8 +1152,15 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
     estDebloque = true; dashOffset = 0; texteAuCentre = null;
   } else if (def.paliers.length > 0) {
     const niveau = window.__badgesCache__?.[badgeId] ?? 0; // niveau de palier atteint (0 = aucun), jamais perdu
-    const serieBrute = window.__badgesSeriesBrutes__?.[badgeId]?.serieActuelle ?? 0; // série ACTIVE en ce moment, peut redescendre à 0
-    const record = def.paliers[niveau > 0 ? niveau - 1 : 0]; // meilleur palier déjà validé, pour la légende — n'affiche le record que si au moins un palier est atteint
+    const series = window.__badgesSeriesBrutes__?.[badgeId] ?? { serieMax: 0, serieActuelle: 0 };
+    const serieBrute = series.serieActuelle; // série ACTIVE en ce moment, peut redescendre à 0
+    // Record RÉEL (serieMax), pas déduit du niveau de palier — correctif
+    // 27/07/2026 (2ème retour de Laurent) : un record de 1 ne montrait
+    // aucune légende tant qu'aucun palier n'était atteint (le 1er palier
+    // "semaines_completes" nécessite 2). Décision actée : montrer la
+    // progression même naissante, pas seulement une fois un palier
+    // débloqué — cohérent avec le principe "voir toute la progression".
+    const record = series.serieMax;
     if (niveau >= def.paliers.length) {
       estDebloque = true; dashOffset = 0; texteAuCentre = null; niveauPastille = niveau;
     } else {
@@ -1162,8 +1169,8 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
       estDebloque = serieBrute > 0;
       dashOffset = C * (1 - fraction);
       texteAuCentre = String(serieBrute);
-      if (niveau > 0) {
-        niveauPastille = niveau;
+      if (niveau > 0) niveauPastille = niveau;
+      if (record > 0) {
         legendeSousBadge = "série active<br>record " + record;
       } else if (serieBrute > 0) {
         legendeSousBadge = "série active";
