@@ -1141,30 +1141,33 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
   const icone = ICONES_BADGES[badgeId];
   const R = 26, C = 2 * Math.PI * R;
 
-  let estDebloque, texteAuCentre, dashOffset, niveauPastille = null;
+  // Conception révisée le 27/07/2026 (2ème itération avec Laurent) : le
+  // centre de l'anneau affiche désormais la SÉRIE ACTIVE (ce qui compte
+  // maintenant, peut être 0 si cassée), avec le RECORD affiché en petit
+  // texte sous le badge — jamais perdu, toujours visible même si la série
+  // active retombe à zéro. Distinct de la 1ère itération (retirée) qui
+  // affichait "6/8" ambigu ne distinguant pas série active vs record.
+  let estDebloque, texteAuCentre, dashOffset, niveauPastille = null, legendeSousBadge = null;
   if (forceDebloqueSimple) {
     estDebloque = true; dashOffset = 0; texteAuCentre = null;
   } else if (def.paliers.length > 0) {
-    const niveau = window.__badgesCache__?.[badgeId] ?? 0; // niveau de palier atteint (0 = aucun)
-    const serieBrute = window.__badgesSeriesBrutes__?.[badgeId] ?? 0;
+    const niveau = window.__badgesCache__?.[badgeId] ?? 0; // niveau de palier atteint (0 = aucun), jamais perdu
+    const serieBrute = window.__badgesSeriesBrutes__?.[badgeId] ?? 0; // série ACTIVE en ce moment, peut redescendre à 0
+    const record = def.paliers[niveau > 0 ? niveau - 1 : 0]; // meilleur palier déjà validé, pour la légende — n'affiche le record que si au moins un palier est atteint
     if (niveau >= def.paliers.length) {
-      // Dernier palier déjà atteint — anneau plein, pas de fraction à
-      // afficher (rien au-delà à viser pour ce badge).
       estDebloque = true; dashOffset = 0; texteAuCentre = null; niveauPastille = niveau;
-    } else if (niveau > 0) {
-      // Anneau partiel : progression RÉELLE vers le PROCHAIN palier (ex.
-      // "6/8"), pas l'index de palier déjà franchi — correctif du
-      // 27/07/2026 suite au retour de Laurent ("2/4" était ambigu, semblait
-      // être une fraction de la série alors que c'était le rang du palier).
-      const prochainSeuil = def.paliers[niveau];
-      const fraction = Math.min(1, serieBrute / prochainSeuil);
-      estDebloque = true; dashOffset = C * (1 - fraction); texteAuCentre = serieBrute + "/" + prochainSeuil;
-      niveauPastille = niveau; // le niveau déjà validé reste affiché à part, en pastille
     } else {
-      // Aucun palier atteint : progression vers le TOUT PREMIER palier.
-      const premierSeuil = def.paliers[0];
-      const fraction = serieBrute > 0 ? Math.min(1, serieBrute / premierSeuil) : 0;
-      estDebloque = serieBrute > 0; dashOffset = C * (1 - fraction); texteAuCentre = serieBrute > 0 ? (serieBrute + "/" + premierSeuil) : null;
+      const prochainSeuil = def.paliers[niveau];
+      const fraction = serieBrute > 0 ? Math.min(1, serieBrute / prochainSeuil) : 0;
+      estDebloque = serieBrute > 0;
+      dashOffset = C * (1 - fraction);
+      texteAuCentre = String(serieBrute);
+      if (niveau > 0) {
+        niveauPastille = niveau;
+        legendeSousBadge = "série active · record " + record;
+      } else if (serieBrute > 0) {
+        legendeSousBadge = "série active";
+      }
     }
   } else {
     estDebloque = !!window.__badgesCache__?.[badgeId];
@@ -1174,6 +1177,7 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
   const couleurEffective = estDebloque ? couleur : 'rgba(var(--text-rgb),0.13)';
   const opaciteIcone = estDebloque ? 1 : 0.35;
   const couleurIcone = estDebloque ? couleur : 'rgba(var(--text-rgb),0.5)';
+  const couleurTexteCentre = estDebloque ? couleur : 'rgba(var(--text-rgb),0.45)';
 
   let elementIcone;
   if (icone === 'RECT_DOUBLE') {
@@ -1193,13 +1197,14 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
   const svg = `<svg width="${taille}" height="${taille}" viewBox="0 0 64 64">
     <circle cx="32" cy="32" r="${R}" fill="none" stroke="${estDebloque ? couleur.replace('rgb(', 'rgba(').replace(')', ',0.15)') : 'rgba(var(--text-rgb),0.13)'}" stroke-width="4" ${estDebloque ? '' : 'stroke-dasharray="3,5"'}/>
     ${estDebloque ? `<circle cx="32" cy="32" r="${R}" fill="none" stroke="${couleur}" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="${dashOffset}" stroke-linecap="round" transform="rotate(-90 32 32)"/>` : ''}
-    ${texteAuCentre ? `<text x="32" y="37" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)">${texteAuCentre}</text>` : `<g transform="translate(32,32)" opacity="${texteAuCentre ? 0 : opaciteIcone}">${elementIcone}</g>`}
+    ${texteAuCentre ? `<text x="32" y="39" text-anchor="middle" font-size="20" font-weight="700" fill="${couleurTexteCentre}">${texteAuCentre}</text>` : `<g transform="translate(32,32)" opacity="${opaciteIcone}">${elementIcone}</g>`}
     ${niveauPastille ? `<circle cx="52" cy="12" r="9" fill="${couleur}"/><text x="52" y="16" text-anchor="middle" font-size="11" font-weight="700" fill="white">${niveauPastille}</text>` : ''}
   </svg>`;
 
-  const wrapper = document.createElement('span');
-  wrapper.innerHTML = svg;
-  return wrapper.firstElementChild;
+  const wrapper = document.createElement('div');
+  wrapper.style.textAlign = 'center';
+  wrapper.innerHTML = svg + (legendeSousBadge ? `<div style="font-size:9px;color:rgba(var(--text-rgb),0.45);margin-top:2px;line-height:1.2;">${legendeSousBadge}</div>` : '');
+  return wrapper;
 }
 
 // Plus longue série historique de statutEffectif ∈ {✅,⚠️} consécutifs sur
