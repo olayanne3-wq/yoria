@@ -2229,6 +2229,30 @@ async function fetchCoachMsg() {
     }
   }
 
+  // Signal FC EF/LONGUE vs zone attendue (27/07/2026, demande de Laurent :
+  // rien ne vérifiait jusqu'ici si les sorties faciles étaient courues
+  // trop vite en FC, alors que c'est le principe même de l'allure EF —
+  // effort/FC, pas un chiffre d'allure strict, cf. Daniels chap. 4).
+  // avgEfHr (weeklyReport, cf. plus haut dans ce fichier) existait déjà,
+  // affiché sur le dashboard, mais jamais comparé à zoneFC.zonesParType.E
+  // ni transmis au coach. Périmètre volontairement limité à EF/LONGUE (pas
+  // les séances qualité, où la FC varie trop selon le moment de l'effort
+  // pour qu'une simple moyenne soit un signal fiable — décision actée avec
+  // Laurent le 27/07/2026). Seuil retenu : écart >5bpm par rapport à la
+  // borne haute de la zone E, pour éviter un faux positif sur un
+  // dépassement marginal (chaleur, léger relief, cf. Daniels chap. 1 —
+  // conditions non idéales font monter la FC à allure égale).
+  const zonesFCCoach = window.__PLAN_BRUT__?.zoneFC?.zonesParType;
+  if (zonesFCCoach?.E) {
+    const reportSemaineCoach = weeklyReport(currentWeek());
+    if (reportSemaineCoach?.avgEfHr) {
+      const ecartZoneHaute = reportSemaineCoach.avgEfHr - zonesFCCoach.E.max;
+      if (ecartZoneHaute > 5) {
+        consigneChargeInterne += ` La FC moyenne des sorties EF/longues cette semaine (${reportSemaineCoach.avgEfHr} bpm) est nettement au-dessus de la zone facile attendue (${zonesFCCoach.E.min}-${zonesFCCoach.E.max} bpm) — sois honnête là-dessus, ça peut vouloir dire que l'allure était trop rapide pour un effort censé être facile, sans dramatiser.`;
+      }
+    }
+  }
+
   // Variables lundi matin
   const isMonday = new Date().getDay() === 1;
   const prevWeekNum = currentWeek() > 1 ? currentWeek() - 1 : null;
