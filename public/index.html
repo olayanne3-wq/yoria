@@ -2196,12 +2196,36 @@ async function fetchCoachMsg() {
       else if (risque === 'modere') consigneChargeInterne = "Charge d'entraînement plutôt basse récemment — tu peux être plus encourageant sur la reprise d'un bon rythme, sans culpabiliser.";
     }
     const decisionDuJour = etatMoteurCoach.decision;
+    // Consignes de ton révisées le 27/07/2026 (demande de Laurent : le coach
+    // était systématiquement doux/positif, même face à un vrai signal
+    // détecté par le moteur — "sans culpabiliser"/"sans dramatiser"
+    // édulcorait le message avant même sa génération). Principe retenu :
+    // bienveillant sur la FORME (jamais dur, jamais culpabilisant), mais
+    // honnête sur le FOND quand le moteur a objectivement détecté quelque
+    // chose — jamais l'inverse (une critique inventée sans signal réel).
+    // Cohérent avec le principe déjà acté plus haut : "le coach IA devient
+    // un habillage du moteur, jamais un second décideur".
     if (decisionDuJour && decisionDuJour.type === 'reduire_charge') {
-      consigneChargeInterne += " Le moteur a détecté une fatigue élevée et a proposé d'alléger une séance à venir cette semaine — tu peux évoquer que l'entraînement s'adapte en ce moment, sans donner de chiffre ni de pourcentage.";
+      consigneChargeInterne += " Le moteur a détecté une fatigue élevée et a proposé d'alléger une séance à venir cette semaine — sois honnête là-dessus (ce n'est pas anodin), sans dramatiser ni culpabiliser, sans donner de chiffre ni de pourcentage.";
     } else if (decisionDuJour && decisionDuJour.type === 'alerter_blessure_potentielle') {
-      consigneChargeInterne += " Un pic d'effort récent a été détecté par rapport à tes sorties habituelles — reste attentif dans ton message aux signaux de fatigue ou de gêne, sans dramatiser.";
+      consigneChargeInterne += " Un pic d'effort récent a été détecté par rapport à tes sorties habituelles — sois direct là-dessus dans ton message (ce signal mérite d'être pris au sérieux), sans pour autant dramatiser.";
     } else if (decisionDuJour && decisionDuJour.type === 'alerter_risque_decrochage') {
-      consigneChargeInterne += " La régularité récente a baissé — un message encourageant sur la reprise d'une routine, sans culpabiliser, est bienvenu.";
+      consigneChargeInterne += " La régularité récente a baissé — dis-le franchement plutôt que de l'éluder, tout en restant encourageant sur la reprise d'une routine, sans culpabiliser.";
+    }
+  }
+
+  // Signal comportemental (analyserAdaptations, plan-generator.js) —
+  // ajouté le 27/07/2026, jamais branché au coach jusqu'ici (système
+  // séparé du RuleEngine ci-dessus, cf. inventaire §16 garde-fou
+  // d'exclusion). Signal FACTUEL déjà calculé par le moteur (jamais une
+  // appréciation inventée par le LLM) : 3 semaines d'affilée avec des
+  // séances qualité/longue difficiles est un vrai motif de franchise,
+  // pas juste un aléa ponctuel à minimiser.
+  if (window.__PLAN_BRUT__) {
+    window.__PLAN_BRUT__.statuses = statuses;
+    const { adaptationsConsecutivesMax } = analyserAdaptations(window.__PLAN_BRUT__);
+    if (adaptationsConsecutivesMax >= 3) {
+      consigneChargeInterne += " Plusieurs semaines d'affilée ont été difficiles pour ce coureur — sois honnête là-dessus dans ton message plutôt que de l'ignorer ou de rester vague, sans pour autant être dur ou culpabilisant.";
     }
   }
 
