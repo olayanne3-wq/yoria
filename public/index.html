@@ -1141,17 +1141,30 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
   const icone = ICONES_BADGES[badgeId];
   const R = 26, C = 2 * Math.PI * R;
 
-  let estDebloque, texteAuCentre, dashOffset;
+  let estDebloque, texteAuCentre, dashOffset, niveauPastille = null;
   if (forceDebloqueSimple) {
     estDebloque = true; dashOffset = 0; texteAuCentre = null;
   } else if (def.paliers.length > 0) {
-    const etat = window.__badgesCache__?.[badgeId] ?? 0; // niveau atteint (0 = aucun)
-    if (etat >= def.paliers.length) {
-      estDebloque = true; dashOffset = 0; texteAuCentre = null;
-    } else if (etat > 0) {
-      estDebloque = true; dashOffset = C * 0.4; texteAuCentre = (etat) + "/" + def.paliers.length; // anneau partiel + compteur de PALIERS franchis, pas la valeur brute
+    const niveau = window.__badgesCache__?.[badgeId] ?? 0; // niveau de palier atteint (0 = aucun)
+    const serieBrute = window.__badgesSeriesBrutes__?.[badgeId] ?? 0;
+    if (niveau >= def.paliers.length) {
+      // Dernier palier déjà atteint — anneau plein, pas de fraction à
+      // afficher (rien au-delà à viser pour ce badge).
+      estDebloque = true; dashOffset = 0; texteAuCentre = null; niveauPastille = niveau;
+    } else if (niveau > 0) {
+      // Anneau partiel : progression RÉELLE vers le PROCHAIN palier (ex.
+      // "6/8"), pas l'index de palier déjà franchi — correctif du
+      // 27/07/2026 suite au retour de Laurent ("2/4" était ambigu, semblait
+      // être une fraction de la série alors que c'était le rang du palier).
+      const prochainSeuil = def.paliers[niveau];
+      const fraction = Math.min(1, serieBrute / prochainSeuil);
+      estDebloque = true; dashOffset = C * (1 - fraction); texteAuCentre = serieBrute + "/" + prochainSeuil;
+      niveauPastille = niveau; // le niveau déjà validé reste affiché à part, en pastille
     } else {
-      estDebloque = false; dashOffset = 0; texteAuCentre = null;
+      // Aucun palier atteint : progression vers le TOUT PREMIER palier.
+      const premierSeuil = def.paliers[0];
+      const fraction = serieBrute > 0 ? Math.min(1, serieBrute / premierSeuil) : 0;
+      estDebloque = serieBrute > 0; dashOffset = C * (1 - fraction); texteAuCentre = serieBrute > 0 ? (serieBrute + "/" + premierSeuil) : null;
     }
   } else {
     estDebloque = !!window.__badgesCache__?.[badgeId];
@@ -1181,6 +1194,7 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
     <circle cx="32" cy="32" r="${R}" fill="none" stroke="${estDebloque ? couleur.replace('rgb(', 'rgba(').replace(')', ',0.15)') : 'rgba(var(--text-rgb),0.13)'}" stroke-width="4" ${estDebloque ? '' : 'stroke-dasharray="3,5"'}/>
     ${estDebloque ? `<circle cx="32" cy="32" r="${R}" fill="none" stroke="${couleur}" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="${dashOffset}" stroke-linecap="round" transform="rotate(-90 32 32)"/>` : ''}
     ${texteAuCentre ? `<text x="32" y="37" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text)">${texteAuCentre}</text>` : `<g transform="translate(32,32)" opacity="${texteAuCentre ? 0 : opaciteIcone}">${elementIcone}</g>`}
+    ${niveauPastille ? `<circle cx="52" cy="12" r="9" fill="${couleur}"/><text x="52" y="16" text-anchor="middle" font-size="11" font-weight="700" fill="white">${niveauPastille}</text>` : ''}
   </svg>`;
 
   const wrapper = document.createElement('span');
@@ -1295,14 +1309,23 @@ function detecterSemaineEquilibree() {
 // Ne touche jamais à Supabase elle-même — fonction pure de calcul.
 function calculerEtatBadgesActuel() {
   const etat = {};
+  // Valeurs BRUTES de série (pas le niveau de palier) — stockées à part
+  // pour permettre d'afficher la vraie progression (ex. "6/8") plutôt que
+  // le seul index de palier franchi. Cf. retour de Laurent le 27/07/2026 :
+  // "2/4" au centre de l'anneau était ambigu (ressemblait à une fraction
+  // de la série réelle, alors que c'était l'index de palier).
+  window.__badgesSeriesBrutes__ = window.__badgesSeriesBrutes__ || {};
 
   const serieSeances = calculerSerieMaxSeancesValidees(ALL_SESSIONS);
+  window.__badgesSeriesBrutes__.seances_affilees = serieSeances;
   etat.seances_affilees = DEFINITIONS_BADGES.seances_affilees.paliers.filter(p => serieSeances >= p).length;
 
   const serieSemaines = calculerSerieMaxSemainesCompletes();
+  window.__badgesSeriesBrutes__.semaines_completes = serieSemaines;
   etat.semaines_completes = DEFINITIONS_BADGES.semaines_completes.paliers.filter(p => serieSemaines >= p).length;
 
   const serieFcEf = calculerSerieMaxFcEfMaitrisee();
+  window.__badgesSeriesBrutes__.fc_ef_maitrisee = serieFcEf;
   etat.fc_ef_maitrisee = DEFINITIONS_BADGES.fc_ef_maitrisee.paliers.filter(p => serieFcEf >= p).length;
 
   etat.retour_reussi = detecterRetourReussi();
