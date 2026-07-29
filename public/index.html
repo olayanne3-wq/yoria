@@ -1741,6 +1741,7 @@ function ouvrirSignalementProbleme() {
     })
   );
   const textarea = el("textarea", {
+    id: "signalement-description", name: "signalement-description",
     placeholder: "Qu'est-ce qui ne va pas ? Décris ce que tu observes...",
     style: {
       width:"100%", minHeight:"120px", padding:"10px", borderRadius:"8px",
@@ -4017,7 +4018,7 @@ function renderSelecteurPlan() {
   const plans = window.__PLANS_DISPONIBLES__ || [];
 
   const idActuel = window.__PLAN_BRUT__?.id;
-  const select = el("select",{style:{
+  const select = el("select",{id:"selecteur-plan",name:"selecteur-plan",style:{
     background:"var(--border-soft)",color:"var(--text)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",
     borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
     width:"100%",cursor:"pointer"
@@ -5986,7 +5987,7 @@ function renderTestSemiCooperRow(uid, seance, stravaRun) {
 
   // Repli manuel — pas de Strava, ou détection ratée (structure non
   // programmée correctement sur la montre, activité absente, etc.)
-  const inputDistance = el("input",{type:"number",placeholder:"ex: 1400",style:{
+  const inputDistance = el("input",{type:"number",id:"input-distance-test-vma",name:"input-distance-test-vma",placeholder:"ex: 1400",style:{
     flex:"1",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",
     padding:"9px 10px",color:"var(--text)",fontSize:"15px"
   }});
@@ -6248,7 +6249,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
         "cible plan : "+fmtPace(1000/target.targetMin)+"–"+fmtPace(1000/target.targetMax)+"/km"));
     }
 
-    const hrInput = el("input",{type:"number",placeholder:"165",value:cur.average_heartrate||"",
+    const hrInput = el("input",{type:"number",id:"input-fc-manuelle",name:"input-fc-manuelle",placeholder:"165",value:cur.average_heartrate||"",
       style:{width:"100%",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"6px",padding:"6px 8px",color:"var(--text)",fontSize:"14px",textAlign:"center"}});
 
     // Durée totale RÉELLE de la séance (17/07/2026) — distincte de la durée
@@ -6265,7 +6266,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       structureIntervalles.blocs.forEach(b=>{ total += ((b.dureeEffortSec||0)+(b.dureeRecupSec||0))*(b.repetitions||1)*nbSeries; });
       return total;
     })(s.structureIntervalles);
-    const dureeInput = el("input",{type:"number",placeholder:"31",
+    const dureeInput = el("input",{type:"number",id:"input-duree-manuelle",name:"input-duree-manuelle",placeholder:"31",
       value: cur.dureeSaisieMin || (dureePrevueSec ? Math.round(dureePrevueSec/60) : ""),
       style:{width:"100%",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"6px",padding:"6px 8px",color:"var(--text)",fontSize:"14px",textAlign:"center"}});
 
@@ -7618,7 +7619,7 @@ function renderStats() {
     const seanceChoisie = seancesQualitePassees.find(s => s.uid === window.__moduleTestSeanceUid);
     const analyse = analyserSeanceQualite(seanceChoisie);
 
-    const select = el("select",{style:{width:"100%",padding:"8px",borderRadius:"8px",border:"1px solid var(--border)",background:"var(--bg)",color:"var(--text)",fontSize:"14px",marginBottom:"10px"}},
+    const select = el("select",{id:"selecteur-seance-test",name:"selecteur-seance-test",style:{width:"100%",padding:"8px",borderRadius:"8px",border:"1px solid var(--border)",background:"var(--bg)",color:"var(--text)",fontSize:"14px",marginBottom:"10px"}},
       ...seancesQualitePassees.map(s => el("option",{value:s.uid},
         s.date+" · "+s.type+" · "+statuses[s.uid]
       ))
