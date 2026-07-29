@@ -482,7 +482,38 @@ plan par ailleurs viable — seule une incompatibilité structurelle
 points d'appel de `generatePlan()` (`public/v2/index.html` : création,
 régénération propre, modification d'objectif ; `public/index.html` : plan
 de repli par défaut) gèrent explicitement ce nouveau retour et affichent
-le message à l'utilisateur plutôt que de continuer avec un plan cassé. — jusqu'ici, les allures E/T/I
+le message à l'utilisateur plutôt que de continuer avec un plan cassé.
+
+**Ratio longue variable selon le nombre de jours + contrainte longue≥qualité
+(29/07/2026)** — remplace `RATIO_LONGUE=0.28` fixe dans `repartirVolumeSemaine()`.
+Diagnostic : un ratio fixe suppose implicitement plusieurs EF pour absorber
+le reste du volume — à 2-4 jours disponibles (peu ou pas d'EF), la longue
+pouvait passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total
+restait correct, forçant `VOLUME_JOURS_INCOMPATIBLE` à réclamer un volume de
+départ artificiellement élevé. Vérifié par recherche (Daniels + sources
+croisées type RunningAHEAD/runlovers.it) : un ratio longue/volume plus élevé
+à faible nombre de jours est normal et attendu (jusqu'à 40-50% à 2-3j/semaine),
+pas une anomalie à corriger par un plafond, contrairement à l'hypothèse de
+départ. **Solution** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22,
+redescend vers les standards Daniels 25-30% à 5-7j où plusieurs EF existent)
++ nouvelle contrainte actée par Laurent ("la longue ne peut pas ne pas être
+la plus longue séance") : `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)`
+— la longue ne peut jamais être plus courte que le cumul des séances qualité
+de la semaine (dont le volume dépend de paramètres fixes par niveau dans
+`genererContenuQualite`, indépendants du volume hebdo cible). Nouveau
+paramètre `nbJours` sur `repartirVolumeSemaine()`, propagé dans les 3 points
+d'appel de `recalculerRepartitionEFLongue` (`generatePlan`, `placerSeanceTest`,
+`appliquerAdaptations`). Écart aux 25-30% de Daniels vérifié et assumé : le
+ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend
+naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum — l'écart
+n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en
+pratique. **Non vérifié** : impact sur 5K/Semi/Marathon (simulation faite
+uniquement sur 10K niveau intermédiaire) ; propagation éventuelle nécessaire
+vers les tables dupliquées de `decision-engine-apply.classic.js` si elles
+utilisent `repartirVolumeSemaine`. Détail complet et seuils `VOLUME_MIN_PAR_JOURS`
+associés en §16.
+
+— jusqu'ici, les allures E/T/I
 (`computeAllures()`) restaient calibrées sur `paramsOrigine.tempsReference`
 (référence de forme mesurée à la CRÉATION du plan) pendant toute sa durée,
 même quand le prédicteur détectait une vraie progression — un plan visant
@@ -1287,18 +1318,18 @@ blessure/pause longue doit pouvoir emprunter le même parcours ponctuellement.
 
 | Chantier | Statut |
 |---|---|
-| Volume minimum requis selon le nombre de jours disponibles (wizard) | 🔜 Conception complète actée avec Laurent le 27/07/2026, PAS CODÉ. **Historique du diagnostic** : `RATIO_LONGUE = 0.28` (fixe, `plan-generator.js`) suppose implicitement plusieurs séances EF en plus de la longue — avec seulement 2 jours disponibles (qualité + longue, `nbEF=0`), la longue ne récupère que 28% du volume total peu importe le volume choisi, obligeant `VOLUME_JOURS_INCOMPATIBLE` (garde-fou existant, `VOLUME_MIN_LONGUE_KM=5`) à forcer un volume de départ artificiellement élevé (ex. 17km) pour qu'un calcul minimal passe de justesse — sans lien avec la vraie pratique de l'utilisateur (dashboard affichant "17km prévus" alors que le contenu réel des séances ne totalisait que ~8km). **Deux approches de correction explorées et écartées avant la solution retenue** : (1) ratio de longue progressif selon `nbEF` (0.28→0.50) + contrainte stricte "longue toujours plus longue que la qualité, jamais égale" (`kmLongue = max(ratio_calculé, kmQualiteTotal + marge)`) — simulé et fonctionnel pour la contrainte, MAIS peut faire exploser le volume réel très au-dessus du volume cible dans les cas où la qualité elle-même est déjà grosse (ex. qualité=8km, volume cible=10km → volume réel=18km, jugé inacceptable par Laurent) ; (2) plafonner la qualité elle-même selon le volume cible (option "A", ex. qualité ≤ 40% du volume si `nbEF=0`) — résout l'explosion de volume mais demanderait de RÉGÉNÉRER le contenu réel de la séance qualité (pas juste un chiffre), touchant `genererContenuQualite()` en profondeur, jugé disproportionné pour ce chantier. **Solution finalement retenue** : empêcher le problème en amont plutôt que corriger après coup — un volume minimum requis selon le nombre de jours disponibles, vérifié dès que jours ET volume sont tous les deux connus dans le wizard (nécessairement à l'étape 7 "jours disponibles", le volume ayant déjà été saisi à l'étape 2, avant de savoir combien de jours seraient choisis — ordre du wizard non modifié pour ce chantier). Si le volume est sous le seuil, blocage avec message demandant d'augmenter le volume (même pattern que les validations déjà codées le 27/07/2026 pour temps de référence/objectif/volume/jour de longue). **Seuils actés** (paliers ronds, ajustés deux fois par Laurent après une première proposition calculée puis un premier arrondi) :
+| Volume minimum requis selon le nombre de jours disponibles | ✅ Codé et poussé le 29/07/2026 (`plan-generator.js`), **wizard non câblé** — le moteur refuse déjà, mais `v2/index.html` n'affiche pas encore le message dédié `VOLUME_MIN_JOURS_NON_ATTEINT` à l'utilisateur (reste à faire). **Historique du diagnostic** : la conception du 27/07/2026 (seuils 10/15/20/30/40/50km, jamais codée) reposait sur `RATIO_LONGUE=0.28` fixe. Remise en question le 29/07/2026 : la littérature (Daniels + sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio longue/volume plus élevé est normal et attendu à faible nombre de jours (jusqu'à 40-50% à 2-3j/semaine), pas une anomalie — un ratio fixe comprimait artificiellement la longue à 2-4j, la faisant passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total restait correct. Nouvelle contrainte ajoutée en parallèle, actée par Laurent : la longue ne doit JAMAIS être plus courte que le cumul des séances qualité de la semaine (le volume d'une séance qualité dépend de paramètres fixes par niveau dans `genererContenuQualite`, indépendants du volume hebdo cible — à bas volume elle peut sinon dépasser une longue calculée par simple ratio). **Solution codée** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22, remplace le ratio fixe) + `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` dans `repartirVolumeSemaine()` (nouveau paramètre `nbJours`, propagé dans les 3 points d'appel de `recalculerRepartitionEFLongue`). **Écart aux standards Daniels (25-30%) vérifié et assumé** : le ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum (vérifié par simulation sur plusieurs volumes croissants) — l'écart n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en pratique par la plupart des utilisateurs. **Nouveaux seuils `VOLUME_MIN_PAR_JOURS`** (remplacent la table du 27/07, dérivés par simulation directe sur le moteur réel, 10K niveau intermédiaire, plutôt que par approximation manuelle) :
 
 | Jours | Volume minimum |
 |---|---|
-| 2 | 10 km |
-| 3 | 15 km |
-| 4 | 20 km |
-| 5 | 30 km |
-| 6 | 40 km |
-| 7 | 50 km |
+| 2 | 16 km |
+| 3 | 20 km |
+| 4 | 23 km |
+| 5 | 32 km |
+| 6 | 35 km |
+| 7 | 38 km |
 
-Dérivés d'un calcul initial (`VOLUME_MIN_LONGUE_KM=5` + `nbQualiteFor(nbJours,niveau)` séances qualité à ~4km chacune, approximation générique entre une séance courte type côtes ~3.3km et une séance plus longue type seuil ~6km+ + `VOLUME_MIN_EF_KM=3` par EF restante), puis arrondis à des paliers ronds plus généreux — le calcul brut donnait 9/12/15/19/22/25km, jugé trop précis/bas par Laurent. Volontairement identique quel que soit le niveau (l'approximation qualité générique ne variait de toute façon presque pas selon debutant/intermediaire/confirme dans le calcul initial). **Ce chantier remplace/rend caduque l'ancienne piste "ratio progressif + contrainte stricte sur repartirVolumeSemaine"** — celle-ci n'est plus nécessaire si le volume minimum est déjà garanti en amont par ce nouveau garde-fou, `RATIO_LONGUE` fixe à 0.28 peut rester tel quel. **Reste à faire avant codage** : localiser le bon point d'insertion dans le wizard (`v2/index.html`, étape 7, dans le bloc de validation `nextStep()` déjà existant pour les autres champs), écrire le tableau de seuils en constante `VOLUME_MIN_PAR_JOURS` (ou nom similaire), message d'erreur explicite |
+Volontairement identiques quel que soit le niveau (la contrainte dominante — longue ≥ qualité — dépend peu du niveau dans les cas testés). **Validation en amont** : `generatePlan()` vérifie `params.volumeActuel` contre `VOLUME_MIN_PAR_JOURS[nbJours]` en tout premier, avant même de calculer phases/allures — retourne `{ planInvalide: true, code: 'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le seuil. Le garde-fou existant `VOLUME_JOURS_INCOMPATIBLE` (après génération complète, basé sur `nbSemainesConstructionSousSeuil`) reste en place inchangé, comme filet complémentaire — n'a normalement plus de raison de se déclencher si la validation amont fonctionne, mais conservé par prudence. **Non vérifié** : impact sur 5K/Semi/Marathon (simulation faite uniquement sur 10K) ; propagation éventuelle nécessaire vers les tables dupliquées de `decision-engine-apply.classic.js` (cf. §7, divergence documentée) si elles utilisent `repartirVolumeSemaine`. **Reste à faire** : câbler le message d'erreur côté wizard (`v2/index.html`, étape 7) pour affichage utilisateur — actuellement seul le moteur retourne le refus, rien ne l'affiche encore |
 | Système de badges (récompenses) | ✅ Livré le 27/07/2026 (conception discutée en profondeur avec Laurent, plusieurs itérations suite à ses retours en conditions réelles). 14 badges en 4 catégories, consultables via une carte cliquable tout en haut de l'écran Stats (`renderBadges()`, `index.html`) — jamais rien en permanence sur le dashboard, seul un bandeau de notification ponctuel et dismissible au moment d'un déblocage (`badgesNotifEl`, même famille visuelle que `adaptationEl`/`moteurDecisionEl`). Couleurs dérivées de la charte existante par catégorie : Régularité turquoise (`--accent2`), Progression bleu (`--accent`), Respect du corps vert sauge (seule vraie nouvelle nuance), Étapes du plan gris neutre. Anneau SVG (`renderAnneauBadge()`) à 3 états (débloqué/en cours/verrouillé) — JAMAIS masqué de la liste, même non débloqué. Explicitement écarté : badges de volume/intensité brute (risque de pousser à en faire trop), tout classement ou comparaison sociale.
 
 **Badges à paliers** (record HISTORIQUE affiché en légende, jamais perdu si la série casse — décision explicite pour éviter l'effet "streak" anxiogène façon Duolingo) :
