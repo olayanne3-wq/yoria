@@ -21,7 +21,16 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.26", title:"Carte du jour et vue Semaine simplifiées, corrections de fiabilité", current:true, notes:[
+      { ver:"v2.27", title:"Système de badges, coach plus honnête, changement de date de course", current:true, notes:[
+        "🏅 Nouveau système de badges : 14 badges répartis en 4 catégories (régularité, progression, respect du corps, étapes du plan), consultables depuis Stats — jamais de classement ni de comparaison, seulement tes propres records",
+        "🔥 Badges à paliers pour les séances validées d'affilée, les semaines complètes, la FC en zone EF et les semaines parfaites — ton record reste acquis même après une pause",
+        "🎯 Badges pour ta première estimation confirmée, un record personnel battu, un allègement accepté, une semaine équilibrée, le test semi-Cooper validé, et les grandes étapes de ton plan",
+        "📆 Nouveau levier dans le wizard pour changer la date de ta course sur un plan déjà en cours — la semaine en cours n'est jamais modifiée, et le passage en Spécifique/Affûtage reste cohérent",
+        "🤖 Le coach est plus honnête quand un vrai signal du moteur existe (fatigue élevée, régularité en baisse, plusieurs semaines difficiles) — toujours bienveillant sur la forme, mais plus direct sur le fond",
+        "❤️ Le coach signale désormais si ta fréquence cardiaque en endurance/sortie longue dépasse ta zone habituelle sur la semaine",
+        "🐛 Plusieurs correctifs de fiabilité sur les données du profil (accessibilité des formulaires, sécurité du code interne)",
+      ]},
+      { ver:"v2.26", title:"Carte du jour et vue Semaine simplifiées, corrections de fiabilité", current:false, notes:[
         "🗓️ Carte du jour : les icônes montre/stylo n'apparaissent que si la séance n'est pas encore validée, les allures et FC cibles sont affichées directement — plus besoin d'ouvrir quoi que ce soit",
         "✅ Une fois la séance validée, le résultat (distance, allure, répétitions) s'affiche automatiquement, avec un lien discret pour corriger",
         "📅 La vue Semaine suit désormais la même logique — impossible de saisir un statut, une note ou une performance sur une séance qui n'a pas encore eu lieu",
