@@ -3924,6 +3924,21 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         retourAccueilWizard();
         return;
       }
+      // Correctif 27/07/2026 (bug préexistant signalé par Laurent) : un
+      // plan marche-course (mode:'forme', sousMode:'marche-course') n'est
+      // JAMAIS passé par les étapes 1-8 du wizard course classique (cf.
+      // renderResults, court-circuit dédié dès le tout début de la
+      // fonction) — showStep(current) ci-dessous affichait à tort l'étape
+      // 1 du wizard COURSE (choix de distance), sans rapport avec le
+      // parcours marche-course d'où l'on vient. Retour direct à l'accueil
+      // du wizard, cohérent avec le traitement déjà réservé à
+      // consultationSeule juste au-dessus.
+      if (dernierPlanGenere?.mode === 'forme' && dernierPlanGenere?.sousMode === 'marche-course') {
+        showingResults = false;
+        document.getElementById('wizard-course-contenu').style.display = 'none';
+        retourAccueilWizard();
+        return;
+      }
       showingResults = false;
       showStep(current); // current est resté à totalSteps (8) : retour au récap
       return;
