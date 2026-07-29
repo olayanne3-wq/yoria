@@ -2249,6 +2249,15 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         if (r && !a.estTest) label += ` <span class="tag">${r.repli5KDouleurChronique ? 'repli I' : (r.interdireV ? 'sans V' : '') + (r.interdireI ? ' sans I' : '')}</span>`;
       }
       else if (a.type === 'ef') { badgeClass = 'ef'; label = 'EF'; detail = a.contenu; }
+      else if (a.type === 'marche-course') {
+        // Branche manquante jusqu'ici (27/07/2026, bug révélé en testant le
+        // nouveau parcours "Reprise en douceur" — jamais visible avant car
+        // aucun chemin n'atteignait cet écran de résultats pour un plan
+        // marche-course). badgeClass/label restaient undefined faute de
+        // correspondance dans ce switch, affichant littéralement le mot
+        // "undefined" pour chaque jour de course.
+        badgeClass = 'ef'; label = a.palierLabel || 'Marche-course'; detail = a.contenu;
+      }
       else if (a.type === 'repos') { badgeClass = 'repos'; label = 'Repos'; }
       const detailHtml = detail ? `<div class="day-detail">${detail}</div>` : '';
 
