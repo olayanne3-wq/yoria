@@ -3454,9 +3454,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = true;
-    afficherEcranWizard('wizard-course-contenu');
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.querySelector('.screen[data-step="10"]').classList.add('active');
+    afficherResumeResultats();
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
@@ -3550,8 +3548,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       renderResults(planTest);
       showingResults = true;
       consultationSeule = false;
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.querySelector('.screen[data-step="10"]').classList.add('active');
+      afficherResumeResultats();
       document.getElementById('nextBtn').innerHTML = '✓';
       document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
       document.getElementById('nextBtn').title = 'Terminer';
@@ -3604,8 +3601,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = false; // génération fraîche, pas une consultation — la flèche retour doit rouvrir le formulaire normalement
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.querySelector('.screen[data-step="10"]').classList.add('active');
+    afficherResumeResultats();
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
@@ -3781,6 +3777,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   function showStep(n){
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     document.querySelector(`.screen[data-step="${n}"]`).classList.add('active');
+    const stepNav = document.querySelector('#wizard-course-contenu .step-nav');
+    if (stepNav) stepNav.style.display = ''; // restaure, cf. afficherResumeResultats qui peut l'avoir masqué
     document.getElementById('stepNum').textContent = 'ÉTAPE ' + n;
     const backBtn = document.getElementById('backBtn');
     // Reste visible même à l'étape 1 : ramène à l'écran "choix de mode"
@@ -4255,6 +4253,24 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     });
   }
 
+  // Affiche l'écran de résumé (étape "10", data-step) sur wizard-course-
+  // contenu — factorisé le 27/07/2026 (6 occurrences dupliquées trouvées,
+  // cf. audit navigation demandé par Laurent). Corrige au passage un bug
+  // préexistant : .step-nav ("ÉTAPE 1 SUR 8") restait TOUJOURS visible
+  // au-dessus du résumé, y compris pour un plan marche-course qui n'est
+  // jamais passé par aucune étape numérotée — signalé par Laurent, mais
+  // le défaut touchait en réalité aussi les plans course/forme classiques
+  // (juste moins visible, l'étape affichée avait au moins un sens dans
+  // leur cas). .step-nav ré-affiché par showStep() au prochain passage
+  // réel par les étapes (ex. nouvelle génération de plan).
+  function afficherResumeResultats() {
+    afficherEcranWizard('wizard-course-contenu');
+    const stepNav = document.querySelector('#wizard-course-contenu .step-nav');
+    if (stepNav) stepNav.style.display = 'none';
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelector('.screen[data-step="10"]').classList.add('active');
+  }
+
   // ── Navigation écran d'accueil — v2.8, ajouté le 15/07/2026 ────────────
   function ouvrirConsultationPlans() {
     afficherEcranWizard('consultation-plans-contenu');
@@ -4582,9 +4598,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = false; // génération fraîche, pas une consultation
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.querySelector('.screen[data-step="10"]').classList.add('active');
-    afficherEcranWizard('wizard-course-contenu');
+    afficherResumeResultats();
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
@@ -4730,9 +4744,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       renderResults(planTest);
       showingResults = true;
       consultationSeule = false;
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.querySelector('.screen[data-step="10"]').classList.add('active');
-      afficherEcranWizard('wizard-course-contenu');
+      afficherResumeResultats();
       document.getElementById('nextBtn').innerHTML = '✓';
       document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
       document.getElementById('nextBtn').title = 'Terminer';
@@ -4774,9 +4786,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = false; // génération fraîche, pas une consultation
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.querySelector('.screen[data-step="10"]').classList.add('active');
-    afficherEcranWizard('wizard-course-contenu');
+    afficherResumeResultats();
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
