@@ -1065,8 +1065,10 @@ const DEFINITIONS_BADGES = {
   semaines_completes:    { categorie: 'regularite',  paliers: [2, 4, 8, 16] },
   fc_ef_maitrisee:       { categorie: 'corps',        paliers: [2, 4, 8] },
   retour_reussi:         { categorie: 'regularite',  paliers: [] },
+  semaine_parfaite:      { categorie: 'regularite',  paliers: [] },
   nouvelle_estimation:   { categorie: 'progression', paliers: [] },
   record_battu:          { categorie: 'progression', paliers: [] },
+  test_semi_cooper:      { categorie: 'progression', paliers: [] },
   repos_ecoute:          { categorie: 'corps',        paliers: [] },
   semaine_equilibree:    { categorie: 'corps',        paliers: [] },
   premier_plan:          { categorie: 'etapes',       paliers: [] },
@@ -1082,8 +1084,10 @@ const LIBELLES_BADGES = {
   semaines_completes:  { nom: "Semaines complètes d'affilée", paliers: ["2 semaines complètes", "4 semaines complètes", "8 semaines complètes", "16 semaines complètes"] },
   fc_ef_maitrisee:     { nom: "FC EF maîtrisée", paliers: ["2 semaines dans la zone EF", "4 semaines dans la zone EF", "8 semaines dans la zone EF"] },
   retour_reussi:       { nom: "Retour réussi" },
+  semaine_parfaite:    { nom: "Semaine parfaite" },
   nouvelle_estimation: { nom: "Nouvelle estimation" },
   record_battu:        { nom: "Record personnel battu" },
+  test_semi_cooper:    { nom: "Test semi-Cooper validé" },
   repos_ecoute:        { nom: "Repos écouté" },
   semaine_equilibree:  { nom: "Semaine équilibrée" },
   premier_plan:        { nom: "Premier plan lancé" },
@@ -1113,8 +1117,10 @@ const ICONES_BADGES = {
   semaines_completes:  'RECT_DOUBLE',
   fc_ef_maitrisee:     'M-7,2 L-3,2 L-1,-4 L1,6 L3,-2 L7,-2',
   retour_reussi:       'ARC_FLECHE',
+  semaine_parfaite:    'ETOILE',
   nouvelle_estimation: 'M-6,5 L-1,-3.5 L3.5,1 L6.5,-6',
   record_battu:        'CERCLE_CROIX',
+  test_semi_cooper:    'CHRONOMETRE',
   repos_ecoute:        'M0,-7 C3.5,-7 6,-4.5 6,-1 C6,3.5 0,8 0,8 C0,8 -6,3.5 -6,-1 C-6,-4.5 -3.5,-7 0,-7 Z',
   semaine_equilibree:  'BALANCE',
   premier_plan:        'M-6,7 L-6,-3 L0,-9 L6,-3 L6,7 Z',
@@ -1197,6 +1203,10 @@ function renderAnneauBadge(badgeId, forceDebloqueSimple, taille) {
     elementIcone = `<path d="M-7,3 L7,-3 M0,0 L0,-6 M-7,3 A2,2 0 0 0 -3,3 M7,-3 A2,2 0 0 0 3,-3" fill="none" stroke="${couleurIcone}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
   } else if (icone === 'CERCLE_CHECK') {
     elementIcone = `<circle cx="0" cy="0" r="7" fill="none" stroke="${couleurIcone}" stroke-width="2"/><path d="M-3,0 L-1,2 L3,-3" fill="none" stroke="${couleurIcone}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  } else if (icone === 'CHRONOMETRE') {
+    elementIcone = `<circle cx="0" cy="1" r="7" fill="none" stroke="${couleurIcone}" stroke-width="2"/><path d="M0,1 L3,-2 M0,-6 L0,-8 M-3,-8 L3,-8" fill="none" stroke="${couleurIcone}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  } else if (icone === 'ETOILE') {
+    elementIcone = `<path d="M0,-8 L2.1,-2.5 L8,-2 L3.4,1.8 L4.9,7.6 L0,4.2 L-4.9,7.6 L-3.4,1.8 L-8,-2 L-2.1,-2.5 Z" fill="none" stroke="${couleurIcone}" stroke-width="1.6" stroke-linejoin="round"/>`;
   } else {
     elementIcone = `<path d="${icone}" fill="none" stroke="${couleurIcone}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
@@ -1336,6 +1346,24 @@ function detecterSemaineEquilibree() {
   }
 }
 
+// Semaine "parfaite" (27/07/2026) — au moins une semaine déjà terminée où
+// toutes les séances prévues sont faites (done+adapted===total, même
+// critère que "semaine complète") ET aucune 😴 (skipped===0). Distinct du
+// badge "semaines_completes" qui, lui, tolère les 😴 tant que la somme
+// reste correcte — cf. bug corrigé le 22/07/2026 sur skipped, qui gère
+// déjà le cas 😴 automatique (séance jamais cochée), donc réutilisable
+// tel quel ici sans nouveau calcul. Vérifie TOUTES les semaines passées
+// (jamais un simple oui/non sur la dernière), au moins UNE suffit.
+function detecterSemaineParfaite() {
+  const cw = currentWeek();
+  for (let w = 1; w <= cw; w++) {
+    const report = weeklyReport(w);
+    if (!report || report.total === 0) continue;
+    if (report.done + report.adapted === report.total && report.skipped === 0) return true;
+  }
+  return false;
+}
+
 // Orchestrateur — calcule l'état ACTUEL de chaque badge (niveau atteint
 // pour les badges à paliers, booléen pour les événementiels), à comparer
 // ensuite avec badgesDejaEnregistres pour détecter un nouveau déblocage.
@@ -1364,6 +1392,7 @@ function calculerEtatBadgesActuel() {
   etat.fc_ef_maitrisee = DEFINITIONS_BADGES.fc_ef_maitrisee.paliers.filter(p => maxFcEf >= p).length;
 
   etat.retour_reussi = detecterRetourReussi();
+  etat.semaine_parfaite = detecterSemaineParfaite();
   etat.semaine_equilibree = detecterSemaineEquilibree();
   etat.premier_plan = !!window.__PLAN_BRUT__;
   etat.entree_affutage = window.__PLAN_BRUT__?.semaines?.some(s => s.phase === 'Affutage' && s.semaineNum < currentWeek()) ?? false;
@@ -4203,6 +4232,19 @@ function renderDashboard() {
         nouveauPlan.id = planCourant.id;
         nouveauPlan.nom = planCourant.nom;
         nouveauPlan.statuses = planCourant.statuses;
+
+        // Badge "test_semi_cooper" (27/07/2026) — au moment où le test
+        // initial (celui qui débloque la génération complète du plan,
+        // enAttenteTest:true) est validé avec succès. Ne couvre QUE ce
+        // test initial, pas les tests de confirmation en cours de plan
+        // (placerSeanceTest/aUneSeanceTest), qui n'ont pas de point de
+        // saisie dédié séparé dans le code actuel — ils passent par le
+        // flux normal de statut de séance qualité.
+        if (window.__badgesCache__ && !window.__badgesCache__.test_semi_cooper) {
+          enregistrerBadgeDebloque('test_semi_cooper', 1).then(() => {
+            window.__badgesCache__.test_semi_cooper = true;
+          }).catch(() => {});
+        }
 
         // Sauvegarde Supabase — bloquante et principale, même correctif que
         // genererSuivant() juste au-dessus (21/07/2026).
