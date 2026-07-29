@@ -3962,6 +3962,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         return;
       }
     }
+    // Validation à la sortie de l'étape 7 (jours disponibles) — 27/07/2026,
+    // demande de Laurent : jusqu'ici, désigner un jour comme sortie longue
+    // était optionnel ("reclique pour en faire ta sortie longue") — si
+    // jamais fait, pickLongueDay() (plan-generator.js) choisissait
+    // silencieusement à la place de l'utilisateur. Bloque désormais tant
+    // qu'aucun jour n'est explicitement marqué .longue.
+    if (current === 7 && !estGrandDebutant()) {
+      const jourLongueDesigne = document.querySelector('#daysGrid .day.longue');
+      if (!jourLongueDesigne) {
+        alert("Reclique sur un de tes jours sélectionnés pour désigner ta sortie longue avant de continuer.");
+        return;
+      }
+    }
     if(current < totalSteps){
       current++;
       if (estGrandDebutant() && current === 2) current = 5;
