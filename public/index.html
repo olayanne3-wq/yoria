@@ -6729,7 +6729,7 @@ function renderWeekDetail(weekNum) {
         // bloc que sur la carte du jour, pour pouvoir corriger une séance
         // passée depuis le détail de semaine.
         card.appendChild(renderManualPerfRow(uid, s, stravaRun));
-        const noteInput=el("input",{type:"text",placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"14px",outline:"none",width:"100%"}});
+        const noteInput=el("input",{type:"text",id:"note-"+uid,name:"note-"+uid,placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"14px",outline:"none",width:"100%"}});
         noteInput.value=sessionNotes[uid]||"";
         noteInput.addEventListener("change",()=>{
           if(noteInput.value.trim()){sessionNotes[uid]=noteInput.value.trim();}
