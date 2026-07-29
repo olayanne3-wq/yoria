@@ -3906,6 +3906,22 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       location.href = '/';
       return;
     }
+    // Validation à la sortie de l'étape 3 (temps de référence) — 27/07/2026,
+    // demande de Laurent : jusqu'ici, un champ vide n'était détecté qu'au
+    // moment de générer le plan (validation existante dans
+    // generateAndShowResults, cf. plus bas), plusieurs étapes trop tard —
+    // on pouvait avancer normalement avec un temps de référence vide sans
+    // aucun signal. Ne s'applique jamais au grand débutant (pas de temps
+    // de référence à ce stade, cf. "Je n'ai pas de référence") ni au flux
+    // de confirmation de test (fluxTestCourse, même raison).
+    if (current === 3 && !estGrandDebutant() && !fluxTestCourse) {
+      const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+      const tempsSaisi = readTimeFields('t', longFormat);
+      if (Engine.parseTimeToSeconds(tempsSaisi) <= 0) {
+        alert("Renseigne ton temps de référence avant de continuer (ou utilise \"Je n'ai pas de référence\").");
+        return;
+      }
+    }
     if(current < totalSteps){
       current++;
       if (estGrandDebutant() && current === 2) current = 5;
