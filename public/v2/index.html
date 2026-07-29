@@ -3922,6 +3922,21 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         return;
       }
     }
+    // Validation à la sortie de l'étape 4 (objectif) — même raison et même
+    // date que l'étape 3 ci-dessus. Les champs oHour/oMin/oSec ont des
+    // valeurs par défaut en dur dans le HTML (48:30), donc rarement vides
+    // en pratique sauf effacement manuel — gardé quand même pour la même
+    // cohérence défensive que l'étape 3, et parce que la validation
+    // existait déjà (plus tard, dans generateAndShowResults) pour ce
+    // même champ.
+    if (current === 4 && !estGrandDebutant() && !fluxTestCourse) {
+      const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
+      const objSaisi = readTimeFields('o', longFormat);
+      if (Engine.parseTimeToSeconds(objSaisi) <= 0) {
+        alert("Renseigne ton objectif avant de continuer.");
+        return;
+      }
+    }
     if(current < totalSteps){
       current++;
       if (estGrandDebutant() && current === 2) current = 5;
@@ -4432,6 +4447,18 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   }
 
   function nextStepForme() {
+    // Validation à la sortie de l'étape 1 Forme (temps de référence) —
+    // 27/07/2026, même principe et même raison que le wizard course
+    // (cf. nextStep ci-dessus) : détecté jusqu'ici seulement à la
+    // génération (genererPlanFormeUI), trop tardif.
+    if (currentForme === 1 && !fluxTestForme) {
+      const longFormatForme = distanceMeta[currentDistForme]?.unit === "h:min:sec";
+      const tempsSaisiForme = readTimeFields('t', longFormatForme);
+      if (Engine.parseTimeToSeconds(tempsSaisiForme) <= 0) {
+        alert("Renseigne ton temps de référence avant de continuer (ou utilise \"Je n'ai pas de référence\").");
+        return;
+      }
+    }
     if (currentForme < totalStepsForme) { currentForme++; showStepForme(currentForme); }
     else { genererPlanFormeUI(); }
   }
