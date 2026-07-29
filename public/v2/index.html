@@ -4411,7 +4411,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // (cf. continuerVersSelectionJoursGrandDebutant, déclenchée par le
   // bouton "C'est parti" de cet écran).
   function afficherIntroGrandDebutant(origine) {
+    // Masque explicitement TOUS les écrans concurrents (27/07/2026,
+    // correctif d'un bug signalé par Laurent : intro + sélection des jours
+    // affichés simultanément). Cause racine : rediriger_si_onboarding_
+    // grand_debutant() (IIFE exécutée au chargement du script) affiche
+    // directement wizard-grand-debutant-contenu si le marqueur
+    // sessionStorage v2_onboarding_grand_debutant est déjà 'true' — ce
+    // même marqueur est posé par renderDaysGrandDebutant() elle-même, donc
+    // un rechargement de page en cours de parcours (retour Strava OAuth,
+    // déjà documenté comme fragile ailleurs dans ce fichier) peut laisser
+    // les deux écrans affichés à la fois si l'un ne masque pas l'autre
+    // explicitement.
     document.getElementById('choix-mode-contenu').style.display = 'none';
+    document.getElementById('wizard-grand-debutant-contenu').style.display = 'none';
     document.getElementById('wizard-intro-grand-debutant').style.display = 'block';
 
     const sousEl = document.getElementById('introGrandDebutantSous');
