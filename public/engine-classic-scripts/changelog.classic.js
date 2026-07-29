@@ -21,7 +21,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.27", title:"Système de badges, coach plus honnête, changement de date de course", current:true, notes:[
+      { ver:"v2.28", title:"Navigation du wizard plus fiable, reprise en douceur, swipe entre étapes", current:true, notes:[
+        "🌱 Nouvelle option \"Reprise en douceur\" pour repartir pas à pas après une pause ou une blessure, indépendamment de ton niveau habituel — avec un écran d'explication avant de choisir tes jours",
+        "🚶 La progression marche-course commence désormais par de l'alternance marche/course avant le premier bloc de course continue, pour une reprise plus progressive",
+        "👆 Navigation par glissement (swipe) entre les étapes de création d'un plan, en plus des flèches",
+        "✅ Le temps de référence, l'objectif, le volume hebdomadaire et le jour de sortie longue sont maintenant vérifiés au bon moment, avec un message clair si une info manque — plus de plan généré avec une valeur non choisie",
+        "🐛 Plusieurs correctifs de fiabilité sur la navigation entre les écrans du wizard (retour arrière, bouton de validation, sortie du wizard)",
+      ]},
+      { ver:"v2.27", title:"Système de badges, coach plus honnête, changement de date de course", current:false, notes:[
         "🏅 Nouveau système de badges : 14 badges répartis en 4 catégories (régularité, progression, respect du corps, étapes du plan), consultables depuis Stats — jamais de classement ni de comparaison, seulement tes propres records",
         "🔥 Badges à paliers pour les séances validées d'affilée, les semaines complètes, la FC en zone EF et les semaines parfaites — ton record reste acquis même après une pause",
         "🎯 Badges pour ta première estimation confirmée, un record personnel battu, un allègement accepté, une semaine équilibrée, le test semi-Cooper validé, et les grandes étapes de ton plan",
