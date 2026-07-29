@@ -1605,6 +1605,18 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   if (btnRetourApp) {
     btnRetourApp.addEventListener('click', () => {
       if (current > 1 && !confirm("Quitter le wizard ? Ta progression sur ce plan ne sera pas conservée.")) return;
+      // Correctif 27/07/2026 (bug signalé par Laurent) : sans ce nettoyage,
+      // v2_wizard_step/v2_wizard_step_forme restaient en sessionStorage
+      // après un retour volontaire à l'app — le message d'avertissement
+      // ci-dessus dit explicitement "ta progression ne sera pas
+      // conservée", mais au prochain "Créer un nouveau plan" (rediriger_si_
+      // onboarding_grand_debutant est différent, lui c'est voulu), l'étape
+      // sauvegardée relançait le wizard en plein milieu du parcours de
+      // choix plutôt que de repartir de zéro. Ce mécanisme n'a de sens que
+      // pour un reload TECHNIQUE forcé (retour OAuth Strava), jamais pour
+      // une sortie volontaire.
+      sessionStorage.removeItem('v2_wizard_step');
+      sessionStorage.removeItem('v2_wizard_step_forme');
       location.href = '/';
     });
   }
