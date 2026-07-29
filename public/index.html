@@ -1065,7 +1065,7 @@ const DEFINITIONS_BADGES = {
   semaines_completes:    { categorie: 'regularite',  paliers: [2, 4, 8, 16] },
   fc_ef_maitrisee:       { categorie: 'corps',        paliers: [2, 4, 8] },
   retour_reussi:         { categorie: 'regularite',  paliers: [] },
-  semaine_parfaite:      { categorie: 'regularite',  paliers: [] },
+  semaine_parfaite:      { categorie: 'regularite',  paliers: [3, 6, 12, 20] },
   nouvelle_estimation:   { categorie: 'progression', paliers: [] },
   record_battu:          { categorie: 'progression', paliers: [] },
   test_semi_cooper:      { categorie: 'progression', paliers: [] },
@@ -1084,7 +1084,7 @@ const LIBELLES_BADGES = {
   semaines_completes:  { nom: "Semaines complètes d'affilée", paliers: ["2 semaines complètes", "4 semaines complètes", "8 semaines complètes", "16 semaines complètes"] },
   fc_ef_maitrisee:     { nom: "FC EF maîtrisée", paliers: ["2 semaines dans la zone EF", "4 semaines dans la zone EF", "8 semaines dans la zone EF"] },
   retour_reussi:       { nom: "Retour réussi" },
-  semaine_parfaite:    { nom: "Semaine parfaite" },
+  semaine_parfaite:    { nom: "Semaines parfaites", paliers: ["3 semaines parfaites", "6 semaines parfaites", "12 semaines parfaites", "20 semaines parfaites"] },
   nouvelle_estimation: { nom: "Nouvelle estimation" },
   record_battu:        { nom: "Record personnel battu" },
   test_semi_cooper:    { nom: "Test semi-Cooper validé" },
@@ -1346,22 +1346,31 @@ function detecterSemaineEquilibree() {
   }
 }
 
-// Semaine "parfaite" (27/07/2026) — au moins une semaine déjà terminée où
-// toutes les séances prévues sont faites (done+adapted===total, même
-// critère que "semaine complète") ET aucune 😴 (skipped===0). Distinct du
-// badge "semaines_completes" qui, lui, tolère les 😴 tant que la somme
-// reste correcte — cf. bug corrigé le 22/07/2026 sur skipped, qui gère
-// déjà le cas 😴 automatique (séance jamais cochée), donc réutilisable
-// tel quel ici sans nouveau calcul. Vérifie TOUTES les semaines passées
-// (jamais un simple oui/non sur la dernière), au moins UNE suffit.
-function detecterSemaineParfaite() {
+// Semaine "parfaite" (27/07/2026, transformé en compteur cumulé le même
+// jour à la demande de Laurent) — une semaine déjà terminée où TOUTES les
+// séances prévues sont ✅ (done===total, plus strict que "semaine
+// complète" qui tolère aussi les ⚠️ adaptées) ET aucune 😴 (skipped===0).
+// Correctif le même jour : la première version utilisait done+adapted===
+// total (même critère que semaines_completes), ce qui laissait une
+// semaine avec des ⚠️ compter comme "parfaite" — incohérent avec le nom
+// du badge. skipped réutilisé tel quel (cf. bug corrigé le 22/07/2026,
+// gère déjà le cas 😴 automatique).
+//
+// CUMULÉ, pas une série d'affilée (décision actée le 27/07/2026, contraire
+// aux 3 autres badges à paliers) — "parfaite" est déjà un critère exigeant
+// en soi ; exiger EN PLUS la consécutivité rendrait les paliers hors de
+// portée sur un seul plan (9-13 semaines typiquement). Seuils 3/6/12/20
+// choisis en conséquence : le premier reste atteignable sur un plan court,
+// le dernier vise plusieurs plans/saisons successifs.
+function compterSemainesParfaites() {
   const cw = currentWeek();
+  let compteur = 0;
   for (let w = 1; w <= cw; w++) {
     const report = weeklyReport(w);
     if (!report || report.total === 0) continue;
-    if (report.done + report.adapted === report.total && report.skipped === 0) return true;
+    if (report.done === report.total && report.skipped === 0) compteur++;
   }
-  return false;
+  return compteur;
 }
 
 // Orchestrateur — calcule l'état ACTUEL de chaque badge (niveau atteint
@@ -1391,8 +1400,16 @@ function calculerEtatBadgesActuel() {
   window.__badgesSeriesBrutes__.fc_ef_maitrisee = { serieMax: maxFcEf, serieActuelle: actuelleFcEf };
   etat.fc_ef_maitrisee = DEFINITIONS_BADGES.fc_ef_maitrisee.paliers.filter(p => maxFcEf >= p).length;
 
+  // semaine_parfaite : compteur CUMULÉ, pas une série — serieActuelle vaut
+  // toujours serieMax (jamais de notion de "cassée", cf. commentaire de
+  // compterSemainesParfaites()) pour rester compatible avec l'affichage de
+  // renderAnneauBadge, pensé pour les séries mais fonctionne identiquement
+  // pour un cumul qui ne redescend jamais.
+  const totalSemainesParfaites = compterSemainesParfaites();
+  window.__badgesSeriesBrutes__.semaine_parfaite = { serieMax: totalSemainesParfaites, serieActuelle: totalSemainesParfaites };
+  etat.semaine_parfaite = DEFINITIONS_BADGES.semaine_parfaite.paliers.filter(p => totalSemainesParfaites >= p).length;
+
   etat.retour_reussi = detecterRetourReussi();
-  etat.semaine_parfaite = detecterSemaineParfaite();
   etat.semaine_equilibree = detecterSemaineEquilibree();
   etat.premier_plan = !!window.__PLAN_BRUT__;
   etat.entree_affutage = window.__PLAN_BRUT__?.semaines?.some(s => s.phase === 'Affutage' && s.semaineNum < currentWeek()) ?? false;
