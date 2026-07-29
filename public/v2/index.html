@@ -3930,13 +3930,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // renderResults, court-circuit dédié dès le tout début de la
       // fonction) — showStep(current) ci-dessous affichait à tort l'étape
       // 1 du wizard COURSE (choix de distance), sans rapport avec le
-      // parcours marche-course d'où l'on vient. Retour direct à l'accueil
-      // du wizard, cohérent avec le traitement déjà réservé à
-      // consultationSeule juste au-dessus.
+      // parcours marche-course d'où l'on vient. Correctif du 27/07/2026
+      // (1ère version) : retournait à l'accueil complet du wizard — trop
+      // radical selon Laurent. Corrigé le même jour (2ème version) :
+      // retour direct à l'écran de sélection des jours marche-course
+      // (wizard-grand-debutant-contenu), d'où provient ce plan.
       if (dernierPlanGenere?.mode === 'forme' && dernierPlanGenere?.sousMode === 'marche-course') {
         showingResults = false;
         document.getElementById('wizard-course-contenu').style.display = 'none';
-        retourAccueilWizard();
+        document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+        renderDaysGrandDebutant();
         return;
       }
       showingResults = false;
