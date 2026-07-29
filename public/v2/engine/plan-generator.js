@@ -991,14 +991,37 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
 const DUREE_MAX_EF_MIN = 75;
 const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150 };
 
+// Paliers marche-course (27/07/2026, révisé en profondeur avec Laurent) —
+// AVANT : 7 paliers démarrant directement à 5min de course CONTINUE,
+// jugé trop exigeant pour un grand débutant n'ayant jamais couru (aucune
+// étape d'alternance marche/course avant le premier bloc continu).
+// Confirmé par la littérature : le "White Plan" de Daniels (chapitre 11,
+// programme spécifiquement conçu pour les débutants) utilise une approche
+// walk/run sur ses 9 premières semaines, jamais un bloc continu d'emblée.
+// APRÈS : 13 paliers en 2 phases — 6 paliers d'ALTERNANCE (marche/course
+// répétées, la part de course augmente progressivement) puis 7 paliers de
+// CONTINU croissant (5 à 30min), reprenant à l'identique les anciens
+// paliers 0-6 sous des id 6-12. Chaque palier franchissable dès la 1ère
+// séance validée (palierMarcheCourseFor, inchangé) — RIEN n'oblige à
+// prendre plusieurs séances par palier, y compris à la transition
+// alternance→continu (palier 5→6) : décision actée avec Laurent après
+// avoir chiffré que la progression la plus rapide passe désormais à
+// ~13 séances (~1 mois à 3 séances/semaine) contre ~7 avant — delai jugé
+// acceptable pour la sécurité supplémentaire apportée.
 export const PALIERS_MARCHE_COURSE = [
-  { id: 0, courseMin: 5,  label: '5min de course continue' },
-  { id: 1, courseMin: 8,  label: '8min de course continue' },
-  { id: 2, courseMin: 12, label: '12min de course continue' },
-  { id: 3, courseMin: 16, label: '16min de course continue' },
-  { id: 4, courseMin: 20, label: '20min de course continue' },
-  { id: 5, courseMin: 25, label: '25min de course continue' },
-  { id: 6, courseMin: 30, label: '30min de course continue (transition)' }
+  { id: 0,  continu: false, reps: 8, courseSec: 60,  marcheSec: 120, label: '8× (1min course / 2min marche)' },
+  { id: 1,  continu: false, reps: 8, courseSec: 90,  marcheSec: 90,  label: '8× (1min30 course / 1min30 marche)' },
+  { id: 2,  continu: false, reps: 6, courseSec: 120, marcheSec: 60,  label: '6× (2min course / 1min marche)' },
+  { id: 3,  continu: false, reps: 5, courseSec: 180, marcheSec: 60,  label: '5× (3min course / 1min marche)' },
+  { id: 4,  continu: false, reps: 3, courseSec: 300, marcheSec: 60,  label: '3× (5min course / 1min marche)' },
+  { id: 5,  continu: false, reps: 2, courseSec: 480, marcheSec: 60,  label: '2× (8min course / 1min marche)' },
+  { id: 6,  continu: true,  courseMin: 5,  label: '5min de course continue' },
+  { id: 7,  continu: true,  courseMin: 8,  label: '8min de course continue' },
+  { id: 8,  continu: true,  courseMin: 12, label: '12min de course continue' },
+  { id: 9,  continu: true,  courseMin: 16, label: '16min de course continue' },
+  { id: 10, continu: true,  courseMin: 20, label: '20min de course continue' },
+  { id: 11, continu: true,  courseMin: 25, label: '25min de course continue' },
+  { id: 12, continu: true,  courseMin: 30, label: '30min de course continue (transition)' }
 ];
 
 const DUREE_CIBLE_MARCHE_COURSE_MIN = 25;
@@ -1013,6 +1036,26 @@ export function palierMarcheCourseFor(seancesValideesPalierCourant, palierActuel
 
 export function genererContenuMarcheCourse({ palierId = 0 }) {
   const palier = PALIERS_MARCHE_COURSE[Math.min(palierId, PALIERS_MARCHE_COURSE.length - 1)];
+
+  if (!palier.continu) {
+    // Paliers d'alternance (0-5, 27/07/2026) — durée "course" du palier
+    // pour le calcul d'échauffement = durée cumulée de course réelle
+    // (reps × courseSec), cohérent avec la logique déjà utilisée pour les
+    // paliers continus (DUREE_CIBLE_MARCHE_COURSE_MIN - temps de course).
+    const dureeCourseCumuleeMin = (palier.reps * palier.courseSec) / 60;
+    const dureeEchauffementRetour = Math.max(
+      DUREE_MIN_ECHAUFFEMENT_RETOUR_MIN,
+      Math.round((DUREE_CIBLE_MARCHE_COURSE_MIN - dureeCourseCumuleeMin) / 2)
+    );
+    const courseLabel = palier.courseSec >= 60 ? `${Math.round(palier.courseSec/60*10)/10}min` : `${palier.courseSec}s`;
+    const marcheLabel = palier.marcheSec >= 60 ? `${Math.round(palier.marcheSec/60*10)/10}min` : `${palier.marcheSec}s`;
+    return {
+      contenu: `Échauffement marche ${dureeEchauffementRetour}min + ${palier.reps}× (${courseLabel} course / ${marcheLabel} marche) + retour au calme marche ${dureeEchauffementRetour}min`,
+      kmEstime: null,
+      palierLabel: palier.label
+    };
+  }
+
   const dureeEchauffementRetour = Math.max(
     DUREE_MIN_ECHAUFFEMENT_RETOUR_MIN,
     Math.round((DUREE_CIBLE_MARCHE_COURSE_MIN - palier.courseMin) / 2)
