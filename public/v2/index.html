@@ -1474,7 +1474,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
             <div id="levier-dateCourse" style="display:none; padding:0 14px 14px;">
               <p class="sub" style="margin-top:6px; font-size:12px;">Change la date de ta course à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas.</p>
               <div class="date-field" style="margin-top:6px;">
-                <input type="date" id="nouvelleDateCourseInput" oninput="simulerImpactDateCourse()">
+                <input type="date" id="nouvelleDateCourseInput" name="nouvelleDateCourse" oninput="simulerImpactDateCourse()">
               </div>
               <div id="simulationImpactDateCourse" style="margin-top:14px;"></div>
               <button class="btn-mini" id="btnAppliquerDateCourse" style="margin-top:10px;" onclick="appliquerChangementDateCourse()" disabled>Appliquer à partir de la semaine prochaine</button>
