@@ -960,6 +960,11 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
           <div><div class="label">Mode forme</div><div class="desc">Entretiens ta forme, sans date de course</div></div>
           <div class="check"></div>
         </div>
+        <div class="opt" id="choixModeReprise" onclick="choisirMode('reprise')">
+          <div class="ico">🌱</div>
+          <div><div class="label">Reprise en douceur</div><div class="desc">Après une pause ou une blessure, repars pas à pas — indépendant de ton niveau habituel</div></div>
+          <div class="check"></div>
+        </div>
       </div>
     </div>
     <div class="footer">
@@ -4145,6 +4150,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     modeChoisi = mode;
     document.getElementById('choixModeCourse').classList.toggle('selected', mode === 'course');
     document.getElementById('choixModeForme').classList.toggle('selected', mode === 'forme');
+    document.getElementById('choixModeReprise').classList.toggle('selected', mode === 'reprise');
     document.getElementById('btnChoixModeContinuer').disabled = false;
   }
 
@@ -4155,6 +4161,21 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       document.getElementById('wizard-course-contenu').style.display = 'block';
       current = (etapeSauvegardee >= 1 && etapeSauvegardee <= totalSteps) ? etapeSauvegardee : 1;
       showStep(current);
+    } else if (modeChoisi === 'reprise') {
+      // "Reprise en douceur" (27/07/2026, demande de Laurent) — réutilise
+      // TEL QUEL l'écran grand-débutant existant (jours + génération du
+      // plan marche-course), qui sait déjà déclencher genererPlanGrandDebutantUI()
+      // avec profil.niveau='grand-debutant' LOCAL à ce plan (plan.profilOrigine),
+      // jamais profilStocke.niveau (le profil général stocké dans
+      // localStorage) — un coureur "confirmé" qui reprend en douceur
+      // garde ce niveau dans son profil, seul CE plan est marqué
+      // grand-débutant. Le mécanisme déjà en place (proposition de
+      // bascule vers un vrai plan une fois le dernier palier réussi,
+      // cf. genererPlanGrandDebutantUI et le bloc "Tu cours en continu !")
+      // fait tout le travail de "remontée progressive" demandé — pas de
+      // nouveau mécanisme de transition de niveau à inventer.
+      document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+      renderDaysGrandDebutant();
     } else {
       // BUG CORRIGÉ (15/07/2026, remarqué par Laurent) : un grand-débutant
       // qui choisit "Mode forme" depuis cet écran (pas via l'onboarding,
