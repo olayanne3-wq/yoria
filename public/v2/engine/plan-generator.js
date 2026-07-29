@@ -408,6 +408,21 @@ export const PLAFONDS_VOLUME = {
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
+// Volume hebdomadaire minimum par nombre de jours d'entraînement/semaine
+// (29/07/2026, cf. inventaire §16). Dérivé par simulation directe sur le
+// moteur réel (repartirVolumeSemaine + genererContenuQualite, niveau
+// intermédiaire 10K) en cherchant le premier volume ne déclenchant plus
+// le garde-fou VOLUME_JOURS_INCOMPATIBLE ni la contrainte "longue >=
+// qualité + marge" — puis arrondi légèrement au-dessus par cohérence avec
+// la marge de sécurité déjà appliquée ailleurs dans le fichier (ex.
+// VOLUME_MIN_PAR_JOURS n'est PAS le seuil exact simulé mais un palier
+// rond avec un peu de marge). Volontairement identique quel que soit le
+// niveau — la contrainte dominante (longue >= qualité) dépend peu du
+// niveau dans les cas testés. Remplace l'ancienne conception (10/15/20/
+// 30/40/50km, actée le 27/07/2026 mais jamais codée) qui ne tenait pas
+// compte du ratio longue réel ni de la contrainte longue>qualité.
+export const VOLUME_MIN_PAR_JOURS = { 2: 16, 3: 20, 4: 23, 5: 32, 6: 35, 7: 38 };
+
 export const DUREE_AFFUTAGE_JOURS = {
   '5K': 7,
   '10K': 10,
@@ -1508,17 +1523,23 @@ export function placerSeanceTest(plan, alluresSec) {
     kmQualiteTotal,
     distance: plan.distance,
     phase: semaine.phase,
-    alluresSec
+    alluresSec,
+    nbJours: Object.keys(semaine.assignment).length
   });
 
   semaine.aUneSeanceTest = true;
 }
 
-function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTotal, distance, phase, alluresSec }) {
+function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTotal, distance, phase, alluresSec, nbJours }) {
   const nbEF = Object.values(assignment).filter(s => s.type === 'ef').length;
   const aLongue = Object.values(assignment).some(s => s.type === 'longue');
+  // nbJours = nb de jours d'entraînement/semaine, requis par le ratio
+  // longue variable (cf. repartirVolumeSemaine) — dérivé du nombre total
+  // de séances de la semaine (EF + qualité + longue) si non fourni
+  // explicitement par l'appelant, pour rester robuste aux appels existants.
+  const nbJoursEffectif = nbJours ?? Object.keys(assignment).length;
   const { kmLongue, kmParEF, warning: warningRepartition } = repartirVolumeSemaine({
-    volumeCibleKm, kmQualiteTotal, nbEF, aLongue
+    volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours: nbJoursEffectif
   });
 
   const warnings = [];
@@ -1543,14 +1564,41 @@ function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTot
   return { warnings, kmLongue, kmParEF, nbEF, aLongue };
 }
 
-export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue }) {
+// Ratio longue variable selon le nombre de jours disponibles/semaine
+// (29/07/2026, remplace RATIO_LONGUE=0.28 fixe — cf. inventaire §16,
+// chantier "volume minimum requis selon le nombre de jours"). Motivation :
+// à faible nombre de jours, un ratio fixe comprimait artificiellement la
+// longue (elle pouvait finir sous VOLUME_MIN_LONGUE_KM alors que le volume
+// hebdo total restait correct), alors que la littérature (Daniels +
+// sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio
+// plus élevé est normal et attendu à 2-3 jours/semaine (jusqu'à 40-50%),
+// le ratio redescendant vers les standards Daniels (25-30%) à 5-7 jours où
+// plusieurs EF absorbent le reste du volume. Paliers ronds arbitrés avec
+// Laurent après simulation sur le moteur réel, pas une formule continue.
+const RATIO_LONGUE_PAR_JOURS = { 2: 0.45, 3: 0.38, 4: 0.33, 5: 0.28, 6: 0.25, 7: 0.22 };
+const RATIO_LONGUE_DEFAUT = 0.28;
+
+// Marge minimale (km) entre la longue et le cumul qualité de la semaine —
+// la longue ne doit JAMAIS être plus courte que le total des séances
+// qualité, quel que soit le ratio ci-dessus (contrainte actée avec
+// Laurent le 29/07/2026 : "on ne peut pas accepter que la longue ne soit
+// pas la plus longue séance"). Nécessaire car le volume d'une séance
+// qualité dépend de paramètres fixes par niveau (reps × durée dans
+// genererContenuQualite), indépendants du volume hebdo cible — à bas
+// volume, la qualité peut donc dépasser une longue calculée par simple
+// ratio si cette contrainte n'existe pas.
+const MARGE_LONGUE_VS_QUALITE_KM = 1;
+
+export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours }) {
   const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
   let kmLongue = 0, kmParEF = 0;
 
-  const RATIO_LONGUE = 0.28;
+  const RATIO_LONGUE = RATIO_LONGUE_PAR_JOURS[nbJours] ?? RATIO_LONGUE_DEFAUT;
 
   if (aLongue) {
-    kmLongue = Math.min(volumeCibleKm * RATIO_LONGUE, kmRestant);
+    const kmLongueRatio = Math.min(volumeCibleKm * RATIO_LONGUE, kmRestant);
+    const kmLongueMinContrainte = kmQualiteTotal + MARGE_LONGUE_VS_QUALITE_KM;
+    kmLongue = Math.min(Math.max(kmLongueRatio, kmLongueMinContrainte), kmRestant);
     const kmRestantApresLongue = kmRestant - kmLongue;
     kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
   } else {
@@ -1591,6 +1639,23 @@ function differencierEF({ assignment, kmParEF }) {
 }
 
 export function generatePlan(profil, params) {
+  // Validation amont volume/jours (29/07/2026) — vérifie AVANT de générer
+  // quoi que ce soit que le volume de départ est cohérent avec le nombre
+  // de jours disponibles, plutôt que de laisser tourner toute la
+  // génération pour la refuser après coup via nbSemainesConstructionSousSeuil
+  // plus bas (garde-fou complémentaire, toujours en place). Ce contrôle
+  // amont est plus rapide et donne un message ciblé sur le levier à
+  // ajuster (volume ou jours) avant même de calculer phases/allures.
+  const nbJoursProfil = profil.joursDisponiblesHabituels?.length ?? 0;
+  const volumeMinRequis = VOLUME_MIN_PAR_JOURS[nbJoursProfil];
+  if (volumeMinRequis !== undefined && params.volumeActuel < volumeMinRequis) {
+    return {
+      planInvalide: true,
+      code: 'VOLUME_MIN_JOURS_NON_ATTEINT',
+      message: `Avec ${nbJoursProfil} jour(s) d'entraînement par semaine, un volume de départ d'au moins ${volumeMinRequis}km est nécessaire pour générer un plan cohérent (sortie longue et séances qualité/EF substantielles). Volume actuel : ${params.volumeActuel}km. Augmente le volume de départ ou réduis le nombre de jours disponibles.`,
+    };
+  }
+
   const distanceKm = KM_BY_DISTANCE[params.distance];
   const refTimeSeconds = parseTimeToSeconds(params.tempsReference);
   const objectifTimeSeconds = parseTimeToSeconds(params.objectif);
@@ -1694,7 +1759,8 @@ export function generatePlan(profil, params) {
         kmQualiteTotal,
         distance: params.distance,
         phase: phase.nom,
-        alluresSec: allSeconds
+        alluresSec: allSeconds,
+        nbJours: profil.joursDisponiblesHabituels.length
       });
       if (!(phase.nom === 'Affutage' || dechargeSemaine)) {
         warningsRepartition.forEach(w => {
@@ -1965,7 +2031,8 @@ export function appliquerAdaptations(plan) {
       kmQualiteTotal,
       distance: plan.paramsOrigine.distance,
       phase: semaine.phase,
-      alluresSec
+      alluresSec,
+      nbJours: Object.keys(semaine.assignment).length
     });
     warningsRepartition.forEach(w => nouveauxWarnings.push({ ...w, message: `S${semaineNum} : ${w.message}` }));
 
