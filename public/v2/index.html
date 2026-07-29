@@ -4985,6 +4985,56 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   }
 
 
+  // ===========================================================================
+  // Swipe horizontal entre étapes (27/07/2026, Phase 3 de la refonte
+  // navigation demandée par Laurent) — même mécanisme que celui déjà en
+  // place côté dashboard (index.html, swipe entre onglets, 24/07/2026),
+  // adapté ici pour naviguer entre les ÉTAPES d'un même flux plutôt
+  // qu'entre écrans de haut niveau (décision actée avec Laurent : swipe
+  // limité aux étapes, jamais accueil/choix-mode/etc., pour éviter toute
+  // ambiguïté). Réutilise nextStep()/prevStep() et nextStepForme()/
+  // prevStepForme() tels quels — jamais de logique de navigation dupliquée
+  // ici, le swipe n'est qu'un déclencheur alternatif au clic sur les
+  // flèches, avec toutes les validations déjà en place (temps de
+  // référence, objectif, volume, jour de longue) qui s'appliquent
+  // identiquement.
+  //
+  // Détection par direction dominante du geste (deltaX vs deltaY dès le
+  // déclenchement), pas par zone de l'écran — un swipe légèrement diagonal
+  // pendant un scroll vertical ne doit jamais déclencher un changement
+  // d'étape à tort. Seuil 50px, identique au dashboard.
+  function attacherSwipeEtapes(conteneurSelector, onSwipeGauche, onSwipeDroite) {
+    const conteneur = document.querySelector(conteneurSelector);
+    if (!conteneur) return;
+    let swipeStartX = null, swipeStartY = null, swipeDecided = null;
+    conteneur.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      swipeStartX = e.touches[0].clientX;
+      swipeStartY = e.touches[0].clientY;
+      swipeDecided = null;
+    }, { passive: true });
+    conteneur.addEventListener("touchmove", (e) => {
+      if (swipeStartX === null || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - swipeStartX;
+      const dy = e.touches[0].clientY - swipeStartY;
+      if (swipeDecided === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+        swipeDecided = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+      }
+    }, { passive: true });
+    conteneur.addEventListener("touchend", (e) => {
+      if (swipeStartX === null || swipeDecided !== "horizontal") { swipeStartX = null; return; }
+      const dx = (e.changedTouches[0]?.clientX ?? swipeStartX) - swipeStartX;
+      swipeStartX = null;
+      if (Math.abs(dx) < 50) return;
+      if (dx < 0) onSwipeGauche(); else onSwipeDroite();
+    }, { passive: true });
+  }
+
+  // Swipe gauche = étape suivante (nextStep), swipe droite = étape
+  // précédente (prevStep) — même convention que le dashboard.
+  attacherSwipeEtapes('#wizard-course-contenu .content', () => nextStep(), () => prevStep());
+  attacherSwipeEtapes('#wizard-forme-contenu .content', () => nextStepForme(), () => prevStepForme());
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       // scope explicite : ce service worker ne doit contrôler que /v2,
