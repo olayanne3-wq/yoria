@@ -1961,7 +1961,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <div class="volume-card-inner">
           <div class="volume-status"><span>✏️</span><span>Saisie manuelle</span></div>
           <div class="time-input" style="margin-bottom:14px;">
-            <input type="text" maxlength="3" value="${state.valeur ?? 30}" id="${idInput}" style="width:3ch;">
+            <input type="text" maxlength="3" value="${state.valeur ?? ''}" placeholder="km" id="${idInput}" style="width:3ch;">
             <span class="unit">km / semaine</span>
           </div>
           ${state.stravaDisponible ? `<div class="volume-actions"><button class="btn-ghost" onclick="${suffixeToggle}('strava')">Revenir à l'estimation Strava</button></div>` : ''}
@@ -2107,9 +2107,15 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       .map(el => el.dataset.value)
       .filter(v => v !== 'aucune');
 
+    // Correctif 27/07/2026 (bug signalé par Laurent) : plus de repli
+    // silencieux à 30 ici — un volume non renseigné (champ manuel vide,
+    // ou mode connexion/authInvalide/erreur jamais résolu par
+    // l'utilisateur) doit être détecté et bloqué par la validation
+    // ajoutée dans nextStep(), pas absorbé silencieusement en 30km/semaine
+    // (valeur qui semblait légitime mais n'avait jamais été choisie).
     const volumeActuel = volumeState.mode === 'manuel'
-      ? parseFloat(document.getElementById('manualVolumeInput')?.value ?? volumeState.valeur ?? 30)
-      : (volumeState.valeur ?? 30);
+      ? parseFloat(document.getElementById('manualVolumeInput')?.value ?? volumeState.valeur ?? NaN)
+      : (volumeState.mode === 'strava' ? volumeState.valeur : NaN);
 
     let profilStocke;
     try { profilStocke = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStocke = null; }
@@ -3914,6 +3920,25 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // aucun signal. Ne s'applique jamais au grand débutant (pas de temps
     // de référence à ce stade, cf. "Je n'ai pas de référence") ni au flux
     // de confirmation de test (fluxTestCourse, même raison).
+    // Validation à la sortie de l'étape 2 (volume hebdomadaire actuel) —
+    // 27/07/2026, demande de Laurent : jusqu'ici, un volume non renseigné
+    // (champ manuel vide, ou connexion Strava jamais aboutie/résolue)
+    // retombait silencieusement sur 30km/semaine — une valeur qui semblait
+    // légitime mais n'avait jamais été réellement choisie par
+    // l'utilisateur. Bloque désormais tant qu'une vraie valeur n'existe
+    // pas : soit le mode Strava a réussi (volumeState.valeur numérique),
+    // soit le champ manuel contient un nombre valide.
+    if (current === 2 && !estGrandDebutant()) {
+      const volumeOk = volumeState.mode === 'strava'
+        ? (typeof volumeState.valeur === 'number' && volumeState.valeur > 0)
+        : (volumeState.mode === 'manuel'
+            ? (parseFloat(document.getElementById('manualVolumeInput')?.value) > 0)
+            : false);
+      if (!volumeOk) {
+        alert("Indique ton volume hebdomadaire actuel avant de continuer (connecte Strava ou saisis-le manuellement).");
+        return;
+      }
+    }
     if (current === 3 && !estGrandDebutant() && !fluxTestCourse) {
       const longFormat = distanceMeta[currentDist].unit === "h:min:sec";
       const tempsSaisi = readTimeFields('t', longFormat);
@@ -4465,6 +4490,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         return;
       }
     }
+    // Validation à la sortie de l'étape 2 Forme (volume hebdomadaire) —
+    // même raison et même date que côté wizard course.
+    if (currentForme === 2) {
+      const volumeOk = volumeStateForme.mode === 'strava'
+        ? (typeof volumeStateForme.valeur === 'number' && volumeStateForme.valeur > 0)
+        : (volumeStateForme.mode === 'manuel'
+            ? (parseFloat(document.getElementById('manualVolumeInputForme')?.value) > 0)
+            : false);
+      if (!volumeOk) {
+        alert("Indique ton volume hebdomadaire actuel avant de continuer (connecte Strava ou saisis-le manuellement).");
+        return;
+      }
+    }
     if (currentForme < totalStepsForme) { currentForme++; showStepForme(currentForme); }
     else { genererPlanFormeUI(); }
   }
@@ -4704,8 +4742,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       .map(el => parseInt(el.dataset.dayIndex));
 
     const volumeActuel = volumeStateForme.mode === 'manuel'
-      ? parseFloat(document.getElementById('manualVolumeInputForme')?.value ?? volumeStateForme.valeur ?? 30)
-      : (volumeStateForme.valeur ?? 30);
+      ? parseFloat(document.getElementById('manualVolumeInputForme')?.value ?? volumeStateForme.valeur ?? NaN)
+      : (volumeStateForme.mode === 'strava' ? volumeStateForme.valeur : NaN);
 
     let profilStockeForme;
     try { profilStockeForme = JSON.parse(localStorage.getItem('lk_profil_coureur')); } catch { profilStockeForme = null; }
