@@ -2287,8 +2287,15 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // jourCourseIndex mis à null dans ce cas : la condition
     // `i === jourCourseIndex` dans renderSemaineHtml ne peut plus jamais
     // matcher (i va de 0 à 6, jamais null).
-    const jsDay = new Date(dernierPlanGenere.dateCourse).getDay();
-    const jourCourseIndex = dernierPlanGenere.enAttenteTest ? null : (jsDay + 6) % 7;
+    // Correctif 27/07/2026 (repéré en testant le nouveau parcours "Reprise
+    // en douceur") : dateCourse n'existe JAMAIS sur un plan marche-course
+    // (mode:'forme', sousMode:'marche-course') — new Date(undefined) donne
+    // une date invalide, .getDay() dessus retourne NaN, qui se propageait
+    // ensuite dans jourCourseIndex avant même d'atteindre le court-circuit
+    // dédié marche-course un peu plus bas (qui, lui, ne l'utilise jamais).
+    // Protégé ici pour ne calculer jsDay que si dateCourse existe vraiment.
+    const jsDay = dernierPlanGenere.dateCourse ? new Date(dernierPlanGenere.dateCourse).getDay() : null;
+    const jourCourseIndex = (dernierPlanGenere.enAttenteTest || jsDay === null) ? null : (jsDay + 6) % 7;
     const derniereSemaineNum = dernierPlanGenere.semaines.length
       ? dernierPlanGenere.semaines[dernierPlanGenere.semaines.length - 1].semaineNum
       : null;
