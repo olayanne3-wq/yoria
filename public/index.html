@@ -10406,13 +10406,30 @@ function render() {
 
 // ── Vérification des fonctions critiques ────────────────────────────────────
 // Depuis l'encapsulation en IIFE async (section 7, sélection de plan), ces
-// fonctions ne sont plus sur window mais dans la portée locale de l'IIFE —
-// le check se fait donc directement par nom (eval prudent, seulement sur une
-// liste fixe de noms connus, jamais une entrée utilisateur).
-const CRITICAL_FNS = ['syncStrava','predict10K','getEffortLaps','getLapsAffichage','rebuildPredHistory','renderDashboard','renderWeeks','renderWeekDetail','el','badge'];
-const missingFns = CRITICAL_FNS.filter(fn => {
-  try { return typeof eval(fn) === 'undefined'; } catch { return true; }
-});
+// fonctions ne sont plus sur window mais dans la portée locale de l'IIFE.
+// Correctif 27/07/2026 : l'ancienne implémentation utilisait eval(fn) sur
+// une liste fixe de noms — jamais une entrée utilisateur, donc pas un
+// risque de sécurité réel, mais bloqué par la Content Security Policy du
+// site (script-src sans unsafe-eval), rendant ce check silencieusement
+// inopérant (l'exception catch masquait le blocage, faisant croire à des
+// fonctions "manquantes" qui ne l'étaient pas forcément). Remplacé par des
+// références DIRECTES à chaque fonction — aucun eval, fonctionne sous
+// n'importe quelle CSP, et une vraie fonction manquante lèverait une
+// ReferenceError explicite à la déclaration de ce tableau plutôt que
+// d'être avalée silencieusement.
+const CRITICAL_FNS_REFS = {
+  syncStrava: typeof syncStrava !== 'undefined' ? syncStrava : undefined,
+  predict10K: typeof predict10K !== 'undefined' ? predict10K : undefined,
+  getEffortLaps: typeof getEffortLaps !== 'undefined' ? getEffortLaps : undefined,
+  getLapsAffichage: typeof getLapsAffichage !== 'undefined' ? getLapsAffichage : undefined,
+  rebuildPredHistory: typeof rebuildPredHistory !== 'undefined' ? rebuildPredHistory : undefined,
+  renderDashboard: typeof renderDashboard !== 'undefined' ? renderDashboard : undefined,
+  renderWeeks: typeof renderWeeks !== 'undefined' ? renderWeeks : undefined,
+  renderWeekDetail: typeof renderWeekDetail !== 'undefined' ? renderWeekDetail : undefined,
+  el: typeof el !== 'undefined' ? el : undefined,
+  badge: typeof badge !== 'undefined' ? badge : undefined,
+};
+const missingFns = Object.entries(CRITICAL_FNS_REFS).filter(([, fn]) => typeof fn === 'undefined').map(([nom]) => nom);
 if (missingFns.length > 0) {
   console.warn('⚠️ Fonctions manquantes:', missingFns.join(', '));
 }
