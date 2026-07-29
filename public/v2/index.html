@@ -3789,8 +3789,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   function showStep(n){
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     document.querySelector(`.screen[data-step="${n}"]`).classList.add('active');
-    const stepNav = document.querySelector('#wizard-course-contenu .step-nav');
-    if (stepNav) stepNav.style.display = ''; // restaure, cf. afficherResumeResultats qui peut l'avoir masqué
+    const stepMeta = document.querySelector('#wizard-course-contenu .stepmeta');
+    if (stepMeta) stepMeta.style.display = ''; // restaure, cf. afficherResumeResultats qui peut l'avoir masqué
     document.getElementById('stepNum').textContent = 'ÉTAPE ' + n;
     const backBtn = document.getElementById('backBtn');
     // Reste visible même à l'étape 1 : ramène à l'écran "choix de mode"
@@ -4299,17 +4299,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // Affiche l'écran de résumé (étape "10", data-step) sur wizard-course-
   // contenu — factorisé le 27/07/2026 (6 occurrences dupliquées trouvées,
   // cf. audit navigation demandé par Laurent). Corrige au passage un bug
-  // préexistant : .step-nav ("ÉTAPE 1 SUR 8") restait TOUJOURS visible
+  // préexistant : .stepmeta ("ÉTAPE 1 SUR 8") restait TOUJOURS visible
   // au-dessus du résumé, y compris pour un plan marche-course qui n'est
   // jamais passé par aucune étape numérotée — signalé par Laurent, mais
   // le défaut touchait en réalité aussi les plans course/forme classiques
   // (juste moins visible, l'étape affichée avait au moins un sens dans
-  // leur cas). .step-nav ré-affiché par showStep() au prochain passage
-  // réel par les étapes (ex. nouvelle génération de plan).
+  // leur cas).
+  //
+  // CORRECTIF 27/07/2026 (2ème passage, bug introduit par le 1er) : la
+  // première version masquait TOUT .step-nav, qui contient aussi backBtn
+  // et nextBtn (le bouton "Terminer"/✓ pour valider le plan) — plus aucun
+  // moyen de valider un plan une fois généré. Corrigé : seul .stepmeta
+  // (le texte "ÉTAPE X SUR Y") est masqué, jamais les boutons de
+  // navigation qui restent indispensables sur cet écran.
   function afficherResumeResultats() {
     afficherEcranWizard('wizard-course-contenu');
-    const stepNav = document.querySelector('#wizard-course-contenu .step-nav');
-    if (stepNav) stepNav.style.display = 'none';
+    const stepMeta = document.querySelector('#wizard-course-contenu .stepmeta');
+    if (stepMeta) stepMeta.style.display = 'none';
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
   }
