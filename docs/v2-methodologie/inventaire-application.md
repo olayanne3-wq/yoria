@@ -136,6 +136,70 @@ plan (`plan.warnings`) remontés juste après le récap, avant les actions —
 auparavant tout en bas de l'écran, après le plan complet, invisibles sans
 scroller tout le contenu.
 
+**Refonte de la navigation du wizard (27/07/2026, 3 phases, `public/v2/index.html`)**
+— demandée par Laurent après plusieurs bugs de navigation trouvés le même
+jour (affichage simultané de deux écrans, retour vers le mauvais écran,
+bouton "Terminer" rendu invisible par erreur lors d'un premier correctif).
+
+- **Phase 1 — Registre centralisé** : `ECRANS_WIZARD` (liste des 7 écrans
+  principaux) + `afficherEcranWizard(id)`, qui masque tous les écrans du
+  registre puis affiche seulement celui demandé — garantit par construction
+  qu'un seul écran est visible à la fois. Remplace ~38 manipulations
+  directes de `style.display`, auparavant éparpillées dans une quinzaine de
+  fonctions différentes (accumulées au fil des sessions). `afficherResumeResultats()`
+  factorise aussi 6 occurrences dupliquées du pattern d'affichage du résumé
+  (étape "10"), et corrige au passage un bug préexistant : `.stepmeta`
+  ("ÉTAPE X SUR Y") restait affiché même sur l'écran de résumé, où il n'a
+  aucun sens — seul `.stepmeta` est masqué, jamais tout `.step-nav` (un
+  premier correctif trop large avait rendu le bouton "Terminer" invisible,
+  corrigé le même jour).
+- **Phase 2 — Audit no-scroll** : *non réalisée*. Nécessite un rendu réel
+  dans un navigateur pour mesurer fiablement les hauteurs (un comptage
+  d'éléments par lecture de code s'est révélé peu fiable — l'écran
+  d'introduction marche-course, cf. §14, a dû être retravaillé après un
+  premier essai qui rendait son bouton "C'est parti" inaccessible sans
+  scroll visible). Approche retenue pour une reprise future : identifier
+  les écrans problématiques par test réel de Laurent, plutôt que par
+  estimation.
+- **Phase 3 — Swipe horizontal entre étapes** (`attacherSwipeEtapes()`) :
+  même mécanisme que le swipe déjà en place entre onglets du dashboard
+  (`index.html`, 24/07/2026) — détection de la direction dominante du
+  geste (deltaX vs deltaY) pour ne jamais confondre un swipe avec un
+  scroll vertical, seuil de 50px. Limité aux ÉTAPES d'un même flux (wizard
+  course 8 étapes, Mode Forme 4 étapes) — jamais entre écrans de haut
+  niveau (accueil/choix-mode/etc., décision explicite pour éviter toute
+  ambiguïté). Réutilise `nextStep()`/`prevStep()`/`nextStepForme()`/
+  `prevStepForme()` tels quels, aucune logique de navigation dupliquée —
+  toutes les validations obligatoires (cf. ci-dessous) s'appliquent
+  identiquement au swipe et au clic sur les flèches.
+
+**Validations obligatoires ajoutées le 27/07/2026** (bloquent le passage à
+l'étape suivante avec un message explicite, plutôt que de découvrir le
+problème seulement à la génération finale du plan, ou pire, de laisser un
+repli silencieux vers une valeur non choisie) :
+- Temps de référence (étape 3 course / étape 1 Forme) et objectif (étape 4
+  course) — la validation existait déjà, mais seulement dans
+  `generateAndShowResults()`/`genererPlanFormeUI()`, plusieurs étapes trop
+  tard.
+- Volume hebdomadaire (étape 2 course / étape 2 Forme) — un champ manuel
+  vide ou une connexion Strava non aboutie retombait silencieusement sur
+  **30km/semaine** (repli caché, aucune trace pour l'utilisateur) ; le
+  champ manuel affichait même "30" pré-rempli par défaut, une fausse
+  valeur qui semblait légitime. Repli retiré, champ vide par défaut
+  (placeholder), validation bloquante ajoutée.
+- Jour de sortie longue (étape 7 course) — désigner un jour comme longue
+  était jusqu'ici optionnel ; si jamais fait, `pickLongueDay()`
+  (`plan-generator.js`) choisissait silencieusement à la place de
+  l'utilisateur. Bloque désormais tant qu'aucun jour n'a la classe
+  `.longue`.
+
+**Nettoyage sessionStorage au retour volontaire à l'app** (`btnRetourApp`) —
+`v2_wizard_step`/`v2_wizard_step_forme` n'étaient jamais nettoyés à la
+sortie du wizard, alors que le message affiché à l'utilisateur annonce
+explicitement "ta progression ne sera pas conservée". Au prochain "Créer un
+nouveau plan", l'étape sauvegardée relançait le wizard en plein milieu du
+parcours plutôt que de repartir de zéro — corrigé.
+
 ## 4. Écrans de l'app principale (`index.html`)
 
 Fonctions de rendu (`render*`) :
@@ -1128,6 +1192,44 @@ distance associée (bug : `refDistance` codé en dur à `'10K'`, faussant le
 calcul si le temps donné venait d'une autre distance) — sélecteur compact
 5K/10K/Semi/Marathon ajouté juste au-dessus du champ temps
 (`currentDistForme`/`selectDistForme()`).
+
+**Parcours "Reprise en douceur" et refonte des paliers marche-course
+(27/07/2026)** — demandé par Laurent : "grand débutant" ne devrait pas
+être réservé aux vrais débutants, un coureur confirmé en reprise après
+blessure/pause longue doit pouvoir emprunter le même parcours ponctuellement.
+
+- **3ème option** sur l'écran de choix de mode (`choisirMode('reprise')`),
+  à côté d'"Objectif course"/"Mode forme" — réutilise TEL QUEL le flux
+  marche-course existant (paliers, mécanisme déjà en place de proposition
+  de bascule vers un vrai plan une fois le dernier palier réussi). Le
+  niveau `'grand-debutant'` est posé uniquement en LOCAL sur ce plan
+  précis (`plan.profilOrigine.niveau`), jamais sur `profilStocke.niveau`
+  (le profil général du compte, stocké en `localStorage`) — un coureur
+  "confirmé" en reprise garde son vrai niveau, seul ce plan est marqué
+  grand-débutant.
+- **Écran d'introduction dédié** (`wizard-intro-grand-debutant`), affiché
+  avant la sélection des jours — frise en 3 étapes (alternance marche/
+  course → premiers blocs continus → proposition de vrai plan ensuite),
+  texte adapté selon l'origine (reprise vs jamais couru). Un premier essai
+  trop dense (padding généreux entre les 3 items) rendait le bouton
+  "C'est parti" inaccessible sans qu'aucun indice visuel ne suggère de
+  scroller — corrigé en compactant (cf. §3, Phase 2 non réalisée pour le
+  reste du wizard).
+- **Refonte complète des 7 anciens paliers `PALIERS_MARCHE_COURSE`**
+  (`plan-generator.js`) en 13 paliers, en 2 phases : 6 paliers d'ALTERNANCE
+  marche/course (ex. "8× 1min course / 2min marche", part de course
+  croissante) puis 7 paliers de CONTINU croissant (5→30min, anciens
+  paliers repris à l'identique sous des id 6-12). Ancienne structure
+  jugée trop exigeante — démarrait directement à 5min de course CONTINUE,
+  sans étape d'alternance, contrairement au "White Plan" de Daniels
+  (chapitre 11, spécifiquement conçu pour les débutants, walk/run sur ses
+  9 premières semaines). Chaque palier reste franchissable dès la 1ère
+  séance validée (`palierMarcheCourseFor`, règle de validation inchangée)
+  — la progression la plus rapide passe de ~7 à ~13 séances (~1 mois à 3
+  séances/semaine), delai jugé acceptable pour la sécurité apportée.
+  `genererContenuMarcheCourse()` génère deux types de contenu distincts
+  selon `palier.continu` (alternance : "Xmin course / Ymin marche" répété
+  N fois ; continu : inchangé).
 
 ## 15. Principes transverses à retenir
 
