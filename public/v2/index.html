@@ -2509,9 +2509,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const etapeWizardCourseAuReload = parseInt(sessionStorage.getItem('v2_wizard_step') || '0', 10);
     if (rechargementVientDeStrava && etapeWizardCourseAuReload >= 1 && etapeWizardCourseAuReload <= totalSteps
         && document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
-      document.getElementById('accueil-wizard-contenu').style.display = 'none';
-      document.getElementById('choix-mode-contenu').style.display = 'none';
-      document.getElementById('wizard-course-contenu').style.display = 'block';
+      afficherEcranWizard('wizard-course-contenu');
       // Restaure aussi la distance sélectionnée (20/07/2026, bug remonté
       // par Laurent) — sans ça, currentDist repartait de sa valeur par
       // défaut ("10") au reload, donnant l'impression qu'un plan Marathon
@@ -2551,9 +2549,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const etapeWizardFormeAuReload = parseInt(sessionStorage.getItem('v2_wizard_step_forme') || '0', 10);
     if (rechargementVientDeStrava && etapeWizardFormeAuReload >= 1 && etapeWizardFormeAuReload <= totalStepsForme
         && document.getElementById('accueil-wizard-contenu')?.style.display === 'block') {
-      document.getElementById('accueil-wizard-contenu').style.display = 'none';
-      document.getElementById('choix-mode-contenu').style.display = 'none';
-      document.getElementById('wizard-forme-contenu').style.display = 'block';
+      afficherEcranWizard('wizard-forme-contenu');
       currentForme = etapeWizardFormeAuReload;
       showStepForme(currentForme);
       return;
@@ -2567,8 +2563,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         }
       } catch (e) { /* pas grave, traité comme "aucun plan" */ }
       if (plans.length === 0) {
-        document.getElementById('accueil-wizard-contenu').style.display = 'none';
-        document.getElementById('choix-mode-contenu').style.display = 'block';
+        afficherEcranWizard('choix-mode-contenu');
       } else {
         const desc = document.getElementById('accueilNbPlansDesc');
         if (desc) desc.textContent = `${plans.length} plan${plans.length > 1 ? 's' : ''} déjà créé${plans.length > 1 ? 's' : ''}`;
@@ -3459,8 +3454,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = true;
-    document.getElementById('choix-mode-contenu').style.display = 'none';
-    document.getElementById('wizard-course-contenu').style.display = 'block';
+    afficherEcranWizard('wizard-course-contenu');
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
     document.getElementById('nextBtn').innerHTML = '✓';
@@ -3920,7 +3914,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       if (consultationSeule) {
         consultationSeule = false;
         showingResults = false;
-        document.getElementById('wizard-course-contenu').style.display = 'none';
         retourAccueilWizard();
         return;
       }
@@ -3937,8 +3930,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // (wizard-grand-debutant-contenu), d'où provient ce plan.
       if (dernierPlanGenere?.mode === 'forme' && dernierPlanGenere?.sousMode === 'marche-course') {
         showingResults = false;
-        document.getElementById('wizard-course-contenu').style.display = 'none';
-        document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+        afficherEcranWizard('wizard-grand-debutant-contenu');
         renderDaysGrandDebutant();
         return;
       }
@@ -3955,8 +3947,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // même comportement que prevStepForme (Mode Forme), ajouté le
       // 15/07/2026 suite au retour de Laurent (flèche bloquée à l'étape 1
       // sans action, jugé peu logique une fois le bouton bas retiré, 17.6).
-      document.getElementById('wizard-course-contenu').style.display = 'none';
-      document.getElementById('choix-mode-contenu').style.display = 'block';
+      afficherEcranWizard('choix-mode-contenu');
     }
   }
 
@@ -4232,21 +4223,50 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // ===========================================================================
   let modeChoisi = null;
 
+  // ===========================================================================
+  // Navigation centralisée du wizard (27/07/2026) — remplace les
+  // manipulations directes de style.display éparpillées dans ~15 fonctions
+  // différentes (accumulées au fil des sessions, source de plusieurs bugs
+  // le même jour : affichage simultané intro/sélection jours, retour
+  // arrière vers le mauvais écran). Chaque nouvel écran du wizard doit être
+  // ajouté à ECRANS_WIZARD ; afficherEcranWizard() garantit qu'un seul
+  // écran est visible à la fois, par construction — plus besoin de se
+  // souvenir de masquer chaque concurrent un par un à chaque nouveau point
+  // d'entrée. Sert aussi de base à la navigation par swipe (Phase 3, pas
+  // encore codée) : ORDRE de ECRANS_WIZARD == ordre de navigation possible.
+  // ===========================================================================
+  const ECRANS_WIZARD = [
+    'accueil-wizard-contenu',
+    'consultation-plans-contenu',
+    'choix-mode-contenu',
+    'wizard-intro-grand-debutant',
+    'wizard-grand-debutant-contenu',
+    'wizard-forme-contenu',
+    'wizard-course-contenu',
+  ];
+
+  function afficherEcranWizard(id) {
+    if (!ECRANS_WIZARD.includes(id)) {
+      console.warn('afficherEcranWizard : écran inconnu, absent de ECRANS_WIZARD :', id);
+    }
+    ECRANS_WIZARD.forEach(e => {
+      const el = document.getElementById(e);
+      if (el) el.style.display = (e === id) ? 'block' : 'none';
+    });
+  }
+
   // ── Navigation écran d'accueil — v2.8, ajouté le 15/07/2026 ────────────
   function ouvrirConsultationPlans() {
-    document.getElementById('accueil-wizard-contenu').style.display = 'none';
-    document.getElementById('consultation-plans-contenu').style.display = 'block';
+    afficherEcranWizard('consultation-plans-contenu');
     afficherPlansSauvegardes();
   }
 
   function ouvrirChoixModeDepuisAccueil() {
-    document.getElementById('accueil-wizard-contenu').style.display = 'none';
-    document.getElementById('choix-mode-contenu').style.display = 'block';
+    afficherEcranWizard('choix-mode-contenu');
   }
 
   function retourAccueilWizard() {
-    document.getElementById('consultation-plans-contenu').style.display = 'none';
-    document.getElementById('accueil-wizard-contenu').style.display = 'block';
+    afficherEcranWizard('accueil-wizard-contenu');
   }
 
   function choisirMode(mode) {
@@ -4259,9 +4279,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
   function validerChoixMode() {
     if (!modeChoisi) return;
-    document.getElementById('choix-mode-contenu').style.display = 'none';
     if (modeChoisi === 'course') {
-      document.getElementById('wizard-course-contenu').style.display = 'block';
+      afficherEcranWizard('wizard-course-contenu');
       current = (etapeSauvegardee >= 1 && etapeSauvegardee <= totalSteps) ? etapeSauvegardee : 1;
       showStep(current);
     } else if (modeChoisi === 'reprise') {
@@ -4277,7 +4296,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // cf. genererPlanGrandDebutantUI et le bloc "Tu cours en continu !")
       // fait tout le travail de "remontée progressive" demandé — pas de
       // nouveau mécanisme de transition de niveau à inventer.
-      document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
       sessionStorage.setItem('v2_origine_grand_debutant', 'reprise');
       afficherIntroGrandDebutant('reprise');
     } else {
@@ -4300,7 +4318,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         afficherIntroGrandDebutant('debutant');
         return;
       }
-      document.getElementById('wizard-forme-contenu').style.display = 'block';
+      afficherEcranWizard('wizard-forme-contenu');
       renderDaysForme();
       showStepForme(currentForme);
     }
@@ -4377,8 +4395,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if (currentForme > 1) { currentForme--; showStepForme(currentForme); }
     else {
       // Retour à l'écran de choix de mode depuis la toute première étape
-      document.getElementById('wizard-forme-contenu').style.display = 'none';
-      document.getElementById('choix-mode-contenu').style.display = 'block';
+      afficherEcranWizard('choix-mode-contenu');
     }
   }
 
@@ -4429,20 +4446,12 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // (cf. continuerVersSelectionJoursGrandDebutant, déclenchée par le
   // bouton "C'est parti" de cet écran).
   function afficherIntroGrandDebutant(origine) {
-    // Masque explicitement TOUS les écrans concurrents (27/07/2026,
-    // correctif d'un bug signalé par Laurent : intro + sélection des jours
-    // affichés simultanément). Cause racine : rediriger_si_onboarding_
-    // grand_debutant() (IIFE exécutée au chargement du script) affiche
-    // directement wizard-grand-debutant-contenu si le marqueur
-    // sessionStorage v2_onboarding_grand_debutant est déjà 'true' — ce
-    // même marqueur est posé par renderDaysGrandDebutant() elle-même, donc
-    // un rechargement de page en cours de parcours (retour Strava OAuth,
-    // déjà documenté comme fragile ailleurs dans ce fichier) peut laisser
-    // les deux écrans affichés à la fois si l'un ne masque pas l'autre
-    // explicitement.
-    document.getElementById('choix-mode-contenu').style.display = 'none';
-    document.getElementById('wizard-grand-debutant-contenu').style.display = 'none';
-    document.getElementById('wizard-intro-grand-debutant').style.display = 'block';
+    // afficherEcranWizard() garantit qu'un seul écran est visible, réglant
+    // par construction le bug du 27/07/2026 (intro + sélection des jours
+    // affichés simultanément après un rechargement de page en cours de
+    // parcours, cf. commentaire complet sur afficherEcranWizard/
+    // ECRANS_WIZARD plus haut dans ce fichier).
+    afficherEcranWizard('wizard-intro-grand-debutant');
 
     const sousEl = document.getElementById('introGrandDebutantSous');
     if (origine === 'reprise') {
@@ -4456,8 +4465,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // vers l'écran de sélection des jours existant (wizard-grand-debutant-
   // contenu), inchangé par ailleurs.
   function continuerVersSelectionJoursGrandDebutant() {
-    document.getElementById('wizard-intro-grand-debutant').style.display = 'none';
-    document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+    afficherEcranWizard('wizard-grand-debutant-contenu');
     renderDaysGrandDebutant();
   }
 
@@ -4574,10 +4582,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = false; // génération fraîche, pas une consultation
-    document.getElementById('wizard-grand-debutant-contenu').style.display = 'none';
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
-    document.getElementById('wizard-course-contenu').style.display = 'block';
+    afficherEcranWizard('wizard-course-contenu');
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
@@ -4723,10 +4730,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       renderResults(planTest);
       showingResults = true;
       consultationSeule = false;
-      document.getElementById('wizard-forme-contenu').style.display = 'none';
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       document.querySelector('.screen[data-step="10"]').classList.add('active');
-      document.getElementById('wizard-course-contenu').style.display = 'block';
+      afficherEcranWizard('wizard-course-contenu');
       document.getElementById('nextBtn').innerHTML = '✓';
       document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
       document.getElementById('nextBtn').title = 'Terminer';
@@ -4768,10 +4774,9 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     renderResults(plan);
     showingResults = true;
     consultationSeule = false; // génération fraîche, pas une consultation
-    document.getElementById('wizard-forme-contenu').style.display = 'none';
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector('.screen[data-step="10"]').classList.add('active');
-    document.getElementById('wizard-course-contenu').style.display = 'block';
+    afficherEcranWizard('wizard-course-contenu');
     document.getElementById('nextBtn').innerHTML = '✓';
     document.getElementById('nextBtn').setAttribute('aria-label', 'Terminer');
     document.getElementById('nextBtn').title = 'Terminer';
@@ -4786,7 +4791,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // choix-mode-contenu (cf. initialiserApresChargementEngine plus haut) —
   // rien à consulter, autant éviter l'écran intermédiaire pour un tout
   // nouveau compte.
-  document.getElementById('accueil-wizard-contenu').style.display = 'block';
+  afficherEcranWizard('accueil-wizard-contenu');
 
   // Redirection directe depuis l'onboarding (v2.8, §17.9) — cf. index.html,
   // juste après monterEcranOnboarding(). Court-circuite complètement
@@ -4829,9 +4834,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       const nouvelleUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
       window.history.replaceState({}, document.title, nouvelleUrl);
     }
-    document.getElementById('choix-mode-contenu').style.display = 'none';
-    document.getElementById('accueil-wizard-contenu').style.display = 'none';
-    document.getElementById('wizard-grand-debutant-contenu').style.display = 'block';
+    afficherEcranWizard('wizard-grand-debutant-contenu');
     renderDaysGrandDebutant();
   })();
 
