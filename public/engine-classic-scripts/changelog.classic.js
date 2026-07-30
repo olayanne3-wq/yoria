@@ -21,7 +21,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.28", title:"Navigation du wizard plus fiable, reprise en douceur, swipe entre étapes", current:true, notes:[
+      { ver:"v2.29", title:"Volumes minimums adaptés par distance, aide repensée", current:true, notes:[
+        "📏 Le volume minimum requis pour générer un plan cohérent s'adapte maintenant à ta distance visée (5K/10K/Semi/Marathon), pas seulement au nombre de jours choisis",
+        "📐 La sortie longue reste désormais garantie comme la séance la plus longue de la semaine, même à faible volume — elle ne peut plus être plus courte que le cumul de tes séances de qualité",
+        "❓ L'aide est repensée : sections repliables, recherche pour trouver rapidement ce que tu cherches, et deux nouvelles rubriques — les différents types de séances et les règles qui structurent ton plan (espacement entre séances dures, progression du volume, phases...)",
+      ]},
+      { ver:"v2.28", title:"Navigation du wizard plus fiable, reprise en douceur, swipe entre étapes", current:false, notes:[
         "🌱 Nouvelle option \"Reprise en douceur\" pour repartir pas à pas après une pause ou une blessure, indépendamment de ton niveau habituel — avec un écran d'explication avant de choisir tes jours",
         "🚶 La progression marche-course commence désormais par de l'alternance marche/course avant le premier bloc de course continue, pour une reprise plus progressive",
         "👆 Navigation par glissement (swipe) entre les étapes de création d'un plan, en plus des flèches",
