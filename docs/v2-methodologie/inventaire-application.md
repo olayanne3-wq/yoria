@@ -8,7 +8,8 @@
 > ⚠️ **Mettre à jour ce fichier à chaque changement structurel** (nouvel
 > écran, nouvelle clé de stockage, nouvelle intégration, pipeline modifié,
 > chantier ouvert/fermé). Un simple correctif de bug va dans le changelog,
-> pas ici.
+> pas ici. Rester concis : état actuel + pièges connus, pas le récit du
+> diagnostic.
 
 ## 1. Vue d'ensemble
 
@@ -18,8 +19,8 @@ personnel semi-marathon le 6 septembre 2026.
 
 - Repo GitHub : `olayanne3-wq/yoria` (branche `main`)
 - Déployé sur Vercel, domaine `yoria.run`
-- Stack : vanilla HTML/CSS/JS (modules ES depuis le 19/07/2026), hosting
-  statique Vercel, API serverless dans `/api/`
+- Stack : vanilla HTML/CSS/JS (modules ES), hosting statique Vercel, API
+  serverless dans `/api/`
 - Backend Supabase (auth + données), intégration Strava
 
 ## 2. Arborescence du repo
@@ -74,132 +75,53 @@ yoria/
 |---|---|---|
 | Rôle | App principale : dashboard, suivi, réglages | Wizard : création/paramétrage d'un plan |
 | Route | `/` | `/v2` |
-| Type de script | `<script type="module">` (converti le 19/07/2026) | Module ES natif |
+| Type de script | `<script type="module">` | Module ES natif |
 
 **Architecture duale (contrainte permanente)** : tout changement dans
 `public/v2/engine/*.js` doit être dupliqué dans
 `public/engine-classic-scripts/*.classic.js` (suppression des `export` via
-sed) — **sauf** les 8 fichiers `decision-engine-*.classic.js`, qui sont des
-scripts classiques uniques sans équivalent module ES.
+sed) — **sauf** les 8 fichiers `decision-engine-*.classic.js`, scripts
+classiques uniques sans équivalent module ES.
 
-La conversion complète de `index.html`/`v2/index.html` en modules ES est
-**terminée** (19/07/2026) : import dynamique au point d'usage, exposition
-globale via `Object.assign(window, module)` (sauf `auth.js`/`sync-storage.js`
-qui exposent `window.LkAuth`/`window.LkSync` comme objets nommés). Les 7
-fichiers `.classic.js` devenus orphelins ont été supprimés du repo.
+**`window.__AUTH_PRET__` doit être créée de façon synchrone**, en tout
+début de script, avant tout `await import(...)` — un pattern différé
+laisse une fenêtre où `if (window.__AUTH_PRET__)` échoue silencieusement
+(JS résout immédiatement une valeur non-promise). Piège déjà rencontré
+dans les deux fichiers principaux : toujours vérifier ce point avant
+d'introduire une nouvelle promesse globale équivalente.
 
-**Point de vigilance critique (race condition découverte et corrigée le
-21/07/2026, dans les DEUX fichiers)** : `window.__AUTH_PRET__` doit être
-créée de façon **synchrone**, en tout début de script, avant tout `await
-import(...)`. L'ancien pattern (assignée après plusieurs imports
-dynamiques) laissait une fenêtre où `window.__AUTH_PRET__` valait
-`undefined` — tout code qui teste `if (window.__AUTH_PRET__)` avant ce
-point échoue silencieusement, et tout code qui fait `await
-window.__AUTH_PRET__` sur `undefined` ne bloque jamais (JS résout
-immédiatement une valeur non-promise). Pattern correct désormais en
-place : `window.__AUTH_PRET__ = new Promise((resolve) => {
-window.__resoudreAuthPret__ = resolve; })` tout en haut, résolue plus
-tard via `window.__resoudreAuthPret__(user)`. Symptômes observés avant
-correctif : écran "Consulter un plan existant" jamais affiché
-(v2/index.html), dashboard retombant sur le plan de repli par défaut
-malgré un vrai plan existant en base (index.html).
+**Écran "Consulter un plan" — accordéon "Modifier mon plan"
+(`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
+(Objectif, Jours, Volume, Date de course), un seul ouvert à la fois.
+Simulation LIVE de l'impact avant validation, jamais appliqué sans clic
+explicite sur "Appliquer". Application à partir de la SEMAINE SUIVANTE
+uniquement — la semaine en cours et les précédentes gardent leur contenu
+original. Règle de pouce pour Jours/Volume (pas de modèle scientifique
+rigoureux) : rythme de progression proportionnel au nombre de séances
+QUALITÉ/semaine (`Engine.nbQualiteFor`), avec avertissement de fiabilité
+limitée. Levier Objectif : garde-fou de faisabilité en direct
+(`verifierFaisabiliteNouvelObjectif`), avertit seulement — change QUE
+l'allure course (`allures.C`), jamais VMA/SEUIL/EF (dépendent uniquement
+de la forme réellement mesurée, cf. §7 allures dynamiques). Levier Date
+de course : régénération complète via `Engine.generatePlan()`, avec règles
+de phase (`appliquerReglesPhase()`) — Spécifique en cours ne repasse
+jamais en Construction ; Affûtage + décalage ≤1 semaine ne recalcule pas
+(juste la date change) ; décalage ≥8 semaines avertit de créer un nouveau
+plan plutôt que de prolonger.
 
-**Écran "Consulter un plan" — accordéon "Modifier mon plan" (26-27/07/2026,
-`public/v2/index.html`)** — regroupe 3 leviers de simulation d'un plan
-actif (Objectif, Jours d'entraînement, Volume km/semaine), un seul ouvert à
-la fois (`toggleAccordionLevier`) — décision actée de ne pas permettre une
-simulation combinée (chaque approximation déjà admise comme grossière
-individuellement, les cumuler aurait aggravé l'incertitude). Chaque levier :
-simulation LIVE de l'impact sur l'objectif avant validation, jamais
-appliqué tant que le bouton "Appliquer" dédié n'est pas cliqué. Application
-à partir de la SEMAINE SUIVANTE uniquement — coupure nette, la semaine en
-cours et les précédentes gardent leur contenu original (pas de fusion
-semaine par semaine comme `lancerAnalyseAdaptation`/
-`regenererAvecNouvelObjectif`). Règle de pouce pour Jours/Volume (pas de
-modèle scientifique rigoureux, jugé disproportionné) : rythme de
-progression proportionnel au nombre de séances QUALITÉ/semaine
-(`Engine.nbQualiteFor`, déjà exportée par `plan-generator.js`), toujours
-accompagné d'un avertissement de fiabilité limitée. Limite assumée : le
-wizard n'a pas accès à `predict10K()` (vit uniquement dans
-`public/index.html`) — repli sur `paramsOrigine.tempsReference`, cohérent
-avec ce que font déjà les autres actions de cet écran. Levier Volume :
-avertit explicitement que le volume seul influence peu l'allure projetée
-dans ce modèle (ce sont les séances qualité qui comptent) plutôt que de
-laisser une fausse impression d'impact. Levier Objectif : garde-fou de
-faisabilité en direct (`verifierFaisabiliteNouvelObjectif`, réutilise
-`categoriserAmpleurObjectif` déjà utilisée dans le formulaire de création),
-avertit seulement, ne bloque jamais — et précise explicitement que changer
-l'objectif ne fait bouger QUE l'allure course (`allures.C`), jamais VMA/
-SEUIL/EF qui dépendent uniquement de la forme réellement mesurée (cf. §7,
-allures dynamiques). Double repli "Plus d'options" > accordéon retiré le
-26/07/2026 (un seul niveau de repli suffit désormais). Avertissements du
-plan (`plan.warnings`) remontés juste après le récap, avant les actions —
-auparavant tout en bas de l'écran, après le plan complet, invisibles sans
-scroller tout le contenu.
+**Navigation du wizard** — `ECRANS_WIZARD` (registre centralisé) +
+`afficherEcranWizard(id)` masque tous les écrans puis affiche seulement
+celui demandé, garantit par construction qu'un seul écran est visible à
+la fois. Swipe horizontal entre étapes d'un même flux (`attacherSwipeEtapes()`,
+détection deltaX/deltaY, seuil 50px) — jamais entre écrans de haut niveau.
+Validations bloquantes avant de passer à l'étape suivante : temps de
+référence, objectif, volume hebdomadaire (plus de repli silencieux à
+30km/semaine), jour de sortie longue. sessionStorage nettoyé au retour
+volontaire à l'app.
 
-**Refonte de la navigation du wizard (27/07/2026, 3 phases, `public/v2/index.html`)**
-— demandée par Laurent après plusieurs bugs de navigation trouvés le même
-jour (affichage simultané de deux écrans, retour vers le mauvais écran,
-bouton "Terminer" rendu invisible par erreur lors d'un premier correctif).
-
-- **Phase 1 — Registre centralisé** : `ECRANS_WIZARD` (liste des 7 écrans
-  principaux) + `afficherEcranWizard(id)`, qui masque tous les écrans du
-  registre puis affiche seulement celui demandé — garantit par construction
-  qu'un seul écran est visible à la fois. Remplace ~38 manipulations
-  directes de `style.display`, auparavant éparpillées dans une quinzaine de
-  fonctions différentes (accumulées au fil des sessions). `afficherResumeResultats()`
-  factorise aussi 6 occurrences dupliquées du pattern d'affichage du résumé
-  (étape "10"), et corrige au passage un bug préexistant : `.stepmeta`
-  ("ÉTAPE X SUR Y") restait affiché même sur l'écran de résumé, où il n'a
-  aucun sens — seul `.stepmeta` est masqué, jamais tout `.step-nav` (un
-  premier correctif trop large avait rendu le bouton "Terminer" invisible,
-  corrigé le même jour).
-- **Phase 2 — Audit no-scroll** : *non réalisée*. Nécessite un rendu réel
-  dans un navigateur pour mesurer fiablement les hauteurs (un comptage
-  d'éléments par lecture de code s'est révélé peu fiable — l'écran
-  d'introduction marche-course, cf. §14, a dû être retravaillé après un
-  premier essai qui rendait son bouton "C'est parti" inaccessible sans
-  scroll visible). Approche retenue pour une reprise future : identifier
-  les écrans problématiques par test réel de Laurent, plutôt que par
-  estimation.
-- **Phase 3 — Swipe horizontal entre étapes** (`attacherSwipeEtapes()`) :
-  même mécanisme que le swipe déjà en place entre onglets du dashboard
-  (`index.html`, 24/07/2026) — détection de la direction dominante du
-  geste (deltaX vs deltaY) pour ne jamais confondre un swipe avec un
-  scroll vertical, seuil de 50px. Limité aux ÉTAPES d'un même flux (wizard
-  course 8 étapes, Mode Forme 4 étapes) — jamais entre écrans de haut
-  niveau (accueil/choix-mode/etc., décision explicite pour éviter toute
-  ambiguïté). Réutilise `nextStep()`/`prevStep()`/`nextStepForme()`/
-  `prevStepForme()` tels quels, aucune logique de navigation dupliquée —
-  toutes les validations obligatoires (cf. ci-dessous) s'appliquent
-  identiquement au swipe et au clic sur les flèches.
-
-**Validations obligatoires ajoutées le 27/07/2026** (bloquent le passage à
-l'étape suivante avec un message explicite, plutôt que de découvrir le
-problème seulement à la génération finale du plan, ou pire, de laisser un
-repli silencieux vers une valeur non choisie) :
-- Temps de référence (étape 3 course / étape 1 Forme) et objectif (étape 4
-  course) — la validation existait déjà, mais seulement dans
-  `generateAndShowResults()`/`genererPlanFormeUI()`, plusieurs étapes trop
-  tard.
-- Volume hebdomadaire (étape 2 course / étape 2 Forme) — un champ manuel
-  vide ou une connexion Strava non aboutie retombait silencieusement sur
-  **30km/semaine** (repli caché, aucune trace pour l'utilisateur) ; le
-  champ manuel affichait même "30" pré-rempli par défaut, une fausse
-  valeur qui semblait légitime. Repli retiré, champ vide par défaut
-  (placeholder), validation bloquante ajoutée.
-- Jour de sortie longue (étape 7 course) — désigner un jour comme longue
-  était jusqu'ici optionnel ; si jamais fait, `pickLongueDay()`
-  (`plan-generator.js`) choisissait silencieusement à la place de
-  l'utilisateur. Bloque désormais tant qu'aucun jour n'a la classe
-  `.longue`.
-
-**Nettoyage sessionStorage au retour volontaire à l'app** (`btnRetourApp`) —
-`v2_wizard_step`/`v2_wizard_step_forme` n'étaient jamais nettoyés à la
-sortie du wizard, alors que le message affiché à l'utilisateur annonce
-explicitement "ta progression ne sera pas conservée". Au prochain "Créer un
-nouveau plan", l'étape sauvegardée relançait le wizard en plein milieu du
-parcours plutôt que de repartir de zéro — corrigé.
+**Non fait** : audit no-scroll systématique du wizard — nécessite un rendu
+réel en navigateur, approche retenue = tests réels de Laurent au cas par
+cas plutôt qu'estimation.
 
 ## 4. Écrans de l'app principale (`index.html`)
 
@@ -210,172 +132,86 @@ Fonctions de rendu (`render*`) :
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances
 - `renderStats` — statistiques (ACWR, monotonie de charge, etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat, stratégie)
-- `renderHelp` — aide (refonte du contenu le 24/07/2026, refonte complète
-  de l'affichage le 30/07/2026, cf. plus bas)
+- `renderHelp` — aide (cf. plus bas)
 - `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
 - `render` — orchestrateur principal
-- `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des
-  headers (icône changée le 24/07/2026, ex-🐛 jugé peu clair pour un
-  usage englobant bug/donnée incorrecte/suggestion, pas seulement les
-  bugs techniques)
-- `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans
-  référence)
+- `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
+- `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans référence)
 
-**Aide (24/07/2026, refonte complète le 30/07/2026)** — contenu réorganisé
-par intention plutôt que par écran : Démarrer / Comprendre les écrans /
-Comprendre les séances / Pour aller plus loin (règles du plan) / Comprendre
-le moteur Yoria (estimation, IE, cadence, RPE, readiness, carte
-d'ajustement, allures dynamiques) / Types de plan (Course, Mode Forme,
-Grand débutant) / Sources de données / FAQ. Accès factorisé via
-`boutonAide()` (réutilisé sur le dashboard et ajouté au header générique
-`hdr` des vues secondaires) — visible sur chaque onglet désormais, plus
-seulement depuis le dashboard.
+**Aide** — contenu réorganisé par intention : Démarrer / Comprendre les
+écrans / Comprendre les séances / Pour aller plus loin (règles du plan) /
+Comprendre le moteur Yoria / Types de plan / Sources de données / FAQ.
+Accès via `boutonAide()`, visible sur chaque onglet.
 
-**Refonte du 30/07/2026** (demande de Laurent : contenu devenu volumineux,
-pas facile à parcourir, et coûteux à éditer pour Claude vu la taille de
-`index.html`) :
-- **Contenu extrait dans `public/help-content.js`** — module de données pur
-  (aucun DOM), importé dynamiquement par `renderHelp()` au premier
-  affichage de l'écran (même pattern `await import()` que
-  `weather.js`/`plan-generator.js`), mis en cache en mémoire
-  (`_helpContentCache`) pour ne charger qu'une fois par session. Éditer un
-  texte d'aide ne touche plus jamais `index.html`, seulement ce petit
-  fichier séparé.
-- **Accordéon replié par défaut** (état `_helpSectionsOuvertes`, un Set en
-  mémoire, jamais persisté — repart toujours replié à l'ouverture de
-  l'écran, réinitialisé dans `setView("help")`) — remplace l'ancien
-  affichage linéaire de toutes les sections à la suite.
-- **Recherche texte** (`_helpRecherche`) en haut de l'écran, filtre les
-  items en direct et déplie automatiquement toute section contenant un
-  résultat — combine accordéon (parcours calme) et recherche (accès
-  direct) plutôt que de choisir l'un ou l'autre. Un sommaire en bulles
-  cliquables a été essayé puis retiré le même jour (redondant avec
-  l'accordéon lui-même, qui remplit déjà ce rôle).
-- Focus/position du curseur du champ recherche restaurés après chaque
-  frappe (`render()` recrée tout le DOM de l'écran, y compris ce champ —
-  sans ce correctif chaque caractère tapé aurait fait perdre le focus).
+**Architecture** : contenu extrait dans `public/help-content.js` (module
+de données pur, aucun DOM), importé dynamiquement au premier affichage,
+mis en cache (`_helpContentCache`) — éditer un texte d'aide ne touche
+plus jamais `index.html`. Accordéon replié par défaut
+(`_helpSectionsOuvertes`, réinitialisé à chaque ouverture de l'écran).
+Recherche texte (`_helpRecherche`) qui filtre en direct et déplie
+automatiquement les sections matchées — combine accordéon (parcours
+calme) et recherche (accès direct).
 
-**Barre de navigation — conteneur séparé (24/07/2026)** — `nav` est montée
-dans `#nav-root`, un conteneur HTML distinct de `#app`, via
-`document.getElementById("nav-root").replaceChildren(nav)`. Avant, `nav`
-était un enfant de `#app`, donc détruite par `app.innerHTML=""` en début de
-`render()` puis reconstruite quelques lignes plus loin — le navigateur
-pouvait peindre une frame sans barre de navigation entre les deux,
-provoquant un flash visible à chaque changement d'onglet. `replaceChildren()`
-sur un conteneur jamais vidé par ailleurs élimine cette frame intermédiaire.
-Correctif lié : `setView()` appelle désormais `window.scrollTo(0,0)`
-**avant** `render()` (pas après), pour éviter un léger saut de position de
-la barre pendant l'instant où le nouveau contenu est affiché avec l'ancien
-scroll encore actif.
+**Barre de navigation** — montée dans `#nav-root`, conteneur distinct de
+`#app` (via `replaceChildren`), pour éviter le flash de la barre à chaque
+render. `setView()` scrolle en haut AVANT `render()`.
 
-**Swipe horizontal entre onglets (24/07/2026)** — actif uniquement sur les
-vues présentes dans `NAV` (pas `weekDetail`, pas `help`), attaché sur
-l'élément `content` à chaque `render()` (jamais accumulé, `content` est
-recréé à chaque appel). Détection par direction dominante du geste
-(comparaison deltaX/deltaY dès le déclenchement, pas de zone d'écran
-dédiée) pour ne jamais interférer avec le scroll vertical. Seuil 50px.
-Périmètre volontairement limité aux onglets principaux — pas de swipe
-entre semaines dans `weekDetail`, pour éviter toute ambiguïté de geste
-avec une future navigation propre à cet écran.
+**Swipe horizontal entre onglets** — actif sur les vues de `NAV` (pas
+`weekDetail`/`help`), détection par direction dominante du geste, seuil
+50px.
 
-**`predict10K()` calculé à la demande (24/07/2026)** — auparavant appelé à
-CHAQUE `render()` quelle que soit la vue, y compris Semaines/Paramètres/
-Aide qui ne l'affichent jamais. Désormais calculé uniquement pour
-`dashboard`/`stats`/`course` (`VUES_AVEC_PRED`). Chaque appelant garde son
-repli `currentPred || predict10K()` existant, donc aucun risque si un
-usage futur en dépendait ailleurs.
+**`predict10K()` calculé à la demande** — seulement pour
+`dashboard`/`stats`/`course` (`VUES_AVEC_PRED`), pas à chaque `render()`.
 
-**Carte du jour et vue Semaine, refonte ergonomique (26/07/2026)** —
-principe "rien à ouvrir" appliqué aux deux écrans, remplace l'ancien
-système de tiroirs repliés par défaut. Icônes ⌚ (structure à programmer
-sur la montre, `renderIconeStructureMontre`) et ✏️ (saisie manuelle,
-`renderIconeSaisieManuelle`) affichées en popover compact dans le header de
-la séance, uniquement tant qu'elle n'est pas validée — disparaissent dès
-qu'un statut est posé. Allures/FC cibles affichées directement sous la
-séance, sans repli. Une fois validée (✅/⚠️/❌), `renderBlocRealise` affiche
-automatiquement le résumé chiffré (distance/durée/allure/FC) + un lien
-discret "✏️ Corriger", les répétitions individuelles restant seules
-repliées derrière "▼ détail" (seul repli conservé, pour ne pas noyer la
-carte avec dix lignes de laps par défaut). Cas sans Strava ni saisie
-manuelle existante : le clic sur un statut ouvre automatiquement le
-formulaire de saisie manuelle, une seule fois (pas de réouverture si une
-saisie existe déjà). `renderStatusRow` masque complètement la rangée de
-boutons statut pour une séance future (au lieu de l'afficher désactivée) —
-vérifié que `getAvailableSlots()` bloque déjà tout swap impliquant une
-séance ayant un vrai statut posé, aucun besoin de garder le bouton "—"
-accessible sur une séance future. Vue Semaine : saisie manuelle et notes
-bloquées sur une séance future (même garde que le statut), ancien système
-de repli "carte entière cliquable" retiré (redondant avec le repli fin des
-laps désormais suffisant).
+**Carte du jour et vue Semaine** — principe "rien à ouvrir" : icônes ⌚/✏️
+affichées uniquement tant que non validée, allures/FC cibles directement
+visibles. Une fois validée, résumé chiffré automatique + lien "Corriger",
+seules les répétitions individuelles restent repliées derrière "▼ détail".
+Sans Strava ni saisie manuelle, le clic sur un statut ouvre automatiquement
+le formulaire de saisie. Statut futur : rangée de boutons masquée
+complètement (pas juste désactivée).
 
 ## 5. Persistance
 
 **localStorage (préfixe `lk_`)** — clés globales (profil/config) :
-`lk_profil_coureur`, `lk_strava_token`,
-`lk_strava_refresh`, `lk_strava_expires`, `lk_strava_activities`,
-`lk_last_sync`. (`lk_github_token`/`lk_gist_id`/`v2_gist_id` retirés le
-22/07/2026 avec le reste du système Gist v2, cf. §5 et §11.)
+`lk_profil_coureur`, `lk_strava_token`, `lk_strava_refresh`,
+`lk_strava_expires`, `lk_strava_activities`, `lk_last_sync`.
 
 Clés préfixées par plan (via `clePourPlan()`) : `lk_statuses`,
 `lk_hidden_sessions`, `lk_swapped_sessions`, `lk_session_notes`, `lk_notes`,
 `lk_checklist`, `lk_adaptations_ignorees`, `lk_last_rebuild`,
 `lk_pred_history`, `lk_race_goal`, `lk_race_horaires`, `lk_race_parcours`,
 `lk_race_result`, `lk_weather_cache`, `lk_coach_msg`, `lk_coach_date`,
-`lk_coach_race_msg`, `lk_resultat_test_forme` (résultat du test semi-Cooper
-en attente de complétion du bloc, cf. §14).
+`lk_coach_race_msg`, `lk_resultat_test_forme`.
 
 **Principe** : toute donnée propre à un plan doit être préfixée — une clé
 globale non préfixée est un risque de contamination inter-plans.
 
-**Convention `statuses[uid]`** : peut valoir `'—'` (valeur de repli
-explicite utilisée à plusieurs endroits de l'app), pas seulement
-`undefined`/absent — tout code qui teste "cette séance a-t-elle déjà un
-statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`, pas
-`if (statuses[uid])` seul (bug rencontré le 21/07/2026 sur la carte de
-test semi-Cooper).
+**Convention `statuses[uid]`** : peut valoir `'—'` explicitement, pas
+seulement `undefined`/absent — tout code qui teste "cette séance a-t-elle
+déjà un statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`.
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
-(version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`,
-lue/écrite en brut sans JSON.parse/stringify, contrairement aux autres clés),
-`abonnements` (statut de facturation Stripe, cf. §11), `beta_testers`
-(candidatures bêta), `signalements` (retours utilisateurs, cf. §11). Sync
+(version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`
+en brut), `abonnements`, `beta_testers`, `signalements` (cf. §11). Sync
 Realtime activée sur `plan_donnees` (anti-écho 3s). File d'attente de
-sync en cas d'échec réseau (`lk_file_attente_sync`, rejouée au retour
-réseau et toutes les 5 min, abandon après 10 essais).
+sync en cas d'échec réseau (`lk_file_attente_sync`, 5 min, abandon après
+10 essais).
 
-**Sauvegarde de plan — Supabase est l'unique mécanisme de persistance
-(22/07/2026)** : le système Gist v2 (`gist-sync.js`, sync par token GitHub
-personnel) a été entièrement retiré de `index.html` et du wizard
-(`public/v2/index.html`) — bouton "☁️ Sauvegarder" et formulaire de token
-supprimés côté wizard, tous les appels `sauvegarderPlan()`/
-`chargerPlans()`/`supprimerPlan()`/`renommerPlan()` remplacés par leurs
-équivalents Supabase (`mettreAJourPlanSupabase`/`chargerPlansSupabase`,
-etc.) ou simplement retirés quand Supabase gérait déjà la même action en
-parallèle. `gist-sync.js` reste dans le repo (toujours importé par
-`sync-storage.js` pour `trouverPlanEnConflit`, le garde-fou anti-
-chevauchement de dates entre plans — fonction pure indépendante de la
-persistance elle-même), mais n'est plus utilisé pour aucune écriture/
-lecture de plan. **Garde-fou porté vers Supabase** au même moment : un plan
-Forme déjà clôturé (`dateCloture` posée) ne peut plus être écrasé via
-`mettreAJourPlanSupabase()` — protection qui n'existait qu'au niveau du
-Gist jusqu'ici, absente côté Supabase (bug potentiel découvert en
-vérifiant l'impact du retrait, corrigé avant qu'il ne cause de régression
-réelle).
-**Journalisation `decision_events`/`decision_outcomes` (24/07/2026)** —
-étape 1 du chantier de vision "coach adaptatif à mémoire par coureur" (cf.
-§16 et `docs/v2-methodologie/vision-coach-adaptatif.md`) : deux nouvelles
-tables Supabase, écriture best-effort uniquement, aucune lecture
-n'exploite encore cette donnée. `decision_events` journalise chaque
-décision produite par le `RuleEngine` (proposée/appliquée/ignorée, avec
-contexte complet — `runnerState`/`engagementState`/readiness). Écrit
-depuis `moteurDecisionEl` (`journaliserDecisionEvent`,
-`mettreAJourStatutDecisionEvent`), anti-doublon par décision/jour
-(`lk_dernier_decision_event_id`). `decision_outcomes` lie une décision à
-la première séance ultérieure avec un statut connu (statut, RPE, délai en
-jours) — observée une fois par chargement de page
-(`observerDecisionOutcomes`), pas à chaque `render()`. RLS strictement
-par propriétaire sur les deux tables. Schéma SQL complet dans
-`schema-decision-memory.sql` (racine du repo).
+**Sauvegarde de plan — Supabase est l'unique mécanisme de persistance.**
+Le système Gist v2 (`gist-sync.js`) a été entièrement retiré des écritures
+— reste dans le repo uniquement pour `trouverPlanEnConflit` (garde-fou
+anti-chevauchement de dates, fonction pure indépendante de la persistance).
+Un plan Forme clôturé (`dateCloture` posée) ne peut plus être écrasé via
+`mettreAJourPlanSupabase()`.
+
+**`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
+"coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
+uniquement, aucune lecture n'exploite encore cette donnée.
+`decision_events` journalise chaque décision du `RuleEngine`
+(proposée/appliquée/ignorée, contexte complet). `decision_outcomes` lie
+une décision à la première séance ultérieure avec un statut connu. RLS
+strictement par propriétaire. Schéma SQL dans `schema-decision-memory.sql`.
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -387,972 +223,88 @@ par propriétaire sur les deux tables. Schéma SQL complet dans
 }
 ```
 
-- `dateNaissance` (YYYY-MM-DD) : catégorie d'âge FFA calculée
-  (`calculerCategorieAgeFFA()`, bascule de saison au 1er septembre),
-  message anniversaire. `anneeNaissance` reste dérivée automatiquement
-  pour compatibilité avec le code existant (Tanaka).
-- `fcRepos` (bpm) et `sexe` (`'homme'|'femme'|'autre'`) : champs Réglages,
-  consommés par le moteur de décision (pondération TRIMP). Repli sur
-  'autre' (moyenne des constantes) si non renseigné.
+- `dateNaissance` : catégorie d'âge FFA calculée (`calculerCategorieAgeFFA()`,
+  bascule au 1er septembre), message anniversaire.
+- `fcRepos`/`sexe` : consommés par le moteur de décision (pondération
+  TRIMP). Repli sur 'autre' si non renseigné.
 - Wizard : `preremplirDepuisProfilCoureur()` auto-remplit à partir du
-  profil (sélection du record le plus pertinent, repli Riegel sinon).
-- `verifierCoherenceRecord()` : écarte un record si écart >10% à
-  l'estimation Riegel moyenne des autres records.
-- **Sauvegarde** : un seul point d'entrée réel, `sauvegarderProfilCoureur()`
-  (bouton "Enregistrer les paramètres", qui relit tous les champs du
-  formulaire avant d'appeler `save()`). Les sélecteurs Niveau et Sexe ne
-  doivent JAMAIS appeler `sauvegarderProfilCoureur()` directement au clic
-  — seulement mettre à jour l'état local (`profilCoureur.niveau/sexe` +
-  `render()`) — sinon un profil incomplet (champs texte pas encore relus)
-  écrase Supabase. Bug déjà rencontré et corrigé le 20/07/2026.
+  profil (record le plus pertinent, repli Riegel sinon).
+  `verifierCoherenceRecord()` écarte un record si écart >10% à
+  l'estimation Riegel des autres.
+- **Sauvegarde** : un seul point d'entrée réel, `sauvegarderProfilCoureur()`.
+  Les sélecteurs Niveau/Sexe ne doivent JAMAIS appeler cette fonction
+  directement au clic — seulement mettre à jour l'état local puis
+  `render()`, sinon un profil incomplet écrase Supabase.
 - **Un seul compte Supabase Auth par email** — vérifier `Authentication →
-  Users` en cas de doute plutôt que de supposer : un profil orphelin (lié
-  à un `user_id` qui n'existe plus dans Auth) peut coexister silencieusement
-  avec le vrai profil actif, provoquant des erreurs RLS et un affichage
-  "profil vide" trompeur (incident réel du 21/07/2026, cause jamais
-  formellement identifiée, profil restauré et orpheline nettoyée).
+  Users` en cas de doute, un profil orphelin peut coexister
+  silencieusement avec le vrai profil actif.
 
 ## 7. Moteur de plan (`v2/engine/plan-generator.js`)
 
 Pipeline de génération :
-1. `computePhases` — découpage en phases (base, construction, affûtage...)
+1. `computePhases` — découpage en phases (Construction/Spécifique/Affûtage)
 2. `computeVolumeProgression` — progression du volume hebdo
-3. `placerSemaine` — répartition des séances dans la semaine (fonctionnalité
-   "renforcement musculaire" retirée le 27/07/2026, peu utilisée dans
-   Yoria — supprimée de `placerSemaine`, du profil coureur, et des deux
-   wizards, course et Mode Forme)
+3. `placerSemaine` — répartition des séances dans la semaine
 4. `genererContenuQualite` — contenu détaillé séance qualité (12 sous-types,
    paramétrés par niveau — voir `bibliotheque-seances.md`)
 5. `genererContenuLongue`, `genererContenuTest`, `genererContenuRace`
 6. `repartirVolumeSemaine`
-7. `neutraliserJoursApresCourse` — transforme en repos tout jour de la
-   dernière semaine après le jour de course
+7. `neutraliserJoursApresCourse` — repos sur tout jour de la dernière
+   semaine après le jour de course
 8. `generatePlan` — orchestrateur
 
 Adaptation dynamique : `calculerScoreSemaine`, `analyserAdaptations`,
-`appliquerAdaptations`, `regenererStructuresIntervalles` — excluent toujours
-les séances déjà passées.
+`appliquerAdaptations`, `regenererStructuresIntervalles` — excluent
+toujours les séances déjà passées.
 
-**Stratégie de jour de course** : `calculerStrategieCourse()` (miroir exact
-entre `index.html` et `plan-generator.js`) — bornes km fixes pour
+**Stratégie de jour de course** : `calculerStrategieCourse()` (miroir
+exact entre `index.html` et `plan-generator.js`) — bornes km fixes pour
 Semi/Marathon (tous les 5km + palier à 35km sur marathon), proportionnel
 pour 5K/10K.
 
-**v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
-le plan brut (v2) et le format attendu par `index.html`. Tout nouveau champ
-personnalisé ajouté sur une séance côté moteur (ex: `estTest`, `sousType`)
-doit être explicitement propagé dans cette fonction pour être visible côté
-`index.html` — sinon silencieusement perdu, sans erreur (bug rencontré le
-21/07/2026 : `estTest`/`sousType` du test semi-Cooper jamais propagés,
-rendant le champ de saisie de résultat invisible malgré un plan brut
-correct). Mapping `FAMILLE_VERS_TYPE_V1` doit couvrir tout nouveau
-`sousType` de séance qualité (ex. `test-semi-cooper` → `TEST`), sinon
-repli silencieux vers `SEUIL`.
-
-**Test semi-Cooper pour plan course (22/07/2026)** — même principe que
-Mode Forme (`generatePlanAvecTestSemiCooper`/`completerPlanApresTestSemiCooper`,
-flux "Je n'ai pas de référence" côté wizard), mais la suite du plan dépend
-de `dateCourse` : `completerPlanApresTestSemiCooper` ré-appelle
-`generatePlan()` normalement avec `dateDebut` décalé de 7 jours,
-`computePhases` recalcule alors `totalSemaines` depuis le temps réellement
-restant jusqu'à la course (pas un bloc de taille fixe comme en Forme).
-
-- **Placement du test** : sur le premier jour *utile* de la semaine (date
-  réelle ≥ `dateDebut`), pas simplement le plus petit jourIndex de la
-  semaine calendaire — sinon le test peut tomber sur un jour neutralisé
-  par `traduirePlanVersFormatV1` (jour antérieur à `dateDebut`, si le plan
-  démarre en cours de semaine), donc jamais affiché côté dashboard.
-- **`estimerReferenceDepuisSemiCooper`** : VMA (km/h) = distance en 6min ÷
-  100 (protocole demi-Cooper), puis conversion directe vers un temps 10K
-  équivalent via le ratio documenté de la littérature (~90% de la VMA
-  tenue sur 10K, `RATIO_VMA_VERS_10K`). Ne passe plus par `PACE_RATIOS.I`
-  (calibré sur des séances VMA classiques avec récupération, pas
-  équivalent à un effort continu de 6 minutes — chaîner les deux ratios
-  sous-estimait fortement le 10K équivalent, bug corrigé le 22/07/2026).
-- **`objectif`** recalculé par Riegel depuis le vrai résultat du test
-  (jamais la valeur par défaut du champ neutralisé du wizard) — sinon
-  fausse l'allure C, `categoriserAmpleurObjectif` et la stratégie de
-  course affichée.
-- **`paramsOrigine`/`profilOrigine`** conservés sur le plan complété (pas
-  mis à `undefined`) avec les vraies valeurs finales — `index.html` lit
-  `paramsOrigine.tempsReference` pour l'affichage "Estimation"
-  (`BASE_TIME_REFERENCE`), avec un repli codé en dur sur 3021s (50'21")
-  si absent.
-- **Footings de la semaine 1** recalculés en allure EF réelle une fois le
-  test complété (40min à allure EF, via `genererContenuEF`) — jamais le
-  jour du test lui-même (déjà réalisé, principe transverse de l'app).
-- **Jour "🏁 Jour J — Course !"** ne doit jamais s'afficher sur un plan
-  encore `enAttenteTest` (une seule semaine → risque de la traiter comme
-  "dernière semaine du plan" = semaine de course) — `jourCourseIndex` mis
-  à `null` dans ce cas côté wizard.
-
-**Refus si volume incompatible avec le nombre de jours (24/07/2026)** —
-constat fait en générant plusieurs plans de test variés (script
-`scripts/test-plans-varies.js`, cf. plus bas dans cette section) :
-certaines combinaisons
-jours disponibles / volume de départ produisaient des séances EF ou une
-sortie longue sans substance réelle (ex. EF à 0,7km, une longue à moins
-de 5km) — le warning `VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION`
-existait déjà pour détecter ce cas au niveau d'une semaine, mais restait
-purement informatif : le plan était généré tel quel malgré l'alerte.
-`generatePlan()` bloque désormais la génération plutôt que de produire un
-plan de ce type : si plus de la moitié des semaines de la phase
-Construction ont un EF sous `VOLUME_MIN_EF_KM` (3km) ou une longue sous
-`VOLUME_MIN_LONGUE_KM` (5km), la fonction retourne `{ planInvalide: true,
-code: 'VOLUME_JOURS_INCOMPATIBLE', message }` au lieu du plan habituel —
-jamais une exception JS (romprait tout appelant sans message
-exploitable), cohérent avec le pattern `warnings` déjà en place dans tout
-ce fichier. Seuil volontairement à "majorité de la phase Construction" et
-non "une seule semaine" : un creux ponctuel en tout début de progression
-(montée en charge qui démarre bas) est normal et ne doit pas bloquer un
-plan par ailleurs viable — seule une incompatibilité structurelle
-(persistante sur toute la phase) doit empêcher la génération. Les 3
-points d'appel de `generatePlan()` (`public/v2/index.html` : création,
-régénération propre, modification d'objectif ; `public/index.html` : plan
-de repli par défaut) gèrent explicitement ce nouveau retour et affichent
-le message à l'utilisateur plutôt que de continuer avec un plan cassé.
-
-**Ratio longue variable selon le nombre de jours + contrainte longue≥qualité
-(29/07/2026)** — remplace `RATIO_LONGUE=0.28` fixe dans `repartirVolumeSemaine()`.
-Diagnostic : un ratio fixe suppose implicitement plusieurs EF pour absorber
-le reste du volume — à 2-4 jours disponibles (peu ou pas d'EF), la longue
-pouvait passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total
-restait correct, forçant `VOLUME_JOURS_INCOMPATIBLE` à réclamer un volume de
-départ artificiellement élevé. Vérifié par recherche (Daniels + sources
-croisées type RunningAHEAD/runlovers.it) : un ratio longue/volume plus élevé
-à faible nombre de jours est normal et attendu (jusqu'à 40-50% à 2-3j/semaine),
-pas une anomalie à corriger par un plafond, contrairement à l'hypothèse de
-départ. **Solution** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22,
-redescend vers les standards Daniels 25-30% à 5-7j où plusieurs EF existent)
-+ nouvelle contrainte actée par Laurent ("la longue ne peut pas ne pas être
-la plus longue séance") : `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)`
-— la longue ne peut jamais être plus courte que le cumul des séances qualité
-de la semaine (dont le volume dépend de paramètres fixes par niveau dans
-`genererContenuQualite`, indépendants du volume hebdo cible). Nouveau
-paramètre `nbJours` sur `repartirVolumeSemaine()`, propagé dans les 3 points
-d'appel de `recalculerRepartitionEFLongue` (`generatePlan`, `placerSeanceTest`,
-`appliquerAdaptations`). Écart aux 25-30% de Daniels vérifié et assumé : le
-ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend
-naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum — l'écart
-n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en
-pratique. Détail complet et seuils `VOLUME_MIN_PAR_JOURS` associés en §16
-(y compris le correctif du même jour sur la table de seuils, initialement
-calée uniquement sur 10K).
-
-— jusqu'ici, les allures E/T/I
-(`computeAllures()`) restaient calibrées sur `paramsOrigine.tempsReference`
-(référence de forme mesurée à la CRÉATION du plan) pendant toute sa durée,
-même quand le prédicteur détectait une vraie progression — un plan visant
-45:00 avec une référence de départ à 50:19 gardait des allures calibrées
-sur 50:19 tout du long, sans jamais se resserrer vers l'objectif. Nouveau
-mécanisme, déclenché à la fin de chaque semaine PAIRE du plan (S2, S4,
-S6...) :
-- `calculerReferenceCouranteAllures()` (fonction pure, `plan-generator.js`)
-  compare l'estimation du prédicteur à celle de la période précédente
-  (`predHistory`), avec un seuil de signification de 1% pour ignorer le
-  bruit. Progression (estimation plus rapide) → appliquée immédiatement.
-  Régression → appliquée seulement si confirmée sur 2 périodes de 2
-  semaines CONSÉCUTIVES (state `lk_regression_allures_en_attente`), pour
-  éviter de réagir à un accident ponctuel.
-- `verifierEtAppliquerAlluresDynamiques()` (`index.html`) orchestre :
-  détection de la fin de semaine paire (`currentWeek()`), lecture des deux
-  estimations dans `predHistory`, appel à la fonction pure, application
-  (régénère `window.__PLAN_BRUT__.allures` via `computeAllures()`,
-  sauvegarde Supabase) et notification visible ("📈 Allures mises à jour",
-  bandeau dismissible sur le dashboard — jamais silencieux).
-- Première comparaison possible dès la fin de S2, contre
-  `paramsOrigine.tempsReference` (pas de `null` forcé — correctif du même
-  jour, la version initiale bloquait toute détection avant la fin de S4).
-- Indépendant d'`appliquerAdaptations()` (qui réagit à des semaines ratées,
-  déclenché sur clic explicite) — les deux mécanismes coexistent sans se
-  substituer l'un à l'autre.
-- **Non testé en conditions réelles** — le premier déclenchement possible
-  n'arrive qu'à la fin d'un cycle S2 d'un plan en cours, à surveiller.
-
-**Script de test de génération de plans variés (24/07/2026)** —
-`scripts/test-plans-varies.js`, exécuté avec `node
-scripts/test-plans-varies.js` depuis la racine du repo (fonctions pures du
-moteur, pas de DOM/réseau, donc testables directement en Node sans
-navigateur). 10 profils prédéfinis couvrant des cas connus comme
-sensibles : grand débutant (Mode Forme marche-course), débutant profil
-minimal, intermédiaire/confirmé profil complet, Mode Forme via test
-semi-Cooper, plan course date proche/lointaine, changement de niveau en
-cours, profil incomplet extrême, contraintes ponctuelles + reprise après
-coupure. Vérifie deux niveaux : (1) absence de plantage/valeurs `NaN` —
-objectif et sans ambiguïté ; (2) quelques règles structurelles objectives
-(pas de qualité consécutive, allures cohérentes E>M>T>I>R, dernière
-semaine contient la course, semaines non vides). Ne vérifie jamais la
-qualité pédagogique d'un plan — jugement d'expert qui reste celui de
-Laurent, volontairement hors de portée d'un test automatisé (décision
-actée le 24/07/2026, pour éviter de figer une règle discutable en dur).
-Statut de sortie à trois valeurs par profil : OK (généré et conforme),
-REFUSÉ (le moteur a lui-même refusé de générer, cf.
-`VOLUME_JOURS_INCOMPATIBLE` plus haut — comportement attendu, pas un
-échec), FAIL (plantage ou règle violée — à corriger). `generatePlanForme`
-(Mode Forme, y compris grand-débutant) vit dans `plan-forme.js`, jamais
-dans `plan-generator.js` — erreur de conception initiale du script
-corrigée en cours de route (un profil grand-débutant ne peut déclencher
-que le flux Mode Forme, jamais `generatePlan()` classique avec
-`dateCourse`, cf. `public/v2/index.html` §17.9).
-
-## 8. Moteur de décision
-
-5 modules, tous livrés et en production (`engine-classic-scripts/decision-engine-*.classic.js`) :
-
-1. **RunnerStateCalculator** — TRIMP/ACWR/fatigue/confiance/risque à partir
-   des vraies données Strava (charge aiguë = 7j, charge chronique = moyenne
-   sur fenêtres réellement couvertes si historique <28j). `calculerChargeSeance()` :
-   repli `FC_REPOS_DEFAUT=60bpm` si `fcReposReference` absent — sans ce
-   repli, le calcul bascule silencieusement de TRIMP vers sRPE
-   (`dureeMin × RPE`, échelle bien plus élevée), ce qui a produit un ratio
-   ACWR aberrant (1.88 au lieu de ~0.8) en conditions réelles le 20/07/2026.
-2. **SessionAnalyzer** — score de réussite d'une séance (FC, allure,
-   répétitions dans zone `okPace`)
-3. **WeekAnalyzer** — bilan hebdomadaire (volume, séances, charge,
-   récupération estimée)
-4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines,
-   alimenté par `analyserTendance(fenetreSemaines)` (index.html). **Bug
-   corrigé le 27/07/2026** (signalé par Laurent : R-080 affichait un écart
-   moyen de -50.5% alors que les 3 vraies dernières semaines complètes
-   montraient -3%/-14%/-37%, moyenne réelle ~-18%, sous le seuil de
-   déclenchement) : la boucle de `analyserTendance()` incluait la semaine EN
-   COURS (non terminée) dans sa fenêtre glissante — un lundi matin, le
-   volume déjà réalisé cette semaine est quasi nul comparé au volume prévu
-   de la semaine complète, donnant un écart proche de -100% qui fausse
-   fortement la moyenne jusqu'au dimanche soir suivant. Corrigé en excluant
-   systématiquement la semaine en cours (`currentWeek() - 1` comme borne
-   haute), même principe que `derniereSemainePaireComplete` déjà appliqué
-   aux allures dynamiques (§8 plus haut) : ne jamais analyser une semaine
-   avant qu'elle soit entièrement passée. `obtenirHistoriqueMonotonie()`
-   (graphique Stats, pas d'alerte automatique) garde volontairement la
-   semaine en cours — hors scope de ce correctif.
-5. **RuleEngine** — catalogue de règles actif :
-   - R-006 (pic de séance), R-024s (fatigue élevée), R-040 (désengagement),
-     R-050 (ACWR élevé), R-060 (tendance fatigue sur 3 mesures), R-070
-     (séances ratées consécutives, priorité 70)
-   - **R-060 (tendance fatigue en hausse)** — méthode revue le 22/07/2026 :
-     échantillonnage quotidien sur 8 jours (J à J-7) comparé par moitiés
-     (moyenne J-7..J-4 vs J-3..J), seuil écart ≥6, au lieu de l'ancienne
-     méthode à 3 points (J/J-4/J-7, croissance stricte, seuil ≥8).
-     Raison : avec 3 points, une seule séance isolée bien placée pouvait
-     satisfaire par hasard la croissance stricte et déclencher une fausse
-     alerte — particulièrement probable pour un coureur à faible fréquence
-     (2-3 séances/semaine), où la fatigue reste "en plateau" entre deux
-     séances (le ratio ACWR ne varie qu'aux dates avec activité). La
-     comparaison par moitiés amortit ce cas (une moyenne sur 4 jours n'est
-     pas basculée par un seul point) tout en détectant aussi bien les
-     vraies tendances progressives. Ne touche à aucune logique de
-     `calculerCharge()`/ACWR (Module 1) — R-060 échantillonne seulement à
-     des dates différentes la métrique `fatigue` déjà calculée là-bas.
-   - R-062 (fatigue persistante 3 semaines, priorité 82)
-   - R-080 (déficit volume durable, 3 semaines ≤−10% vs plan, priorité 52)
-
-**R-070 devient `reduire_charge`** (23/07/2026, comble un manque identifié :
-aucune règle n'ajustait le plan face à un comportement réel, seules les
-données physiologiques — TRIMP/ACWR — le faisaient). Ampleur fixe −15%
-(signal binaire ≥2 séances ratées, pas de palier gradué). Cible directement
-la prochaine séance QUALITÉ (pas EF/LONGUE en priorité comme R-024s/R-050)
-via le flag `cibleQualitePrioritaire` sur `trouverProchaineSeanceCible`,
-avec repli sur EF/LONGUE si aucune qualité n'a de marge. Priorité 70 : reste
-sous R-006/R-024s/R-050 (charge mesurée toujours prioritaire sur
-comportement déclaré), au-dessus de R-080/R-040 (informatives). R-080 reste
-volontairement informative. Hors scope actée : aucune gestion du "rebond"
-après l'allègement (accélération si succès répétés, lissage de la remontée
-après une réduction) — chantier futur séparé.
-
-**Bug corrigé le 27/07/2026** (signalé par Laurent : la carte citait un EF
-et une LONGUE comme "2 séances de qualité ratées d'affilée") :
-`obtenirSeancesPlanifieesManquees()` (index.html) alimente R-070 en entrée
-mais ne filtrait en réalité JAMAIS sur le type des séances — elle prenait
-les 2 dernières séances passées, peu importe leur type, contredisant le
-libellé de la règle et sa conception documentée ci-dessus. Corrigé par
-l'ajout d'un filtre `["VMA","SEUIL","SPEC"]` sur `seancesPassees`, cohérent
-avec la liste des types qualité déjà utilisée ailleurs dans ce même fichier.
-
-**Readiness pré-séance qualité** (23/07/2026) : sélecteur 3 boutons (🪫Fatigué
-/😐Normal/🔋En forme), distinct du RPE (rétrospectif). Affiché uniquement le
-jour même d'une séance qualité (VMA/SEUIL/SPEC), et seulement tant que cette
-séance n'a pas déjà un statut renseigné (masqué après validation — la
-question "comment tu te sens POUR cette séance" n'a plus de sens une fois
-la séance faite/ratée/adaptée). "Normal" est une vraie valeur par défaut,
-enregistrée dès l'affichage si rien n'est encore choisi (pas juste un
-repère visuel) — sans risque concret, "normal"/"forme" n'ont de toute façon
-aucun effet sur la modulation. Stockage simple sans historique
-(`sessionReadiness`, clé par uid, même pattern que `sessionRpe`).
-
-Modulation (post-traitement dans `DecisionEngineApply`, jamais une nouvelle
-règle du `RuleEngine`) : si une décision `reduire_charge` existe déjà ET
-readiness=Fatigué, l'ampleur est poussée au palier suivant déjà connu du
-système (−15→−25), jamais au-delà, jamais si déjà à −25, jamais si
-readiness=Normal/En forme (ne module jamais à la baisse). Si aucune décision
-`reduire_charge` n'existe (RuleEngine muet) ET readiness=Fatigué : jamais de
-réduction automatique du plan, affichage d'un message d'invitation à la
-prudence à la place ("Écoute ton corps aujourd'hui", pas de bouton
-Appliquer). Validé en conditions réelles le 24/07/2026 (vraie séance VMA).
-
-`DecisionEngineApply` + carte UI : détection automatique, application sur
-clic explicite uniquement, `reduire_charge` cible EF/LONGUE/RECUP en
-priorité, séances de qualité en second recours si aucune EF/LONGUE
-disponible cette semaine (réduction structurelle du nombre de
-répétitions/blocs, jamais l'allure ni la récup — cf. plus bas). Garde-fous
-anti-cumul : −30% max par décision, plafond cumulé 25%/14j glissants
-(journal `planBrut.historiqueReductionsMoteur`, sur l'ampleur RÉELLEMENT
-appliquée, pas la demandée).
-**Titre de la carte** distingue désormais deux cas (22/07/2026) : "Yoria
-te propose un ajustement" uniquement quand une vraie action est possible
-(`reduire_charge`, bouton Appliquer visible) ; "Yoria a repéré un signal à
-surveiller" pour les décisions purement informatives (`alerter_*`, R-060/
-R-062, seul "Ignorer" disponible) — l'ancien titre unique était trompeur
-pour ce second cas.
-
-**Réduction structurelle des séances qualité** (23/07/2026) : ne touche
-jamais à l'allure ni à la récup — seul le nombre de répétitions/blocs est
-réduit, jamais sous le plancher `base(niveau, sousType)` (justifié par la
-littérature de périodisation, redémarrage conservateur à chaque
-mésocycle — cf. `bibliotheque-seances.md` §42). Trois sous-cas :
-bloc unique répété (i-3min, seuil, vitesse...) → retire des répétitions ;
-pyramide → retire des paliers depuis la fin, plancher = pyramide
-`debutant` (`[2,3,4]`) quel que soit le niveau réel ; i-30-30 → réduit
-`repsParSerie` en premier, `nbSeries` seulement en dernier recours. Les
-séances à bloc continu unique (tempo-court, seuil-negatif) n'ont pas de
-structure à casser, traitées comme EF/LONGUE (réduction linéaire simple).
-L'ampleur réellement appliquée (après arrondi à l'unité entière la plus
-proche) diffère souvent de l'ampleur demandée par la règle — c'est cette
-valeur réelle qui alimente `kmEstime` et le journal de cumul, jamais la
-brute. Tables `base`/`cap` par sous-type/niveau dupliquées depuis
-`plan-generator.js` dans `decision-engine-apply.classic.js` (elles n'y
-sont pas exportées, déclarées localement dans chaque `case` du switch) —
-risque de divergence documenté en commentaire, à répercuter si
-`plan-generator.js` change une valeur `base`. Vérifié le 29/07/2026 :
-ce fichier ne recalcule jamais la répartition longue/EF/qualité d'une
-semaine (`repartirVolumeSemaine`) — il ne fait que réduire des séances déjà
-générées, donc le chantier ratio longue variable/`nbJours` (cf. plus haut,
-§16) n'a rien à y propager. Validé par 29 tests unitaires + test en
-conditions réelles navigateur (clone du plan).
-
-Coach IA branché sur le moteur : lit `RunnerState`/`EngineDecision` du jour,
-ne recalcule jamais un ratio séparé, peut commenter la décision mais jamais
-en produire une différente.
-
-**Ton du coach — franchise sur signal objectif (27/07/2026)** — jusqu'ici,
-les consignes de `consigneChargeInterne` (`fetchCoachMsg()`, `index.html`)
-édulcoraient systématiquement le message dès qu'un vrai signal du moteur
-existait ("sans culpabiliser"/"sans dramatiser"), y compris pour des
-décisions sérieuses (`reduire_charge`, `alerter_blessure_potentielle`,
-`alerter_risque_decrochage`) — le coach restait toujours doux, même quand
-le moteur avait objectivement détecté un problème. Revu à la demande de
-Laurent : principe retenu, bienveillant sur la FORME (jamais dur, jamais
-culpabilisant), honnête sur le FOND quand le moteur a réellement détecté
-quelque chose — jamais l'inverse (une critique inventée sans signal réel).
-Reste strictement cohérent avec le principe déjà en place plus haut : "le
-coach IA devient un habillage du moteur, jamais un second décideur" — la
-franchise n'est jamais laissée à l'appréciation du LLM, seulement autorisée
-quand un signal factuel existe déjà. Deux nouveaux signaux ajoutés au même
-moment, jamais branchés au coach jusque-là :
-- `adaptationsConsecutivesMax >= 3` (`analyserAdaptations`,
-  plan-generator.js — système comportemental séparé du RuleEngine, cf.
-  garde-fou d'exclusion §16) : 3 semaines d'affilée de séances qualité/
-  longue difficiles.
-- FC moyenne des sorties EF/LONGUE de la semaine (`avgEfHr`, déjà calculée
-  par `weeklyReport()` et affichée sur le dashboard mais jamais comparée à
-  la zone attendue) vs `zoneFC.zonesParType.E` — signal si l'écart dépasse
-  5bpm au-dessus de la borne haute de la zone. Volontairement limité à EF/
-  LONGUE (pas les séances qualité, où la FC varie trop selon le moment de
-  l'effort pour qu'une simple moyenne soit fiable — décision actée avec
-  Laurent le 27/07/2026).
-
-**Bug corrigé le même jour** : le premier ajout du signal
-`adaptationsConsecutivesMax` appelait `analyserAdaptations(window
-.__PLAN_BRUT__)` en ne vérifiant que `if (window.__PLAN_BRUT__)`, sans
-vérifier que `plan.semaines` existe bien — `analyserAdaptations` fait
-`[...plan.semaines]`, qui lève une exception si `semaines` est absent/
-undefined. Cette exception se produit AVANT le `try/catch` de
-`fetchCoachMsg()` (qui n'entoure que l'appel réseau final, pas la
-construction du prompt), donc jamais rattrapée. Symptôme observé par
-Laurent : carte "Aujourd'hui" du dashboard disparue après un changement de
-plan (probablement un instant où `window.__PLAN_BRUT__` ne correspondait
-pas encore au plan réellement sélectionné). Corrigé en gardant aussi
-`?.semaines` dans la condition d'entrée (`window.__PLAN_BRUT__?.semaines`)
-avant tout appel à `analyserAdaptations`.
-
-Monotonie d'entraînement (Foster 1998) : calculée et affichée dans Stats,
-sans règle d'alerte (pas de seuils validés pour coureurs récréatifs).
-
-**Prédicteur d'estimation 10K** (`predict10K()`, `index.html`) — distinct
-des 5 modules ci-dessus mais lit les mêmes données (`ALL_SESSIONS`,
-`statuses`). Deux couches (22/07/2026, refonte "convergence
-progressive") :
-- **Borne brute** (`borneBrute`, ex-"estimate") : mesure physio pure, non
-  lissée — moyenne pondérée SPEC (poids 0.45, allure directe), VMA (0.35,
-  vitesse×0.87), SEUIL (0.10, Riegel — contribue seulement à partir de 3
-  séances ; formule connue pour être structurellement pessimiste sur cette
-  source précise, pas encore corrigée, cf. chantiers ouverts), combinée à
-  `BASE_TIME_REFERENCE` via `lavendouWeight` (poids de la référence,
-  décroît linéairement de 90% à 10% sur 8 semaines, garde-fou 50% si
-  aucune séance VMA/SPEC dans les 3 dernières semaines). Garde-fou
-  d'exclusion : source écartée si écart >20% vs `BASE_TIME_REFERENCE`.
-- **Estimation affichée** (`estimate`) : ne saute plus directement à
-  `borneBrute` à chaque séance — part de `BASE_TIME_REFERENCE` en début de
-  plan et converge par petits pas (`PAS_CONVERGENCE_BASE=0.15`, modulé par
-  `fiabilitePlanPonderee()`) à chaque nouvelle séance de qualité
-  (SEUIL/VMA/SPEC) réussie ou partielle. Clampée entre `BASE_TIME_REFERENCE`
-  et `borneBrute` — ne peut jamais dépasser ce que les séances mesurent
-  réellement. Corrige le comportement pré-22/07/2026 où une séance de
-  qualité réussie pouvait dégrader l'estimation affichée (cas réel : un
-  3ᵉ seuil réussi avait fait reculer l'estimation de 49'22" à 49'31" à
-  cause du poids Riegel pessimiste de SEUIL).
-- **`fiabilitePlanPonderee(dateStr)`** : taux de réussite sur TOUTES les
-  séances (pas seulement qualité — une EF/LONGUE ratée est un vrai signal
-  de fatigue qui doit freiner la convergence même sans donnée de vitesse),
-  pondéré par récence sur toute la durée du plan (demi-vie 21 jours,
-  ✅=1/⚠️=0.5/❌=0). Fiabilité 0 → convergence gelée.
-- **Bande de tolérance affichée dans le graphe Stats** : incertitude
-  autour de l'estimation (`±margin`, `margin = (1-confidence/100)×90s`),
-  pas l'intervalle `BASE_TIME_REFERENCE↔borneBrute` — ce dernier est
-  structurellement plat en début de plan (borneMax=BASE tant que peu de
-  données), donnait une bande plaquée contre le haut du graphe plutôt
-  qu'un vrai relief symétrique (retour utilisateur après premier essai).
-- **Historique rejoué rétroactivement** : `rebuildPredHistorySequentielle()`
-  (remplace l'ancienne boucle indépendante `predict10KAtDate` par jour) —
-  applique la même convergence jour par jour depuis le début du plan,
-  nécessaire car chaque jour dépend de la veille. `calculerBorneBruteAtDate`
-  (ex-`predict10KAtDate`) calcule la borne brute à une date donnée en
-  réutilisant `weightedAvgByEffortDuration()` (extrait de `predict10K()` en
-  fonction top-level partagée le 22/07/2026 — la version précédente était
-  simplifiée et OUBLIAIT SEUIL entièrement, bug réel découvert sur un compte
-  de test avec séances SEUIL+VMA validées : la convergence restait figée
-  sur `BASE_TIME_REFERENCE` malgré des séances de qualité, le graphe Stats
-  affichant une ligne plate). `PREDICTOR_VERSION` (actuellement 8) déclenche
-  la reconstruction automatique au chargement si incrémentée — nécessite un
-  geste manuel (incrémenter la constante) à chaque changement de méthode de
-  calcul, rien d'automatique ne détecte qu'une formule a changé.
-- **Source SEUIL — formule Daniels-Gilbert (VDOT) depuis le 22/07/2026** :
-  remplace Riegel, qui traitait une allure seuil (sous-maximale par nature,
-  86-88% VO2max chez Daniels, tenable ~60min en course) comme si c'était
-  une performance maximale — sous-estimait systématiquement la vitesse 10K
-  réelle (écart mesuré ~4min sur un cas réel : 52'58" en Riegel contre
-  49'15"-49'02" en VDOT pour la même séance). Nouvelles fonctions pures dans
-  `plan-generator.js` : `vo2FromVelocity`/`velocityFromVo2` (coût O2 ↔
-  vitesse), `pctVo2MaxPourDuree` (courbe de durée Daniels-Gilbert),
-  `vdotDepuisEffortSousMaximal`/`vitesseDepuisVdotEtDistance` (assemblage
-  complet). Équations vérifiées par recherche web (chapitre 5 du livre,
-  "VDOT System of Training", absent du fichier projet fourni — seuls les
-  chapitres 1-4 sont disponibles), cohérentes avec plusieurs calculateurs
-  VDOT tiers indépendants et avec les % VO2max déjà confirmés dans le
-  chapitre 4 (seuil 86-88% VO2max, tenable ~60min).
-- **Bug racine "convergence figée" (22/07/2026, résolu)** — après plusieurs
-  correctifs partiels dans la même journée (fix SEUIL manquant, fix VDOT,
-  fix condition de déclenchement, fix repli `sport_type`), l'estimation
-  restait bloquée sur `BASE_TIME_REFERENCE` malgré 3 séances SEUIL validées
-  — graphe Stats plat de bout en bout. Cause racine trouvée par
-  instrumentation directe (logs temporaires en production, méthode utilisée
-  faute d'accès aux variables de module depuis la console navigateur) :
-  `fiabilitePlanPonderee(dateStr)` lisait `s.statutEffectif`, un champ
-  **FIGÉ** calculé une seule fois par `recalculerAllSessions()` par rapport
-  à `today()` réel — jamais recalculé pour les dates passées simulées dans
-  `rebuildPredHistorySequentielle()` (boucle jour par jour depuis le début
-  du plan). Résultat : fiabilité mesurée à 0 dès les premiers jours du plan
-  (peu de séances encore passées par rapport à `today()`, indépendamment de
-  la date simulée), bloquant tout pas de convergence dès la première
-  itération — et comme `estimateCourante` est séquentielle (chaque jour
-  dépend du précédent), ce blocage initial se propageait à toute la
-  séquence, y compris les dates ultérieures où la fiabilité aurait dû être
-  bonne. Corrigé : `fiabilitePlanPonderee()` recalcule maintenant
-  `statutEffectif` localement, PAR RAPPORT À `dateStr` (paramètre), au lieu
-  de lire le champ figé — comportement inchangé pour l'appel avec
-  `today()` (calcul en direct, `predict10K()`), corrigé uniquement pour la
-  reconstruction rétroactive. `PREDICTOR_VERSION` 12. Confirmé résolu :
-  graphe affiche une vraie descente progressive après ce fix, pas juste un
-  saut final.
-- **Repli `sport_type` sur les filtres d'activités** (22/07/2026, fix
-  intermédiaire, toujours valide) : `a.type === "Run"` seul ratait
-  certaines activités selon la source de synchro (montres tierces
-  notamment) — corrigé en `a.type === "Run" || a.sport_type === "Run"`
-  dans `predict10K()`, `calculerBorneBruteAtDate()`,
-  `aDesNouvellesDonneesQualite()`, `matchActivitiesToPlan()`. N'était pas
-  la cause du bug racine ci-dessus (vérifié par diagnostic : les 3
-  activités de Laurent avaient bien `type: "Run"`), mais reste une
-  vraie correction de robustesse à conserver.
-- **Convergence n'avance que sur nouvelle donnée du jour** (22/07/2026,
-  fix intermédiaire, toujours valide) : `predict10K()` utilisait
-  `estimates.length > 0` (vrai dès qu'au moins une source existe au
-  global) au lieu de `aDesNouvellesDonneesQualite(todayStrConv)` (vrai
-  uniquement si une séance de qualité a réellement lieu aujourd'hui) —
-  l'estimation avançait donc d'un petit pas à chaque simple chargement du
-  dashboard, pas seulement sur une vraie nouvelle séance. Corrigé,
-  unifié avec la logique déjà utilisée par la reconstruction rétroactive.
-
-**Non couvert / reporté** :
-- Saisie de plaisir par séance (PACES-S) — EngagementCalculator tourne sur
-  régularité comportementale seule
-- R-062/R-070/R-080 jamais observées sur données réelles de Laurent — à
-  surveiller
-- Convergence progressive — maintenant confirmée fonctionnelle en
-  conditions réelles (22/07/2026, graphe descendant observé après le fix
-  du bug racine ci-dessus), mais le rythme du pas
-  (`PAS_CONVERGENCE_BASE=0.15`) reste à éprouver sur plusieurs semaines
-  pour juger s'il est bien calibré (ni trop lent, ni trop rapide).
-- Chapitre 5 du livre Daniels ("VDOT System of Training", tables complètes)
-  absent du fichier projet fourni à Claude — la formule VDOT implémentée le
-  22/07/2026 a été reconstruite à partir des équations Daniels-Gilbert
-  vérifiées par recherche web, pas directement lue dans le livre fourni ;
-  fiable mais pas garantie identique à 100% aux tables publiées.
-- Méthode de diagnostic à retenir : aucune variable interne (`ALL_SESSIONS`,
-  `statuses`, `PLAN`, `SESSION_TARGETS`, les fonctions du prédicteur) n'est
-  exposée sur `window` pour un debug depuis la console navigateur — seuls
-  `window.__PLAN_BRUT__`, `window.__PLAN_GENERE__`, `window.stravaActivities`
-  et le contenu de `localStorage` (préfixé par plan) sont accessibles de
-  l'extérieur. Pour un diagnostic profond, l'instrumentation directe
-  (logs temporaires poussés en production, retirés une fois la cause
-  identifiée) reste la méthode la plus fiable — cf. procédure suivie le
-  22/07/2026 pour ce bug.
-
-**Bug "0 séance sur 14 jours" (résolu le 22/07/2026)** : cause la plus
-probable identifiée — `autoSync()` (auto-synchro Strava) ne se
-redéclenchait que si `lastSyncTime` datait de plus d'1h, sans jamais
-vérifier si `stravaActivities` était réellement peuplé. Si ces deux
-données se retrouvaient incohérentes entre elles (ex. lors d'une
-interruption de session), le moteur tournait silencieusement sur un
-historique vide, potentiellement longtemps. Corrigé : l'auto-synchro se
-déclenche aussi si `stravaActivities` est vide, même si la sync est
-récente. Hypothèse cohérente avec le code, pas reproduite explicitement
-en conditions réelles — à surveiller si le message réapparaît malgré ce
-fix.
-
-## 9. Saisie manuelle, RPE et statuts de séance
-
-**Saisie manuelle** : bouton "Annuler" (réinitialise + relance sync Strava),
-champ "durée totale" pour séances de qualité, exclusion Strava complète
-quand saisie manuelle existe (injection `ActivitySample` synthétique).
-
-**RPE** : source unique `sessionRpe[uid]`, sélecteur 5 niveaux
-(🙂😐😓😣🥵) mappés CR-10, visible dès qu'un statut ✅/⚠️/❌ est posé,
-pondération TRIMP +12% si RPE ≥ 8. Libellé affiché en dur sous l'icône
-sélectionnée après clic (pas de tooltip seul, ne marche pas sur mobile).
-
-**Statuts de séance** (`SOPTS`) : `—` / `✅` / `❌` / `⚠️` / `😴`, indexés
-par `uid` (`week-slotIdx`) dans `statuses`. Une séance ne peut plus être
-supprimée du plan (bouton retiré le 22/07/2026, demande explicite de
-Laurent) — seul un statut la caractérise. `hiddenSessions`/`showRestoreMenu`
-restent dans le code pour compatibilité avec les séances masquées avant ce
-changement, sans nouveau point d'entrée.
-
-**`statutEffectif` (22/07/2026)** — calculé de façon centralisée dans
-`recalculerAllSessions()`, disponible sur chaque objet `ALL_SESSIONS` :
-égal au vrai statut saisi (`statuses[uid]`) s'il existe, sinon `"😴"`
-automatiquement pour tout jour **déjà passé** (`date < today()`, jamais le
-jour même) sans saisie. Jamais écrit dans `statuses[uid]` lui-même — reste
-purement un calcul d'affichage, ne peut jamais écraser une vraie saisie
-tardive. Avant ce changement, un calcul équivalent n'existait que
-localement dans `renderWeekDetail()` (le badge de statut), invisible du
-reste de l'app — stats, moteur de décision et garde-fous du swap
-continuaient de lire `statuses[uid]` brut, ignorant les séances
-auto-repos. Point de vigilance : `recalculerAllSessions()` est appelée une
-première fois avant que `statuses` (`let`, déclarée plus loin dans le
-fichier) soit initialisée — accès protégé par un vrai `try/catch` (pas
-`typeof`, qui ne protège pas d'une temporal dead zone `let`/`const` du même
-scope — cause d'un bug d'écran blanc corrigé le 22/07/2026).
-
-**Audit complet des lecteurs de `statuses[uid]` (22/07/2026, chantier
-clos)** — les ~30 occurrences de `statuses[uid]` dans `index.html` passées
-en revue une par une. Deux vrais bugs trouvés et corrigés :
-`fiabilitePlanPonderee()` (excluait totalement les séances passées jamais
-cochées du calcul de fiabilité au lieu de les compter comme un signal de
-désengagement — faussait potentiellement la convergence du prédicteur et
-les allures dynamiques) et `obtenirSeancesPlanifieesManquees()` (R-070 du
-RuleEngine, même défaut — ne détectait jamais un enchaînement de séances
-"ratées" quand elles étaient simplement oubliées plutôt que cochées ❌).
-Bilan semaine (compteur 😴) et export PDF (détail par semaine) également
-corrigés pour cohérence d'affichage. Les ~26 autres occurrences vérifiées
-sont correctes par construction, regroupées en 4 catégories légitimes qui
-doivent rester sur le statut BRUT : boutons de sélection/écriture du
-statut lui-même, contexte "aujourd'hui" (le 😴 auto ne s'applique jamais au
-jour même par définition), compteurs stricts ✅/⚠️/❌ (une séance non
-cochée n'égale déjà aucun de ces statuts, donc correcte sans changement),
-et les gardes du swap (déjà réécrites le même jour avec un calcul local
-équivalent à `statutEffectif`).
-
-**Échange de séances (swap, `swappedSessions[uid] = uidB` bidirectionnel)**
-— étendu le 22/07/2026 : `getAvailableSlots()` propose désormais tous les
-jours de la semaine comme cible, pas seulement les jours repos/masqués
-(demande explicite de Laurent : "swap 2 séances existantes, même si ce
-n'est pas un repos"). Bloqué dans les deux sens (source et destination) si
-la séance a un statut posé, une note, un RPE, une saisie manuelle, **ou**
-si le jour est passé sans saisie (`statutEffectif` = 😴 implicite) — ces
-données restent indexées par `uid` (position calendaire), pas par le
-contenu de la séance, donc un swap les laisserait accrochées au mauvais
-jour après échange.
-
-**Choix manuel si plusieurs activités Strava le même jour (24/07/2026)** —
-`matchActivitiesToPlan()` associait auparavant systématiquement la
-PREMIÈRE activité Strava trouvée pour une date donnée (`runs.find()`),
-sans aucun critère de choix. Un critère automatique par proximité de durée
-avec la cible de la séance a été testé puis écarté (jugé insuffisamment
-discriminant quand deux activités ont des durées proches — décision de
-Laurent) : plutôt que deviner, le moteur ne valide plus automatiquement
-dès qu'il y a ambiguïté, et laisse le coureur choisir.
-- `obtenirActivitesAmbigues(uid, dateSeance)` — fonction utilitaire
-  partagée, retourne `{ambigu, candidats}`. Un seul candidat le jour J =
-  comportement automatique historique inchangé. Plusieurs candidats =
-  aucune validation automatique tant qu'aucun choix n'est mémorisé.
-- **Pastille visuelle** (`renderStatusRow`) : "❓ Plusieurs activités ce
-  jour — choisis la bonne dans le menu de la séance", affichée uniquement
-  tant que le statut reste "—" (une séance déjà validée manuellement,
-  indépendamment de Strava, n'affiche jamais la pastille).
-- **Choix manuel** (`showSessionMenu`) : liste des activités candidates du
-  jour (nom, distance, durée, allure), sélection au clic. Applique
-  `autoValidate()` immédiatement sur l'activité choisie.
-- **Mémorisation et redéclenchement** (`lk_choix_activite_ambigue`,
-  `{uid: {activityId, dateChoix, nbActivitesAuChoix}}`) — un choix reste
-  valide tant que le nombre de candidats du jour n'a pas changé. Si une
-  NOUVELLE activité Strava apparaît ce jour-là après le choix (resynchro
-  ultérieure), l'ambiguïté est redéclenchée : le contexte a changé, le
-  choix précédent n'est plus fiable (décision explicite de Laurent).
-- **Sans lien avec le calcul de charge/fatigue** — vérifié le 24/07/2026 :
-  `RunnerStateCalculator` (`obtenirHistoriqueACWR()`) lit `stravaActivities`
-  dans son intégralité, indépendamment de tout matching avec le plan.
-  Une activité non choisie dans une ambiguïté (ou une sortie totalement
-  hors-plan) compte donc déjà pleinement dans le calcul de fatigue/ACWR —
-  ce mécanisme ne concerne que la validation du statut d'UNE séance
-  précise du plan, jamais le calcul de charge globale.
-
-## 10. Import FIT
-
-`adapterFitVersFormatActivite()`, `chargerFitParser()` (import ESM
-dynamique depuis jsDelivr, pas de build UMD/browser), `importerFichierFit()`.
-`vitesseFiable()` calcule toujours depuis distance/temps, jamais
-`avg_speed` du fichier FIT (peut être faux sur Amazfit/Zepp).
-
-## 11. Intégrations externes
-
-**Strava** (Client ID `260339`) — OAuth via `api/strava.js`. Client :
-`v2/engine/strava.js`. Sync conditionnelle sur `dataSource === "strava"`
-via paramètre `force` (syncs auto respectent le garde, actions explicites
-passent `force: true`). Comparaison séance programmée vs laps réels filtrée
-par allure cible ±15%. Token invalide/révoqué détecté explicitement
-(`activities?.errors?.some(e => e.field === "access_token" && e.code ===
-"invalid")`, `stravaAuthInvalide`) — message "Connexion Strava expirée"
-avec bouton "🔄 Reconnecter Strava", affiché sans auto-effacement tant que
-non résolu (contrairement aux messages de sync ordinaires).
-
-**Météo** — proxy Open-Meteo (`api/weather.js`), gratuit, sans clé.
-Paramètre `type=forecast|current|historical` (forecast = défaut,
-rétrocompatible). Géolocalisation selon l'usage : dernière activité Strava
-avec GPS pour la météo actuelle/passée (repli position par défaut sinon),
-position live du navigateur pour la prévision J+1 (alerte chaleur avant
-séance, `v2/engine/weather.js`) — deux besoins légitimement différents,
-pas un doublon.
-
-**Météo passée — heure réelle de séance (24/07/2026)** : `handleHistorical`
-(`api/weather.js`) accepte désormais un paramètre `hour` optionnel, utilisé
-en priorité sur le repli fixe 18h→12h→minuit. Côté client,
-`fetchHistoricalWeather()` extrait l'heure locale depuis `start_date_local`
-de l'activité Strava correspondante et la transmet. `lk_weather_cache`
-reste indexé par date seule (pas date+heure) — décision volontaire de ne
-pas invalider les entrées déjà en cache : les séances déjà consultées une
-fois avant ce correctif conservent leur ancienne valeur (calculée à 18h)
-jusqu'à ce que le cache soit vidé par un autre mécanisme, seules les
-nouvelles consultations bénéficient de la vraie heure. `timezone:
-"Europe/Paris"` reste fixé en dur côté serveur (toujours listé en chantier
-ouvert, cf. §16).
-
-**Coach (messages courts)** — `api/coach.js`, proxy Claude Haiku 4.5.
-
-**Sync multi-device** — Supabase (auth par compte email/mot de passe),
-seul mécanisme depuis le 22/07/2026 (Gist v2/GitHub token entièrement
-retiré, cf. §5). Aucune action de l'utilisateur nécessaire au-delà de se
-connecter avec le même compte sur chaque appareil.
-
-**Stripe (abonnements, v2.5)** — Produit "Yoria Premium" (7€/mois,
-`STRIPE_PRICE_ID`, et tarif annuel `STRIPE_PRICE_ID_ANNUAL`), mode Checkout
-hébergé (jamais de formulaire carte natif dans la TWA, conforme politique
-Google Play sans programme "alternative billing"). Table Supabase
-`abonnements` (`user_id` nullable, `email`, `stripe_customer_id`,
-`stripe_subscription_id`, `subscription_status`, `price_id`) avec RLS
-lecture seule pour le propriétaire — les écritures passent uniquement par
-les endpoints serverless (clé `service_role`, contourne RLS).
-
-- `api/stripe-checkout.js` : vérifie le token Supabase (`Authorization:
-  Bearer`), retrouve ou crée le `stripe_customer_id` (par `user_id` puis
-  par `email` en repli — cas beta testeur déjà lié), crée la session
-  Checkout, retourne l'URL à ouvrir dans le navigateur externe.
-  Redirection `yoria.run/?stripe=succes|annule`.
-- `api/stripe-webhook.js` : `bodyParser` désactivé (body brut requis pour
-  la vérification de signature HMAC-SHA256, faite nativement via Web
-  Crypto, sans dépendance npm `stripe`). Écoute
-  `checkout.session.completed`, `customer.subscription.created/updated`,
-  `customer.subscription.deleted` — met à jour `subscription_status`
-  (mapping des statuts Stripe vers `active`/`past_due`/`canceled`/`none`).
-- Routes `/api/stripe-checkout` et `/api/stripe-webhook` déclarées
-  explicitement dans `vercel.json` (routing en whitelist — toute nouvelle
-  route API doit y être ajoutée, sinon 404 silencieux vers `public/`).
-- Bouton "S'abonner" dans Paramètres (section "💳 Abonnement", en fin de
-  page) : lecture du statut via `window.__abonnementStatutCache__`
-  (initialisé une seule fois par session pour éviter un fetch + `render()`
-  en boucle infinie — bug rencontré et corrigé le 21/07/2026). Invalidé
-  une fois au retour `?stripe=succes` pour refléter immédiatement le
-  nouveau statut sans F5 manuel.
-- **Abonnements gratuits (beta testeurs et au-delà)** : bon de réduction
-  Stripe 100% répétitif (jamais nommé "beta" dans Stripe pour rester
-  réutilisable au-delà de la bêta), appliqué via `discounts[0][coupon]`
-  (paramètre `coupon` seul rejeté sur les comptes en `billing_mode:
-  flexible`, le défaut Stripe actuel). Déclenché depuis `beta-admin`
-  (action `create_free_subscription` sur `api/beta-admin.js`) : recherche
-  ou crée le client Stripe par email, crée l'abonnement avec le coupon,
-  upsert `abonnements`. Liaison automatique au `user_id` dès que le
-  testeur crée son compte Yoria avec le **même email** que sa
-  candidature — condition impérative à communiquer au testeur.
-
-**Signalements utilisateurs** — bouton 💬 dans les headers de `index.html`
-(`ouvrirSignalementProbleme()`) : sélecteur de type (Bug/Donnée
-incorrecte/Suggestion/Autre) + description libre. Icône changée le
-24/07/2026 (ex-🐛, trop spécifique "bug" pour un usage englobant aussi
-suggestions et données incorrectes) — le sous-type "🐛 Bug" dans le
-sélecteur interne reste inchangé, lui a du sens. Mentionné dans l'aide
-(nouvelle entrée FAQ, cf. §4). Ordre des icônes désormais identique sur
-toutes les vues (dashboard et header générique des vues secondaires) :
-signalement → J– (compte à rebours course) → aide — corrigé le
-24/07/2026, l'ordre différait auparavant entre le dashboard et les vues
-secondaires. Double écriture à chaque envoi :
-- **Sentry** (`Sentry.captureMessage`, best-effort, contexte technique
-  brut — vue, planId, url — dans le message, jamais en second argument
-  objet, cf. §15)
-- **Table Supabase `signalements`** (`type`, `message`, `contexte` en
-  `jsonb`, `user_id`/`email`, `statut`, `sentry_event_id` pour faire le
-  lien entre les deux) — source de vérité pour le triage humain, RLS
-  limitée à `insert` côté client (aucune lecture/écriture publique en
-  dehors de la création).
-
-Administration dans `beta-admin` (onglet "🐛 Signalements", `api/beta-
-admin.js` action `update_signalement_statut`) : liste filtrable par type
-et statut, changement de statut (`nouveau`/`en_cours`/`resolu`) via
-`<select>` inline par ligne. Sentry reste l'outil de diagnostic technique
-(stack traces, erreurs JS) ; `signalements` est l'outil de suivi produit
-(triage humain, statut).
-
-**Module "Comptes" (25/07/2026, enrichi le même jour)** — nouvel onglet
-dans `beta-admin` (`👤 Comptes`), pour comprendre un bug signalé sans
-écrire de SQL manuel. Recherche un utilisateur par email (action
-`search_user_plan`, `api/beta-admin.js`) : liste tous les utilisateurs via
-l'API Admin Supabase (`/auth/v1/admin/users`, filtrée côté serveur — le
-filtre REST direct `email=eq.X` s'est révélé peu fiable en pratique),
-retrouve ses plans (`plans_actif`) et affiche chaque séance en lecture
-seule avec son contenu détaillé (type, sous-type, texte complet du
-moteur) ET ses statuts/RPE/notes réels (`plan_donnees.data`). Les uid
-utilisés pour ce matching sont calculés en réimportant DIRECTEMENT
-`traduirePlanVersFormatV1`/`construireAllSessions` depuis
-`v2/engine/v1-bridge.js` (import ES relatif `../public/v2/engine/
-v1-bridge.js` depuis `api/beta-admin.js`, fonctionnel car ce fichier est
-un module pur sans dépendance DOM et `package.json` déclare
-`"type": "module"`) — jamais une réimplémentation séparée côté serveur,
-pour éliminer tout risque de divergence avec la vraie traduction côté
-client (cf. §7, `v1-bridge.js` déjà documenté comme fragile si dupliqué).
-Bug rencontré au premier déploiement : clé RPE utilisée à tort
-(`lk_rpe` au lieu de la vraie clé `lk_session_rpe`) — corrigé après
-test réel, `lk_session_notes` était déjà correcte dès le départ.
-
-Section "Décisions du moteur" sur la même recherche : 50 dernières lignes
-de `decision_events` (avec `decision_outcomes` liée si disponible) pour
-l'utilisateur trouvé — règle, type, statut, ampleur, fatigue/ACWR au
-moment de la décision, résultat observé. Lecture seule, best-effort
-(n'empêche jamais l'affichage des plans si elle échoue).
-
-**Principe strict acté le 25/07/2026** : ce module ne doit JAMAIS lire ni
-utiliser les tokens Strava d'un testeur, ni déclencher un appel Strava en
-son nom — uniquement des données déjà stockées côté Yoria (Supabase). Les
-données moteur (fatigue/ACWR) affichées viennent donc exclusivement du
-`contexte` déjà journalisé dans `decision_events` au moment de chaque
-décision passée, jamais d'un recalcul en temps réel depuis les activités
-Strava du testeur.
-
-Deux options restent documentées pour un futur enrichissement, non
-retenues pour l'instant : accès direct depuis chaque ligne de
-`signalements` (bouton "Voir le plan" plutôt que recherche par email), et
-un `RunnerState` recalculé en direct (nécessiterait de facto un accès aux
-activités Strava déjà synchronisées du testeur — à retrancher soigneusement
-si un jour envisagé, cf. principe ci-dessus).
-
-## 12. Authentification Supabase
-
-Auth email/mot de passe (pas de Google/Apple sign-in). Variables
-`SUPABASE_URL`/`SUPABASE_ANON_KEY` exposées via `api/config.js`
-(`fetch('/api/config')` avant création du client, `supabaseReady` à
-attendre). Migration douce depuis anciennes clés localStorage.
-
-`LkSync.precharger(userId, planId)` (`sync-storage.js`) : réhydrate
-`localStorage` depuis Supabase avant que `window.__AUTH_PRET__` ne se
-résolve. Renvoie `{ok, echecChargementProfil}` — si la requête
-`profils_coureur` échoue (réseau/RLS/timeout), `echecChargementProfil`
-passe à `true` et **aucun throw** n'est levé (un throw casserait tout le
-login sur une erreur transitoire). Point de vigilance critique :
-`index.html` ne doit jamais déclencher l'écran de bienvenue si
-`echecChargementProfil` est vrai — sinon un `localStorage` non réhydraté
-(faute d'échec réseau) est pris à tort pour "profil jamais renseigné", ce
-qui écrase ensuite le vrai profil Supabase avec un profil minimal une
-fois l'onboarding validé. Bug réel rencontré et corrigé le 20/07/2026.
-
-Voir aussi §3 pour la race condition `window.__AUTH_PRET__` (assignation
-tardive) corrigée le 21/07/2026.
-
-## 13. Publication Play Store (TWA Android)
-
-- Package : `app.vercel.plan_10k_alpha.twa` (identifiant permanent,
-  volontairement inchangé)
-- Domaine associé : `yoria.run` (migré depuis `yoria-running.vercel.app`)
-- Piste "Tests fermés - Alpha" active, Laurent testeur confirmé
-- App en plein écran sans barre de navigation, confirmé
-- Icône PWA Chrome bloquée via `beforeinstallprompt` + `preventDefault()`
-  (évite la double-icône TWA/PWA)
-- Build/signature : voir §"Build TWA Android" dans les mémoires de session
-  (procédure figée, keystore critique à ne jamais perdre)
-
-## 14. Mode Forme (v2.6)
-
-Cycle glissant sans date de course, réutilise les briques génériques de
-`plan-generator.js` (`placerSemaine`, `genererContenuEF/Longue`,
-`repartirVolumeSemaine`, `computeFcMaxTanaka`, `computeZonesFC`) —
-n'importe jamais `computePhases`/`ROTATION_SOUS_TYPE`/`placerSeanceTest`/
-`placerSeanceCourse`. Câblé de bout en bout (wizard + index.html).
-
-**Déclenchement du bloc suivant** — FAIT le 21/07/2026. Bandeau semi-
-automatique au Dashboard ("🔁 Ton bloc de 4 semaines est terminé"),
-affiché quand la dernière séance du plan est passée (détection par date,
-pas par statut des séances — cohérent avec le principe transverse de
-l'app). Au clic, `genererBlocSuivant()` (`plan-forme.js`) reconstruit
-`profil`/`params` depuis `localStorage` + le plan courant (mêmes limites
-que `changerPalierGrandDebutant` : `profilOrigine`/`paramsOrigine` non
-stockés sur le plan résultant), repart du bon volume (ignore la décharge
-si la dernière semaine en était une).
-
-**Test semi-Cooper — flux "je n'ai pas de référence"** — FAIT le
-21/07/2026. Pour un coureur sans temps de course récent à donner :
-- Formule : `VMA (km/h) = distance parcourue en 6min (m) / 100` (protocole
-  "demi-Cooper"), convertie en temps 10K équivalent via `PACE_RATIOS.I`
-  (`estimerReferenceDepuisSemiCooper()`, `plan-forme.js`)
-- `generatePlanFormeAvecTest()` : génère uniquement la semaine 1
-  (`enAttenteTest: true` sur le plan) — le jour normalement dévolu à la
-  séance qualité devient le test (6min effort max), tous les autres jours
-  deviennent des footings libres sans allure chiffrée (aucune référence
-  disponible à ce stade pour calculer quoi que ce soit)
-- Résultat capté sur la carte du jour (`renderTestSemiCooperRow`,
-  `index.html`) : détection Strava automatique via `getLapsAffichage`
-  (réutilise le même mécanisme que les séances qualité classiques — la
-  montre doit être programmée en 3 laps manuels), repli sur saisie
-  manuelle de la distance. Stocké dans `lk_resultat_test_forme`.
-- `completerBlocApresTest()` (`plan-forme.js`) génère les semaines 2 à N
-  avec les vraies allures, déclenché par un bandeau semi-automatique au
-  Dashboard ("🎯 Ton résultat est prêt")
-- Bouton "Je n'ai pas de référence" dans le wizard (`v2/index.html`,
-  étape temps de référence), désactive visuellement les champs
-  temps/distance, route `genererPlanFormeUI()` vers
-  `generatePlanFormeAvecTest()` au lieu du flux normal
-
-**Sélecteur de distance de référence** — FAIT le 21/07/2026. Le champ
-temps de référence du wizard Forme ne précisait jamais explicitement la
-distance associée (bug : `refDistance` codé en dur à `'10K'`, faussant le
-calcul si le temps donné venait d'une autre distance) — sélecteur compact
-5K/10K/Semi/Marathon ajouté juste au-dessus du champ temps
-(`currentDistForme`/`selectDistForme()`).
-
-**Parcours "Reprise en douceur" et refonte des paliers marche-course
-(27/07/2026)** — demandé par Laurent : "grand débutant" ne devrait pas
-être réservé aux vrais débutants, un coureur confirmé en reprise après
-blessure/pause longue doit pouvoir emprunter le même parcours ponctuellement.
-
-- **3ème option** sur l'écran de choix de mode (`choisirMode('reprise')`),
-  à côté d'"Objectif course"/"Mode forme" — réutilise TEL QUEL le flux
-  marche-course existant (paliers, mécanisme déjà en place de proposition
-  de bascule vers un vrai plan une fois le dernier palier réussi). Le
-  niveau `'grand-debutant'` est posé uniquement en LOCAL sur ce plan
-  précis (`plan.profilOrigine.niveau`), jamais sur `profilStocke.niveau`
-  (le profil général du compte, stocké en `localStorage`) — un coureur
-  "confirmé" en reprise garde son vrai niveau, seul ce plan est marqué
-  grand-débutant.
-- **Écran d'introduction dédié** (`wizard-intro-grand-debutant`), affiché
-  avant la sélection des jours — frise en 3 étapes (alternance marche/
-  course → premiers blocs continus → proposition de vrai plan ensuite),
-  texte adapté selon l'origine (reprise vs jamais couru). Un premier essai
-  trop dense (padding généreux entre les 3 items) rendait le bouton
-  "C'est parti" inaccessible sans qu'aucun indice visuel ne suggère de
-  scroller — corrigé en compactant (cf. §3, Phase 2 non réalisée pour le
-  reste du wizard).
-- **Refonte complète des 7 anciens paliers `PALIERS_MARCHE_COURSE`**
-  (`plan-generator.js`) en 13 paliers, en 2 phases : 6 paliers d'ALTERNANCE
-  marche/course (ex. "8× 1min course / 2min marche", part de course
-  croissante) puis 7 paliers de CONTINU croissant (5→30min, anciens
-  paliers repris à l'identique sous des id 6-12). Ancienne structure
-  jugée trop exigeante — démarrait directement à 5min de course CONTINUE,
-  sans étape d'alternance, contrairement au "White Plan" de Daniels
-  (chapitre 11, spécifiquement conçu pour les débutants, walk/run sur ses
-  9 premières semaines). Chaque palier reste franchissable dès la 1ère
-  séance validée (`palierMarcheCourseFor`, règle de validation inchangée)
-  — la progression la plus rapide passe de ~7 à ~13 séances (~1 mois à 3
-  séances/semaine), delai jugé acceptable pour la sécurité apportée.
-  `genererContenuMarcheCourse()` génère deux types de contenu distincts
-  selon `palier.continu` (alternance : "Xmin course / Ymin marche" répété
-  N fois ; continu : inchangé).
-
-## 15. Principes transverses à retenir
-
-- **Inventaire à jour à chaque push structurel** (pas pour un simple fix)
-- **Préfixage des données de plan obligatoire** (`clePourPlan()`)
-- **Une seule variable modifiée à la fois** pour la progressive overload
-- **Niveau intermédiaire = valeur historique inchangée** à chaque
-  différenciation par niveau (zéro régression)
-- **Validation historique avant codage** pour toute nouvelle métrique
-  (vérifier sur les données réelles de Laurent avant d'investir)
-- **Jamais d'apostrophe dans une chaîne JS entre guillemets doubles**
-  (échec silencieux du parseur) ; `node --check` systématique avant push
-- **404 sur une route API** → vérifier `vercel.json` en premier
-- **Avant tout changement dans `plan-generator.js`/`plan-forme.js`,
-  relancer `scripts/test-plans-varies.js`** — filet de sécurité rapide
-  (10 profils, quelques secondes) sur des cas connus comme sensibles,
-  avant même de tester en conditions réelles dans l'app (cf. §7)
-- **Toute modification d'un plan existant doit exclure les séances
-  passées** — pas un garde-fou générique, à implémenter dans chaque
-  nouvelle fonctionnalité qui touche `plans_actif`
-- **Cache client mis à jour de façon async (fetch + `render()`) : bien
-  distinguer `undefined` (jamais initialisé) de `null`/valeur connue** —
-  un `if` qui réinitialise trop tôt à une valeur non-`undefined` empêche
-  le déclenchement du fetch réel (bug rencontré sur le cache abonnement,
-  21/07/2026)
-- **Toute promesse globale attendue ailleurs (`window.__AUTH_PRET__` et
-  équivalents futurs) doit être créée de façon synchrone, avant tout
-  `await`** — sinon risque de race condition où le code qui l'attend la
-  trouve `undefined` (cf. §3, bug corrigé le 21/07/2026 dans les deux
-  fichiers principaux)
-- **Toute fonction de traduction entre formats (`v1-bridge.js` et
-  équivalents) doit être mise à jour à chaque nouveau champ personnalisé
-  ajouté sur une séance** — sinon le champ est silencieusement perdu sans
-  erreur (cf. §7, bug `estTest`/`sousType` du 21/07/2026)
-- **Toute fonction qui modifie/supprime un plan doit traiter Supabase
-  comme bloquant et Gist comme best-effort**, jamais l'inverse (cf. §5)
-- **Aucun outil admin (`beta-admin` et équivalents futurs) ne doit jamais
-  lire ou utiliser les tokens Strava d'un testeur, ni déclencher un appel
-  Strava en son nom** — uniquement des données déjà stockées côté Yoria
-  (Supabase). Principe strict acté le 25/07/2026 (cf. §11, module
-  Comptes).
-- **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
-  sans demande explicite
-- **Toute date "métier" (jour courant, séance du jour, clôture) doit être
-  calculée en fuseau LOCAL du navigateur, jamais via
-  `toISOString().slice(0,10)`** (toujours UTC) — sinon décalage d'un jour
-  entre minuit et l'heure de décalage UTC locale (ex. 00h-02h en France
-  l'été). Utiliser `getFullYear()`/`getMonth()`/`getDate()`, ou `setDate()`
-  pour un delta de jours (gère aussi le changement heure été/hiver, cf.
-  bug `today()` corrigé le 23/07/2026). L'UTC explicite reste correct et
-  volontaire pour les calculs de plage basés sur `dateDebut` du plan (déjà
-  une donnée stockée, pas "aujourd'hui").
-
-## 16. État des chantiers ouverts
-
-| Chantier | Statut |
-|---|---|
-| Volume minimum requis selon le nombre de jours disponibles ET la distance | ✅ Codé et poussé le 29/07/2026 (`plan-generator.js`, deux commits). **wizard déjà câblé génériquement** — vérifié le 29/07/2026 : les 6 points d'appel de `Engine.generatePlan()` dans `v2/index.html` (`generateAndShowResults`, `lancerAnalyseAdaptation`, `appliquerChangementJours`, `appliquerChangementVolume`, `appliquerChangementDateCourse`, `regenererAvecNouvelObjectif`) testent déjà `planInvalide` de façon générique (pas seulement `VOLUME_JOURS_INCOMPATIBLE`) et affichent `plan.message` — le refus `VOLUME_MIN_JOURS_NON_ATTEINT` s'affiche donc automatiquement partout, sans aucun changement de code nécessaire côté wizard. **Historique du diagnostic** : la conception du 27/07/2026 (seuils 10/15/20/30/40/50km, jamais codée) reposait sur `RATIO_LONGUE=0.28` fixe. Remise en question le 29/07/2026 : la littérature (Daniels + sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio longue/volume plus élevé est normal et attendu à faible nombre de jours (jusqu'à 40-50% à 2-3j/semaine), pas une anomalie — un ratio fixe comprimait artificiellement la longue à 2-4j, la faisant passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total restait correct. Nouvelle contrainte ajoutée en parallèle, actée par Laurent : la longue ne doit JAMAIS être plus courte que le cumul des séances qualité de la semaine (le volume d'une séance qualité dépend de paramètres fixes par niveau dans `genererContenuQualite`, indépendants du volume hebdo cible — à bas volume elle peut sinon dépasser une longue calculée par simple ratio). **Solution codée** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22, remplace le ratio fixe) + `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` dans `repartirVolumeSemaine()` (nouveau paramètre `nbJours`, propagé dans les 3 points d'appel de `recalculerRepartitionEFLongue`). **Écart aux standards Daniels (25-30%) vérifié et assumé** : le ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum (vérifié par simulation sur plusieurs volumes croissants) — l'écart n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en pratique par la plupart des utilisateurs.
-
-**Correctif du 29/07/2026 (même jour, session suivante)** — vérification demandée par Laurent sur 2 points laissés ouverts : impact sur 5K/Semi/Marathon (pas seulement 10K) et lien avec `decision-engine-apply.classic.js`.
-- **`decision-engine-apply.classic.js` vérifié en entier : aucun lien avec `repartirVolumeSemaine`** (cf. §8) — ce fichier ne recalcule jamais la répartition longue/EF/qualité, il réduit des séances déjà générées au moment d'une décision `reduire_charge`. Rien à propager.
-- **Seuil unique calé sur 10K confirmé insuffisant pour Semi/Marathon** — Semi/Marathon (rotation Construction `tempo-court`/`seuil-2min`/`seuil-court`, séances qualité plus volumineuses que `seuil-court`/`i-30-30` en 10K) nécessitent un seuil sensiblement plus haut, surtout à 5-7j (jusqu'à +7km d'écart mesuré pour Marathon à 7j). 5K est à l'inverse plus permissif. `VOLUME_MIN_PAR_JOURS` transformé en table à deux niveaux (`[distance][nbJours]`), plutôt qu'une constante à un seul niveau (`[nbJours]`) :
+**v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction
+entre le plan brut (v2) et le format `index.html`. Tout nouveau champ
+personnalisé ajouté sur une séance côté moteur doit être explicitement
+propagé dans cette fonction — sinon silencieusement perdu. Mapping
+`FAMILLE_VERS_TYPE_V1` doit couvrir tout nouveau `sousType`, sinon repli
+vers `SEUIL`.
+
+**Test semi-Cooper pour plan course** — même principe que Mode Forme
+(`generatePlanAvecTestSemiCooper`/`completerPlanApresTestSemiCooper`),
+mais la suite du plan dépend de `dateCourse` :
+`completerPlanApresTestSemiCooper` ré-appelle `generatePlan()` avec
+`dateDebut` décalé de 7 jours. `estimerReferenceDepuisSemiCooper` : VMA
+(km/h) = distance en 6min ÷ 100, conversion vers temps 10K équivalent via
+`RATIO_VMA_VERS_10K` (~90% de la VMA tenue sur 10K) — ne passe jamais par
+`PACE_RATIOS.I` (calibré sur du VMA classique, pas un effort continu).
+Le test est placé sur le premier jour *utile* de la semaine (date réelle
+≥ `dateDebut`). Jour "🏁 Jour J" ne doit jamais s'afficher tant que
+`enAttenteTest`.
+
+**Refus si volume incompatible avec le nombre de jours** — si plus de la
+moitié des semaines de Construction ont un EF sous `VOLUME_MIN_EF_KM`
+(3km) ou une longue sous `VOLUME_MIN_LONGUE_KM` (5km),
+`generatePlan()` retourne `{ planInvalide: true, code:
+'VOLUME_JOURS_INCOMPATIBLE', message }` plutôt qu'un plan cassé. Les 3
+points d'appel (`v2/index.html` création/régénération/modif objectif,
+`index.html` plan de repli) gèrent ce retour et affichent le message.
+
+**Ratio longue variable selon le nombre de jours + volume minimum par
+distance** — `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22) remplace
+`RATIO_LONGUE=0.28` fixe dans `repartirVolumeSemaine()`, avec contrainte
+`kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` — la longue ne
+peut jamais être plus courte que le cumul des séances qualité de la
+semaine. Un ratio longue/volume élevé à faible nombre de jours est normal
+(littérature Daniels + sources croisées, jusqu'à 40-50% à 2-3j/semaine),
+pas une anomalie à corriger par un plafond. Paramètre `nbJours` propagé
+dans les 3 points d'appel de `recalculerRepartitionEFLongue`
+(`generatePlan`, `placerSeanceTest`, `appliquerAdaptations`).
+
+`VOLUME_MIN_PAR_JOURS` est une table à deux niveaux
+(`[distance][nbJours]`) — un seuil unique calé sur 10K s'est révélé
+insuffisant pour Semi/Marathon (rotation Construction avec des séances
+qualité plus volumineuses, jusqu'à +7km d'écart mesuré pour Marathon à
+7j) :
 
 | Jours | 5K | 10K | Semi | Marathon |
 |---|---|---|---|---|
@@ -1363,34 +315,357 @@ blessure/pause longue doit pouvoir emprunter le même parcours ponctuellement.
 | 6 | 31 km | 35 km | 39 km | 43 km |
 | 7 | 34 km | 38 km | 42 km | 46 km |
 
-Vérifié par simulation sur le moteur réel (`generatePlan()` complet, pas seulement une semaine isolée) pour chaque distance × nombre de jours, avec un vrai `refDistance` fourni (un premier test Marathon avait donné un faux résultat, `refDistance` oublié dans le scénario de test — pas un bug du moteur, corrigé en refaisant le test correctement). Volontairement identiques quel que soit le niveau (comme avant ce correctif — la contrainte dominante, longue ≥ qualité, dépend peu du niveau dans les cas testés). **Validation en amont** : `generatePlan()` vérifie `params.volumeActuel` contre `VOLUME_MIN_PAR_JOURS[params.distance][nbJours]` en tout premier, avant même de calculer phases/allures — retourne `{ planInvalide: true, code: 'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le seuil. Le garde-fou existant `VOLUME_JOURS_INCOMPATIBLE` (après génération complète, basé sur `nbSemainesConstructionSousSeuil`) reste en place inchangé, comme filet complémentaire. |
-| Système de badges (récompenses) | ✅ Livré le 27/07/2026 (conception discutée en profondeur avec Laurent, plusieurs itérations suite à ses retours en conditions réelles). 14 badges en 4 catégories, consultables via une carte cliquable tout en haut de l'écran Stats (`renderBadges()`, `index.html`) — jamais rien en permanence sur le dashboard, seul un bandeau de notification ponctuel et dismissible au moment d'un déblocage (`badgesNotifEl`, même famille visuelle que `adaptationEl`/`moteurDecisionEl`). Couleurs dérivées de la charte existante par catégorie : Régularité turquoise (`--accent2`), Progression bleu (`--accent`), Respect du corps vert sauge (seule vraie nouvelle nuance), Étapes du plan gris neutre. Anneau SVG (`renderAnneauBadge()`) à 3 états (débloqué/en cours/verrouillé) — JAMAIS masqué de la liste, même non débloqué. Explicitement écarté : badges de volume/intensité brute (risque de pousser à en faire trop), tout classement ou comparaison sociale.
+`generatePlan()` vérifie `params.volumeActuel` contre
+`VOLUME_MIN_PAR_JOURS[params.distance][nbJours]` en tout premier, avant
+même de calculer phases/allures — retourne `{ planInvalide: true, code:
+'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le
+seuil. Le garde-fou `VOLUME_JOURS_INCOMPATIBLE` (après génération
+complète) reste en place comme filet complémentaire. Le wizard
+(`v2/index.html`) affiche déjà ce message génériquement — les 6 points
+d'appel de `Engine.generatePlan()` testent tous `planInvalide` et
+affichent `plan.message`, sans câblage supplémentaire nécessaire.
+`decision-engine-apply.classic.js` n'a aucun lien avec
+`repartirVolumeSemaine` (il réduit des séances déjà générées, jamais leur
+répartition) — rien à y propager.
 
-**Badges à paliers** (record HISTORIQUE affiché en légende, jamais perdu si la série casse — décision explicite pour éviter l'effet "streak" anxiogène façon Duolingo) :
-- 🔥 Séances validées d'affilée (5/10/20/40) — plus longue série de `statutEffectif ∈ {✅, ⚠️}` consécutifs, séance du jour sans statut exclue du calcul (ne casse jamais la série à tort)
-- 📅 Semaines complètes d'affilée (2/4/8/16) — `weeklyReport(weekNum).done + adapted === total`, semaine courante incluse si déjà complète
-- 🎯 FC EF/LONGUE maîtrisée d'affilée (2/4/8) — granularité semaine (`avgEfHr` vs `zoneFC.zonesParType.E`)
-- ⭐ Semaines parfaites (3/6/12/20) — **cumulé, pas une série** (seul badge à paliers non-série) : `done === total && skipped === 0`, seuils volontairement plus permissifs car le critère lui-même est déjà strict
+**Allures dynamiques** — jusqu'ici, les allures E/T/I restaient calibrées
+sur `paramsOrigine.tempsReference` pendant toute la durée du plan, même
+avec une vraie progression mesurée. `calculerReferenceCouranteAllures()`
+compare l'estimation du prédicteur à celle de la période précédente
+(`predHistory`) à la fin de chaque semaine PAIRE (S2, S4...). Progression
+→ appliquée immédiatement. Régression → appliquée seulement si confirmée
+sur 2 périodes CONSÉCUTIVES (`lk_regression_allures_en_attente`).
+`verifierEtAppliquerAlluresDynamiques()` orchestre détection, calcul,
+application (régénère `allures` via `computeAllures()`), et notification
+visible ("📈 Allures mises à jour"). Indépendant d'`appliquerAdaptations()`
+(réagit à des semaines ratées, sur clic explicite). **Non testé en
+conditions réelles au-delà de la fin d'un premier cycle S2.**
 
-**Badges événementiels** (un seul niveau) : 📈 Nouvelle estimation confirmée, 🏅 Record personnel battu, 🎯 Test semi-Cooper validé, 🧘 Repos écouté (décision `reduire_charge` acceptée), ⚖️ Semaine équilibrée (ACWR 0.8-1.3 sur 4 semaines), 🚀 Premier plan lancé, 🏔️ Mi-parcours franchi, 🎽 Entrée en Affûtage, 🏁 Course terminée, 🔁 Retour réussi (semaine "à adapter" suivie d'une semaine complète).
+**Script de test de génération de plans variés**
+(`scripts/test-plans-varies.js`, `node scripts/test-plans-varies.js`) —
+10 profils prédéfinis couvrant les cas sensibles connus (grand débutant,
+Mode Forme via test, changement de niveau en cours, contraintes
+ponctuelles...). Vérifie absence de plantage/NaN et quelques règles
+structurelles (pas de qualité consécutive, allures cohérentes E>M>T>I>R).
+Ne vérifie jamais la qualité pédagogique — jugement d'expert qui reste
+celui de Laurent. Trois statuts : OK, REFUSÉ (refus volontaire du
+moteur, attendu), FAIL (à corriger). **À relancer avant tout changement
+dans `plan-generator.js`/`plan-forme.js`** (filet de sécurité rapide,
+quelques secondes).
 
-Stockage : table Supabase `badges_debloques` (`schema-badges.sql`), écriture best-effort (jamais bloquante), cache mémoire `window.__badgesCache__` chargé une fois par session (même pattern que `__abonnementStatutCache__`). Détection à chaque `render()` + 3 points d'appel événementiels dédiés (validation test semi-Cooper, saisie de record, clic Appliquer sur `reduire_charge`). Calcul entièrement rétroactif sur l'historique existant (un badge peut se débloquer dès la première visite après déploiement si les conditions étaient déjà réunies), sauf les 3 badges événementiels câblés à un point d'appel précis.
+## 8. Moteur de décision
 
-**Bugs corrigés en cours de mise au point (27/07/2026)** : confusion initiale entre série active et record dans une seule valeur (`serieActuelle`/`serieMax` désormais distincts partout) ; séance du jour sans statut cassant à tort la série ; semaine courante déjà complète non comptée dans le record ; couleur CSS imbriquée (`rgb(var(--accent2-rgb))`) cassant le remplissage de l'anneau pour toute la catégorie régularité (corrigé via `opacity` SVG plutôt qu'une manipulation fragile de string) ; `eval(fn)` (vérification des fonctions critiques au démarrage, code préexistant sans lien avec les badges) bloqué par la CSP du site, remplacé par des références directes.
+5 modules, tous livrés et en production
+(`engine-classic-scripts/decision-engine-*.classic.js`) :
+
+1. **RunnerStateCalculator** — TRIMP/ACWR/fatigue/confiance/risque à
+   partir des vraies données Strava (charge aiguë = 7j, chronique =
+   moyenne sur fenêtres couvertes si historique <28j). Repli
+   `FC_REPOS_DEFAUT=60bpm` si `fcReposReference` absent — sans ce repli,
+   le calcul bascule silencieusement vers sRPE (échelle très différente).
+2. **SessionAnalyzer** — score de réussite d'une séance (FC, allure,
+   répétitions dans zone `okPace`).
+3. **WeekAnalyzer** — bilan hebdomadaire (volume, séances, charge,
+   récupération estimée).
+4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines
+   (`analyserTendance(fenetreSemaines)`). Exclut systématiquement la
+   semaine EN COURS (non terminée) de sa fenêtre glissante — un lundi
+   matin donnerait un écart proche de -100% qui fausserait la moyenne.
+   `obtenirHistoriqueMonotonie()` (graphique Stats) garde volontairement
+   la semaine en cours.
+5. **RuleEngine** — règles actives : R-006 (pic de séance), R-024s
+   (fatigue élevée), R-040 (désengagement), R-050 (ACWR élevé), R-060
+   (tendance fatigue, échantillonnage 8j par moitiés, seuil écart ≥6),
+   R-062 (fatigue persistante 3 semaines, priorité 82), R-070 (séances
+   ratées consécutives, priorité 70), R-080 (déficit volume durable, 3
+   semaines ≤−10%, priorité 52).
+
+**R-070 (`reduire_charge`)** — comble un manque : aucune règle n'ajustait
+le plan face à un comportement réel (seules TRIMP/ACWR le faisaient).
+Ampleur fixe −15% (≥2 séances ratées). Cible la prochaine séance QUALITÉ
+en priorité (`cibleQualitePrioritaire`), repli EF/LONGUE si aucune marge.
+`obtenirSeancesPlanifieesManquees()` filtre bien sur
+`["VMA","SEUIL","SPEC"]` — ne compte que les vraies séances qualité.
+
+**Readiness pré-séance qualité** — sélecteur 3 boutons (🪫/😐/🔋), distinct
+du RPE rétrospectif. Affiché uniquement le jour même d'une séance qualité
+non encore statutée. "Normal" est une vraie valeur par défaut. Modulation
+post-traitement (jamais une règle du RuleEngine) : décision
+`reduire_charge` existante + readiness=Fatigué → ampleur poussée au
+palier suivant connu (−15→−25), jamais au-delà. Sans décision existante
+et readiness=Fatigué : message d'invitation à la prudence, jamais de
+réduction automatique.
+
+`DecisionEngineApply` + carte UI : détection automatique, application sur
+clic explicite uniquement. `reduire_charge` cible EF/LONGUE/RECUP en
+priorité, qualité en second recours (réduction structurelle du nombre de
+répétitions/blocs, jamais l'allure ni la récup). Garde-fous anti-cumul :
+−30% max par décision, plafond cumulé 25%/14j glissants
+(`historiqueReductionsMoteur`, sur l'ampleur réellement appliquée). Titre
+distingue "Yoria te propose un ajustement" (action possible) de "Yoria a
+repéré un signal à surveiller" (informatif, Ignorer seul).
+
+**Réduction structurelle des séances qualité** — ne touche jamais
+l'allure ni la récup, seul le nombre de répétitions/blocs, jamais sous le
+plancher `base(niveau, sousType)`. Bloc unique répété → retire des
+répétitions ; pyramide → retire des paliers depuis la fin (plancher
+`debutant` fixe) ; i-30-30 → réduit `repsParSerie` en premier. Séances à
+bloc continu unique traitées comme EF/LONGUE. Tables `base`/`cap`
+dupliquées depuis `plan-generator.js` dans
+`decision-engine-apply.classic.js` (non exportées) — risque de
+divergence documenté, à répercuter si le générateur change une valeur
+`base`. Ce fichier ne recalcule jamais `repartirVolumeSemaine`.
+
+**Ton du coach** — bienveillant sur la FORME, honnête sur le FOND quand
+le moteur a réellement détecté quelque chose (`reduire_charge`,
+`alerter_blessure_potentielle`, `alerter_risque_decrochage`) — jamais
+l'inverse. Deux signaux supplémentaires : `adaptationsConsecutivesMax >=
+3` (3 semaines d'affilée difficiles) et FC moyenne EF/LONGUE >5bpm
+au-dessus de la zone attendue (jamais les séances qualité, FC trop
+variable). Coach IA lit `RunnerState`/`EngineDecision`, ne recalcule
+jamais un ratio séparé, peut commenter mais jamais produire une décision
+différente.
+
+**Prédicteur d'estimation 10K** (`predict10K()`, `index.html`) — distinct
+des 5 modules mais lit les mêmes données. Deux couches :
+- **Borne brute** (`borneBrute`) : mesure physio pure — moyenne pondérée
+  SPEC (0.45), VMA (0.35, vitesse×0.87), SEUIL (0.10, formule
+  Daniels-Gilbert/VDOT — contribue à partir de 3 séances), combinée à
+  `BASE_TIME_REFERENCE` via `lavendouWeight` (décroît 90%→10% sur 8
+  semaines, garde-fou 50% si pas de séance intensive récente). Source
+  écartée si écart >20% vs référence.
+- **Estimation affichée** : converge par petits pas
+  (`PAS_CONVERGENCE_BASE=0.15`, modulé par `fiabilitePlanPonderee()`)
+  depuis `BASE_TIME_REFERENCE` vers `borneBrute`, jamais un saut direct —
+  ne peut jamais dépasser ce que les séances mesurent réellement.
+- `fiabilitePlanPonderee(dateStr)` : taux de réussite sur TOUTES les
+  séances, pondéré par récence (demi-vie 21j). Recalcule `statutEffectif`
+  localement PAR RAPPORT À `dateStr` (pas un champ figé) — nécessaire pour
+  la reconstruction rétroactive.
+- **Historique rejoué rétroactivement** :
+  `rebuildPredHistorySequentielle()` applique la convergence jour par
+  jour depuis le début du plan. `PREDICTOR_VERSION` (actuellement 12)
+  déclenche la reconstruction si incrémentée — geste manuel requis à
+  chaque changement de formule.
+- Formule Daniels-Gilbert (VDOT) pour SEUIL — remplace Riegel,
+  structurellement pessimiste sur un effort sous-maximal (chapitre 5 du
+  livre Daniels absent du fichier projet, formule reconstruite par
+  recherche web, cohérente avec les % VO2max confirmés au chapitre 4).
+- Filtres d'activités : `a.type === "Run" || a.sport_type === "Run"`
+  (repli sport_type pour montres tierces).
+- Convergence n'avance que sur nouvelle donnée de qualité du JOUR
+  (`aDesNouvellesDonneesQualite`), pas à chaque simple chargement.
+
+**Non couvert / reporté** : PACES-S (plaisir par séance) ;
+R-062/R-070/R-080 jamais observées sur données réelles de Laurent —
+surveiller ; rythme de convergence (`PAS_CONVERGENCE_BASE=0.15`) à
+éprouver sur plusieurs semaines ; formule VDOT reconstruite par recherche
+web, pas garantie identique aux tables publiées ; aucune variable interne
+(`ALL_SESSIONS`, `statuses`, `PLAN`...) exposée sur `window` pour debug —
+seuls `__PLAN_BRUT__`/`__PLAN_GENERE__`/`stravaActivities`/`localStorage`
+accessibles ; instrumentation directe (logs temporaires en prod) reste la
+méthode de diagnostic la plus fiable pour un bug profond.
+
+## 9. Saisie manuelle, RPE et statuts de séance
+
+**Saisie manuelle** : bouton "Annuler" (réinitialise + relance sync
+Strava), champ "durée totale" pour séances de qualité, exclusion Strava
+complète quand saisie manuelle existe.
+
+**RPE** : source unique `sessionRpe[uid]`, sélecteur 5 niveaux
+(🙂😐😓😣🥵) mappés CR-10, visible dès qu'un statut est posé, pondération
+TRIMP +12% si RPE ≥ 8.
+
+**Statuts de séance** (`SOPTS`) : `—`/`✅`/`❌`/`⚠️`/`😴`, indexés par
+`uid`. Une séance ne peut plus être supprimée du plan — seul un statut
+la caractérise.
+
+**`statutEffectif`** — calculé centralement dans `recalculerAllSessions()`,
+disponible sur chaque objet `ALL_SESSIONS` : égal au vrai statut saisi
+s'il existe, sinon `"😴"` automatiquement pour tout jour DÉJÀ PASSÉ
+(jamais le jour même) sans saisie. Jamais écrit dans `statuses[uid]`
+lui-même — purement un calcul d'affichage. Accès protégé par try/catch
+(pas `typeof`, ne protège pas la temporal dead zone).
+
+**Convention à respecter partout** : lire `statutEffectif` (pas
+`statuses[uid]` brut) pour tout calcul qui doit tenir compte des séances
+oubliées comme un signal de désengagement — sauf 4 catégories légitimes
+qui doivent rester sur le statut brut : boutons de sélection/écriture du
+statut, contexte "aujourd'hui", compteurs stricts ✅/⚠️/❌, gardes du swap.
+
+**Échange de séances (swap)** — `getAvailableSlots()` propose tous les
+jours de la semaine, bloqué dans les deux sens si statut posé, note, RPE,
+saisie manuelle, ou jour passé sans saisie.
+
+**Choix manuel si plusieurs activités Strava le même jour** —
+`matchActivitiesToPlan()` ne valide plus automatiquement dès qu'il y a
+ambiguïté (`obtenirActivitesAmbigues`), laisse le coureur choisir via
+pastille visuelle + menu. Choix mémorisé (`lk_choix_activite_ambigue`)
+tant que le nombre de candidats ne change pas — redéclenché si une
+nouvelle activité apparaît après resynchro. Sans lien avec le calcul de
+charge/fatigue (`RunnerStateCalculator` lit `stravaActivities` en entier,
+indépendamment du matching).
+
+## 10. Import FIT
+
+`adapterFitVersFormatActivite()`, `chargerFitParser()` (import ESM
+dynamique jsDelivr), `importerFichierFit()`. `vitesseFiable()` calcule
+toujours depuis distance/temps, jamais `avg_speed` du fichier FIT (peut
+être faux sur Amazfit/Zepp).
+
+## 11. Intégrations externes
+
+**Strava** (Client ID `260339`) — OAuth via `api/strava.js`,
+`v2/engine/strava.js`. Sync conditionnelle sur `dataSource === "strava"`.
+Comparaison séance/laps filtrée par allure cible ±15%. Token
+invalide/révoqué détecté explicitement — message + bouton "🔄 Reconnecter
+Strava", affiché sans auto-effacement tant que non résolu.
+
+**Météo** — proxy Open-Meteo (`api/weather.js`), gratuit, sans clé.
+`type=forecast|current|historical`. Géolocalisation : dernière activité
+Strava GPS pour actuelle/passée, position navigateur pour prévision J+1.
+Heure réelle de séance extraite de `start_date_local` pour la météo
+passée (repli 18h si absente). `timezone: "Europe/Paris"` fixe côté
+serveur (chantier ouvert, cf. §16).
+
+**Coach (messages courts)** — `api/coach.js`, proxy Claude Haiku 4.5.
+
+**Sync multi-device** — Supabase (auth email/mot de passe), seul
+mécanisme. Aucune action au-delà de se connecter avec le même compte.
+
+**Stripe (abonnements)** — Produit "Yoria Premium" (7€/mois + tarif
+annuel), Checkout hébergé (jamais de formulaire carte natif dans la TWA).
+Table `abonnements` (RLS lecture seule, écritures via endpoints
+serverless `service_role`). `api/stripe-checkout.js` retrouve/crée le
+client par `user_id` puis `email`. `api/stripe-webhook.js` : body brut,
+signature HMAC-SHA256 native. Routes déclarées explicitement dans
+`vercel.json`. Statut lu via `window.__abonnementStatutCache__` (une
+fois par session). Abonnements gratuits (beta testeurs) : coupon Stripe
+100% répétitif via `beta-admin`, liaison automatique au `user_id` si
+même email que la candidature.
+
+**Signalements utilisateurs** — bouton 💬, sélecteur de type
+(Bug/Donnée/Suggestion/Autre) + description libre. Double écriture :
+Sentry (`captureMessage`, best-effort, contexte technique brut) + table
+Supabase `signalements` (source de vérité pour le triage humain, RLS
+insert seul côté client). Administration dans `beta-admin` (onglet
+Signalements, filtrable, changement de statut).
+
+**Module "Comptes"** (`beta-admin`) — recherche un utilisateur par email
+via l'API Admin Supabase, affiche ses plans en lecture seule (contenu +
+statuts/RPE/notes réels), réimporte DIRECTEMENT
+`traduirePlanVersFormatV1`/`construireAllSessions` depuis
+`v2/engine/v1-bridge.js` (jamais de réimplémentation serveur séparée).
+Section "Décisions du moteur" : 50 dernières lignes de `decision_events`.
+**Principe strict** : ce module ne doit JAMAIS lire ni utiliser les
+tokens Strava d'un testeur — uniquement des données déjà stockées côté
+Yoria.
+
+## 12. Authentification Supabase
+
+Auth email/mot de passe (pas de Google/Apple). Variables exposées via
+`api/config.js`. `LkSync.precharger(userId, planId)` réhydrate
+`localStorage` depuis Supabase avant que `window.__AUTH_PRET__` ne se
+résolve — retourne `{ok, echecChargementProfil}`, jamais de throw.
+**Point de vigilance critique** : `index.html` ne doit jamais déclencher
+l'écran de bienvenue si `echecChargementProfil` est vrai — sinon un
+`localStorage` non réhydraté est pris à tort pour "profil jamais
+renseigné" et écrase le vrai profil Supabase.
+
+## 13. Publication Play Store (TWA Android)
+
+- Package : `app.vercel.plan_10k_alpha.twa` (identifiant permanent)
+- Domaine : `yoria.run`
+- Piste "Tests fermés - Alpha" active, Laurent testeur confirmé
+- Icône PWA Chrome bloquée via `beforeinstallprompt` + `preventDefault()`
+- Build/signature : procédure figée dans les mémoires de session
+  (keystore critique à ne jamais perdre)
+
+## 14. Mode Forme (v2.6)
+
+Cycle glissant sans date de course, réutilise les briques génériques de
+`plan-generator.js` — n'importe jamais `computePhases`/
+`ROTATION_SOUS_TYPE`/`placerSeanceTest`/`placerSeanceCourse`. Câblé de
+bout en bout.
+
+**Déclenchement du bloc suivant** — bandeau semi-automatique ("🔁 Ton
+bloc de 4 semaines est terminé"), détection par date. `genererBlocSuivant()`
+reconstruit `profil`/`params` depuis `localStorage` + le plan courant
+(`profilOrigine`/`paramsOrigine` non stockés sur le résultat).
+
+**Test semi-Cooper — "je n'ai pas de référence"** — même formule que §7,
+via `estimerReferenceDepuisSemiCooper()`. `generatePlanFormeAvecTest()`
+génère uniquement la semaine 1 (`enAttenteTest: true`), footings libres
+sans allure. Résultat capté sur la carte du jour, détection Strava
+automatique (montre programmée en 3 laps manuels), repli saisie manuelle.
+`completerBlocApresTest()` génère les semaines 2 à N avec les vraies
+allures.
+
+**Sélecteur de distance de référence** — 5K/10K/Semi/Marathon, corrige un
+ancien `refDistance` codé en dur à '10K'.
+
+**Parcours "Reprise en douceur"** — 3ème option sur l'écran de choix de
+mode, réutilise le flux marche-course existant. Niveau `'grand-debutant'`
+posé uniquement en LOCAL sur ce plan (`plan.profilOrigine.niveau`),
+jamais sur le profil général du compte. Écran d'introduction dédié avant
+la sélection des jours. 13 paliers en 2 phases : 6 paliers d'ALTERNANCE
+marche/course puis 7 de CONTINU croissant (5→30min) — structure inspirée
+du "White Plan" de Daniels (walk/run sur ses 9 premières semaines), plus
+progressive que l'ancienne version à 7 paliers qui démarrait directement
+à 5min de course continue.
+
+## 15. Principes transverses à retenir
+
+- **Inventaire à jour à chaque push structurel** (pas pour un simple fix)
+- **Préfixage des données de plan obligatoire** (`clePourPlan()`)
+- **Une seule variable modifiée à la fois** pour la progressive overload
+- **Niveau intermédiaire = valeur historique inchangée** à chaque
+  différenciation par niveau (zéro régression)
+- **Validation historique avant codage** pour toute nouvelle métrique
+- **Jamais d'apostrophe dans une chaîne JS entre guillemets doubles**
+  (échec silencieux du parseur) ; `node --check` systématique avant push
+- **404 sur une route API** → vérifier `vercel.json` en premier
+- **Avant tout changement dans `plan-generator.js`/`plan-forme.js`,
+  relancer `scripts/test-plans-varies.js`**
+- **Toute modification d'un plan existant doit exclure les séances
+  passées**
+- **Cache client async : bien distinguer `undefined` (jamais initialisé)
+  de `null`/valeur connue**
+- **Toute promesse globale attendue ailleurs doit être créée de façon
+  synchrone, avant tout `await`**
+- **Toute fonction de traduction entre formats (`v1-bridge.js` et
+  équivalents) doit être mise à jour à chaque nouveau champ personnalisé**
+- **Toute fonction qui modifie/supprime un plan doit traiter Supabase
+  comme bloquant et Gist comme best-effort**
+- **Aucun outil admin ne doit jamais lire ou utiliser les tokens Strava
+  d'un testeur**
+- **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
+  sans demande explicite
+- **Toute date "métier" doit être calculée en fuseau LOCAL du
+  navigateur, jamais via `toISOString().slice(0,10)`** (toujours UTC) —
+  utiliser `getFullYear()`/`getMonth()`/`getDate()`. L'UTC explicite
+  reste correct pour les calculs de plage basés sur `dateDebut` du plan.
+
+## 16. État des chantiers ouverts
+
+| Chantier | Statut |
+|---|---|
+| Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Wizard déjà câblé génériquement — aucun changement nécessaire côté `v2/index.html`. |
+| Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
+| Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
-| Courir un vrai test demi-Cooper pour valider la prédiction 10K | 🔜 `RATIO_VMA_VERS_10K` (0.90) et `PACE_RATIOS.E` (1.225) corrigés le 22/07/2026 sur base théorique faute de vraies données — à comparer avec la prédiction 10K du premier vrai test demi-Cooper couru par Laurent (pas simulé) |
-| Réécrire le swap directement dans `plan_actif` | 🔜 Suggestion de Laurent (22/07/2026), pas commencé. Complexité identifiée : annulation d'un swap, interaction avec les régénérations de plan, séparation `plans_actif`/`plans_original`, chemin de sauvegarde, interaction avec `reduire_charge` sur une séance swappée |
-| Publier une app iOS (Capacitor) | 🔜 Piste identifiée le 22/07/2026, pas de code. Pas urgent tant qu'aucun besoin iOS confirmé — TWA Android actuelle suffit |
-| Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation, pour protéger le code différenciant (moteur de décision, calibrations). Reste public pendant le développement solo/bêta (lecture directe économise des tokens Claude) |
-| Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production depuis le 22/07/2026, pas encore éprouvés sur plusieurs semaines — vérifier le rythme du pas de convergence (`PAS_CONVERGENCE_BASE=0.15`) et la fidélité de la formule VDOT reconstruite |
-| Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Étape 1 (collecte pure, `decision_events`/`decision_outcomes`) codée et déployée le 24/07/2026 — cf. §5. Reste non engagé pour la suite (`athlete_profiles`, `learned_parameters`, personnalisation du `RuleEngine`) : conditions de déclenchement toujours d'actualité (moteur stable sur plusieurs mois, plusieurs utilisateurs réels, chevauchement avec `historiqueReductionsMoteur`/`predHistory` explicitement tranché) — cf. `docs/v2-methodologie/vision-coach-adaptatif.md` |
-| Résoudre le chooser "Ouvrir avec Chrome" systématique sur Xiaomi/HyperOS | 🔜 Diagnostiqué le 25/07/2026 sur un Xiaomi 11 Lite 5G (HyperOS) : `assetlinks.json` correct, `adb shell pm get-app-links` confirme `yoria.run: verified`, `AutoVerify=true`, Chrome bien défini comme navigateur par défaut — toutes les causes standards Android éliminées une à une (cache Chrome, valeurs par défaut app, désinstall/réinstall complète). Cause probable : particularité connue de la surcouche Xiaomi/HyperOS qui contourne la vérification Digital Asset Links standard, indépendamment de sa configuration. Solution envisagée (migration vers Capacitor, WebView native) écartée pour l'instant : casserait le workflow de déploiement actuel (push direct sur `yoria.run` visible immédiatement) au profit d'un cycle de republication Play Store à chaque changement, sauf investissement dans une solution de mise à jour OTA tierce (ex. Capgo) — jugé disproportionné tant qu'il n'y a qu'un testeur. À réévaluer si le problème se confirme répandu sur d'autres appareils Xiaomi/Android, ou lors du passage à plusieurs utilisateurs réels. |
-| Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Identifié le 23/07/2026, lié à R-070 : ni accélération (progression plus rapide après succès répétés) ni lissage de la remontée (une réduction ponctuelle 4→3 reps peut être suivie d'un saut 3→5 à la prochaine séance qualité si ça tombe sur un palier de progression) — nécessiterait de faire persister la dernière ampleur appliquée entre deux séances qualité, vraie extension structurelle. Pas pire que la situation actuelle (le saut existe déjà sans réduction), pas priorisé |
-| Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 Point corrigé le 27/07/2026 : `analyserAdaptations()`/`appliquerAdaptations()` (plan-generator.js) sont EN RÉALITÉ déjà branchées sur le dashboard depuis le 08/07/2026 (`adaptationEl`, index.html) — détection automatique à chaque `render()`, carte "🔄 Adaptation suggérée" visible seulement si une semaine à adapter existe, Appliquer/Ignorer comme `moteurDecisionEl`. Jamais observée par Laurent car jamais déclenchée (aucune semaine avec score ≥2 sur ses données réelles), pas un bug d'affichage. Deux cartes restent volontairement séparées (pas de fusion des mécanismes de calcul — granularités différentes, hebdo/déclaratif vs continu/mesuré, aucune donnée réelle pour calibrer une combinaison). Reste à coder : garde-fou d'exclusion si les deux cartes ciblent la même semaine (physio prioritaire, cohérent avec la hiérarchie déjà actée dans le RuleEngine — `moteurDecisionEl` s'affiche, `adaptationEl` se tait sur cette semaine ; "Ignorer" une décision physio libère la place au comportemental) + journalisation de l'événement de collision dans `signalements` (type dédié, visible dans l'onglet 🐛 existant de beta-admin) pour observer si/quand ça arrive réellement avant d'envisager une vraie fusion |
-| Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Identifié le 26/07/2026 : le modèle extrapole uniformément le rythme de progression observé sur tout le reste du plan, alors qu'il évolue souvent une fois en phase Spécifique/Affûtage (plus d'intensité). Contextualisation textuelle du verdict "à risque" déjà livrée le 26/07/2026 (rappelle le nombre de semaines de données disponibles) — la pondération réelle du modèle reste un chantier à part, nécessite de définir combien ces phases apportent en plus (donnée non disponible actuellement). Premier pas fait le 27/07/2026 (Laurent en semaine 4/4 de Construction, transition vers Spécifique imminente, objectif 6 septembre) : chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`, index.html — fonction pure, lecture seule, n'affecte aucun calcul existant), écrit aux deux points de génération (`predict10K()` et `rebuildPredHistorySequentielle()`). Permet de comparer a posteriori le rythme de progression mesuré en Construction vs Spécifique une fois les données disponibles — pas encore assez de recul pour juger, fenêtre Spécifique courte (3 semaines) avant l'Affûtage |
-| Permettre de changer la date de course d'un plan actif | ✅ Livré le 27/07/2026 (version simple actée en conception, cf. discussion du même jour) : 4e levier "📆 Date de course" ajouté à l'accordéon "Modifier mon plan" du wizard (`public/v2/index.html`), aux côtés d'Objectif/Jours/Volume. **Mécanisme retenu** : régénération complète via `Engine.generatePlan()` (même pattern que les 3 leviers existants), PAS de vrai point de reprise dans `computeVolumeProgression()` — le cycle de décharge (`s % 4 === 0`) peut donc se désynchroniser légèrement après un changement de date, limite connue et acceptée (défaut mineur, pas une incohérence physiologique grave, contrairement aux cas de phase ci-dessous qui eux sont bloqués). Semaine en cours et semaines passées jamais régénérées (coupure nette à `semaineActuelleOuProchaine(plan) + 1`, identique aux 3 autres leviers). **Règles de phase implémentées** (`appliquerReglesPhase()`, post-traitement du plan régénéré) : Spécifique en cours → jamais de retour en Construction (conversion automatique des semaines de Construction en Spécifique après la charnière si le recalcul brut en produirait) ; Affûtage + décalage ≤ 1 semaine → aucun recalcul, `dateCourse` seule change, avertissement informatif ; Affûtage + décalage > 1 semaine → recalcul standard (repasse naturellement par Spécifique avant un nouvel Affûtage de durée normale) ; décalage ≥ 8 semaines → avertissement recommandant un nouveau plan plutôt qu'une prolongation, sans bloquer. `phaseAtDate(plan, dateStr)` centralisée dans `plan-generator.js` (fonction pure, réutilisée aussi par `index.html`/`predHistory`, remplace une version dupliquée locale au dashboard). Non testé en conditions réelles (aucune vraie collision de règle de phase déclenchée volontairement) — à surveiller à l'usage, notamment le cas de conversion automatique Construction→Spécifique qui ne réécrit que l'étiquette de phase, pas le contenu détaillé des séances déjà généré pour 'Construction' |
+| Courir un vrai test demi-Cooper pour valider la prédiction 10K | 🔜 `RATIO_VMA_VERS_10K` (0.90) et `PACE_RATIOS.E` (1.225) calibrés sur base théorique faute de vraies données — à comparer au premier vrai test couru par Laurent |
+| Réécrire le swap directement dans `plan_actif` | 🔜 Suggestion de Laurent, pas commencé. Complexité identifiée : annulation, régénérations, séparation `plans_actif`/`plans_original`, interaction avec `reduire_charge` |
+| Publier une app iOS (Capacitor) | 🔜 Piste identifiée, pas de code. Pas urgent tant qu'aucun besoin iOS confirmé |
+| Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation. Reste public pendant le développement solo/bêta (économise des tokens Claude) |
+| Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production, pas encore éprouvés sur plusieurs semaines |
+| Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Étape 1 (collecte pure, cf. §5) codée et déployée. Reste non engagé : `athlete_profiles`, `learned_parameters`, personnalisation du `RuleEngine` — conditions de déclenchement toujours d'actualité (moteur stable sur plusieurs mois, plusieurs utilisateurs réels) — cf. `vision-coach-adaptatif.md` |
+| Résoudre le chooser "Ouvrir avec Chrome" systématique sur Xiaomi/HyperOS | 🔜 Diagnostiqué sur un Xiaomi 11 Lite 5G (HyperOS) : `assetlinks.json` correct, toutes les causes standards Android éliminées. Cause probable : particularité de la surcouche Xiaomi. Migration Capacitor écartée pour l'instant (casserait le workflow de déploiement direct). À réévaluer si le problème se confirme répandu |
+| Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Lié à R-070 : ni accélération après succès répétés, ni lissage de la remontée. Nécessiterait de persister la dernière ampleur appliquée entre séances qualité — pas pire que la situation actuelle, pas priorisé |
+| Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 `analyserAdaptations()`/`appliquerAdaptations()` sont déjà branchées sur le dashboard (`adaptationEl`), mais jamais observées par Laurent car jamais déclenchées sur ses données réelles. Deux cartes restent volontairement séparées (granularités différentes). Reste à coder : garde-fou si les deux cartes ciblent la même semaine (physio prioritaire) + journalisation de collision |
+| Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Le modèle extrapole uniformément le rythme observé, alors qu'il évolue souvent en phase Spécifique/Affûtage. Chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`) pour comparer a posteriori une fois assez de données — pas encore assez de recul pour juger |
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
 `bibliotheque-seances.md`.
