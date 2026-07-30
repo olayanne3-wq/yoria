@@ -44,6 +44,7 @@ yoria/
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
 │   ├── index.html                 # App principale (dashboard, ~8300 lignes)
+│   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
@@ -209,7 +210,8 @@ Fonctions de rendu (`render*`) :
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances
 - `renderStats` — statistiques (ACWR, monotonie de charge, etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat, stratégie)
-- `renderHelp` — aide (refonte du contenu le 24/07/2026, cf. plus bas)
+- `renderHelp` — aide (refonte du contenu le 24/07/2026, refonte complète
+  de l'affichage le 30/07/2026, cf. plus bas)
 - `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des
@@ -219,13 +221,39 @@ Fonctions de rendu (`render*`) :
 - `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans
   référence)
 
-**Aide (24/07/2026)** — `renderHelp()` réorganisé par intention plutôt que
-par écran : Démarrer / Comprendre les écrans / Comprendre le moteur Yoria
-(estimation, IE, cadence, RPE, readiness, carte d'ajustement, allures
-dynamiques) / Types de plan (Course, Mode Forme, Grand débutant) / Sources
-de données / FAQ. Accès factorisé via `boutonAide()` (réutilisé sur le
-dashboard et ajouté au header générique `hdr` des vues secondaires) —
-visible sur chaque onglet désormais, plus seulement depuis le dashboard.
+**Aide (24/07/2026, refonte complète le 30/07/2026)** — contenu réorganisé
+par intention plutôt que par écran : Démarrer / Comprendre les écrans /
+Comprendre les séances / Pour aller plus loin (règles du plan) / Comprendre
+le moteur Yoria (estimation, IE, cadence, RPE, readiness, carte
+d'ajustement, allures dynamiques) / Types de plan (Course, Mode Forme,
+Grand débutant) / Sources de données / FAQ. Accès factorisé via
+`boutonAide()` (réutilisé sur le dashboard et ajouté au header générique
+`hdr` des vues secondaires) — visible sur chaque onglet désormais, plus
+seulement depuis le dashboard.
+
+**Refonte du 30/07/2026** (demande de Laurent : contenu devenu volumineux,
+pas facile à parcourir, et coûteux à éditer pour Claude vu la taille de
+`index.html`) :
+- **Contenu extrait dans `public/help-content.js`** — module de données pur
+  (aucun DOM), importé dynamiquement par `renderHelp()` au premier
+  affichage de l'écran (même pattern `await import()` que
+  `weather.js`/`plan-generator.js`), mis en cache en mémoire
+  (`_helpContentCache`) pour ne charger qu'une fois par session. Éditer un
+  texte d'aide ne touche plus jamais `index.html`, seulement ce petit
+  fichier séparé.
+- **Accordéon replié par défaut** (état `_helpSectionsOuvertes`, un Set en
+  mémoire, jamais persisté — repart toujours replié à l'ouverture de
+  l'écran, réinitialisé dans `setView("help")`) — remplace l'ancien
+  affichage linéaire de toutes les sections à la suite.
+- **Recherche texte** (`_helpRecherche`) en haut de l'écran, filtre les
+  items en direct et déplie automatiquement toute section contenant un
+  résultat — combine accordéon (parcours calme) et recherche (accès
+  direct) plutôt que de choisir l'un ou l'autre. Un sommaire en bulles
+  cliquables a été essayé puis retiré le même jour (redondant avec
+  l'accordéon lui-même, qui remplit déjà ce rôle).
+- Focus/position du curseur du champ recherche restaurés après chaque
+  frappe (`render()` recrée tout le DOM de l'écran, y compris ce champ —
+  sans ce correctif chaque caractère tapé aurait fait perdre le focus).
 
 **Barre de navigation — conteneur séparé (24/07/2026)** — `nav` est montée
 dans `#nav-root`, un conteneur HTML distinct de `#app`, via
@@ -507,11 +535,9 @@ d'appel de `recalculerRepartitionEFLongue` (`generatePlan`, `placerSeanceTest`,
 ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend
 naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum — l'écart
 n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en
-pratique. **Non vérifié** : impact sur 5K/Semi/Marathon (simulation faite
-uniquement sur 10K niveau intermédiaire) ; propagation éventuelle nécessaire
-vers les tables dupliquées de `decision-engine-apply.classic.js` si elles
-utilisent `repartirVolumeSemaine`. Détail complet et seuils `VOLUME_MIN_PAR_JOURS`
-associés en §16.
+pratique. Détail complet et seuils `VOLUME_MIN_PAR_JOURS` associés en §16
+(y compris le correctif du même jour sur la table de seuils, initialement
+calée uniquement sur 10K).
 
 — jusqu'ici, les allures E/T/I
 (`computeAllures()`) restaient calibrées sur `paramsOrigine.tempsReference`
@@ -697,8 +723,12 @@ brute. Tables `base`/`cap` par sous-type/niveau dupliquées depuis
 `plan-generator.js` dans `decision-engine-apply.classic.js` (elles n'y
 sont pas exportées, déclarées localement dans chaque `case` du switch) —
 risque de divergence documenté en commentaire, à répercuter si
-`plan-generator.js` change une valeur `base`. Validé par 29 tests
-unitaires + test en conditions réelles navigateur (clone du plan).
+`plan-generator.js` change une valeur `base`. Vérifié le 29/07/2026 :
+ce fichier ne recalcule jamais la répartition longue/EF/qualité d'une
+semaine (`repartirVolumeSemaine`) — il ne fait que réduire des séances déjà
+générées, donc le chantier ratio longue variable/`nbJours` (cf. plus haut,
+§16) n'a rien à y propager. Validé par 29 tests unitaires + test en
+conditions réelles navigateur (clone du plan).
 
 Coach IA branché sur le moteur : lit `RunnerState`/`EngineDecision` du jour,
 ne recalcule jamais un ratio séparé, peut commenter la décision mais jamais
@@ -1318,18 +1348,22 @@ blessure/pause longue doit pouvoir emprunter le même parcours ponctuellement.
 
 | Chantier | Statut |
 |---|---|
-| Volume minimum requis selon le nombre de jours disponibles | ✅ Codé et poussé le 29/07/2026 (`plan-generator.js`), **wizard non câblé** — le moteur refuse déjà, mais `v2/index.html` n'affiche pas encore le message dédié `VOLUME_MIN_JOURS_NON_ATTEINT` à l'utilisateur (reste à faire). **Historique du diagnostic** : la conception du 27/07/2026 (seuils 10/15/20/30/40/50km, jamais codée) reposait sur `RATIO_LONGUE=0.28` fixe. Remise en question le 29/07/2026 : la littérature (Daniels + sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio longue/volume plus élevé est normal et attendu à faible nombre de jours (jusqu'à 40-50% à 2-3j/semaine), pas une anomalie — un ratio fixe comprimait artificiellement la longue à 2-4j, la faisant passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total restait correct. Nouvelle contrainte ajoutée en parallèle, actée par Laurent : la longue ne doit JAMAIS être plus courte que le cumul des séances qualité de la semaine (le volume d'une séance qualité dépend de paramètres fixes par niveau dans `genererContenuQualite`, indépendants du volume hebdo cible — à bas volume elle peut sinon dépasser une longue calculée par simple ratio). **Solution codée** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22, remplace le ratio fixe) + `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` dans `repartirVolumeSemaine()` (nouveau paramètre `nbJours`, propagé dans les 3 points d'appel de `recalculerRepartitionEFLongue`). **Écart aux standards Daniels (25-30%) vérifié et assumé** : le ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum (vérifié par simulation sur plusieurs volumes croissants) — l'écart n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en pratique par la plupart des utilisateurs. **Nouveaux seuils `VOLUME_MIN_PAR_JOURS`** (remplacent la table du 27/07, dérivés par simulation directe sur le moteur réel, 10K niveau intermédiaire, plutôt que par approximation manuelle) :
+| Volume minimum requis selon le nombre de jours disponibles ET la distance | ✅ Codé et poussé le 29/07/2026 (`plan-generator.js`, deux commits). **wizard déjà câblé génériquement** — vérifié le 29/07/2026 : les 6 points d'appel de `Engine.generatePlan()` dans `v2/index.html` (`generateAndShowResults`, `lancerAnalyseAdaptation`, `appliquerChangementJours`, `appliquerChangementVolume`, `appliquerChangementDateCourse`, `regenererAvecNouvelObjectif`) testent déjà `planInvalide` de façon générique (pas seulement `VOLUME_JOURS_INCOMPATIBLE`) et affichent `plan.message` — le refus `VOLUME_MIN_JOURS_NON_ATTEINT` s'affiche donc automatiquement partout, sans aucun changement de code nécessaire côté wizard. **Historique du diagnostic** : la conception du 27/07/2026 (seuils 10/15/20/30/40/50km, jamais codée) reposait sur `RATIO_LONGUE=0.28` fixe. Remise en question le 29/07/2026 : la littérature (Daniels + sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio longue/volume plus élevé est normal et attendu à faible nombre de jours (jusqu'à 40-50% à 2-3j/semaine), pas une anomalie — un ratio fixe comprimait artificiellement la longue à 2-4j, la faisant passer sous `VOLUME_MIN_LONGUE_KM` alors que le volume hebdo total restait correct. Nouvelle contrainte ajoutée en parallèle, actée par Laurent : la longue ne doit JAMAIS être plus courte que le cumul des séances qualité de la semaine (le volume d'une séance qualité dépend de paramètres fixes par niveau dans `genererContenuQualite`, indépendants du volume hebdo cible — à bas volume elle peut sinon dépasser une longue calculée par simple ratio). **Solution codée** : `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22, remplace le ratio fixe) + `kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` dans `repartirVolumeSemaine()` (nouveau paramètre `nbJours`, propagé dans les 3 points d'appel de `recalculerRepartitionEFLongue`). **Écart aux standards Daniels (25-30%) vérifié et assumé** : le ratio grimpe à 35-45% au plancher minimum exact (2-3j), mais redescend naturellement vers 25-32% dès qu'on s'éloigne un peu du minimum (vérifié par simulation sur plusieurs volumes croissants) — l'écart n'existe qu'au plancher de refus, pas sur les volumes réellement choisis en pratique par la plupart des utilisateurs.
 
-| Jours | Volume minimum |
-|---|---|
-| 2 | 16 km |
-| 3 | 20 km |
-| 4 | 23 km |
-| 5 | 32 km |
-| 6 | 35 km |
-| 7 | 38 km |
+**Correctif du 29/07/2026 (même jour, session suivante)** — vérification demandée par Laurent sur 2 points laissés ouverts : impact sur 5K/Semi/Marathon (pas seulement 10K) et lien avec `decision-engine-apply.classic.js`.
+- **`decision-engine-apply.classic.js` vérifié en entier : aucun lien avec `repartirVolumeSemaine`** (cf. §8) — ce fichier ne recalcule jamais la répartition longue/EF/qualité, il réduit des séances déjà générées au moment d'une décision `reduire_charge`. Rien à propager.
+- **Seuil unique calé sur 10K confirmé insuffisant pour Semi/Marathon** — Semi/Marathon (rotation Construction `tempo-court`/`seuil-2min`/`seuil-court`, séances qualité plus volumineuses que `seuil-court`/`i-30-30` en 10K) nécessitent un seuil sensiblement plus haut, surtout à 5-7j (jusqu'à +7km d'écart mesuré pour Marathon à 7j). 5K est à l'inverse plus permissif. `VOLUME_MIN_PAR_JOURS` transformé en table à deux niveaux (`[distance][nbJours]`), plutôt qu'une constante à un seul niveau (`[nbJours]`) :
 
-Volontairement identiques quel que soit le niveau (la contrainte dominante — longue ≥ qualité — dépend peu du niveau dans les cas testés). **Validation en amont** : `generatePlan()` vérifie `params.volumeActuel` contre `VOLUME_MIN_PAR_JOURS[nbJours]` en tout premier, avant même de calculer phases/allures — retourne `{ planInvalide: true, code: 'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le seuil. Le garde-fou existant `VOLUME_JOURS_INCOMPATIBLE` (après génération complète, basé sur `nbSemainesConstructionSousSeuil`) reste en place inchangé, comme filet complémentaire — n'a normalement plus de raison de se déclencher si la validation amont fonctionne, mais conservé par prudence. **Non vérifié** : impact sur 5K/Semi/Marathon (simulation faite uniquement sur 10K) ; propagation éventuelle nécessaire vers les tables dupliquées de `decision-engine-apply.classic.js` (cf. §7, divergence documentée) si elles utilisent `repartirVolumeSemaine`. **Reste à faire** : câbler le message d'erreur côté wizard (`v2/index.html`, étape 7) pour affichage utilisateur — actuellement seul le moteur retourne le refus, rien ne l'affiche encore |
+| Jours | 5K | 10K | Semi | Marathon |
+|---|---|---|---|---|
+| 2 | 12 km | 16 km | 18 km | 18 km |
+| 3 | 16 km | 20 km | 22 km | 22 km |
+| 4 | 19 km | 23 km | 25 km | 25 km |
+| 5 | 28 km | 32 km | 36 km | 40 km |
+| 6 | 31 km | 35 km | 39 km | 43 km |
+| 7 | 34 km | 38 km | 42 km | 46 km |
+
+Vérifié par simulation sur le moteur réel (`generatePlan()` complet, pas seulement une semaine isolée) pour chaque distance × nombre de jours, avec un vrai `refDistance` fourni (un premier test Marathon avait donné un faux résultat, `refDistance` oublié dans le scénario de test — pas un bug du moteur, corrigé en refaisant le test correctement). Volontairement identiques quel que soit le niveau (comme avant ce correctif — la contrainte dominante, longue ≥ qualité, dépend peu du niveau dans les cas testés). **Validation en amont** : `generatePlan()` vérifie `params.volumeActuel` contre `VOLUME_MIN_PAR_JOURS[params.distance][nbJours]` en tout premier, avant même de calculer phases/allures — retourne `{ planInvalide: true, code: 'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le seuil. Le garde-fou existant `VOLUME_JOURS_INCOMPATIBLE` (après génération complète, basé sur `nbSemainesConstructionSousSeuil`) reste en place inchangé, comme filet complémentaire. |
 | Système de badges (récompenses) | ✅ Livré le 27/07/2026 (conception discutée en profondeur avec Laurent, plusieurs itérations suite à ses retours en conditions réelles). 14 badges en 4 catégories, consultables via une carte cliquable tout en haut de l'écran Stats (`renderBadges()`, `index.html`) — jamais rien en permanence sur le dashboard, seul un bandeau de notification ponctuel et dismissible au moment d'un déblocage (`badgesNotifEl`, même famille visuelle que `adaptationEl`/`moteurDecisionEl`). Couleurs dérivées de la charte existante par catégorie : Régularité turquoise (`--accent2`), Progression bleu (`--accent`), Respect du corps vert sauge (seule vraie nouvelle nuance), Étapes du plan gris neutre. Anneau SVG (`renderAnneauBadge()`) à 3 états (débloqué/en cours/verrouillé) — JAMAIS masqué de la liste, même non débloqué. Explicitement écarté : badges de volume/intensité brute (risque de pousser à en faire trop), tout classement ou comparaison sociale.
 
 **Badges à paliers** (record HISTORIQUE affiché en légende, jamais perdu si la série casse — décision explicite pour éviter l'effet "streak" anxiogène façon Duolingo) :
