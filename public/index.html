@@ -8789,11 +8789,53 @@ function renderHelp() {
     el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},f.a)
   ));
 
+  const seanceItems = [
+    { title:"EF — Endurance fondamentale",
+      text:"Le socle du plan, courue à allure facile (conversation possible). Elle renforce le cœur, développe les capillaires qui irriguent les muscles, et prépare le corps à encaisser les séances plus dures — sans elle, rien d'autre ne tient. C'est normalement le type de séance le plus fréquent dans une semaine." },
+    { title:"Sortie longue",
+      text:"Une EF prolongée, en général le plus gros volume de la semaine. Elle développe l'endurance profonde (réserves énergétiques, résistance à la fatigue) et prépare mentalement à tenir la distance de course." },
+    { title:"Seuil",
+      text:"Un effort \"confortablement dur\" — soutenu mais tenable 20 à 60 minutes. Il entraîne le corps à mieux éliminer l'acide lactique produit à l'effort, repoussant le moment où les jambes \"brûlent\"." },
+    { title:"VMA (intervalles courts)",
+      text:"Des efforts brefs et rapides, entrecoupés de récupération. Ils développent la puissance aérobie maximale — ta capacité à consommer beaucoup d'oxygène rapidement — et la vitesse de pointe." },
+    { title:"Allure spécifique",
+      text:"Courue précisément à l'allure visée le jour de la course. Elle habitue le corps ET la tête à ce rythme précis, pour qu'il devienne familier plutôt que découvert le jour J." },
+    { title:"Repos",
+      text:"Fait partie intégrante de l'entraînement, pas une pause en dehors : c'est pendant le repos que le corps encaisse et se renforce suite à l'effort. Sauter un repos prévu n'accélère rien, ça retarde la récupération." },
+  ];
+
+  const seanceCards = seanceItems.map(s => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},s.title),
+    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},s.text)
+  ));
+
+  const regleItems = [
+    { title:"Jamais deux séances dures collées",
+      text:"Yoria espace toujours d'au moins 48h deux séances exigeantes (qualité ou longue) — le corps a besoin de ce temps pour récupérer avant le prochain effort intense. Entre deux, uniquement de l'EF ou du repos." },
+    { title:"Le volume progresse par paliers, jamais d'un coup",
+      text:"La charge d'entraînement augmente d'au plus 10% par semaine (7% en cas de contrainte physique signalée), avec une semaine plus légère (\"décharge\") tous les 4 blocs environ — le corps a besoin de temps pour s'adapter à un nouveau niveau d'effort avant d'en encaisser encore plus." },
+    { title:"La sortie longue reste toujours la plus longue séance",
+      text:"Même à faible volume hebdomadaire, la sortie longue est structurellement calibrée pour ne jamais être dépassée par une séance de qualité — c'est elle qui porte le travail d'endurance de fond." },
+    { title:"Le plan suit des phases distinctes",
+      text:"Construction (bâtir la base), Spécifique (se rapprocher de l'allure et des conditions de course), Affûtage (réduire le volume pour arriver frais) — l'intensité et le type de séances qualité évoluent d'une phase à l'autre." },
+    { title:"Un allègement réduit le nombre de répétitions, jamais l'allure",
+      text:"Si Yoria propose d'alléger une séance de qualité (fatigue, séances ratées), c'est toujours le nombre de répétitions ou de blocs qui diminue — jamais la vitesse à laquelle tu les coures, ni le temps de récupération entre elles." },
+  ];
+
+  const regleCards = regleItems.map(r => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},r.title),
+    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},r.text)
+  ));
+
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     intro,
     el("div",{class:"label"},"📱 Comprendre les écrans"),
     el("div",{style:{marginBottom:"20px"}}, card(...sectionCards)),
+    el("div",{class:"label"},"🏃 Comprendre les séances"),
+    el("div",{style:{marginBottom:"20px"}}, card(...seanceCards)),
+    el("div",{class:"label"},"📐 Pour aller plus loin — les règles du plan"),
+    el("div",{style:{marginBottom:"20px"}}, card(...regleCards)),
     el("div",{class:"label"},"🧠 Comprendre le moteur Yoria"),
     el("div",{style:{marginBottom:"20px"}}, card(...moteurCards)),
     el("div",{class:"label"},"🗂️ Types de plan"),
