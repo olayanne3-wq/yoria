@@ -8756,23 +8756,6 @@ function renderHelp() {
 
   const requete = _helpRecherche.trim().toLowerCase();
 
-  // ── Sommaire cliquable (ancres, visible seulement hors recherche —
-  // pendant une recherche, les sections pertinentes sont déjà toutes
-  // dépliées et visibles directement, un sommaire ferait doublon) ────────
-  const sommaire = !requete ? el("div",{style:{display:"flex", flexWrap:"wrap", gap:"6px", marginBottom:"16px"}},
-    ...HELP_SECTIONS.map(s => el("button",{style:{
-        padding:"6px 11px", borderRadius:"20px", border:"1px solid var(--border)",
-        background:"var(--border-soft)", color:"var(--text2)", fontSize:"12.5px", fontWeight:"600",
-        cursor:"pointer"
-      },
-      onClick: () => {
-        _helpSectionsOuvertes.add(s.id);
-        render();
-        setTimeout(() => document.getElementById("help-section-"+s.id)?.scrollIntoView({behavior:"smooth", block:"start"}), 50);
-      }
-    }, s.icon+" "+s.title))
-  ) : null;
-
   // ── Sections en accordéon ───────────────────────────────────────────
   const sectionsRendues = HELP_SECTIONS.map(section => {
     let itemsAffiches = section.items;
@@ -8822,7 +8805,6 @@ function renderHelp() {
 
   conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
   conteneur.appendChild(champRecherche);
-  if (sommaire) conteneur.appendChild(sommaire);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
   sectionsRendues.forEach(s => conteneur.appendChild(s));
 
