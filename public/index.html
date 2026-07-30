@@ -8697,154 +8697,136 @@ function exportPdfResultats() {
 // ══════════════════════════════════════════════════════════════════════════════
 // AIDE
 // ══════════════════════════════════════════════════════════════════════════════
+// ── Aide (30/07/2026, refonte) ──────────────────────────────────────────
+// Le CONTENU (textes, sections) a été extrait dans public/help-content.js
+// (import dynamique ci-dessous, même pattern que weather.js/plan-generator.js
+// — cf. commentaire en tête de ce fichier sur import()) — demandé par
+// Laurent : index.html est un gros fichier, coûteux à repatcher pour un
+// simple ajout de texte d'aide. Ce fichier ne s'occupe plus que de
+// L'AFFICHAGE (accordéon + recherche), jamais du contenu lui-même.
+//
+// Accordéon replié par défaut (état en mémoire, jamais persisté — repart
+// replié à chaque ouverture de l'aide, cohérent avec un écran consulté
+// ponctuellement) + recherche texte en haut qui filtre les items ET
+// déplie automatiquement toute section contenant un résultat — combine
+// les deux pistes de navigation plutôt que de choisir l'une ou l'autre
+// (une recherche seule laisse un mur de texte tant qu'on n'a rien tapé,
+// un accordéon seul demande de deviner où chercher).
+let _helpContentCache = null;
+let _helpSectionsOuvertes = new Set(); // ids de sections dépliées, remis à zéro à chaque montage de l'écran (cf. setView("help"))
+let _helpRecherche = "";
+
 function renderHelp() {
-  const intro = el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"20px"}},
-    "Chaque jour, ton dashboard affiche la séance prévue. Une fois faite, tape sur le statut correspondant (✅ réussie, ⚠️ adaptée, ❌ ratée) pour l'enregistrer — c'est ce qui permet à Yoria d'ajuster la suite."
-  );
+  const conteneur = el("div",{style:{padding:"0 16px 100px"}}, el("div",{style:{marginTop:"8px"}}));
 
-  const sections = [
-    { icon:"⚡", color:"var(--accent)", title:"Dashboard",
-      text:"Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Yoria selon ta progression." },
-    { icon:"📅", color:"var(--accent)", title:"Semaines",
-      text:"Le détail de chaque semaine. Tape sur une séance pour la valider. Appui long (~1 sec) pour la déplacer vers un autre jour ou l'échanger avec une autre — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
-    { icon:"📊", color:"var(--accent)", title:"Stats",
-      text:"Ta progression vers l\'objectif, ton Indice d\'Économie (IE), ta cadence, et un référentiel complet des allures et zones FC." },
-    { icon:"🏁", color:"var(--accent2)", title:"Course",
-      text:"Horaires, checklist équipement, stratégie et allures de passage le jour J. Absent en Mode Forme, qui n\'a pas de date de course." },
-    { icon:"⚙️", color:"var(--text2)", title:"Paramètres",
-      text:"Ton profil, ton objectif, ta source de données, ta connexion Strava. Sauvegarde automatique dans le cloud." },
-  ];
+  if (!_helpContentCache) {
+    conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",textAlign:"center",padding:"40px 0"}},"Chargement..."));
+    import("/help-content.js").then(mod => {
+      _helpContentCache = mod;
+      if (view === "help") render(); // ne re-render que si l'utilisateur est toujours sur cet écran
+    }).catch(e => {
+      console.warn("Chargement de l'aide échoué :", e.message);
+    });
+    return conteneur;
+  }
 
-  const sectionCards = sections.map(s => el("div",{style:{marginBottom:"14px"}},
-    el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-      el("span",{style:{fontSize:"16px"}},s.icon),
-      el("span",{style:{color:s.color,fontSize:"15px",fontWeight:"700"}},s.title)
-    ),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",paddingLeft:"24px"}},s.text)
-  ));
+  const { introText, HELP_SECTIONS } = _helpContentCache;
 
-  const moteurItems = [
-    { title:"Estimation de temps",
-      text:"Combine tes séances VMA, SPEC et SEUIL pour estimer ton temps probable, avec une fourchette qui se resserre au fil des semaines." },
-    { title:"Indice d\'Économie (IE)",
-      text:"Compare ta FC réelle à ta FC théorique pour une allure donnée. Au-dessus de 100 : tu cours plus économiquement qu\'attendu." },
-    { title:"Cadence",
-      text:"Nombre de pas par minute, un indicateur de technique de course. Idéalement entre 170 et 180 spm : une cadence trop basse allonge le temps passé en l\'air à chaque foulée, donc l\'impact au sol. Une cadence stable ou en légère hausse au fil du plan est un bon signe." },
-    { title:"Ressenti (RPE)",
-      text:"Après une séance, indique comment tu l\'as vécue (🙂 Facile → 🥵 Maximal, échelle CR-10 de Borg). Complète ce que ta montre mesure par ce que ton corps a vraiment ressenti." },
-    { title:"Comment tu te sens avant la séance (readiness)",
-      text:"Le jour d\'une séance qualité, indique ton état (🪫 Fatigué, 😐 Normal, 🔋 En forme). Si tu es fatigué et qu\'un allègement est déjà proposé, il peut être renforcé. Sans allègement en cours, tu reçois juste une invitation à la prudence — rien n\'est modifié automatiquement." },
-    { title:"Carte d\'ajustement",
-      text:"Yoria surveille ta fatigue, ta charge et ta régularité. \"Yoria te propose un ajustement\" = une action concrète t\'est proposée — le plus souvent sur une séance facile (EF/longue), sauf si tu as raté plusieurs séances qualité d\'affilée, où Yoria peut alors alléger directement la prochaine (moins de répétitions, jamais l\'allure ni la récupération). \"Yoria a repéré un signal à surveiller\" = simple alerte, sans action à ce stade. Rien n\'est appliqué sans ton accord." },
-    { title:"Allures qui évoluent",
-      text:"Tes allures d\'entraînement se resserrent progressivement vers ton objectif à mesure que tes séances confirment ta progression, sans attendre la fin du plan." },
-  ];
+  // ── Recherche ────────────────────────────────────────────────────────
+  const champRecherche = el("input",{type:"text", id:"help-search", name:"help-search",
+    placeholder:"Rechercher dans l'aide...", value:_helpRecherche,
+    style:{width:"100%", padding:"11px 14px", borderRadius:"10px", border:"1px solid var(--border)",
+      background:"var(--bg)", boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",
+      color:"var(--text)", fontSize:"14px", marginBottom:"16px"},
+    onChange: (e) => { _helpRecherche = e.target.value; render(); }
+  });
+  champRecherche.addEventListener("input", (e) => {
+    _helpRecherche = e.target.value;
+    const positionCurseur = e.target.selectionStart;
+    render();
+    // render() recrée tout le DOM de l'écran (y compris ce champ) — sans
+    // restaurer focus + position du curseur, chaque frappe ferait perdre
+    // le focus au champ de recherche (30/07/2026, refonte aide).
+    const nouveauChamp = document.getElementById("help-search");
+    if (nouveauChamp) {
+      nouveauChamp.focus();
+      nouveauChamp.setSelectionRange(positionCurseur, positionCurseur);
+    }
+  });
 
-  const moteurCards = moteurItems.map(m => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},m.title),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},m.text)
-  ));
+  const requete = _helpRecherche.trim().toLowerCase();
 
-  const planTypeItems = [
-    { title:"Plan Course",
-      text:"Vers une date d\'objectif précise (5K, 10K, semi, marathon)." },
-    { title:"Mode Forme",
-      text:"Sans date de course, un cycle d\'entraînement continu qui se renouvelle par blocs de 4 semaines." },
-    { title:"Grand débutant",
-      text:"Si tu choisis ce niveau, ton plan démarre en alternance course/marche, avec une progression jusqu\'à atteindre 30 minutes de course continue." },
-  ];
+  // ── Sommaire cliquable (ancres, visible seulement hors recherche —
+  // pendant une recherche, les sections pertinentes sont déjà toutes
+  // dépliées et visibles directement, un sommaire ferait doublon) ────────
+  const sommaire = !requete ? el("div",{style:{display:"flex", flexWrap:"wrap", gap:"6px", marginBottom:"16px"}},
+    ...HELP_SECTIONS.map(s => el("button",{style:{
+        padding:"6px 11px", borderRadius:"20px", border:"1px solid var(--border)",
+        background:"var(--border-soft)", color:"var(--text2)", fontSize:"12.5px", fontWeight:"600",
+        cursor:"pointer"
+      },
+      onClick: () => {
+        _helpSectionsOuvertes.add(s.id);
+        render();
+        setTimeout(() => document.getElementById("help-section-"+s.id)?.scrollIntoView({behavior:"smooth", block:"start"}), 50);
+      }
+    }, s.icon+" "+s.title))
+  ) : null;
 
-  const planTypeCards = planTypeItems.map(p => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},p.title),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},p.text)
-  ));
+  // ── Sections en accordéon ───────────────────────────────────────────
+  const sectionsRendues = HELP_SECTIONS.map(section => {
+    let itemsAffiches = section.items;
+    let sectionMatche = false;
 
-  const sourceItems = [
-    { title:"Strava",
-      text:"La plus simple si tu es déjà connecté (synchro automatique)." },
-    { title:"Import FIT",
-      text:"Pour les autres montres. Allure, distance et FC bien récupérées ; le détail effort/récupération d\'une séance qualité dépend du modèle." },
-    { title:"Saisie manuelle",
-      text:"Contrôle total, la plus fiable si tu préfères saisir toi-même." },
-    { title:"Multi-appareils",
-      text:"Tes données sont liées à ton compte (email + mot de passe), synchronisées automatiquement. Connecte-toi avec le même compte sur un nouvel appareil." },
-  ];
+    if (requete) {
+      itemsAffiches = section.items.filter(it =>
+        it.title.toLowerCase().includes(requete) || it.text.toLowerCase().includes(requete)
+      );
+      sectionMatche = itemsAffiches.length > 0;
+      if (!sectionMatche) return null; // rien à montrer pour cette section pendant la recherche
+    }
 
-  const sourceCards = sourceItems.map(s => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},s.title),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},s.text)
-  ));
+    const estOuverte = requete ? true : _helpSectionsOuvertes.has(section.id);
 
-  const faqItems = [
-    { q:"Comment saisir mes records personnels ?",
-      a:"Dans Paramètres, renseigne un temps par distance (5K, 10K, Semi, Marathon). Une seule suffit pour démarrer (Yoria estime les autres), mais renseigner un record par distance donne des estimations plus fiables — chaque distance sollicite des qualités différentes, et Yoria n\'a plus besoin d\'extrapoler." },
-    { q:"Pourquoi mes données ont disparu sur un nouvel appareil ?",
-      a:"Tes données sont liées à ton compte (email + mot de passe) et synchronisées automatiquement dans le cloud. Connecte-toi avec le même compte sur ton nouvel appareil et tout réapparaît — plans, statuts, profil." },
-    { q:"À quoi sert le bouton 💬 en haut de l\'écran ?",
-      a:"Il permet de signaler un bug, une donnée qui te semble incorrecte, ou de proposer une suggestion — directement depuis n\'importe quel écran de l\'app." },
-  ];
+    const enTete = el("div",{id:"help-section-"+section.id, style:{
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        padding:"12px 4px", cursor:"pointer"
+      },
+      onClick: () => {
+        if (requete) return; // pas de repli pendant une recherche, tout reste ouvert
+        if (_helpSectionsOuvertes.has(section.id)) _helpSectionsOuvertes.delete(section.id);
+        else _helpSectionsOuvertes.add(section.id);
+        render();
+      }
+    },
+      el("span",{style:{display:"flex", alignItems:"center", gap:"8px", fontSize:"15px", fontWeight:"700", color:"var(--text)"}},
+        section.icon, section.title,
+        requete ? el("span",{class:"muted", style:{fontSize:"12px", fontWeight:"500"}}, "("+itemsAffiches.length+")") : null
+      ),
+      requete ? null : el("span",{class:"muted", style:{fontSize:"14px", transform: estOuverte ? "rotate(90deg)" : "none", transition:"transform 0.15s"}}, "›")
+    );
 
-  const faqCards = faqItems.map(f => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},f.q),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},f.a)
-  ));
+    const corps = estOuverte ? el("div",{style:{marginBottom:"8px"}}, card(
+      ...itemsAffiches.map(it => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+        el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},it.title),
+        el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
+      ))
+    )) : null;
 
-  const seanceItems = [
-    { title:"EF — Endurance fondamentale",
-      text:"Le socle du plan, courue à allure facile (conversation possible). Elle renforce le cœur, développe les capillaires qui irriguent les muscles, et prépare le corps à encaisser les séances plus dures — sans elle, rien d'autre ne tient. C'est normalement le type de séance le plus fréquent dans une semaine." },
-    { title:"Sortie longue",
-      text:"Une EF prolongée, en général le plus gros volume de la semaine. Elle développe l'endurance profonde (réserves énergétiques, résistance à la fatigue) et prépare mentalement à tenir la distance de course." },
-    { title:"Seuil",
-      text:"Un effort \"confortablement dur\" — soutenu mais tenable 20 à 60 minutes. Il entraîne le corps à mieux éliminer l'acide lactique produit à l'effort, repoussant le moment où les jambes \"brûlent\"." },
-    { title:"VMA (intervalles courts)",
-      text:"Des efforts brefs et rapides, entrecoupés de récupération. Ils développent la puissance aérobie maximale — ta capacité à consommer beaucoup d'oxygène rapidement — et la vitesse de pointe." },
-    { title:"Allure spécifique",
-      text:"Courue précisément à l'allure visée le jour de la course. Elle habitue le corps ET la tête à ce rythme précis, pour qu'il devienne familier plutôt que découvert le jour J." },
-    { title:"Repos",
-      text:"Fait partie intégrante de l'entraînement, pas une pause en dehors : c'est pendant le repos que le corps encaisse et se renforce suite à l'effort. Sauter un repos prévu n'accélère rien, ça retarde la récupération." },
-  ];
+    return el("div",{style:{borderBottom: estOuverte ? "none" : "1px solid var(--border)"}}, enTete, corps);
+  }).filter(Boolean);
 
-  const seanceCards = seanceItems.map(s => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},s.title),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},s.text)
-  ));
+  const resultatsVides = requete && sectionsRendues.length === 0
+    ? el("div",{class:"muted",style:{fontSize:"14px",textAlign:"center",padding:"30px 0"}},"Aucun résultat pour \""+_helpRecherche+"\"")
+    : null;
 
-  const regleItems = [
-    { title:"Jamais deux séances dures collées",
-      text:"Yoria espace toujours d'au moins 48h deux séances exigeantes (qualité ou longue) — le corps a besoin de ce temps pour récupérer avant le prochain effort intense. Entre deux, uniquement de l'EF ou du repos." },
-    { title:"Le volume progresse par paliers, jamais d'un coup",
-      text:"La charge d'entraînement augmente d'au plus 10% par semaine (7% en cas de contrainte physique signalée), avec une semaine plus légère (\"décharge\") tous les 4 blocs environ — le corps a besoin de temps pour s'adapter à un nouveau niveau d'effort avant d'en encaisser encore plus." },
-    { title:"La sortie longue reste toujours la plus longue séance",
-      text:"Même à faible volume hebdomadaire, la sortie longue est structurellement calibrée pour ne jamais être dépassée par une séance de qualité — c'est elle qui porte le travail d'endurance de fond." },
-    { title:"Le plan suit des phases distinctes",
-      text:"Construction (bâtir la base), Spécifique (se rapprocher de l'allure et des conditions de course), Affûtage (réduire le volume pour arriver frais) — l'intensité et le type de séances qualité évoluent d'une phase à l'autre." },
-    { title:"Un allègement réduit le nombre de répétitions, jamais l'allure",
-      text:"Si Yoria propose d'alléger une séance de qualité (fatigue, séances ratées), c'est toujours le nombre de répétitions ou de blocs qui diminue — jamais la vitesse à laquelle tu les coures, ni le temps de récupération entre elles." },
-  ];
+  conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
+  conteneur.appendChild(champRecherche);
+  if (sommaire) conteneur.appendChild(sommaire);
+  if (resultatsVides) conteneur.appendChild(resultatsVides);
+  sectionsRendues.forEach(s => conteneur.appendChild(s));
 
-  const regleCards = regleItems.map(r => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
-    el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},r.title),
-    el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},r.text)
-  ));
-
-  return el("div",{style:{padding:"0 16px 100px"}},
-    el("div",{style:{marginTop:"8px"}}),
-    intro,
-    el("div",{class:"label"},"📱 Comprendre les écrans"),
-    el("div",{style:{marginBottom:"20px"}}, card(...sectionCards)),
-    el("div",{class:"label"},"🏃 Comprendre les séances"),
-    el("div",{style:{marginBottom:"20px"}}, card(...seanceCards)),
-    el("div",{class:"label"},"📐 Pour aller plus loin — les règles du plan"),
-    el("div",{style:{marginBottom:"20px"}}, card(...regleCards)),
-    el("div",{class:"label"},"🧠 Comprendre le moteur Yoria"),
-    el("div",{style:{marginBottom:"20px"}}, card(...moteurCards)),
-    el("div",{class:"label"},"🗂️ Types de plan"),
-    el("div",{style:{marginBottom:"20px"}}, card(...planTypeCards)),
-    el("div",{class:"label"},"🔗 Sources de données"),
-    el("div",{style:{marginBottom:"20px"}}, card(...sourceCards)),
-    el("div",{class:"label"},"❓ Questions fréquentes"),
-    card(...faqCards)
-  );
+  return conteneur;
 }
 
 function renderSettings() {
@@ -10258,6 +10240,11 @@ function setView(v) {
   // que le scroll se stabilise. Scroller d'abord, sur l'ancien contenu
   // encore affiché, élimine ce décalage d'une frame.
   window.scrollTo(0,0);
+  // Réinitialise l'état de l'aide (accordéon replié, recherche vidée) à
+  // chaque nouvelle ouverture de cet écran (30/07/2026, refonte aide) —
+  // un utilisateur qui rouvre l'aide plus tard ne doit pas retrouver une
+  // recherche ou des sections restées ouvertes d'une visite précédente.
+  if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; }
   view=v; render();
   // Fetcher les météos historiques manquantes pour les séances avec Strava
   if (v==="weekDetail") {
