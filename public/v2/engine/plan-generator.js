@@ -408,20 +408,30 @@ export const PLAFONDS_VOLUME = {
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
-// Volume hebdomadaire minimum par nombre de jours d'entraînement/semaine
-// (29/07/2026, cf. inventaire §16). Dérivé par simulation directe sur le
-// moteur réel (repartirVolumeSemaine + genererContenuQualite, niveau
-// intermédiaire 10K) en cherchant le premier volume ne déclenchant plus
-// le garde-fou VOLUME_JOURS_INCOMPATIBLE ni la contrainte "longue >=
-// qualité + marge" — puis arrondi légèrement au-dessus par cohérence avec
-// la marge de sécurité déjà appliquée ailleurs dans le fichier (ex.
-// VOLUME_MIN_PAR_JOURS n'est PAS le seuil exact simulé mais un palier
-// rond avec un peu de marge). Volontairement identique quel que soit le
-// niveau — la contrainte dominante (longue >= qualité) dépend peu du
-// niveau dans les cas testés. Remplace l'ancienne conception (10/15/20/
-// 30/40/50km, actée le 27/07/2026 mais jamais codée) qui ne tenait pas
-// compte du ratio longue réel ni de la contrainte longue>qualité.
-export const VOLUME_MIN_PAR_JOURS = { 2: 16, 3: 20, 4: 23, 5: 32, 6: 35, 7: 38 };
+// Volume hebdomadaire minimum par distance ET par nombre de jours
+// d'entraînement/semaine (29/07/2026, cf. inventaire §16). D'abord codé
+// comme une table unique valable "toutes distances" (calibrée uniquement
+// sur 10K), puis corrigé le même jour après vérification : Semi et
+// Marathon (rotation Construction plus volumineuse — tempo-court/
+// seuil-2min génèrent des séances qualité plus grosses que seuil-court/
+// i-30-30 en 10K) nécessitent un seuil sensiblement plus haut, surtout à
+// 5-7 jours (jusqu'à +7km d'écart pour Marathon à 7j). 5K est à l'inverse
+// plus permissif (qualité plus légère). Dérivé par simulation directe sur
+// le moteur réel (repartirVolumeSemaine + genererContenuQualite, niveau
+// intermédiaire, une distance à la fois) en cherchant le premier volume
+// ne déclenchant plus le garde-fou VOLUME_JOURS_INCOMPATIBLE ni la
+// contrainte "longue >= qualité + marge" — puis arrondi légèrement
+// au-dessus par cohérence avec la marge de sécurité déjà appliquée
+// ailleurs dans ce fichier (valeur pas un seuil exact, un palier rond
+// avec un peu de marge). Volontairement identique quel que soit le
+// niveau du coureur — la contrainte dominante (longue >= qualité) dépend
+// peu du niveau dans les cas testés.
+export const VOLUME_MIN_PAR_JOURS = {
+  '5K':       { 2: 12, 3: 16, 4: 19, 5: 28, 6: 31, 7: 34 },
+  '10K':      { 2: 16, 3: 20, 4: 23, 5: 32, 6: 35, 7: 38 },
+  'Semi':     { 2: 18, 3: 22, 4: 25, 5: 36, 6: 39, 7: 42 },
+  'Marathon': { 2: 18, 3: 22, 4: 25, 5: 40, 6: 43, 7: 46 },
+};
 
 export const DUREE_AFFUTAGE_JOURS = {
   '5K': 7,
@@ -1647,12 +1657,12 @@ export function generatePlan(profil, params) {
   // amont est plus rapide et donne un message ciblé sur le levier à
   // ajuster (volume ou jours) avant même de calculer phases/allures.
   const nbJoursProfil = profil.joursDisponiblesHabituels?.length ?? 0;
-  const volumeMinRequis = VOLUME_MIN_PAR_JOURS[nbJoursProfil];
+  const volumeMinRequis = VOLUME_MIN_PAR_JOURS[params.distance]?.[nbJoursProfil];
   if (volumeMinRequis !== undefined && params.volumeActuel < volumeMinRequis) {
     return {
       planInvalide: true,
       code: 'VOLUME_MIN_JOURS_NON_ATTEINT',
-      message: `Avec ${nbJoursProfil} jour(s) d'entraînement par semaine, un volume de départ d'au moins ${volumeMinRequis}km est nécessaire pour générer un plan cohérent (sortie longue et séances qualité/EF substantielles). Volume actuel : ${params.volumeActuel}km. Augmente le volume de départ ou réduis le nombre de jours disponibles.`,
+      message: `Avec ${nbJoursProfil} jour(s) d'entraînement par semaine pour un objectif ${params.distance}, un volume de départ d'au moins ${volumeMinRequis}km est nécessaire pour générer un plan cohérent (sortie longue et séances qualité/EF substantielles). Volume actuel : ${params.volumeActuel}km. Augmente le volume de départ ou réduis le nombre de jours disponibles.`,
     };
   }
 
