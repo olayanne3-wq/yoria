@@ -8655,9 +8655,18 @@ function renderSettings() {
     // de la disposition des records). Double requestAnimationFrame :
     // garantit que le navigateur a peint au moins une fois avant
     // d'exécuter le code, donc que toute géométrie de scroll est fiable.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    // CORRECTIF (31/07/2026, bug confirmé par inspection console fournie
+    // par Laurent : scrollTop restait à 0 malgré un appel explicite à
+    // definirValeur(), le chiffre affiché restait bloqué sur "00" alors
+    // que la vraie valeur était bien stockée dans les inputs cachés — un
+    // appel MANUEL à window.initRouletteHMS() en console, quelques
+    // secondes après le chargement, fonctionnait parfaitement, ce qui
+    // élimine tout problème de logique du code lui-même et pointe vers un
+    // délai insuffisant) — double requestAnimationFrame (~2 frames,
+    // ~32ms) insuffisant, remplacé par un délai fixe plus généreux.
+    setTimeout(() => {
       window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
-    }));
+    }, 100);
 
     return wrap;
   };
