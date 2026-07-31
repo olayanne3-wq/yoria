@@ -5844,21 +5844,6 @@ function renderWeekDetail(weekNum) {
 // groupe juste après l'avoir ouvert, surprenant pour l'utilisateur.
 const etatGroupesAccordeon = {};
 
-// Registre de l'état ouvert/fermé de chaque carte record, indexé par
-// distance (31/07/2026, demande de Laurent : "la section est trop
-// grande, on pourrait pas organiser ça mieux ?", puis bug corrigé le même
-// jour : "je n'ai pas le temps de changer la valeur que la carte se
-// ferme") — même principe que etatGroupesAccordeon juste au-dessus,
-// déclaré au niveau GLOBAL du fichier (pas à l'intérieur de
-// renderSettings()) pour persister entre les appels de render(). Une
-// première version le déclarait par erreur à l'intérieur de
-// renderSettings(), donc un nouvel objet vide était recréé à CHAQUE
-// render() (déclenché par le debounce d'auto-sauvegarde des records,
-// toutes les 400ms après un clic +/-) — la carte se refermait donc
-// systématiquement dès la première sauvegarde automatique, avant même que
-// l'utilisateur n'ait fini d'ajuster une valeur.
-const etatCartesRecords = {};
-
 function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
   const contenuValide = contenuElements.filter(Boolean);
   if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
@@ -8713,40 +8698,24 @@ function renderSettings() {
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏅 Records personnels"),
     (()=>{
-      // Grille 2x2 de cartes compactes (31/07/2026) — remplace la liste
-      // verticale des 4 roulettes toujours ouvertes (trop volumineux avec
-      // les boutons +/- ajoutés au-dessus/en-dessous de chaque colonne).
-      // Chaque carte affiche juste le résultat (temps + date) ; un clic
-      // dessus révèle la roulette d'édition à sa place — un accordéon
-      // imbriqué par distance, pas un vrai remplacement de carte (la
-      // roulette est construite UNE fois par distance, réutilisée à
-      // chaque toggle plutôt que reconstruite, pour ne pas perdre le
-      // focus/état de scroll si l'utilisateur rouvre la même carte).
+      // Grille 2x2 (31/07/2026, simplifiée sur demande de Laurent après un
+      // premier essai avec carte résumé cliquable : "on peut peut-être
+      // mettre que la roulette et la date saisissable et pas la valeur en
+      // fixe maintenant") — chaque distance affiche directement sa
+      // roulette + son champ date, sans étape de clic intermédiaire pour
+      // révéler l'édition.
       const grille = document.createElement("div");
       grille.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
 
       ["5K","10K","Semi","Marathon"].forEach((dist) => {
         const rec = profilCoureur.records?.[dist];
         const carteWrap = document.createElement("div");
-        carteWrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;";
+        carteWrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;";
 
-        const resume = document.createElement("button");
-        resume.type = "button";
-        resume.style.cssText = "all:unset;box-sizing:border-box;cursor:pointer;width:100%;padding:10px;text-align:center;display:block;";
         const labelDist = document.createElement("div");
-        labelDist.style.cssText = "font-size:13px;color:var(--text-muted);margin-bottom:4px;";
+        labelDist.style.cssText = "font-size:13px;color:var(--text-muted);margin-bottom:6px;text-align:center;";
         labelDist.textContent = dist;
-        const valeurTemps = document.createElement("div");
-        valeurTemps.style.cssText = "font-size:16px;font-weight:700;color:"+(rec?.temps?"var(--text)":"var(--text-muted)")+";";
-        valeurTemps.textContent = rec?.temps || "—";
-        const valeurDate = document.createElement("div");
-        valeurDate.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px;";
-        valeurDate.textContent = rec?.date ? new Date(rec.date+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}) : (rec?.temps ? "Date non renseignée" : "");
-        resume.appendChild(labelDist); resume.appendChild(valeurTemps); resume.appendChild(valeurDate);
-
-        const editionWrap = document.createElement("div");
-        const ouvert = etatCartesRecords[dist] ?? false;
-        editionWrap.style.cssText = "display:"+(ouvert?"block":"none")+";padding:0 10px 10px;border-top:1px solid var(--border);margin-top:0;padding-top:10px;";
+        carteWrap.appendChild(labelDist);
 
         const champsHMS = window.creerChampsTempsHMS("rec-temps-"+dist, rec?.temps);
         champsHMS.style.justifyContent = "center";
@@ -8754,44 +8723,32 @@ function renderSettings() {
         dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
         dateInp.value = rec?.date || "";
         dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;width:100%;box-sizing:border-box;margin-top:8px;";
-        // Ne sauvegarde plus immédiatement au changement (31/07/2026,
-        // cohérent avec l'abandon de l'auto-sauvegarde par debounce sur
-        // le temps) — la date attend elle aussi le clic explicite sur
-        // "✓ Valider", lu directement depuis dateInp.value au moment de
-        // sauvegarderUnRecord().
-        editionWrap.appendChild(champsHMS); editionWrap.appendChild(dateInp);
+        // Ne sauvegarde pas immédiatement au changement (31/07/2026,
+        // validation explicite uniquement) — la date attend elle aussi le
+        // clic sur "✓ Valider", lue directement depuis dateInp.value au
+        // moment de sauvegarderUnRecord().
+        carteWrap.appendChild(champsHMS); carteWrap.appendChild(dateInp);
 
-        resume.addEventListener("click", () => {
-          const nouvelEtat = !(etatCartesRecords[dist] ?? false);
-          etatCartesRecords[dist] = nouvelEtat;
-          editionWrap.style.display = nouvelEtat ? "block" : "none";
-        });
-
-        carteWrap.appendChild(resume); carteWrap.appendChild(editionWrap);
         grille.appendChild(carteWrap);
 
-        // Validation explicite (31/07/2026, remplace l'auto-sauvegarde par
-        // debounce — jugée trop capricieuse par Laurent : "la validation
-        // est toujours trop rapide") — plus aucun listener sur l'event
-        // 'input' des colonnes de la roulette, la sauvegarde ne se
-        // déclenche plus que sur un clic explicite du bouton "✓ Valider"
-        // (cf. creerChampsTempsHMS, juste au-dessus du bouton Effacer).
+        // Validation explicite (31/07/2026) — la sauvegarde ne se
+        // déclenche que sur un clic explicite du bouton "✓ Valider" (cf.
+        // creerChampsTempsHMS, juste au-dessus du bouton Effacer), jamais
+        // automatiquement pendant le défilement de la roulette.
         const btnValiderRecord = champsHMS.querySelector(".btn-valider-record");
         if (btnValiderRecord) {
           btnValiderRecord.addEventListener("click", avecRetourTactile(() => sauvegarderUnRecord(dist)));
         }
-        // Bouton "Effacer" — ne sauvegarde plus automatiquement lui non
-        // plus (cohérent avec l'abandon de l'auto-sauvegarde) : il marque
-        // juste l'état "effacé" visuellement (cf. creerChampsTempsHMS,
-        // wrap.dataset.recordEfface), la vraie suppression n'est
-        // persistée qu'au clic explicite sur "✓ Valider" ensuite. Son
-        // propre comportement de marquage reste câblé dans
+        // Bouton "Effacer" — marque juste l'état "effacé" visuellement
+        // (cf. creerChampsTempsHMS, wrap.dataset.recordEfface), la vraie
+        // suppression n'est persistée qu'au clic explicite sur "✓ Valider"
+        // ensuite. Son comportement de marquage reste câblé dans
         // creerChampsTempsHMS, rien à faire de plus ici.
       });
 
       const note = document.createElement("p");
       note.className = "muted"; note.style.cssText = "font-size:13px;margin-top:10px;margin-bottom:0;";
-      note.textContent = "Touche une distance, ajuste le temps, puis valide avec ✓.";
+      note.textContent = "Ajuste le temps, puis valide avec ✓.";
 
       const conteneurGlobal = document.createElement("div");
       conteneurGlobal.appendChild(grille);
