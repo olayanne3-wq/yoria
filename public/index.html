@@ -4634,17 +4634,19 @@ function renderGrilleJoursSemaine(week) {
           e.stopPropagation(); // ne pas aussi déclencher le clic sur l'en-tête de la carte
           selectedWeek = week.week;
           setView("weekDetail");
-          // Scroll direct vers la carte de cette séance précise (31/07/2026,
-          // demande de Laurent : le clic doit ouvrir la séance elle-même,
-          // pas juste faire défiler jusqu'en haut de la semaine). setView()
-          // appelle render() de façon synchrone (app.innerHTML="" puis
-          // reconstruction immédiate, cf. render()) — le DOM de
+          // Positionnement direct vers la carte de cette séance précise
+          // (31/07/2026, demande de Laurent : le clic doit ouvrir la
+          // séance elle-même, pas juste faire défiler jusqu'en haut de la
+          // semaine — puis behavior:"instant" plutôt que "smooth", sur
+          // demande explicite, pour un placement immédiat sans animation).
+          // setView() appelle render() de façon synchrone (app.innerHTML=""
+          // puis reconstruction immédiate, cf. render()) — le DOM de
           // renderWeekDetail est donc déjà inséré et interrogeable ici,
           // sans besoin de setTimeout/attente asynchrone.
           const uid = `${week.week}-${i}`;
           const carteCible = document.getElementById("carte-"+uid);
           if (carteCible) {
-            carteCible.scrollIntoView({ block:"center", behavior:"smooth" });
+            carteCible.scrollIntoView({ block:"center", behavior:"instant" });
             // Léger surlignage temporaire pour indiquer clairement quelle
             // carte a été ciblée par le clic (utile si plusieurs séances
             // se ressemblent visuellement, ex. deux EF la même semaine).
