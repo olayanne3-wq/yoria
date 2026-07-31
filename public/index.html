@@ -8623,7 +8623,21 @@ function renderSettings() {
     // public/v2/index.html, qui a le même besoin (garanti par l'ordre du
     // script principal côté wizard, mais ici cette fonction est appelée
     // au milieu de la construction d'un arbre DOM pas encore attaché).
-    setTimeout(() => window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax), 0);
+    // CORRECTIF (31/07/2026, bug confirmé par inspection console fournie
+    // par Laurent : scrollTop restait à 0 malgré un appel explicite à
+    // definirValeur(), le chiffre affiché restait bloqué sur "00" alors
+    // que la vraie valeur était bien stockée dans les inputs cachés) —
+    // setTimeout(0) ne garantit pas que le navigateur ait terminé un cycle
+    // complet de layout avant l'exécution (la géométrie de scroll de
+    // .roulette-colonne, notamment scrollHeight, pouvait ne pas être
+    // stabilisée à temps — probablement lié au viewport réduit avec
+    // overflow:hidden ajouté récemment, combiné à la grille CSS 2 colonnes
+    // de la disposition des records). Double requestAnimationFrame :
+    // garantit que le navigateur a peint au moins une fois avant
+    // d'exécuter le code, donc que toute géométrie de scroll est fiable.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
+    }));
 
     return wrap;
   };
