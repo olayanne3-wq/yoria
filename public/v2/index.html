@@ -737,6 +737,75 @@
 
   .screen{ display:none; }
   .screen.active{ display:block; }
+
+  /* ── Roulette de saisie de temps (31/07/2026, demande de Laurent : les
+     champs texte mm/ss sont pénibles sur mobile — remplacés par un sélecteur
+     à défilement type "wheel picker", plus naturel au doigt). CSS pur
+     (scroll-snap), sans dépendance externe. Chaque colonne est une liste
+     scrollable d'items ; l'item aligné avec la ligne centrale (fenêtre de
+     sélection) est la valeur retenue — détecté au scroll via IntersectionObserver
+     côté JS (cf. creerRouletteTemps()). ──────────────────────────────────── */
+  .roulette-temps{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    background:rgba(var(--text-rgb),0.04);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:0 10px;
+    margin-bottom:10px;
+    position:relative;
+    height:150px;
+  }
+  /* Fenêtre de sélection : bande horizontale fixe au centre, indique quel
+     item de chaque colonne est actuellement retenu. */
+  .roulette-fenetre{
+    position:absolute;
+    left:10px; right:10px;
+    top:50%; transform:translateY(-50%);
+    height:44px;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    background:rgba(var(--text-rgb),0.03);
+    border-radius:10px;
+    pointer-events:none;
+  }
+  .roulette-colonne{
+    flex:1;
+    max-width:70px;
+    height:100%;
+    overflow-y:scroll;
+    scroll-snap-type:y mandatory;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+    font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;
+  }
+  .roulette-colonne::-webkit-scrollbar{ display:none; }
+  .roulette-colonne .roulette-pad{
+    /* Espaceurs haut/bas : la moitié de la hauteur du picker moins la moitié
+       d'un item, pour que le premier et le dernier item puissent atteindre
+       le centre de la fenêtre de sélection. */
+    height:53px;
+    scroll-snap-align:none;
+  }
+  .roulette-item{
+    height:44px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; font-weight:600;
+    color:rgba(var(--text-rgb),0.3);
+    scroll-snap-align:center;
+    transition:color 0.15s, font-size 0.15s;
+  }
+  .roulette-item.actif{
+    color:var(--paper);
+    font-size:32px;
+  }
+  .roulette-sep{ font-size:28px; color:rgba(var(--text-rgb),0.35); align-self:center; }
+  .roulette-unit-label{
+    position:absolute; bottom:-20px; left:0; right:0;
+    text-align:center; font-size:11px; color:rgba(var(--text-rgb),0.45);
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -1272,14 +1341,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <span class="eyebrow">Chrono actuel</span>
       <h1><span id="refDistLabel">Ton dernier 10K</span>, ou une estimation</h1>
       <p class="sub" id="refHelpText">Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.</p>
-      <div class="time-input">
-        <input type="text" maxlength="2" value="" placeholder="0" id="tHour" style="display:none;">
-        <span class="sep" id="tHourSep" style="display:none;">:</span>
-        <input type="text" maxlength="2" value="" placeholder="mm" id="tMin">
-        <span class="sep">:</span>
-        <input type="text" maxlength="2" value="" placeholder="ss" id="tSec">
-        <span class="unit" id="tUnit">min:sec</span>
+      <div class="roulette-temps" id="rouletteRef">
+        <div class="roulette-fenetre"></div>
+        <div class="roulette-colonne" id="rouletteRefHour" style="display:none;"></div>
+        <span class="roulette-sep" id="rouletteRefHourSep" style="display:none;">:</span>
+        <div class="roulette-colonne" id="rouletteRefMin"></div>
+        <span class="roulette-sep">:</span>
+        <div class="roulette-colonne" id="rouletteRefSec"></div>
+        <span class="roulette-unit-label" id="tUnit">min:sec</span>
       </div>
+      <input type="hidden" id="tHour" value="">
+      <input type="hidden" id="tMin" value="">
+      <input type="hidden" id="tSec" value="">
+      <span class="sep" id="tHourSep" style="display:none;"></span>
       <div class="helper-row">
         <span>Allure équivalente</span>
         <b id="paceHelper">5:02 /km</b>
@@ -1290,14 +1364,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <div class="alt-panel" id="altPanel" style="display:none;">
         <div class="alt-label">Un chrono récent sur une autre distance</div>
         <div class="alt-chips" id="altChips"></div>
-        <div class="time-input alt-time-input">
-          <input type="text" maxlength="2" value="0" id="aHour" style="display:none;">
-          <span class="sep" id="aHourSep" style="display:none;">:</span>
-          <input type="text" maxlength="2" value="22" id="aMin">
-          <span class="sep">:</span>
-          <input type="text" maxlength="2" value="30" id="aSec">
-          <span class="unit" id="aUnit">min:sec</span>
+        <div class="roulette-temps" id="rouletteAlt">
+          <div class="roulette-fenetre"></div>
+          <div class="roulette-colonne" id="rouletteAltHour" style="display:none;"></div>
+          <span class="roulette-sep" id="rouletteAltHourSep" style="display:none;">:</span>
+          <div class="roulette-colonne" id="rouletteAltMin"></div>
+          <span class="roulette-sep">:</span>
+          <div class="roulette-colonne" id="rouletteAltSec"></div>
+          <span class="roulette-unit-label" id="aUnit">min:sec</span>
         </div>
+        <input type="hidden" id="aHour" value="0">
+        <input type="hidden" id="aMin" value="22">
+        <input type="hidden" id="aSec" value="30">
+        <span class="sep" id="aHourSep" style="display:none;"></span>
         <div class="helper-row">
           <span>Estimation équivalente</span>
           <b id="altEstimate">≈ 50:14</b>
@@ -1319,14 +1398,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <span class="eyebrow">Objectif</span>
       <h1>Quel chrono tu vises&nbsp;?</h1>
       <p class="sub">On vérifie la faisabilité selon le temps disponible avant course.</p>
-      <div class="time-input">
-        <input type="text" maxlength="2" value="48" id="oHour" style="display:none;">
-        <span class="sep" id="oHourSep" style="display:none;">:</span>
-        <input type="text" maxlength="2" value="48" id="oMin">
-        <span class="sep">:</span>
-        <input type="text" maxlength="2" value="30" id="oSec">
-        <span class="unit" id="oUnit">min:sec</span>
+      <div class="roulette-temps" id="rouletteObj">
+        <div class="roulette-fenetre"></div>
+        <div class="roulette-colonne" id="rouletteObjHour" style="display:none;"></div>
+        <span class="roulette-sep" id="rouletteObjHourSep" style="display:none;">:</span>
+        <div class="roulette-colonne" id="rouletteObjMin"></div>
+        <span class="roulette-sep">:</span>
+        <div class="roulette-colonne" id="rouletteObjSec"></div>
+        <span class="roulette-unit-label" id="oUnit">min:sec</span>
       </div>
+      <input type="hidden" id="oHour" value="48">
+      <input type="hidden" id="oMin" value="48">
+      <input type="hidden" id="oSec" value="30">
+      <span class="sep" id="oHourSep" style="display:none;"></span>
       <div class="helper-row">
         <span>Gain visé</span>
         <b id="gainHelper">−1'51" (−3,7%)</b>
@@ -1623,7 +1707,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
   const distanceMeta = {
     "5":   { label:"5K",       name:"Ton dernier 5K",   refDefault:null, objDefault:null,  unit:"min:sec" },
-    "10":  { label:"10K",      name:"Ton dernier 10K",  refDefault:null, objDefault:null, unit:"min:sec" },
+    // 10K passé en h:min:sec le 31/07/2026 (demande de Laurent) : un
+    // débutant lent peut dépasser 59 minutes sur un 10K, ce que l'ancien
+    // format min:sec (2 champs seulement, jamais d'heures) ne permettait
+    // simplement pas de saisir. Même format que Semi/Marathon désormais —
+    // basculerColonneHeuresRoulette()/applyDistanceMeta() gèrent déjà
+    // l'affichage conditionnel de la colonne heures selon ce champ, aucun
+    // autre changement nécessaire.
+    "10":  { label:"10K",      name:"Ton dernier 10K",  refDefault:null, objDefault:null, unit:"h:min:sec" },
     "21.1":{ label:"Semi",     name:"Ton dernier semi", refDefault:null,  objDefault:null,  unit:"h:min:sec" },
     "42.2":{ label:"Marathon", name:"Ton dernier marathon", refDefault:null, objDefault:null, unit:"h:min:sec" }
   };
@@ -1840,6 +1931,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.getElementById('aHour').style.display = longFormat ? 'inline-block' : 'none';
     document.getElementById('aHourSep').style.display = longFormat ? 'inline-block' : 'none';
     document.getElementById('aUnit').textContent = distanceMeta[altDist].unit;
+    basculerColonneHeuresRoulette('rouletteAlt', longFormat);
   }
 
   function readAltSeconds(){
@@ -1875,11 +1967,172 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.getElementById('tHour').value = h;
     document.getElementById('tMin').value = String(m).padStart(2,'0');
     document.getElementById('tSec').value = String(s).padStart(2,'0');
+    synchroniserRouletteDepuisInputs('t', false);
     document.getElementById('altPanel').style.display = 'none';
     updateBibTimesAndAllure();
     updatePaceHelper();
     updateGainHelper();
   }
+
+  // ── Roulette de saisie de temps (31/07/2026) ────────────────────────────
+  // Remplace les champs texte mm/ss par un sélecteur à défilement (wheel
+  // picker), plus naturel au doigt sur mobile. N'introduit AUCUNE nouvelle
+  // logique de calcul/validation — chaque colonne écrit dans l'input caché
+  // correspondant (tHour/tMin/tSec, etc., toujours présents dans le DOM en
+  // <input type="hidden">) et déclenche un vrai événement 'input' dessus,
+  // pour que tout le code déjà câblé sur ces IDs (readTimeFields,
+  // updateBibTimesAndAllure, updateFeasibilityText, updatePaceHelper,
+  // updateGainHelper, computeAltEstimate, la validation de nextStep()...)
+  // continue de fonctionner à l'identique, sans aucune modification.
+  //
+  // Détection de l'item centré : IntersectionObserver sur chaque item de la
+  // colonne, avec la fenêtre de sélection (bande centrale de 44px) comme
+  // racine d'intersection — l'item dont le ratio d'intersection dépasse 0.5
+  // au repos (scroll stabilisé) est retenu. Plus fiable que de calculer un
+  // index depuis scrollTop (évite les soucis d'arrondi/zoom navigateur).
+  function creerColonneRoulette(conteneurId, valeurs, valeurInitiale, onSelect){
+    const conteneur = document.getElementById(conteneurId);
+    if (!conteneur) return null;
+    conteneur.innerHTML = '';
+    const padHaut = document.createElement('div');
+    padHaut.className = 'roulette-pad';
+    conteneur.appendChild(padHaut);
+    const items = valeurs.map(v => {
+      const item = document.createElement('div');
+      item.className = 'roulette-item';
+      item.textContent = String(v).padStart(2,'0');
+      item.dataset.valeur = v;
+      conteneur.appendChild(item);
+      return item;
+    });
+    const padBas = document.createElement('div');
+    padBas.className = 'roulette-pad';
+    conteneur.appendChild(padBas);
+
+    let valeurActuelle = valeurInitiale;
+    let timerScrollFin = null;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entree => {
+        if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
+          items.forEach(it => it.classList.remove('actif'));
+          entree.target.classList.add('actif');
+        }
+      });
+    }, { root: conteneur, threshold: [0, 0.5, 1] });
+    items.forEach(it => observer.observe(it));
+
+    // Défilement stabilisé (debounce 120ms) : évite de déclencher onSelect
+    // à chaque pixel de scroll, seulement une fois l'utilisateur arrêté sur
+    // une valeur — cohérent avec le principe "input" existant (une vraie
+    // valeur choisie, pas un état intermédiaire de défilement).
+    conteneur.addEventListener('scroll', () => {
+      clearTimeout(timerScrollFin);
+      timerScrollFin = setTimeout(() => {
+        const itemActif = conteneur.querySelector('.roulette-item.actif');
+        if (!itemActif) return;
+        const nouvelleValeur = parseInt(itemActif.dataset.valeur, 10);
+        if (nouvelleValeur !== valeurActuelle) {
+          valeurActuelle = nouvelleValeur;
+          onSelect(nouvelleValeur);
+        }
+      }, 120);
+    }, { passive: true });
+
+    const HAUTEUR_ITEM = 44;   // cf. .roulette-item{height:44px} — garder synchronisé avec le CSS
+    const HAUTEUR_PAD = 53;    // cf. .roulette-pad{height:53px} — garder synchronisé avec le CSS
+    const HAUTEUR_PICKER = 150; // cf. .roulette-temps{height:150px} — garder synchronisé avec le CSS
+    const api = {
+      definirValeur(v, animer){
+        const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
+        if (index === -1) return;
+        valeurActuelle = v;
+        // Calcul direct de scrollTop plutôt que scrollIntoView() (31/07/2026,
+        // bug trouvé en relecture avant la première mise en prod) :
+        // scrollIntoView() sur un élément contenu dans un conteneur
+        // display:none (cf. .screen{display:none} — le cas de TOUTES les
+        // roulettes au tout premier chargement, seule l'étape 1 du wizard
+        // est active au départ) a un comportement peu fiable/silencieux
+        // selon les navigateurs, aucune géométrie de scroll n'existe tant
+        // que l'élément n'est pas effectivement rendu. HAUTEUR_PICKER est
+        // une constante CSS fixe plutôt que conteneur.clientHeight — ce
+        // dernier vaut 0 sur un conteneur display:none, ce qui aurait
+        // recréé exactement le même problème que scrollIntoView().
+        // + HAUTEUR_PAD : le padding haut (.roulette-pad) précède le premier
+        // item dans le DOM — sans l'ajouter, le calcul serait décalé d'un
+        // peu plus d'un item par rapport au vrai centrage recherché.
+        const cible = HAUTEUR_PAD + index * HAUTEUR_ITEM - (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
+        if (animer === false) {
+          conteneur.scrollTop = cible;
+        } else {
+          conteneur.scrollTo({ top: cible, behavior: 'smooth' });
+        }
+        items.forEach(it => it.classList.remove('actif'));
+        items[index].classList.add('actif');
+      },
+      valeur(){ return valeurActuelle; },
+    };
+    // Positionnement initial (31/07/2026) : sans cet appel, la colonne
+    // restait visuellement scrollée sur son tout premier item (00) au
+    // chargement, quelle que soit valeurInitiale.
+    api.definirValeur(valeurInitiale, false);
+    return api;
+  }
+
+  // Instancie un groupe complet (h/m/s) — prefixe correspond aux inputs
+  // cachés existants ('t', 'o', 'a'), idRoulette au préfixe des conteneurs
+  // DOM ('rouletteRef', 'rouletteObj', 'rouletteAlt'). heuresMax borne la
+  // colonne heures (3 pour un objectif/référence, jamais besoin de plus).
+  const roulettesActives = {}; // { prefix: { h, m, s } } — pour re-régler la plage heures/minutes selon la distance
+  function initRouletteTemps(prefix, idRoulette, heuresMax){
+    const inputH = document.getElementById(prefix + 'Hour');
+    const inputM = document.getElementById(prefix + 'Min');
+    const inputS = document.getElementById(prefix + 'Sec');
+
+    const declencherInput = (input, valeur) => {
+      input.value = String(valeur).padStart(2,'0');
+      input.dispatchEvent(new Event('input', { bubbles:true }));
+    };
+
+    const colH = creerColonneRoulette(idRoulette + 'Hour', Array.from({length:heuresMax+1},(_,i)=>i), parseInt(inputH.value||'0',10), v => declencherInput(inputH, v));
+    const colM = creerColonneRoulette(idRoulette + 'Min', Array.from({length:60},(_,i)=>i), parseInt(inputM.value||'0',10), v => declencherInput(inputM, v));
+    const colS = creerColonneRoulette(idRoulette + 'Sec', Array.from({length:60},(_,i)=>i), parseInt(inputS.value||'0',10), v => declencherInput(inputS, v));
+
+    roulettesActives[prefix] = { h: colH, m: colM, s: colS };
+    return roulettesActives[prefix];
+  }
+
+  // Synchronise les 3 colonnes d'un groupe sur les valeurs actuelles des
+  // inputs cachés (utilisé quand une valeur est écrite par ailleurs, ex.
+  // preremplirDepuisProfilCoureur()/applyDistanceMeta()/applyAltEstimate() —
+  // sans ça, la roulette resterait visuellement désynchronisée de l'input
+  // qu'elle est censée représenter).
+  function synchroniserRouletteDepuisInputs(prefix, animer){
+    const roulette = roulettesActives[prefix];
+    if (!roulette) return;
+    const inputH = document.getElementById(prefix + 'Hour');
+    const inputM = document.getElementById(prefix + 'Min');
+    const inputS = document.getElementById(prefix + 'Sec');
+    if (roulette.h) roulette.h.definirValeur(parseInt(inputH.value||'0',10), animer);
+    if (roulette.m) roulette.m.definirValeur(parseInt(inputM.value||'0',10), animer);
+    if (roulette.s) roulette.s.definirValeur(parseInt(inputS.value||'0',10), animer);
+  }
+
+  // Affiche/masque la colonne heures d'une roulette (miroir de ce que
+  // applyDistanceMeta()/syncAltTimeFormat() font déjà sur les anciens
+  // inputs texte — même bascule, appliquée en plus aux conteneurs roulette).
+  function basculerColonneHeuresRoulette(idRoulette, afficher){
+    const colH = document.getElementById(idRoulette + 'Hour');
+    const sepH = document.getElementById(idRoulette + 'HourSep');
+    if (colH) colH.style.display = afficher ? 'block' : 'none';
+    if (sepH) sepH.style.display = afficher ? 'inline-block' : 'none';
+  }
+
+  // Initialisation au chargement — heuresMax=3 large marge (jamais réaliste
+  // au-delà pour Semi/Marathon en course à pied amateur).
+  initRouletteTemps('t', 'rouletteRef', 3);
+  initRouletteTemps('o', 'rouletteObj', 3);
+  initRouletteTemps('a', 'rouletteAlt', 3);
 
   ['tHour','tMin','tSec','oHour','oMin','oSec'].forEach(id=>{
     document.getElementById(id).addEventListener('input', updateBibTimesAndAllure);
@@ -1891,6 +2144,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   ['aHour','aMin','aSec'].forEach(id=>{
     document.getElementById(id).addEventListener('input', computeAltEstimate);
   });
+
 
   // ===========================================================================
   // Refonte de l'étape volume (22/07/2026, demande de Laurent : saisie trop
@@ -3739,6 +3993,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     });
     document.getElementById('tUnit').textContent = meta.unit;
     document.getElementById('oUnit').textContent = meta.unit;
+    basculerColonneHeuresRoulette('rouletteRef', longFormat);
+    basculerColonneHeuresRoulette('rouletteObj', longFormat);
 
     // 22/07/2026 : refDefault/objDefault sont désormais null (plus de
     // fausses valeurs plausibles type "50:21") — le champ est vidé, sauf
@@ -3752,6 +4008,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     document.getElementById('oHour').value = meta.objDefault?.h ?? '';
     document.getElementById('oMin').value = meta.objDefault ? String(meta.objDefault.m).padStart(2,'0') : '';
     document.getElementById('oSec').value = meta.objDefault ? String(meta.objDefault.s).padStart(2,'0') : '';
+
+    // Synchronise les roulettes sur ces valeurs (31/07/2026) — repli sur 0
+    // si la valeur vient d'être vidée (chaîne vide ci-dessus), sans quoi
+    // parseInt('') === NaN ferait planter la sélection visuelle de l'item.
+    // animer=false : pas d'animation de défilement au changement de
+    // distance, la roulette doit sauter directement à la bonne valeur.
+    synchroniserRouletteDepuisInputs('t', false);
+    synchroniserRouletteDepuisInputs('o', false);
 
     document.getElementById('bibDist').textContent = meta.label;
     updateBibTimesAndAllure();
@@ -4275,6 +4539,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if (h > 0) { document.getElementById('tHour').value = h; }
     document.getElementById('tMin').value = m;
     document.getElementById('tSec').value = s;
+    synchroniserRouletteDepuisInputs('t', false);
     if (typeof updatePaceHelper === 'function') updatePaceHelper();
   }
   preremplirDepuisProfilCoureur();
