@@ -414,10 +414,14 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
 
     // Records personnels (v2.14, 18/07/2026) — même format de stockage que
     // Réglages (profilCoureur.records[dist].temps, compatible parseTimeToSeconds
-    // du moteur), saisie h/min/sec séparée — logique dupliquée ici (pas
-    // d'accès à window.creerChampsTempsHMS d'index.html, chargé après ce
-    // module) plutôt que factorisée, pour ne pas introduire une dépendance
-    // d'ordre de chargement entre les deux fichiers.
+    // du moteur). Saisie par roulette depuis le 31/07/2026 (demande de
+    // Laurent, même composant que public/v2/index.html et Réglages —
+    // cf. creerColonneRouletteOnboarding ci-dessous) : PORTÉ SÉPARÉMENT
+    // ici, pas importé depuis index.html — contrainte déjà actée avant ce
+    // chantier (commentaire d'origine : "pas d'accès à
+    // window.creerChampsTempsHMS d'index.html, chargé après ce module"),
+    // toujours valable pour la roulette elle-même (auth.js ne doit jamais
+    // dépendre de l'ordre de chargement d'index.html).
     const DISTANCES_RECORD = ["5K", "10K", "Semi", "Marathon"];
     function parserTempsRecordEnHMSOnboarding(str) {
       if (!str) return { h: null, m: null, s: null };
@@ -431,6 +435,90 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       if (!h && !m && !s) return null;
       const mm = String(mNum).padStart(2, '0'), ss = String(sNum).padStart(2, '0');
       return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
+    }
+
+    // ── Composant roulette (wheel picker), porté ici indépendamment —
+    // mêmes principes que public/v2/index.html et Réglages (index.html) :
+    // calcul direct de scrollTop (jamais scrollIntoView, peu fiable sur un
+    // conteneur display:none — l'écran onboarding lui-même est affiché en
+    // position:fixed dès sa construction ici, mais le principe reste geré
+    // par sécurité, le composant étant recopié tel quel pour cohérence
+    // entre les 3 portages). Hauteurs identiques à la version Réglages
+    // (picker 120px/item 36px/pad 42px) — cohérence visuelle entre les
+    // deux écrans qui partagent le même thème (var(--bg)/var(--text)...).
+    function creerColonneRouletteOnboarding(conteneurId, valeurs, valeurInitiale, onSelect){
+      const conteneur = hote.querySelector('#' + conteneurId);
+      if (!conteneur) return null;
+      conteneur.innerHTML = '';
+      const padHaut = document.createElement('div'); padHaut.className = 'roulette-pad';
+      conteneur.appendChild(padHaut);
+      const items = valeurs.map(v => {
+        const item = document.createElement('div');
+        item.className = 'roulette-item';
+        item.textContent = String(v).padStart(2,'0');
+        item.dataset.valeur = v;
+        conteneur.appendChild(item);
+        return item;
+      });
+      const padBas = document.createElement('div'); padBas.className = 'roulette-pad';
+      conteneur.appendChild(padBas);
+
+      let valeurActuelle = valeurInitiale;
+      let timerScrollFin = null;
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entree => {
+          if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
+            items.forEach(it => it.classList.remove('actif'));
+            entree.target.classList.add('actif');
+          }
+        });
+      }, { root: conteneur, threshold: [0, 0.5, 1] });
+      items.forEach(it => observer.observe(it));
+
+      conteneur.addEventListener('scroll', () => {
+        clearTimeout(timerScrollFin);
+        timerScrollFin = setTimeout(() => {
+          const itemActif = conteneur.querySelector('.roulette-item.actif');
+          if (!itemActif) return;
+          const nouvelleValeur = parseInt(itemActif.dataset.valeur, 10);
+          if (nouvelleValeur !== valeurActuelle) {
+            valeurActuelle = nouvelleValeur;
+            onSelect(nouvelleValeur);
+          }
+        }, 120);
+      }, { passive: true });
+
+      const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-* de cet écran
+      const api = {
+        definirValeur(v, animer){
+          const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
+          if (index === -1) return;
+          valeurActuelle = v;
+          const cible = HAUTEUR_PAD + index * HAUTEUR_ITEM - (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
+          if (animer === false) conteneur.scrollTop = cible;
+          else conteneur.scrollTo({ top: cible, behavior: 'smooth' });
+          items.forEach(it => it.classList.remove('actif'));
+          items[index].classList.add('actif');
+        },
+        valeur(){ return valeurActuelle; },
+      };
+      api.definirValeur(valeurInitiale, false);
+      return api;
+    }
+
+    // Instancie les 3 colonnes h/min/sec pour une distance donnée et les
+    // synchronise vers les inputs cachés onb-rec-{dist}-h/-m/-s — mêmes
+    // ids que la version précédente (input type=number), donc terminer()
+    // plus bas n'a besoin d'AUCUNE modification pour lire ces valeurs.
+    function initRouletteHMSOnboarding(dist, hInit, mInit, sInit){
+      const inputH = hote.querySelector(`#onb-rec-${dist}-h`);
+      const inputM = hote.querySelector(`#onb-rec-${dist}-m`);
+      const inputS = hote.querySelector(`#onb-rec-${dist}-s`);
+      if (!inputH || !inputM || !inputS) return;
+      const declencherInput = (input, valeur) => { input.value = String(valeur); };
+      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteH`, Array.from({length:24},(_,i)=>i), hInit ?? 0, v => declencherInput(inputH, v));
+      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteM`, Array.from({length:60},(_,i)=>i), mInit ?? 0, v => declencherInput(inputM, v));
+      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteS`, Array.from({length:60},(_,i)=>i), sInit ?? 0, v => declencherInput(inputS, v));
     }
 
     hote.innerHTML = `
@@ -472,15 +560,10 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         padding: 12px 14px; margin-bottom: 16px;
       }
       #ecran-onboarding .record-row {
-        display: flex; align-items: center; gap: 6px; padding: 7px 0; flex-wrap: wrap;
+        display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: nowrap;
       }
       #ecran-onboarding .record-row + .record-row { border-top: 1px solid var(--border); }
       #ecran-onboarding .record-row .dist-label { width: 56px; flex-shrink: 0; font-size: 0.85rem; color: var(--text-muted); }
-      #ecran-onboarding .record-row input[type=number] {
-        width: 42px; padding: 5px 4px; margin-bottom: 0; text-align: center;
-        font-variant-numeric: tabular-nums; flex-shrink: 0;
-      }
-      #ecran-onboarding .record-row .unite { font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0; }
       #ecran-onboarding .records-note { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0; }
       #ecran-onboarding .btn-principal {
         width: 100%; padding: 12px; border-radius: 8px; border: none;
@@ -493,6 +576,34 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         cursor: pointer; background: none; border: none; width: 100%;
       }
       #ecran-onboarding .lien-secondaire:hover { color: var(--accent); }
+      /* ── Roulette de saisie de temps (31/07/2026) — mêmes dimensions que
+         Réglages (index.html), portée séparément ici (cf. commentaire sur
+         creerColonneRouletteOnboarding plus haut). ──────────────────────── */
+      #ecran-onboarding .roulette-temps{
+        display:flex; align-items:center; justify-content:center; gap:2px;
+        background:var(--border-soft, rgba(0,0,0,0.04)); border:1px solid var(--border);
+        border-radius:12px; padding:0 6px; position:relative; height:120px;
+        flex-shrink:0; width:130px;
+      }
+      #ecran-onboarding .roulette-fenetre{
+        position:absolute; left:6px; right:6px; top:50%; transform:translateY(-50%);
+        height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+        background:var(--bg); border-radius:8px; pointer-events:none;
+      }
+      #ecran-onboarding .roulette-colonne{
+        flex:1; max-width:40px; height:100%; overflow-y:scroll;
+        scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
+        font-variant-numeric:tabular-nums;
+      }
+      #ecran-onboarding .roulette-colonne::-webkit-scrollbar{ display:none; }
+      #ecran-onboarding .roulette-colonne .roulette-pad{ height:42px; scroll-snap-align:none; }
+      #ecran-onboarding .roulette-item{
+        height:36px; display:flex; align-items:center; justify-content:center;
+        font-size:18px; font-weight:600; color:var(--text-muted);
+        scroll-snap-align:center; transition:color 0.15s, font-size 0.15s;
+      }
+      #ecran-onboarding .roulette-item.actif{ color:var(--text); font-size:22px; }
+      #ecran-onboarding .roulette-sep{ font-size:18px; color:var(--text-muted); align-self:center; }
       </style>
       <div id="ecran-onboarding">
         <div class="carte">
@@ -521,9 +632,14 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     const recordsHost = hote.querySelector('#onb-records');
     const validerBtn = hote.querySelector('#onb-valider');
 
-    // Rendu des 4 lignes de record (5K/10K/Semi/Marathon), 3 champs h/min/sec
-    // chacune — champ optionnel, ne touche jamais à validerBtn.disabled
-    // (même principe que sexe : seul niveauChoisi contrôle la validation).
+    // Rendu des 4 lignes de record (5K/10K/Semi/Marathon) — roulette h/m/s
+    // (31/07/2026) au lieu de 3 <input type="number"> — champ optionnel, ne
+    // touche jamais à validerBtn.disabled (même principe que sexe : seul
+    // niveauChoisi contrôle la validation). Construction de la roulette
+    // différée (setTimeout 0) : le DOM de chaque ligne doit être attaché
+    // (recordsHost.appendChild ci-dessous) avant que
+    // initRouletteHMSOnboarding() puisse positionner le scroll initial —
+    // même contrainte que la version Réglages (index.html).
     DISTANCES_RECORD.forEach((dist) => {
       const recExistant = (profilExistant.records && profilExistant.records[dist]) || null;
       const hms = parserTempsRecordEnHMSOnboarding(recExistant ? recExistant.temps : null);
@@ -531,13 +647,19 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       row.className = 'record-row';
       row.innerHTML =
         `<span class="dist-label">${dist}</span>` +
-        `<input type="number" id="onb-rec-${dist}-h" min="0" max="23" placeholder="0" value="${hms.h ?? ''}">` +
-        `<span class="unite">h</span>` +
-        `<input type="number" id="onb-rec-${dist}-m" min="0" max="59" placeholder="00" value="${hms.m ?? ''}">` +
-        `<span class="unite">min</span>` +
-        `<input type="number" id="onb-rec-${dist}-s" min="0" max="59" placeholder="00" value="${hms.s ?? ''}">` +
-        `<span class="unite">s</span>`;
+        `<div class="roulette-temps">` +
+          `<div class="roulette-fenetre"></div>` +
+          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteH"></div>` +
+          `<span class="roulette-sep">:</span>` +
+          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteM"></div>` +
+          `<span class="roulette-sep">:</span>` +
+          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteS"></div>` +
+        `</div>` +
+        `<input type="hidden" id="onb-rec-${dist}-h" value="${hms.h ?? ''}">` +
+        `<input type="hidden" id="onb-rec-${dist}-m" value="${hms.m ?? ''}">` +
+        `<input type="hidden" id="onb-rec-${dist}-s" value="${hms.s ?? ''}">`;
       recordsHost.appendChild(row);
+      setTimeout(() => initRouletteHMSOnboarding(dist, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0), 0);
     });
     const recordsNote = document.createElement('p');
     recordsNote.className = 'records-note';
