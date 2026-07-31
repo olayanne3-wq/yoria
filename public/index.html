@@ -120,8 +120,20 @@ input[type=text], input[type=number], input[type=password] {
   height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
   background:var(--surface); border-radius:8px; pointer-events:none;
 }
+/* CORRECTIF (31/07/2026, bug confirmé par inspection DOM fournie par
+   Laurent) — .roulette-colonne est un enfant d'un conteneur en
+   flex-direction:column (le "mini" bouton+colonne+bouton, cf.
+   creerColonneAvecBoutons) : dans ce contexte, flex:1 s'applique à la
+   HAUTEUR (l'axe principal en mode column), pas à la largeur comme
+   c'était le cas avant l'ajout des boutons +/- (où .roulette-colonne
+   était un enfant direct de .roulette-temps, en flex-direction:row).
+   Ce flex:1 entrait donc en conflit avec height:120px fixée juste après
+   sur la même règle, et la largeur réelle de la colonne dépendait
+   uniquement de son contenu texte (2 caractères, "00"/"01"...) au lieu
+   de la contrainte max-width voulue — d'où le rendu écrasé observé.
+   Remplacé par une largeur fixe explicite. */
 .roulette-colonne{
-  flex:1; max-width:38px; height:120px; overflow-y:scroll;
+  width:32px; height:120px; overflow-y:scroll;
   scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
   font-variant-numeric:tabular-nums;
 }
@@ -142,7 +154,7 @@ input[type=text], input[type=number], input[type=password] {
   opacity:0;
 }
 .roulette-item.actif{ color:var(--text); opacity:1; }
-.roulette-sep{ font-size:22px; color:var(--text-muted); align-self:center; }
+.roulette-sep{ font-size:18px; color:var(--text-muted); align-self:center; }
 </style>
 <script>
 (function() {
