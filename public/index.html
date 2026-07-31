@@ -7997,6 +7997,13 @@ function renderSettings() {
 
     let valeurActuelle = valeurInitiale;
     let timerScrollFin = null;
+    const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-*
+    // CORRECTIF (31/07/2026) — même bug/cause que public/v2/index.html (cf.
+    // son en-tête pour le détail complet) : rootMargin restreint la zone
+    // d'intersection à la fenêtre de sélection (36px centrés) au lieu de
+    // tout le conteneur (120px), sinon l'item marqué actif n'était pas
+    // celui réellement centré dans la fenêtre grise.
+    const margeVerticale = (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entree => {
         if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
@@ -8004,7 +8011,7 @@ function renderSettings() {
           entree.target.classList.add('actif');
         }
       });
-    }, { root: conteneur, threshold: [0, 0.5, 1] });
+    }, { root: conteneur, rootMargin: `-${margeVerticale}px 0px -${margeVerticale}px 0px`, threshold: [0, 0.5, 1] });
     items.forEach(it => observer.observe(it));
 
     conteneur.addEventListener('scroll', () => {
@@ -8020,7 +8027,6 @@ function renderSettings() {
       }, 120);
     }, { passive: true });
 
-    const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-*
     const api = {
       definirValeur(v, animer){
         const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
