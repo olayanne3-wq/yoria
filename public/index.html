@@ -86,6 +86,36 @@ input[type=text], input[type=number], input[type=password] {
 }
 #app > div { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Roulette de saisie de temps (31/07/2026, cf. public/v2/index.html —
+   même composant, porté ici pour les records personnels de Réglages).
+   CSS pur (scroll-snap), adapté aux variables --text-rgb/--accent-rgb/
+   --surface de ce fichier (le wizard utilise --paper/--line, propres à
+   son propre thème). ────────────────────────────────────────────────── */
+.roulette-temps{
+  display:flex; align-items:center; justify-content:center; gap:2px;
+  background:var(--border-soft); border:1px solid var(--border);
+  border-radius:12px; padding:0 8px; position:relative; height:120px;
+}
+.roulette-fenetre{
+  position:absolute; left:8px; right:8px; top:50%; transform:translateY(-50%);
+  height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+  background:var(--surface); border-radius:8px; pointer-events:none;
+}
+.roulette-colonne{
+  flex:1; max-width:56px; height:100%; overflow-y:scroll;
+  scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
+  font-variant-numeric:tabular-nums;
+}
+.roulette-colonne::-webkit-scrollbar{ display:none; }
+.roulette-colonne .roulette-pad{ height:42px; scroll-snap-align:none; }
+.roulette-item{
+  height:36px; display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:600; color:var(--text-muted);
+  scroll-snap-align:center; transition:color 0.15s, font-size 0.15s;
+}
+.roulette-item.actif{ color:var(--text); font-size:24px; }
+.roulette-sep{ font-size:22px; color:var(--text-muted); align-self:center; }
 </style>
 <script>
 (function() {
@@ -7939,6 +7969,96 @@ function renderSettings() {
   // v2/engine/auth.js) — factorisée ici plutôt que dupliquée, cf. principe
   // "un seul fichier modifié couvre tous les modes" (inventaire, section
   // Key learnings).
+  // ── Composant roulette (wheel picker) — 31/07/2026 ─────────────────────
+  // Même principe que public/v2/index.html (cf. son en-tête pour le détail
+  // complet) : une colonne scrollable par unité, item centré dans la
+  // fenêtre de sélection = valeur retenue, calcul direct de scrollTop
+  // (jamais scrollIntoView, peu fiable sur un conteneur pas encore
+  // affiché — cf. Réglages caché derrière d'autres onglets au chargement).
+  // Porté ici séparément du wizard (fichier distinct, pas de dépendance
+  // inter-fichiers) — hauteurs différentes (picker 120px/item 36px/pad
+  // 42px ici, vs 150/44/53 côté wizard), cf. CSS .roulette-* de ce fichier.
+  function creerColonneRouletteRecglages(conteneurId, valeurs, valeurInitiale, onSelect){
+    const conteneur = document.getElementById(conteneurId);
+    if (!conteneur) return null;
+    conteneur.innerHTML = '';
+    const padHaut = document.createElement('div'); padHaut.className = 'roulette-pad';
+    conteneur.appendChild(padHaut);
+    const items = valeurs.map(v => {
+      const item = document.createElement('div');
+      item.className = 'roulette-item';
+      item.textContent = String(v).padStart(2,'0');
+      item.dataset.valeur = v;
+      conteneur.appendChild(item);
+      return item;
+    });
+    const padBas = document.createElement('div'); padBas.className = 'roulette-pad';
+    conteneur.appendChild(padBas);
+
+    let valeurActuelle = valeurInitiale;
+    let timerScrollFin = null;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entree => {
+        if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
+          items.forEach(it => it.classList.remove('actif'));
+          entree.target.classList.add('actif');
+        }
+      });
+    }, { root: conteneur, threshold: [0, 0.5, 1] });
+    items.forEach(it => observer.observe(it));
+
+    conteneur.addEventListener('scroll', () => {
+      clearTimeout(timerScrollFin);
+      timerScrollFin = setTimeout(() => {
+        const itemActif = conteneur.querySelector('.roulette-item.actif');
+        if (!itemActif) return;
+        const nouvelleValeur = parseInt(itemActif.dataset.valeur, 10);
+        if (nouvelleValeur !== valeurActuelle) {
+          valeurActuelle = nouvelleValeur;
+          onSelect(nouvelleValeur);
+        }
+      }, 120);
+    }, { passive: true });
+
+    const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-*
+    const api = {
+      definirValeur(v, animer){
+        const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
+        if (index === -1) return;
+        valeurActuelle = v;
+        const cible = HAUTEUR_PAD + index * HAUTEUR_ITEM - (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
+        if (animer === false) conteneur.scrollTop = cible;
+        else conteneur.scrollTo({ top: cible, behavior: 'smooth' });
+        items.forEach(it => it.classList.remove('actif'));
+        items[index].classList.add('actif');
+      },
+      valeur(){ return valeurActuelle; },
+    };
+    api.definirValeur(valeurInitiale, false);
+    return api;
+  }
+
+  // Instancie les 3 colonnes h/min/sec pour un préfixe donné et les
+  // synchronise vers les inputs cachés idPrefix+"-h/-m/-s" (dispatch d'un
+  // vrai événement 'input' à chaque changement, cohérent avec le pattern
+  // du wizard — mais ici rien n'écoute cet event pour l'instant, les
+  // valeurs sont lues directement au clic sur "Enregistrer").
+  window.initRouletteHMS = function(idPrefix, hInit, mInit, sInit){
+    const inputH = document.getElementById(idPrefix + '-h');
+    const inputM = document.getElementById(idPrefix + '-m');
+    const inputS = document.getElementById(idPrefix + '-s');
+    if (!inputH || !inputM || !inputS) return; // DOM pas encore attaché, cf. setTimeout appelant
+
+    const declencherInput = (input, valeur) => {
+      input.value = String(valeur);
+      input.dispatchEvent(new Event('input', { bubbles:true }));
+    };
+
+    creerColonneRouletteRecglages(idPrefix + '-rouletteH', Array.from({length:24},(_,i)=>i), hInit, v => declencherInput(inputH, v));
+    creerColonneRouletteRecglages(idPrefix + '-rouletteM', Array.from({length:60},(_,i)=>i), mInit, v => declencherInput(inputM, v));
+    creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
+  };
+
   window.parserTempsRecordEnHMS = function(str) {
     // "50:21" -> {h:0,m:50,s:21} ; "3:45:00" -> {h:3,m:45,s:0}
     if (!str) return { h: null, m: null, s: null };
@@ -7960,34 +8080,63 @@ function renderSettings() {
     return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
   };
 
-  // Construit les 3 champs h/min/sec pour une distance donnée. idPrefix sert
-  // à générer des ids uniques (ex. "rec-temps-10K" -> "rec-temps-10K-h/-m/-s"),
-  // réutilisable pour l'onboarding avec un préfixe différent (ex. "onb-rec-temps-").
+  // Construit les 3 champs h/min/sec pour une distance donnée — remplacés
+  // par une roulette à défilement le 31/07/2026 (demande de Laurent, même
+  // composant que public/v2/index.html — cf. son en-tête pour le détail
+  // du principe general). Les inputs number d'origine restent dans le DOM
+  // en <input type="hidden">, avec les MÊMES ids (idPrefix+"-h/-m/-s") —
+  // le bouton "Enregistrer" (plus bas dans ce fichier) les lit directement
+  // via document.getElementById, aucune modification nécessaire côté
+  // lecture.
+  //
+  // idPrefix sert à générer des ids uniques (ex. "rec-temps-10K" ->
+  // "rec-temps-10K-h/-m/-s").
+  //
+  // NOTE : le commentaire précédent de cette fonction affirmait qu'elle
+  // était "réutilisée telle quelle par l'onboarding" — vérifié inexact le
+  // 31/07/2026 : v2/engine/auth.js a en réalité sa PROPRE logique de
+  // saisie h/min/sec dupliquée (commentaire explicite dans ce fichier :
+  // "pas d'accès à window.creerChampsTempsHMS d'index.html, chargé après
+  // ce module"), pour ne pas créer de dépendance d'ordre de chargement
+  // entre les deux fichiers. La roulette de l'onboarding est donc portée
+  // séparément dans auth.js, avec son propre CSS/JS — cohérent avec cette
+  // contrainte déjà actée, pas une régression de ce chantier.
   window.creerChampsTempsHMS = function(idPrefix, valeurInitiale) {
     const { h, m, s } = window.parserTempsRecordEnHMS(valeurInitiale);
-    const styleChamp = "width:44px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 4px;color:var(--text);font-size:15px;text-align:center;font-variant-numeric:tabular-nums;";
-    const styleUnite = "color:var(--text-muted);font-size:12px;flex-shrink:0;";
     const wrap = document.createElement("div");
     wrap.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0;";
 
+    const roulette = document.createElement("div");
+    roulette.className = "roulette-temps";
+    roulette.style.cssText = "flex-shrink:0;width:150px;";
+    const fenetre = document.createElement("div"); fenetre.className = "roulette-fenetre";
+    const colH = document.createElement("div"); colH.className = "roulette-colonne"; colH.id = idPrefix + "-rouletteH";
+    const sepH = document.createElement("span"); sepH.className = "roulette-sep"; sepH.textContent = ":";
+    const colM = document.createElement("div"); colM.className = "roulette-colonne"; colM.id = idPrefix + "-rouletteM";
+    const sepM = document.createElement("span"); sepM.className = "roulette-sep"; sepM.textContent = ":";
+    const colS = document.createElement("div"); colS.className = "roulette-colonne"; colS.id = idPrefix + "-rouletteS";
+    roulette.appendChild(fenetre); roulette.appendChild(colH); roulette.appendChild(sepH);
+    roulette.appendChild(colM); roulette.appendChild(sepM); roulette.appendChild(colS);
+
     const hInp = document.createElement("input");
-    hInp.type = "number"; hInp.id = idPrefix + "-h"; hInp.min = "0"; hInp.max = "23";
-    hInp.placeholder = "0"; hInp.value = h ?? ""; hInp.style.cssText = styleChamp;
-    const hUnit = document.createElement("span"); hUnit.textContent = "h"; hUnit.style.cssText = styleUnite;
-
+    hInp.type = "hidden"; hInp.id = idPrefix + "-h"; hInp.value = h ?? "";
     const mInp = document.createElement("input");
-    mInp.type = "number"; mInp.id = idPrefix + "-m"; mInp.min = "0"; mInp.max = "59";
-    mInp.placeholder = "00"; mInp.value = m ?? ""; mInp.style.cssText = styleChamp;
-    const mUnit = document.createElement("span"); mUnit.textContent = "min"; mUnit.style.cssText = styleUnite;
-
+    mInp.type = "hidden"; mInp.id = idPrefix + "-m"; mInp.value = m ?? "";
     const sInp = document.createElement("input");
-    sInp.type = "number"; sInp.id = idPrefix + "-s"; sInp.min = "0"; sInp.max = "59";
-    sInp.placeholder = "00"; sInp.value = s ?? ""; sInp.style.cssText = styleChamp;
-    const sUnit = document.createElement("span"); sUnit.textContent = "s"; sUnit.style.cssText = styleUnite;
+    sInp.type = "hidden"; sInp.id = idPrefix + "-s"; sInp.value = s ?? "";
 
-    wrap.appendChild(hInp); wrap.appendChild(hUnit);
-    wrap.appendChild(mInp); wrap.appendChild(mUnit);
-    wrap.appendChild(sInp); wrap.appendChild(sUnit);
+    wrap.appendChild(roulette);
+    wrap.appendChild(hInp); wrap.appendChild(mInp); wrap.appendChild(sInp);
+
+    // Construction différée (setTimeout 0) : les 3 conteneurs de colonnes
+    // doivent être insérés dans le vrai DOM (via wrap.appendChild plus
+    // bas côté appelant) avant que initRouletteHMS() puisse mesurer/
+    // positionner leur scroll — cohérent avec le composant de
+    // public/v2/index.html, qui a le même besoin (garanti par l'ordre du
+    // script principal côté wizard, mais ici cette fonction est appelée
+    // au milieu de la construction d'un arbre DOM pas encore attaché).
+    setTimeout(() => window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0), 0);
+
     return wrap;
   };
 
