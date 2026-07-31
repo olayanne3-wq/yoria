@@ -5793,20 +5793,41 @@ function renderWeekDetail(weekNum) {
 // ══════════════════════════════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════════════════════════════
-// En-tête de groupe thématique pour l'onglet Stats (31/07/2026, demande de
-// Laurent : onglet jugé "trop dense/chargé" avec ses 10 sections empilées
-// sans hiérarchie — regroupées en 4 blocs : Objectif et progression /
-// Charge et récupération / Performance technique / Référence). N'affecte
-// que la présentation — aucune section existante n'est modifiée dans son
-// contenu, seulement précédée de cet en-tête et réordonnée dans le return
-// final de renderStats().
-function renderEnTeteGroupeStats(icone, titre, couleurVar) {
-  return el("div",{style:{marginTop:"22px",marginBottom:"10px"}},
-    el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
-      el("span",{style:{fontSize:"15px"}}, icone),
-      el("span",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)"}}, titre)
-    ),
-    el("div",{style:{height:"1px",background:couleurVar,opacity:"0.4"}})
+// Groupe accordéon thématique pour l'onglet Stats (31/07/2026, demande de
+// Laurent — d'abord de simples en-têtes non repliables, puis transformés
+// en accordéon pour plus de clarté). Replié par défaut (décision explicite
+// de Laurent : "tous repliés", l'utilisateur ouvre ce qui l'intéresse).
+// contenuElements : tableau d'éléments DOM déjà construits (peut contenir
+// des null, filtrés ici) — pas de re-render global au clic, juste un
+// toggle display sur le conteneur local, même pattern que le panneau
+// détail sources de la carte Estimation (cf. `detailOpen` ligne ~3946).
+function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
+  const contenuValide = contenuElements.filter(Boolean);
+  if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
+
+  let ouvert = false;
+  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",transition:"transform 0.15s",marginLeft:"auto"}}, "›");
+  const conteneurContenu = el("div",{style:{display:"none",marginTop:"10px"}}, ...contenuValide);
+
+  const entete = el("button",{style:{
+    all:"unset", boxSizing:"border-box", cursor:"pointer", width:"100%",
+    display:"flex", alignItems:"center", gap:"8px",
+    marginTop:"22px", paddingBottom:"8px"
+  }},
+    el("span",{style:{fontSize:"15px"}}, icone),
+    el("span",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)"}}, titre),
+    chevron
+  );
+  entete.addEventListener("click", () => {
+    ouvert = !ouvert;
+    conteneurContenu.style.display = ouvert ? "block" : "none";
+    chevron.style.transform = ouvert ? "rotate(90deg)" : "rotate(0deg)";
+  });
+
+  return el("div",{},
+    entete,
+    el("div",{style:{height:"1px",background:couleurVar,opacity:"0.4"}}),
+    conteneurContenu
   );
 }
 
@@ -6777,35 +6798,38 @@ function renderStats() {
   return el("div",{style:{padding:"0 16px 100px"}},
     badgesEl,
 
-    renderEnTeteGroupeStats("🎯","Objectif et progression","var(--accent)"),
-    graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"14px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
-    projEl,
-    progressionEl,
+    renderGroupeAccordeonStats("🎯","Objectif et progression","var(--accent)", [
+      graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"14px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
+      projEl,
+      progressionEl
+    ]),
 
-    renderEnTeteGroupeStats("⚖️","Charge et récupération","var(--warn)"),
-    acwrEl,
-    monotonieEl,
+    renderGroupeAccordeonStats("⚖️","Charge et récupération","var(--warn)", [
+      acwrEl,
+      monotonieEl
+    ]),
 
-    // En-tête conditionné (contrairement aux 3 autres groupes) : ieCurveEl/
-    // cadCurveEl/fcCurveEl peuvent TOUS être null si aucune séance qualité
-    // n'a de laps Strava exploitables — seul cas où un groupe entier
-    // pourrait n'avoir aucun contenu sous son en-tête.
-    (ieCurveEl || cadCurveEl || fcCurveEl) ? renderEnTeteGroupeStats("📈","Performance technique","var(--accent2)") : null,
-    ieCurveEl,
-    cadCurveEl,
-    fcCurveEl,
+    renderGroupeAccordeonStats("📈","Performance technique","var(--accent2)", [
+      ieCurveEl,
+      cadCurveEl,
+      fcCurveEl
+    ]),
 
-    renderEnTeteGroupeStats("📖","Référence","var(--text-muted)"),
-    paceEl,
-    infoEl
-    // Blocs de test/debug (Module 2 SessionAnalyzer, Module 3, Module 4
-    // TrendAnalyzer) retirés de l'affichage le 31/07/2026, sur demande de
-    // Laurent — traînaient en production depuis leur ajout le 17/07/2026,
-    // contribuaient à la sensation "trop dense" de cet onglet. Le calcul
-    // (moduleTestEl/moduleTest3El/moduleTest4El, plus haut dans cette
-    // fonction) reste en place, juste plus jamais rendu ici — pour
-    // réactiver un test ponctuel, il suffit de rajouter la variable
-    // correspondante à cette liste.
+    renderGroupeAccordeonStats("📖","Référence","var(--text-muted)", [
+      paceEl,
+      infoEl
+    ]),
+
+    // Section "Tests" (31/07/2026) — remise en place sur demande de
+    // Laurent après un premier retrait complet le même jour : finalement
+    // conservée, mais séparée des 4 groupes utilisateur ci-dessus plutôt
+    // que mêlée à eux (Module 2 SessionAnalyzer, Module 3, Module 4
+    // TrendAnalyzer — ajoutés le 17/07/2026, jamais nettoyés depuis).
+    renderGroupeAccordeonStats("🧪","Tests","var(--text-muted)", [
+      moduleTestEl,
+      moduleTest3El,
+      moduleTest4El
+    ])
   );
 }
 
