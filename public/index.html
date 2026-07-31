@@ -93,17 +93,22 @@ input[type=text], input[type=number], input[type=password] {
    --surface de ce fichier (le wizard utilise --paper/--line, propres à
    son propre thème). ────────────────────────────────────────────────── */
 .roulette-temps{
-  display:flex; align-items:center; justify-content:center; gap:2px;
+  display:flex; align-items:stretch; justify-content:center; gap:2px;
   background:var(--border-soft); border:1px solid var(--border);
-  border-radius:12px; padding:0 8px; position:relative; height:120px;
+  border-radius:12px; padding:4px 8px; position:relative;
 }
+/* top calculé en pixels (31/07/2026, ajout des boutons +/-) plutôt que
+   top:50% — la fenêtre doit rester centrée sur la COLONNE scrollable
+   (120px), pas sur tout .roulette-temps qui inclut maintenant les boutons
+   +/- au-dessus. Calcul : padding-top (4px) + hauteur bouton+gap (20px) +
+   moitié de la colonne (60px) - moitié de la fenêtre (18px) = 66px. */
 .roulette-fenetre{
-  position:absolute; left:8px; right:8px; top:50%; transform:translateY(-50%);
+  position:absolute; left:8px; right:8px; top:66px;
   height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
   background:var(--surface); border-radius:8px; pointer-events:none;
 }
 .roulette-colonne{
-  flex:1; max-width:56px; height:100%; overflow-y:scroll;
+  flex:1; max-width:56px; height:120px; overflow-y:scroll;
   scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
   font-variant-numeric:tabular-nums;
 }
@@ -7993,16 +7998,25 @@ function renderSettings() {
   // part entière — c'est un réglage qu'on ajuste rarement mais qu'on veut
   // pouvoir trouver vite, sans lui donner l'importance visuelle d'une
   // vraie section de compte.
+  // Fond adapté au symbole affiché (31/07/2026, demande de Laurent : "plus
+  // visible, blanc pour le soleil, noir pour la lune") — plutôt qu'un fond
+  // neutre fixe (--border-soft), le fond du bouton contraste maintenant
+  // avec l'icône elle-même. iconeThemeAffichee = ce que MONTRE le bouton
+  // (pas le thème actif) : on affiche l'icône de la DESTINATION du clic
+  // (🌙 si on est en clair, pour basculer en sombre), donc le fond suit
+  // logiquement cette même icône affichée, pas themeActuel directement.
+  const iconeThemeAffichee = themeActuel === "light" ? "🌙" : "☀️";
   const themeToggleBtn = el("button",{style:{
     marginLeft:"auto", flexShrink:"0", width:"36px", height:"36px", borderRadius:"50%",
-    border:"1px solid var(--border)", background:"var(--border-soft)",
+    border:"1px solid var(--border)",
+    background: iconeThemeAffichee === "☀️" ? "#F8FAFC" : "#0F172A",
     fontSize:"16px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"
   }, onClick: ()=>{
     const nouveauTheme = themeActuel === "light" ? "dark" : "light";
     localStorage.setItem('lk_theme', nouveauTheme);
     document.documentElement.setAttribute('data-theme', nouveauTheme);
     render();
-  }}, themeActuel === "light" ? "🌙" : "☀️");
+  }}, iconeThemeAffichee);
 
   // ── Profil coureur + Objectif + PPS ─────────────────────────────────────
   const categorieFFA = calculerCategorieAgeFFA(profilCoureur.anneeNaissance, today());
@@ -8315,6 +8329,42 @@ function renderSettings() {
     const colM = creerColonneRouletteRecglages(idPrefix + '-rouletteM', Array.from({length:60},(_,i)=>i), mInit, v => declencherInput(inputM, v));
     const colS = creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
     roulettesActivesReglages[idPrefix] = { h: colH, m: colM, s: colS };
+
+    // Boutons +/- (31/07/2026, demande de Laurent) — incrémentent/
+    // décrémentent la colonne d'une unité, avec bouclage (0 <-> max) plutôt
+    // que de bloquer aux bornes : cohérent avec le geste de scroll de la
+    // roulette elle-même, qui permet déjà de boucler en swipant au-delà
+    // des extrémités. definirValeur() seule ne déclenche jamais onSelect
+    // (elle repositionne juste visuellement le scroll, cf. son
+    // commentaire) — on appelle donc explicitement declencherInput() en
+    // plus, pour que la nouvelle valeur soit bien persistée comme si
+    // l'utilisateur avait scrollé lui-même.
+    function cablerBoutonIncrement(idBouton, colApi, inputCible, maxValeur) {
+      const btn = document.getElementById(idBouton);
+      if (!btn || !colApi) return;
+      btn.addEventListener('click', avecRetourTactile(() => {
+        const actuelle = colApi.valeur();
+        const nouvelle = (actuelle + 1) % (maxValeur + 1);
+        colApi.definirValeur(nouvelle, true);
+        declencherInput(inputCible, nouvelle);
+      }));
+    }
+    function cablerBoutonDecrement(idBouton, colApi, inputCible, maxValeur) {
+      const btn = document.getElementById(idBouton);
+      if (!btn || !colApi) return;
+      btn.addEventListener('click', avecRetourTactile(() => {
+        const actuelle = colApi.valeur();
+        const nouvelle = (actuelle - 1 + maxValeur + 1) % (maxValeur + 1);
+        colApi.definirValeur(nouvelle, true);
+        declencherInput(inputCible, nouvelle);
+      }));
+    }
+    cablerBoutonIncrement(idPrefix+'-plusH', colH, inputH, heuresMax);
+    cablerBoutonDecrement(idPrefix+'-moinsH', colH, inputH, heuresMax);
+    cablerBoutonIncrement(idPrefix+'-plusM', colM, inputM, 59);
+    cablerBoutonDecrement(idPrefix+'-moinsM', colM, inputM, 59);
+    cablerBoutonIncrement(idPrefix+'-plusS', colS, inputS, 59);
+    cablerBoutonDecrement(idPrefix+'-moinsS', colS, inputS, 59);
   };
 
   window.parserTempsRecordEnHMS = function(str) {
@@ -8386,13 +8436,37 @@ function renderSettings() {
     roulette.className = "roulette-temps";
     roulette.style.cssText = "flex-shrink:0;width:150px;";
     const fenetre = document.createElement("div"); fenetre.className = "roulette-fenetre";
-    const colH = document.createElement("div"); colH.className = "roulette-colonne"; colH.id = idPrefix + "-rouletteH";
+
+    // Boutons +/- au-dessus et en dessous de chaque colonne (31/07/2026,
+    // demande de Laurent) — chaque colonne est enveloppée dans une
+    // mini-colonne verticale (bouton +, colonne roulette, bouton -), au
+    // lieu d'être un enfant direct de .roulette-temps. Les clics sont
+    // câblés plus bas dans initRouletteHMS (où l'objet api de chaque
+    // colonne, avec definirValeur()/valeur(), devient disponible) — cette
+    // fonction-ci ne fait QUE construire la structure DOM et poser des id
+    // ciblables (idPrefix+"-plusH" etc.), pas la logique d'incrément.
+    function creerColonneAvecBoutons(idColonne, idBoutonPlus, idBoutonMoins) {
+      const mini = document.createElement("div");
+      mini.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;";
+      const btnPlus = document.createElement("button");
+      btnPlus.type = "button"; btnPlus.id = idBoutonPlus; btnPlus.textContent = "+";
+      btnPlus.style.cssText = "width:22px;height:18px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;padding:0;line-height:1;";
+      const col = document.createElement("div");
+      col.className = "roulette-colonne"; col.id = idColonne;
+      const btnMoins = document.createElement("button");
+      btnMoins.type = "button"; btnMoins.id = idBoutonMoins; btnMoins.textContent = "−";
+      btnMoins.style.cssText = btnPlus.style.cssText;
+      mini.appendChild(btnPlus); mini.appendChild(col); mini.appendChild(btnMoins);
+      return mini;
+    }
+
+    const colHWrap = creerColonneAvecBoutons(idPrefix+"-rouletteH", idPrefix+"-plusH", idPrefix+"-moinsH");
     const sepH = document.createElement("span"); sepH.className = "roulette-sep"; sepH.textContent = ":";
-    const colM = document.createElement("div"); colM.className = "roulette-colonne"; colM.id = idPrefix + "-rouletteM";
+    const colMWrap = creerColonneAvecBoutons(idPrefix+"-rouletteM", idPrefix+"-plusM", idPrefix+"-moinsM");
     const sepM = document.createElement("span"); sepM.className = "roulette-sep"; sepM.textContent = ":";
-    const colS = document.createElement("div"); colS.className = "roulette-colonne"; colS.id = idPrefix + "-rouletteS";
-    roulette.appendChild(fenetre); roulette.appendChild(colH); roulette.appendChild(sepH);
-    roulette.appendChild(colM); roulette.appendChild(sepM); roulette.appendChild(colS);
+    const colSWrap = creerColonneAvecBoutons(idPrefix+"-rouletteS", idPrefix+"-plusS", idPrefix+"-moinsS");
+    roulette.appendChild(fenetre); roulette.appendChild(colHWrap); roulette.appendChild(sepH);
+    roulette.appendChild(colMWrap); roulette.appendChild(sepM); roulette.appendChild(colSWrap);
 
     const hInp = document.createElement("input");
     hInp.type = "hidden"; hInp.id = idPrefix + "-h"; hInp.value = h ?? "";
@@ -8518,26 +8592,70 @@ function renderSettings() {
     }
   }
 
+  // Registre de l'état ouvert/fermé de chaque carte record, indexé par
+  // distance (31/07/2026, demande de Laurent : "la section est trop
+  // grande, on pourrait pas organiser ça mieux ?") — même principe que
+  // etatGroupesAccordeon pour les groupes principaux : sans ce registre,
+  // l'état serait perdu à chaque render() (déclenché par
+  // sauvegarderUnRecord() via le badge record_battu, entre autres).
+  const etatCartesRecords = {};
+
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏅 Records personnels"),
     (()=>{
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;";
-      ["5K","10K","Semi","Marathon"].forEach((dist,i) => {
+      // Grille 2x2 de cartes compactes (31/07/2026) — remplace la liste
+      // verticale des 4 roulettes toujours ouvertes (trop volumineux avec
+      // les boutons +/- ajoutés au-dessus/en-dessous de chaque colonne).
+      // Chaque carte affiche juste le résultat (temps + date) ; un clic
+      // dessus révèle la roulette d'édition à sa place — un accordéon
+      // imbriqué par distance, pas un vrai remplacement de carte (la
+      // roulette est construite UNE fois par distance, réutilisée à
+      // chaque toggle plutôt que reconstruite, pour ne pas perdre le
+      // focus/état de scroll si l'utilisateur rouvre la même carte).
+      const grille = document.createElement("div");
+      grille.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+
+      ["5K","10K","Semi","Marathon"].forEach((dist) => {
         const rec = profilCoureur.records?.[dist];
-        const row = document.createElement("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap;"+(i>0?"border-top:1px solid var(--border);":"");
-        const label = document.createElement("span");
-        label.style.cssText = "color:var(--text-muted);font-size:15px;width:60px;flex-shrink:0;";
-        label.textContent = dist;
+        const carteWrap = document.createElement("div");
+        carteWrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;";
+
+        const resume = document.createElement("button");
+        resume.type = "button";
+        resume.style.cssText = "all:unset;box-sizing:border-box;cursor:pointer;width:100%;padding:10px;text-align:center;display:block;";
+        const labelDist = document.createElement("div");
+        labelDist.style.cssText = "font-size:13px;color:var(--text-muted);margin-bottom:4px;";
+        labelDist.textContent = dist;
+        const valeurTemps = document.createElement("div");
+        valeurTemps.style.cssText = "font-size:16px;font-weight:700;color:"+(rec?.temps?"var(--text)":"var(--text-muted)")+";";
+        valeurTemps.textContent = rec?.temps || "—";
+        const valeurDate = document.createElement("div");
+        valeurDate.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px;";
+        valeurDate.textContent = rec?.date ? new Date(rec.date+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}) : (rec?.temps ? "Date non renseignée" : "");
+        resume.appendChild(labelDist); resume.appendChild(valeurTemps); resume.appendChild(valeurDate);
+
+        const editionWrap = document.createElement("div");
+        const ouvert = etatCartesRecords[dist] ?? false;
+        editionWrap.style.cssText = "display:"+(ouvert?"block":"none")+";padding:0 10px 10px;border-top:1px solid var(--border);margin-top:0;padding-top:10px;";
+
         const champsHMS = window.creerChampsTempsHMS("rec-temps-"+dist, rec?.temps);
+        champsHMS.style.justifyContent = "center";
         const dateInp = document.createElement("input");
         dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
         dateInp.value = rec?.date || "";
-        dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;flex:1;min-width:110px;";
+        dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;width:100%;box-sizing:border-box;margin-top:8px;";
         dateInp.addEventListener("change", avecRetourTactile(()=>sauvegarderUnRecord(dist)));
-        row.appendChild(label); row.appendChild(champsHMS); row.appendChild(dateInp);
-        wrap.appendChild(row);
+        editionWrap.appendChild(champsHMS); editionWrap.appendChild(dateInp);
+
+        resume.addEventListener("click", () => {
+          const nouvelEtat = !(etatCartesRecords[dist] ?? false);
+          etatCartesRecords[dist] = nouvelEtat;
+          editionWrap.style.display = nouvelEtat ? "block" : "none";
+        });
+
+        carteWrap.appendChild(resume); carteWrap.appendChild(editionWrap);
+        grille.appendChild(carteWrap);
+
         // Auto-sauvegarde sur chaque colonne de la roulette (h/m/s) — un
         // léger debounce (400ms) évite un appel réseau distinct pour
         // chaque colonne si l'utilisateur enchaîne heures puis minutes
@@ -8560,11 +8678,15 @@ function renderSettings() {
           btnEffacerRecord.addEventListener("click", () => { setTimeout(() => sauvegarderUnRecord(dist), 0); });
         }
       });
+
       const note = document.createElement("p");
       note.className = "muted"; note.style.cssText = "font-size:13px;margin-top:10px;margin-bottom:0;";
-      note.textContent = "La date est optionnelle — elle aide juste à savoir si un record est encore à jour. Enregistré automatiquement dès la saisie.";
-      wrap.appendChild(note);
-      return wrap;
+      note.textContent = "Touche une distance pour voir ou modifier son record — enregistré automatiquement dès la saisie.";
+
+      const conteneurGlobal = document.createElement("div");
+      conteneurGlobal.appendChild(grille);
+      conteneurGlobal.appendChild(note);
+      return conteneurGlobal;
     })(),
   );
 
