@@ -4676,7 +4676,11 @@ function renderWeeks() {
       );
       entete.addEventListener("click",()=>{ selectedWeek=week.week; setView("weekDetail"); });
 
-      const card=el("div",{style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px"}},
+      // id ajouté (31/07/2026, demande de Laurent : centrer automatiquement
+      // sur la semaine actuelle à l'ouverture de l'onglet Semaines) — cf.
+      // le bloc de scroll juste après app.appendChild(content) dans
+      // render(), qui cible cet id.
+      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px"}},
         entete,
         el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"12px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
         renderGrilleJoursSemaine(week),
@@ -9618,6 +9622,22 @@ function render() {
 
   if (hdr) app.appendChild(hdr);
   app.appendChild(content);
+
+  // Centrage automatique sur la semaine actuelle à l'ouverture de l'onglet
+  // Semaines (31/07/2026, demande de Laurent) — instantané, cohérent avec
+  // le comportement déjà choisi pour le scroll vers une carte de séance
+  // (cf. renderGrilleJoursSemaine). currentWeek() plutôt que selectedWeek :
+  // ce dernier peut valoir une AUTRE semaine si l'utilisateur revient sur
+  // cet onglet après avoir consulté weekDetail sans repasser par la nav
+  // (ex. bouton retour du navigateur) — currentWeek() reste toujours la
+  // vraie semaine calendaire actuelle, peu importe la navigation.
+  if (vueEffective === "weeks") {
+    const carteSemaineActuelle = document.getElementById("carte-semaine-"+currentWeek());
+    if (carteSemaineActuelle) {
+      carteSemaineActuelle.scrollIntoView({ block:"center", behavior:"instant" });
+    }
+  }
+
   // Nav montée dans un conteneur séparé de #app (24/07/2026, correctif
   // flash) — avant, nav était un enfant de #app, donc détruite par
   // `app.innerHTML=""` en tout début de render() puis reconstruite juste
