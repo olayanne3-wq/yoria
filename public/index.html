@@ -4627,7 +4627,7 @@ function renderGrilleJoursSemaine(week) {
       },
         el("span",{style:{fontSize:"8px",color:"var(--text-muted)",position:"absolute",top:"2px",left:"3px"}}, JOURS_LABEL_COURT[i]),
         estRepos ? null : el("span",{style:{fontSize:"9px",fontWeight:"600",color:"var(--bg)",textAlign:"center",lineHeight:"1.1",padding:"0 2px"}}, TYPE_SEANCE_LABEL[s.type] || s.type),
-        (statut && !estRepos) ? el("div",{style:{position:"absolute",bottom:"1px",right:"1px",fontSize:"18px",lineHeight:"1",width:"22px",height:"22px",display:"flex",alignItems:"center",justifyContent:"center"}}, statut) : null
+        (statut && !estRepos) ? el("div",{style:{position:"absolute",bottom:"1px",right:"1px",fontSize:"14px",lineHeight:"1",width:"18px",height:"18px",display:"flex",alignItems:"center",justifyContent:"center"}}, statut) : null
       );
       if (!estRepos) {
         cell.addEventListener("click",(e)=>{
@@ -5793,6 +5793,23 @@ function renderWeekDetail(weekNum) {
 // ══════════════════════════════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════════════════════════════
+// En-tête de groupe thématique pour l'onglet Stats (31/07/2026, demande de
+// Laurent : onglet jugé "trop dense/chargé" avec ses 10 sections empilées
+// sans hiérarchie — regroupées en 4 blocs : Objectif et progression /
+// Charge et récupération / Performance technique / Référence). N'affecte
+// que la présentation — aucune section existante n'est modifiée dans son
+// contenu, seulement précédée de cet en-tête et réordonnée dans le return
+// final de renderStats().
+function renderEnTeteGroupeStats(icone, titre, couleurVar) {
+  return el("div",{style:{marginTop:"22px",marginBottom:"10px"}},
+    el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px"}},
+      el("span",{style:{fontSize:"15px"}}, icone),
+      el("span",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)"}}, titre)
+    ),
+    el("div",{style:{height:"1px",background:couleurVar,opacity:"0.4"}})
+  );
+}
+
 function renderStats() {
   const pred = currentPred||predict10K();
 
@@ -6759,20 +6776,36 @@ function renderStats() {
 
   return el("div",{style:{padding:"0 16px 100px"}},
     badgesEl,
-    el("div",{style:{marginTop:"8px"}}),
+
+    renderEnTeteGroupeStats("🎯","Objectif et progression","var(--accent)"),
     graphEl||el("div",{class:"muted",style:{textAlign:"center",padding:"24px 0",fontSize:"14px",fontStyle:"italic"}},"📊 Le graphique apparaîtra après quelques jours de données"),
+    projEl,
     progressionEl,
-    fcCurveEl,
-    ieCurveEl,
-    cadCurveEl,
+
+    renderEnTeteGroupeStats("⚖️","Charge et récupération","var(--warn)"),
     acwrEl,
     monotonieEl,
-    projEl,
+
+    // En-tête conditionné (contrairement aux 3 autres groupes) : ieCurveEl/
+    // cadCurveEl/fcCurveEl peuvent TOUS être null si aucune séance qualité
+    // n'a de laps Strava exploitables — seul cas où un groupe entier
+    // pourrait n'avoir aucun contenu sous son en-tête.
+    (ieCurveEl || cadCurveEl || fcCurveEl) ? renderEnTeteGroupeStats("📈","Performance technique","var(--accent2)") : null,
+    ieCurveEl,
+    cadCurveEl,
+    fcCurveEl,
+
+    renderEnTeteGroupeStats("📖","Référence","var(--text-muted)"),
     paceEl,
-    infoEl,
-    moduleTestEl,
-    moduleTest3El,
-    moduleTest4El
+    infoEl
+    // Blocs de test/debug (Module 2 SessionAnalyzer, Module 3, Module 4
+    // TrendAnalyzer) retirés de l'affichage le 31/07/2026, sur demande de
+    // Laurent — traînaient en production depuis leur ajout le 17/07/2026,
+    // contribuaient à la sensation "trop dense" de cet onglet. Le calcul
+    // (moduleTestEl/moduleTest3El/moduleTest4El, plus haut dans cette
+    // fonction) reste en place, juste plus jamais rendu ici — pour
+    // réactiver un test ponctuel, il suffit de rajouter la variable
+    // correspondante à cette liste.
   );
 }
 
