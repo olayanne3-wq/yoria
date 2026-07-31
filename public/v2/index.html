@@ -796,6 +796,7 @@
     color:rgba(var(--text-rgb),0.3);
     scroll-snap-align:center;
     transition:color 0.15s, font-size 0.15s;
+    position:relative; z-index:1;
   }
   .roulette-item.actif{
     color:var(--paper);
@@ -2190,11 +2191,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if (sepH) sepH.style.display = afficher ? 'inline-block' : 'none';
   }
 
-  // Initialisation au chargement — heuresMax=3 large marge (jamais réaliste
-  // au-delà pour Semi/Marathon en course à pied amateur).
-  initRouletteTemps('t', 'rouletteRef', 3);
-  initRouletteTemps('o', 'rouletteObj', 3);
-  initRouletteTemps('a', 'rouletteAlt', 3);
+  // Initialisation au chargement — heuresMax=9 (31/07/2026, corrige un bug
+  // signalé par Laurent : heuresMax=3 empêchait de saisir un marathon au-delà
+  // de 3h59:59, pourtant un temps tout à fait réaliste pour un débutant ou
+  // une approche marche/course — l'ancienne justification "jamais réaliste
+  // au-delà" était une erreur de jugement). 9h reste une marge large et sûre
+  // pour tous les cas plausibles (Semi comme Marathon), sans complexifier la
+  // roulette outre mesure avec une plage disproportionnée.
+  initRouletteTemps('t', 'rouletteRef', 9);
+  initRouletteTemps('o', 'rouletteObj', 9);
+  initRouletteTemps('a', 'rouletteAlt', 9);
 
   ['tHour','tMin','tSec','oHour','oMin','oSec'].forEach(id=>{
     document.getElementById(id).addEventListener('input', updateBibTimesAndAllure);
