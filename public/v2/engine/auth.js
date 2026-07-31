@@ -467,13 +467,14 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
 
     // ── Composant roulette (wheel picker), porté ici indépendamment —
     // mêmes principes que public/v2/index.html et Réglages (index.html) :
-    // calcul direct de scrollTop (jamais scrollIntoView, peu fiable sur un
-    // conteneur display:none — l'écran onboarding lui-même est affiché en
-    // position:fixed dès sa construction ici, mais le principe reste geré
-    // par sécurité, le composant étant recopié tel quel pour cohérence
-    // entre les 3 portages). Hauteurs identiques à la version Réglages
-    // (picker 120px/item 36px/pad 42px) — cohérence visuelle entre les
-    // deux écrans qui partagent le même thème (var(--bg)/var(--text)...).
+    // calcul direct de scrollTop (jamais scrollIntoView), boutons +/-
+    // au-dessus/en-dessous de chaque colonne dans un viewport réduit
+    // (seul le chiffre actif reste visible), et positionnement initial
+    // vérifié par condition réelle (offsetParent non null) plutôt que par
+    // délai arbitraire — déployé depuis Réglages le 31/07/2026, où
+    // plusieurs itérations de délai (setTimeout(0), requestAnimationFrame,
+    // délai fixe) ont été nécessaires avant de trouver ce qui fonctionne
+    // réellement de façon fiable.
     function creerColonneRouletteOnboarding(conteneurId, valeurs, valeurInitiale, onSelect){
       const conteneur = hote.querySelector('#' + conteneurId);
       if (!conteneur) return null;
@@ -494,10 +495,6 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       let valeurActuelle = valeurInitiale;
       let timerScrollFin = null;
       const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-* de cet écran
-      // CORRECTIF (31/07/2026) — même bug/cause que public/v2/index.html et
-      // Réglages (cf. leurs en-têtes pour le détail complet) : rootMargin
-      // restreint la zone d'intersection à la fenêtre de sélection (36px
-      // centrés) au lieu de tout le conteneur (120px).
       const margeVerticale = (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entree => {
@@ -535,7 +532,17 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         },
         valeur(){ return valeurActuelle; },
       };
-      api.definirValeur(valeurInitiale, false);
+      // Positionnement initial vérifié par condition réelle (31/07/2026) —
+      // cf. le commentaire au-dessus de creerColonneRouletteOnboarding
+      // pour le détail de pourquoi un simple délai ne suffisait pas.
+      (function attendreEtPositionner(tentative) {
+        if (conteneur.offsetParent !== null) {
+          api.definirValeur(valeurInitiale, false);
+          return;
+        }
+        if ((tentative ?? 0) > 120) return;
+        setTimeout(() => attendreEtPositionner((tentative ?? 0) + 1), 16);
+      })(0);
       return api;
     }
 
@@ -550,8 +557,8 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     // raisonnement par distance.
     const HEURES_MAX_PAR_DISTANCE = { "5K": 1, "10K": 2, "Semi": 4, "Marathon": 9 };
     // Registre des instances de roulette actives, indexé par distance
-    // (31/07/2026) — nécessaire pour le bouton "Effacer" (cf. plus bas),
-    // même principe que Réglages (index.html).
+    // (31/07/2026) — nécessaire pour le bouton "Effacer" et les boutons
+    // +/-, même principe que Réglages (index.html).
     const roulettesActivesOnboarding = {};
     function initRouletteHMSOnboarding(dist, hInit, mInit, sInit){
       const inputH = hote.querySelector(`#onb-rec-${dist}-h`);
@@ -564,6 +571,34 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       const colM = creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteM`, Array.from({length:60},(_,i)=>i), mInit ?? 0, v => declencherInput(inputM, v));
       const colS = creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteS`, Array.from({length:60},(_,i)=>i), sInit ?? 0, v => declencherInput(inputS, v));
       roulettesActivesOnboarding[dist] = { h: colH, m: colM, s: colS };
+
+      // Boutons +/- (31/07/2026, déployés depuis Réglages) — même pattern :
+      // bouclage aux bornes, scroll instantané (animer=false, évite le
+      // conflit entre behavior:'smooth' et scroll-snap-type:y mandatory).
+      function cablerBoutonPlus(idBouton, colApi, inputCible, maxValeur) {
+        const btn = hote.querySelector('#' + idBouton);
+        if (!btn || !colApi) return;
+        btn.addEventListener('click', () => {
+          const nouvelle = (colApi.valeur() + 1) % (maxValeur + 1);
+          colApi.definirValeur(nouvelle, false);
+          declencherInput(inputCible, nouvelle);
+        });
+      }
+      function cablerBoutonMoins(idBouton, colApi, inputCible, maxValeur) {
+        const btn = hote.querySelector('#' + idBouton);
+        if (!btn || !colApi) return;
+        btn.addEventListener('click', () => {
+          const nouvelle = (colApi.valeur() - 1 + maxValeur + 1) % (maxValeur + 1);
+          colApi.definirValeur(nouvelle, false);
+          declencherInput(inputCible, nouvelle);
+        });
+      }
+      cablerBoutonPlus(`onb-rec-${dist}-plusH`, colH, inputH, heuresMax);
+      cablerBoutonMoins(`onb-rec-${dist}-moinsH`, colH, inputH, heuresMax);
+      cablerBoutonPlus(`onb-rec-${dist}-plusM`, colM, inputM, 59);
+      cablerBoutonMoins(`onb-rec-${dist}-moinsM`, colM, inputM, 59);
+      cablerBoutonPlus(`onb-rec-${dist}-plusS`, colS, inputS, 59);
+      cablerBoutonMoins(`onb-rec-${dist}-moinsS`, colS, inputS, 59);
     }
 
     hote.innerHTML = `
@@ -629,33 +664,52 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .lien-secondaire:hover { color: var(--accent); }
       /* ── Roulette de saisie de temps (31/07/2026) — mêmes dimensions que
          Réglages (index.html), portée séparément ici (cf. commentaire sur
-         creerColonneRouletteOnboarding plus haut). ──────────────────────── */
+         creerColonneRouletteOnboarding plus haut). Chiffres non-actifs
+         masqués (opacity:0), boutons +/- au-dessus/en-dessous de chaque
+         colonne, viewport réduit qui ne montre que la bande centrale —
+         déployé depuis Réglages où ce composant a été mis au point. ──── */
       #ecran-onboarding .roulette-temps{
-        display:flex; align-items:center; justify-content:center; gap:2px;
+        display:flex; align-items:flex-start; justify-content:center; gap:2px;
         background:var(--border-soft, rgba(0,0,0,0.04)); border:1px solid var(--border);
-        border-radius:12px; padding:0 6px; position:relative; height:120px;
-        flex-shrink:0; width:130px;
+        border-radius:12px; padding:4px 6px; position:relative; height:98px;
+        flex-shrink:0; width:130px; box-sizing:border-box;
       }
+      /* top calculé : padding-top (4px) + bouton+gap (18px+2px=20px) +
+         moitié viewport (25px) - moitié fenêtre (18px) = 31px. */
       #ecran-onboarding .roulette-fenetre{
-        position:absolute; left:6px; right:6px; top:50%; transform:translateY(-50%);
+        position:absolute; left:6px; right:6px; top:31px;
         height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
         background:var(--bg); border-radius:8px; pointer-events:none;
       }
       #ecran-onboarding .roulette-colonne{
-        flex:1; max-width:40px; height:100%; overflow-y:scroll;
+        width:40px; height:120px; overflow-y:scroll;
         scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
         font-variant-numeric:tabular-nums;
+        /* Décalage négatif : centre la colonne (120px) dans le viewport
+           réduit (50px) — -35px = moitié colonne (60) - moitié viewport (25). */
+        margin-top:-35px;
       }
       #ecran-onboarding .roulette-colonne::-webkit-scrollbar{ display:none; }
       #ecran-onboarding .roulette-colonne .roulette-pad{ height:42px; scroll-snap-align:none; }
       #ecran-onboarding .roulette-item{
         height:36px; display:flex; align-items:center; justify-content:center;
         font-size:18px; font-weight:600; line-height:1; color:var(--text-muted);
-        scroll-snap-align:center; transition:color 0.15s, font-size 0.15s;
+        scroll-snap-align:center; transition:opacity 0.1s;
         position:relative; z-index:1;
+        opacity:0;
       }
-      #ecran-onboarding .roulette-item.actif{ color:var(--text); font-size:22px; line-height:1; }
-      #ecran-onboarding .roulette-sep{ font-size:18px; color:var(--text-muted); align-self:center; }
+      #ecran-onboarding .roulette-item.actif{ color:var(--text); opacity:1; }
+      #ecran-onboarding .roulette-sep{ font-size:16px; color:var(--text-muted); align-self:center; margin-top:20px; }
+      #ecran-onboarding .roulette-viewport{ width:40px; height:50px; overflow:hidden; position:relative; }
+      #ecran-onboarding .roulette-btn-stepper{
+        width:28px; height:18px; border-radius:5px; border:1px solid var(--border);
+        background:var(--bg); color:var(--text-muted); font-size:13px; font-weight:700;
+        cursor:pointer; padding:0; line-height:1; flex-shrink:0;
+        display:flex; align-items:center; justify-content:center;
+      }
+      #ecran-onboarding .roulette-mini-colonne{
+        display:flex; flex-direction:column; align-items:center; gap:2px; flex:1;
+      }
       </style>
       <div id="ecran-onboarding">
         <div class="carte">
@@ -685,11 +739,11 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     const validerBtn = hote.querySelector('#onb-valider');
 
     // Rendu des 4 lignes de record (5K/10K/Semi/Marathon) — roulette h/m/s
-    // (31/07/2026) au lieu de 3 <input type="number"> — champ optionnel, ne
-    // touche jamais à validerBtn.disabled (même principe que sexe : seul
-    // niveauChoisi contrôle la validation). Construction de la roulette
-    // différée (setTimeout 0) : le DOM de chaque ligne doit être attaché
-    // (recordsHost.appendChild ci-dessous) avant que
+    // avec boutons +/- (31/07/2026, déployé depuis Réglages) — champ
+    // optionnel, ne touche jamais à validerBtn.disabled (même principe que
+    // sexe : seul niveauChoisi contrôle la validation). Construction de la
+    // roulette différée (setTimeout 0) : le DOM de chaque ligne doit être
+    // attaché (recordsHost.appendChild ci-dessous) avant que
     // initRouletteHMSOnboarding() puisse positionner le scroll initial —
     // même contrainte que la version Réglages (index.html).
     DISTANCES_RECORD.forEach((dist) => {
@@ -702,11 +756,23 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         `<span class="dist-label">${dist}</span>` +
         `<div class="roulette-temps">` +
           `<div class="roulette-fenetre"></div>` +
-          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteH"></div>` +
+          `<div class="roulette-mini-colonne">` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-plusH">+</button>` +
+            `<div class="roulette-viewport"><div class="roulette-colonne" id="onb-rec-${dist}-rouletteH"></div></div>` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-moinsH">−</button>` +
+          `</div>` +
           `<span class="roulette-sep">:</span>` +
-          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteM"></div>` +
+          `<div class="roulette-mini-colonne">` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-plusM">+</button>` +
+            `<div class="roulette-viewport"><div class="roulette-colonne" id="onb-rec-${dist}-rouletteM"></div></div>` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-moinsM">−</button>` +
+          `</div>` +
           `<span class="roulette-sep">:</span>` +
-          `<div class="roulette-colonne" id="onb-rec-${dist}-rouletteS"></div>` +
+          `<div class="roulette-mini-colonne">` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-plusS">+</button>` +
+            `<div class="roulette-viewport"><div class="roulette-colonne" id="onb-rec-${dist}-rouletteS"></div></div>` +
+            `<button type="button" class="roulette-btn-stepper" id="onb-rec-${dist}-moinsS">−</button>` +
+          `</div>` +
         `</div>` +
         `<input type="hidden" id="onb-rec-${dist}-h" value="${hms.h ?? ''}">` +
         `<input type="hidden" id="onb-rec-${dist}-m" value="${hms.m ?? ''}">` +
@@ -719,9 +785,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       // que Réglages (index.html), cf. son commentaire pour le détail
       // complet : sans ce bouton, remettre la roulette à 0:00 aurait été
       // interprété comme un vrai temps saisi (bloqué à tort par le
-      // garde-fou record du monde). Attaché après row.innerHTML plutôt que
-      // via un attribut onclick inline — innerHTML ne permet pas
-      // d'attacher un vrai handler JS directement dans la chaîne HTML.
+      // garde-fou record du monde).
       const btnEffacer = row.querySelector(`#onb-rec-${dist}-effacer`);
       btnEffacer.addEventListener('click', () => {
         const rouletteRef = roulettesActivesOnboarding[dist];
@@ -738,7 +802,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     });
     const recordsNote = document.createElement('p');
     recordsNote.className = 'records-note';
-    recordsNote.textContent = "Une seule distance suffit pour démarrer — le moteur estime les autres.";
+    recordsNote.textContent = "Une seule distance suffit pour démarrer — le moteur estime les autres. Le garde-fou record du monde s'applique à la validation finale.";
     recordsHost.parentNode.insertBefore(recordsNote, recordsHost.nextSibling);
 
     // Rendu des options sexe — champ optionnel, ne touche JAMAIS à
