@@ -465,6 +465,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
 
       let valeurActuelle = valeurInitiale;
       let timerScrollFin = null;
+      const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-* de cet écran
+      // CORRECTIF (31/07/2026) — même bug/cause que public/v2/index.html et
+      // Réglages (cf. leurs en-têtes pour le détail complet) : rootMargin
+      // restreint la zone d'intersection à la fenêtre de sélection (36px
+      // centrés) au lieu de tout le conteneur (120px).
+      const margeVerticale = (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entree => {
           if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
@@ -472,7 +478,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             entree.target.classList.add('actif');
           }
         });
-      }, { root: conteneur, threshold: [0, 0.5, 1] });
+      }, { root: conteneur, rootMargin: `-${margeVerticale}px 0px -${margeVerticale}px 0px`, threshold: [0, 0.5, 1] });
       items.forEach(it => observer.observe(it));
 
       conteneur.addEventListener('scroll', () => {
@@ -488,7 +494,6 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         }, 120);
       }, { passive: true });
 
-      const HAUTEUR_ITEM = 36, HAUTEUR_PAD = 42, HAUTEUR_PICKER = 120; // cf. CSS .roulette-* de cet écran
       const api = {
         definirValeur(v, animer){
           const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
