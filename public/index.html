@@ -6997,15 +6997,15 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
 // ══════════════════════════════════════════════════════════════════════════════
 // COURSE
 // ══════════════════════════════════════════════════════════════════════════════
-// Sous-titre de regroupement léger pour l'onglet Course (31/07/2026,
-// demande de Laurent : rendre l'onglet "plus agréable, cohérent et
-// logique" — réordonné en groupes visuels + card() réutilisée partout au
-// lieu du style répété manuellement sur chaque section). Volontairement
-// plus discret que renderGroupeAccordeonStats (pas un accordéon ici, ces
-// groupes sont petits — 2-3 cartes chacun — et tout reste visible d'un
-// coup, cohérent avec le reste de cet onglet qui n'a jamais été replié).
-function renderSousTitreGroupeCourse(titre) {
-  return el("div",{style:{fontSize:"13px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.5px",marginTop:"20px",marginBottom:"8px"}}, titre);
+// Sous-titre de regroupement pour l'onglet Course (31/07/2026, demande de
+// Laurent : rendre l'onglet "plus agréable, cohérent et logique", puis
+// transformé en accordéon sur demande explicite juste après, cohérent
+// avec le choix déjà fait pour l'onglet Stats). Réutilise
+// renderGroupeAccordeonStats (déjà générique malgré son nom lié à Stats,
+// où elle a été introduite en premier) plutôt que dupliquer la logique de
+// toggle — repliés par défaut, comme dans Stats.
+function renderGroupeAccordeonCourse(icone, titre, couleurVar, contenuElements) {
+  return renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements);
 }
 
 function renderCourse() {
@@ -7323,22 +7323,27 @@ function renderCourse() {
   })();
 
   // Ordre réorganisé (31/07/2026, demande de Laurent : rendre l'onglet
-  // "plus agréable, cohérent et logique") — regroupement en 2 sous-blocs
-  // visuels (Préparation pratique / Stratégie), aucune section supprimée,
-  // juste réordonnées : Info → Préparation pratique (horaires, checklist,
-  // parcours) → Météo → Stratégie (allures, conseil coach) → Résumé →
-  // Résultat (post-course).
+  // "plus agréable, cohérent et logique", puis passé en accordéon replié
+  // par défaut sur demande explicite juste après, cohérent avec Stats) —
+  // regroupement en 2 accordéons (Préparation pratique / Stratégie),
+  // aucune section supprimée, juste réordonnées et repliables : Info →
+  // Préparation pratique (horaires, checklist, parcours) → Météo →
+  // Stratégie (allures, conseil coach) → Résumé → Résultat (post-course).
+  // Météo et Résumé restent hors accordéon (une seule carte chacun, pas
+  // assez de contenu pour justifier un groupe repliable).
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     infoCard,
 
-    renderSousTitreGroupeCourse("Préparation pratique"),
-    horairesCard, checklistCard, parcoursCard,
+    renderGroupeAccordeonCourse("🎒","Préparation pratique","var(--accent)", [
+      horairesCard, checklistCard, parcoursCard
+    ]),
 
     meteoRaceEl,
 
-    renderSousTitreGroupeCourse("Stratégie"),
-    splitsCard, coachRaceEl,
+    renderGroupeAccordeonCourse("🏃","Stratégie","var(--accent2)", [
+      splitsCard, coachRaceEl
+    ]),
 
     prepCard,
     resultatCard
