@@ -549,6 +549,10 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     // index.html (Réglages), cf. son commentaire pour le détail du
     // raisonnement par distance.
     const HEURES_MAX_PAR_DISTANCE = { "5K": 1, "10K": 2, "Semi": 4, "Marathon": 9 };
+    // Registre des instances de roulette actives, indexé par distance
+    // (31/07/2026) — nécessaire pour le bouton "Effacer" (cf. plus bas),
+    // même principe que Réglages (index.html).
+    const roulettesActivesOnboarding = {};
     function initRouletteHMSOnboarding(dist, hInit, mInit, sInit){
       const inputH = hote.querySelector(`#onb-rec-${dist}-h`);
       const inputM = hote.querySelector(`#onb-rec-${dist}-m`);
@@ -556,9 +560,10 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       if (!inputH || !inputM || !inputS) return;
       const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
       const declencherInput = (input, valeur) => { input.value = String(valeur); };
-      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteH`, Array.from({length:heuresMax+1},(_,i)=>i), hInit ?? 0, v => declencherInput(inputH, v));
-      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteM`, Array.from({length:60},(_,i)=>i), mInit ?? 0, v => declencherInput(inputM, v));
-      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteS`, Array.from({length:60},(_,i)=>i), sInit ?? 0, v => declencherInput(inputS, v));
+      const colH = creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteH`, Array.from({length:heuresMax+1},(_,i)=>i), hInit ?? 0, v => declencherInput(inputH, v));
+      const colM = creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteM`, Array.from({length:60},(_,i)=>i), mInit ?? 0, v => declencherInput(inputM, v));
+      const colS = creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteS`, Array.from({length:60},(_,i)=>i), sInit ?? 0, v => declencherInput(inputS, v));
+      roulettesActivesOnboarding[dist] = { h: colH, m: colM, s: colS };
     }
 
     hote.innerHTML = `
@@ -605,6 +610,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .record-row + .record-row { border-top: 1px solid var(--border); }
       #ecran-onboarding .record-row .dist-label { width: 56px; flex-shrink: 0; font-size: 0.85rem; color: var(--text-muted); }
       #ecran-onboarding .records-note { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0; }
+      #ecran-onboarding .btn-effacer-record {
+        flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+        border: 1px solid var(--border); background: var(--bg); color: var(--text-muted);
+        font-size: 11px; cursor: pointer; display: flex; align-items: center;
+        justify-content: center; padding: 0;
+      }
       #ecran-onboarding .btn-principal {
         width: 100%; padding: 12px; border-radius: 8px; border: none;
         background: var(--accent); color: var(--bg); font-weight: 700;
@@ -686,6 +697,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       const hms = parserTempsRecordEnHMSOnboarding(recExistant ? recExistant.temps : null);
       const row = document.createElement('div');
       row.className = 'record-row';
+      row.id = `onb-rec-${dist}-row`;
       row.innerHTML =
         `<span class="dist-label">${dist}</span>` +
         `<div class="roulette-temps">` +
@@ -698,9 +710,31 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         `</div>` +
         `<input type="hidden" id="onb-rec-${dist}-h" value="${hms.h ?? ''}">` +
         `<input type="hidden" id="onb-rec-${dist}-m" value="${hms.m ?? ''}">` +
-        `<input type="hidden" id="onb-rec-${dist}-s" value="${hms.s ?? ''}">`;
+        `<input type="hidden" id="onb-rec-${dist}-s" value="${hms.s ?? ''}">` +
+        `<button type="button" class="btn-effacer-record" id="onb-rec-${dist}-effacer" title="Effacer ce record">✕</button>`;
       recordsHost.appendChild(row);
       setTimeout(() => initRouletteHMSOnboarding(dist, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0), 0);
+
+      // Bouton "Effacer" (31/07/2026, demande de Laurent) — même principe
+      // que Réglages (index.html), cf. son commentaire pour le détail
+      // complet : sans ce bouton, remettre la roulette à 0:00 aurait été
+      // interprété comme un vrai temps saisi (bloqué à tort par le
+      // garde-fou record du monde). Attaché après row.innerHTML plutôt que
+      // via un attribut onclick inline — innerHTML ne permet pas
+      // d'attacher un vrai handler JS directement dans la chaîne HTML.
+      const btnEffacer = row.querySelector(`#onb-rec-${dist}-effacer`);
+      btnEffacer.addEventListener('click', () => {
+        const rouletteRef = roulettesActivesOnboarding[dist];
+        if (rouletteRef) {
+          rouletteRef.h?.definirValeur(0, false);
+          rouletteRef.m?.definirValeur(0, false);
+          rouletteRef.s?.definirValeur(0, false);
+        }
+        row.querySelector(`#onb-rec-${dist}-h`).value = '0';
+        row.querySelector(`#onb-rec-${dist}-m`).value = '0';
+        row.querySelector(`#onb-rec-${dist}-s`).value = '0';
+        row.dataset.recordEfface = 'true';
+      });
     });
     const recordsNote = document.createElement('p');
     recordsNote.className = 'records-note';
@@ -758,6 +792,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         let recordIrrealisteDetecte = null;
         const tempsParDistance = {};
         DISTANCES_RECORD.forEach((dist) => {
+          const row = hote.querySelector(`#onb-rec-${dist}-row`);
+          const estEfface = row?.dataset.recordEfface === 'true';
+          if (estEfface) {
+            tempsParDistance[dist] = null;
+            return;
+          }
           const hInp = hote.querySelector(`#onb-rec-${dist}-h`);
           const mInp = hote.querySelector(`#onb-rec-${dist}-m`);
           const sInp = hote.querySelector(`#onb-rec-${dist}-s`);
@@ -784,11 +824,18 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
         const records = { ...(profilExistant.records || {}) };
         DISTANCES_RECORD.forEach((dist) => {
+          const rowDist = hote.querySelector(`#onb-rec-${dist}-row`);
+          const estEfface = rowDist?.dataset.recordEfface === 'true';
           const tempsFormate = tempsParDistance[dist];
           if (tempsFormate) {
             const dateExistante = (records[dist] && records[dist].date) || null;
             records[dist] = { temps: tempsFormate, date: dateExistante };
-          } else if (!(profilExistant.records && profilExistant.records[dist])) {
+          } else if (estEfface || !(profilExistant.records && profilExistant.records[dist])) {
+            // estEfface : effacement explicite, doit toujours écraser un
+            // éventuel record préexistant (31/07/2026, bug corrigé en même
+            // temps que l'ajout du bouton Effacer — sans ce cas, effacer un
+            // record déjà présent dans profilExistant n'avait aucun effet,
+            // le spread initial de records le préservait silencieusement).
             records[dist] = null;
           }
         });
