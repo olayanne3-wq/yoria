@@ -8050,7 +8050,12 @@ function renderSettings() {
   // vrai événement 'input' à chaque changement, cohérent avec le pattern
   // du wizard — mais ici rien n'écoute cet event pour l'instant, les
   // valeurs sont lues directement au clic sur "Enregistrer").
-  window.initRouletteHMS = function(idPrefix, hInit, mInit, sInit){
+  //
+  // heuresMax (31/07/2026, demande de Laurent : 24h identique pour les 4
+  // distances de record jugé abusé) — borne la colonne heures à une plage
+  // réaliste selon la distance concernée. Repli sur 24 si non fourni, pour
+  // rester rétrocompatible avec un éventuel appelant qui ne le précise pas.
+  window.initRouletteHMS = function(idPrefix, hInit, mInit, sInit, heuresMax = 24){
     const inputH = document.getElementById(idPrefix + '-h');
     const inputM = document.getElementById(idPrefix + '-m');
     const inputS = document.getElementById(idPrefix + '-s');
@@ -8061,7 +8066,7 @@ function renderSettings() {
       input.dispatchEvent(new Event('input', { bubbles:true }));
     };
 
-    creerColonneRouletteRecglages(idPrefix + '-rouletteH', Array.from({length:24},(_,i)=>i), hInit, v => declencherInput(inputH, v));
+    creerColonneRouletteRecglages(idPrefix + '-rouletteH', Array.from({length:heuresMax+1},(_,i)=>i), hInit, v => declencherInput(inputH, v));
     creerColonneRouletteRecglages(idPrefix + '-rouletteM', Array.from({length:60},(_,i)=>i), mInit, v => declencherInput(inputM, v));
     creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
   };
@@ -8108,8 +8113,25 @@ function renderSettings() {
   // entre les deux fichiers. La roulette de l'onboarding est donc portée
   // séparément dans auth.js, avec son propre CSS/JS — cohérent avec cette
   // contrainte déjà actée, pas une régression de ce chantier.
+  // Bornes de la colonne heures par distance (31/07/2026, demande de
+  // Laurent : 24h identique pour les 4 distances jugé abusé — un 5K ne
+  // dépasse jamais 1h en pratique, même marché). Valeurs pensées pour
+  // couvrir les cas extrêmes réalistes (marche/course incluse), pas la
+  // moyenne : 5K/10K restent courts par nature, Semi/Marathon peuvent
+  // légitimement dépasser plusieurs heures pour un débutant ou une
+  // approche marche/course. Repli sur 9h si la distance n'est pas
+  // reconnue (garde-fou, ne devrait jamais arriver avec les 4 clés
+  // ci-dessous).
+  const HEURES_MAX_PAR_DISTANCE = { "5K": 1, "10K": 2, "Semi": 4, "Marathon": 9 };
+
   window.creerChampsTempsHMS = function(idPrefix, valeurInitiale) {
     const { h, m, s } = window.parserTempsRecordEnHMS(valeurInitiale);
+    // Extrait la distance depuis idPrefix (toujours "rec-temps-"+dist à
+    // l'unique site d'appel actuel) plutôt que d'ajouter un paramètre
+    // distance séparé — évite de changer la signature de cette fonction
+    // pour un éventuel autre appelant existant.
+    const distDepuisPrefix = idPrefix.replace(/^rec-temps-/, '');
+    const heuresMax = HEURES_MAX_PAR_DISTANCE[distDepuisPrefix] ?? 9;
     const wrap = document.createElement("div");
     wrap.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0;";
 
@@ -8142,7 +8164,7 @@ function renderSettings() {
     // public/v2/index.html, qui a le même besoin (garanti par l'ordre du
     // script principal côté wizard, mais ici cette fonction est appelée
     // au milieu de la construction d'un arbre DOM pas encore attaché).
-    setTimeout(() => window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0), 0);
+    setTimeout(() => window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax), 0);
 
     return wrap;
   };
