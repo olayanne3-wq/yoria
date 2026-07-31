@@ -8308,7 +8308,7 @@ function renderSettings() {
     }, { passive: true });
 
     const api = {
-      definirValeur(v, animer){
+      definirValeur(v, animer, tentative){
         const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
         if (index === -1) return;
         valeurActuelle = v;
@@ -8317,6 +8317,26 @@ function renderSettings() {
         else conteneur.scrollTo({ top: cible, behavior: 'smooth' });
         items.forEach(it => it.classList.remove('actif'));
         items[index].classList.add('actif');
+        // CORRECTIF (31/07/2026, bug confirmé par inspection console avec
+        // Laurent : scrollTop restait à 0 au tout PREMIER rendu d'un
+        // écran, mais fonctionnait normalement au rendu suivant du même
+        // écran — cause exacte non identifiée malgré plusieurs
+        // hypothèses de timing testées, cf. historique du fichier) —
+        // vérification défensive : si scrollTop ne correspond pas à la
+        // cible visée après un cycle de peinture, on retente jusqu'à 5
+        // fois. N'a aucun effet perceptible dans le cas normal (le
+        // premier essai suffit), rattrape silencieusement le cas où il
+        // échoue.
+        if (animer === false && cible > 0) {
+          const tentativeActuelle = tentative ?? 0;
+          if (tentativeActuelle < 5) {
+            requestAnimationFrame(() => {
+              if (Math.abs(conteneur.scrollTop - cible) > 2) {
+                api.definirValeur(v, false, tentativeActuelle + 1);
+              }
+            });
+          }
+        }
       },
       valeur(){ return valeurActuelle; },
     };
