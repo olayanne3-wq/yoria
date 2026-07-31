@@ -2013,6 +2013,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     let valeurActuelle = valeurInitiale;
     let timerScrollFin = null;
 
+    const HAUTEUR_ITEM = 44;   // cf. .roulette-item{height:44px} — garder synchronisé avec le CSS
+    const HAUTEUR_PAD = 53;    // cf. .roulette-pad{height:53px} — garder synchronisé avec le CSS
+    const HAUTEUR_PICKER = 150; // cf. .roulette-temps{height:150px} — garder synchronisé avec le CSS
+
+    // CORRECTIF (31/07/2026, bug signalé par Laurent avec captures d'écran :
+    // l'item affiché en grand/gras n'était pas celui centré dans la fenêtre
+    // grise, mais systématiquement celui juste en-dessous) — root:conteneur
+    // sans rootMargin observe l'intersection sur TOUT le conteneur visible
+    // (150px), pas seulement la fenêtre de sélection (44px centrés). Comme
+    // le conteneur affiche plusieurs items simultanément à plus de 50% de
+    // visibilité, le dernier évènement traité (souvent l'item du bas, qui
+    // entre en dernier dans le viewport lors du scroll) l'emportait sur
+    // l'item réellement centré. rootMargin en valeurs négatives (haut/bas)
+    // rétrécit la zone d'intersection effective aux seuls pixels de la
+    // fenêtre de sélection — désormais un seul item peut jamais dépasser
+    // 50% d'intersection avec cette zone réduite à la fois.
+    const margeVerticale = (HAUTEUR_PICKER - HAUTEUR_ITEM) / 2;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entree => {
         if (entree.isIntersecting && entree.intersectionRatio > 0.5) {
@@ -2020,7 +2037,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
           entree.target.classList.add('actif');
         }
       });
-    }, { root: conteneur, threshold: [0, 0.5, 1] });
+    }, { root: conteneur, rootMargin: `-${margeVerticale}px 0px -${margeVerticale}px 0px`, threshold: [0, 0.5, 1] });
     items.forEach(it => observer.observe(it));
 
     // Défilement stabilisé (debounce 120ms) : évite de déclencher onSelect
@@ -2040,9 +2057,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       }, 120);
     }, { passive: true });
 
-    const HAUTEUR_ITEM = 44;   // cf. .roulette-item{height:44px} — garder synchronisé avec le CSS
-    const HAUTEUR_PAD = 53;    // cf. .roulette-pad{height:53px} — garder synchronisé avec le CSS
-    const HAUTEUR_PICKER = 150; // cf. .roulette-temps{height:150px} — garder synchronisé avec le CSS
     const api = {
       definirValeur(v, animer){
         const index = items.findIndex(it => parseInt(it.dataset.valeur,10) === v);
