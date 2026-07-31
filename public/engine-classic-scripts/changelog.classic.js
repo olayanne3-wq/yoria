@@ -5,7 +5,7 @@
  * Extrait de index.html le 13 juillet 2026 (était un tableau const VERSIONS
  * en dur au milieu de renderSettings()) — séparé pour alléger index.html
  * (~250 lignes de contenu texte pur, sans rapport avec la logique de
- * rendu environnante) et pour éditer une entrée de changelog sans risquer
+ * rendu environrante) et pour éditer une entrée de changelog sans risquer
  * de casser du JS ailleurs dans ce même fichier massif.
  *
  * Script classique (pas de module ES) — même pattern que les autres
@@ -27,7 +27,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.29", title:"Volumes minimums adaptés par distance, aide repensée", current:true, notes:[
+      { ver:"v2.30", title:"Réglages réorganisés en accordéons, roulettes de saisie améliorées", current:true, notes:[
+        "📂 Réglages, Stats et Course sont désormais organisés en sections repliables, plus faciles à parcourir",
+        "🏅 Records personnels : présentation plus compacte, avec validation explicite (bouton ✓) plutôt qu'un enregistrement automatique",
+        "🎡 Nouveaux boutons +/- sur les roulettes de saisie de temps, en plus du geste de défilement habituel — disponibles sur les records personnels, le temps de référence, l'objectif et le volume hebdomadaire du wizard",
+        "🎨 Thème clair/sombre déplacé dans l'en-tête, sous forme d'un bouton discret",
+      ]},
+      { ver:"v2.29", title:"Volumes minimums adaptés par distance, aide repensée", current:false, notes:[
         "📏 Le volume minimum requis pour générer un plan cohérent s'adapte maintenant à ta distance visée (5K/10K/Semi/Marathon), pas seulement au nombre de jours choisis",
         "📐 La sortie longue reste désormais garantie comme la séance la plus longue de la semaine, même à faible volume — elle ne peut plus être plus courte que le cumul de tes séances de qualité",
         "❓ L'aide est repensée : sections repliables, recherche pour trouver rapidement ce que tu cherches, et deux nouvelles rubriques — les différents types de séances et les règles qui structurent ton plan",
