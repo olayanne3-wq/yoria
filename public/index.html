@@ -8425,12 +8425,35 @@ function renderSettings() {
     }
     profilCoureur.records = profilCoureur.records || {};
     let auMoinsUnRecordBattu = false;
+    let recordIrrealisteDetecte = null;
     ["5K","10K","Semi","Marathon"].forEach(dist => {
       const hInp = document.getElementById("rec-temps-"+dist+"-h");
       const mInp = document.getElementById("rec-temps-"+dist+"-m");
       const sInp = document.getElementById("rec-temps-"+dist+"-s");
       const dateInp = document.getElementById("rec-date-"+dist);
       const tempsFormate = (hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null;
+      // Garde-fou record du monde (31/07/2026, demande de Laurent :
+      // "empêcher de mettre des objectifs irréalistes... des temps
+      // records du monde") — vérifié AVANT le badge record_battu et
+      // l'écriture dans profilCoureur.records, pour ne jamais persister
+      // une valeur physiologiquement impossible. cf.
+      // RECORDS_MONDE_SECONDES (plan-generator.js) pour les sources et
+      // la méthode de calcul des seuils. Un seul message d'alerte
+      // groupé en fin de boucle (recordIrrealisteDetecte) plutôt qu'un
+      // alert() par distance — évite d'enchaîner plusieurs popups
+      // bloquants si plusieurs distances sont concernées à la fois.
+      if (tempsFormate) {
+        try {
+          const secondesSaisies = parseTimeToSeconds(tempsFormate);
+          const recordMonde = RECORDS_MONDE_SECONDES[dist];
+          if (recordMonde && secondesSaisies < recordMonde) {
+            recordIrrealisteDetecte = recordIrrealisteDetecte
+              ? `${recordIrrealisteDetecte}, ${dist}`
+              : dist;
+            return; // ne sauvegarde pas cette distance, passe à la suivante
+          }
+        } catch (e) { /* format de temps invalide, ignoré ici — non bloquant pour ce garde-fou précis */ }
+      }
       // Badge "record_battu" (27/07/2026) — comparaison AVANT écrasement :
       // un temps plus RAPIDE (moins de secondes) que l'ancien record déjà
       // enregistré compte comme un vrai record battu. Une saisie identique,
@@ -8448,6 +8471,9 @@ function renderSettings() {
         profilCoureur.records[dist] = null;
       }
     });
+    if (recordIrrealisteDetecte) {
+      alert(`Temps plus rapide que le record du monde actuel sur : ${recordIrrealisteDetecte} — non enregistré, vérifie ta saisie.`);
+    }
     if (auMoinsUnRecordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
       enregistrerBadgeDebloque('record_battu', 1).then(() => {
         window.__badgesCache__.record_battu = true;
