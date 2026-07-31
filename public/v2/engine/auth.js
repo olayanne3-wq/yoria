@@ -437,6 +437,34 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
     }
 
+    // Conversion "h:mm:ss" ou "mm:ss" -> secondes totales, dupliquée ici
+    // en local (31/07/2026) pour le garde-fou record du monde — même
+    // raison que HEURES_MAX_PAR_DISTANCE plus bas : ce module ne doit
+    // jamais dépendre de plan-generator.js/index.html (contrainte déjà
+    // actée, cf. commentaire ci-dessus sur creerColonneRouletteOnboarding).
+    function parserTempsEnSecondesOnboarding(str) {
+      if (!str) return 0;
+      const parts = str.split(':').map(Number);
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return 0;
+    }
+
+    // Records du monde (route, hommes) par distance, en secondes — plancher
+    // ABSOLU de temps saisissable ici (31/07/2026, demande de Laurent :
+    // "empêcher de mettre des objectifs irréalistes... des temps records
+    // du monde"). Table dupliquée depuis plan-generator.js
+    // (RECORDS_MONDE_SECONDES) plutôt qu'importée — même contrainte
+    // d'indépendance que HEURES_MAX_PAR_DISTANCE ci-dessous. À garder
+    // synchronisée si la table source change (sources/méthode identiques,
+    // cf. son commentaire dans plan-generator.js).
+    const RECORDS_MONDE_SECONDES_ONBOARDING = {
+      '5K': 12 * 60 + 49,
+      '10K': 26 * 60 + 31,
+      'Semi': 57 * 60 + 20,
+      'Marathon': 1 * 3600 + 59 * 60 + 30,
+    };
+
     // ── Composant roulette (wheel picker), porté ici indépendamment —
     // mêmes principes que public/v2/index.html et Réglages (index.html) :
     // calcul direct de scrollTop (jamais scrollIntoView, peu fiable sur un
@@ -722,16 +750,41 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       // rafraichirNiveaux plus haut), donc terminer() n'est plus jamais
       // appelée sans un niveauChoisi valide.
       function terminer() {
+        // Garde-fou record du monde (31/07/2026, demande de Laurent) —
+        // vérifié AVANT de masquer l'écran/résoudre la promesse, pour
+        // laisser la personne corriger sans quitter l'onboarding. Un seul
+        // message groupé si plusieurs distances sont concernées à la fois
+        // (même logique que Réglages, cf. son commentaire).
+        let recordIrrealisteDetecte = null;
+        const tempsParDistance = {};
+        DISTANCES_RECORD.forEach((dist) => {
+          const hInp = hote.querySelector(`#onb-rec-${dist}-h`);
+          const mInp = hote.querySelector(`#onb-rec-${dist}-m`);
+          const sInp = hote.querySelector(`#onb-rec-${dist}-s`);
+          const tempsFormate = formaterHMSEnTempsRecordOnboarding(hInp.value, mInp.value, sInp.value);
+          tempsParDistance[dist] = tempsFormate;
+          if (tempsFormate) {
+            const secondesSaisies = parserTempsEnSecondesOnboarding(tempsFormate);
+            const recordMonde = RECORDS_MONDE_SECONDES_ONBOARDING[dist];
+            if (recordMonde && secondesSaisies > 0 && secondesSaisies < recordMonde) {
+              recordIrrealisteDetecte = recordIrrealisteDetecte
+                ? `${recordIrrealisteDetecte}, ${dist}`
+                : dist;
+            }
+          }
+        });
+        if (recordIrrealisteDetecte) {
+          alert(`Temps plus rapide que le record du monde actuel sur : ${recordIrrealisteDetecte} — corrige avant de continuer.`);
+          return; // ne ferme pas l'écran, laisse corriger
+        }
+
         hote.querySelector('#ecran-onboarding').style.display = 'none';
         const annee = parseInt(hote.querySelector('#onb-annee').value) || profilExistant.anneeNaissance || null;
         const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
         const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
         const records = { ...(profilExistant.records || {}) };
         DISTANCES_RECORD.forEach((dist) => {
-          const hInp = hote.querySelector(`#onb-rec-${dist}-h`);
-          const mInp = hote.querySelector(`#onb-rec-${dist}-m`);
-          const sInp = hote.querySelector(`#onb-rec-${dist}-s`);
-          const tempsFormate = formaterHMSEnTempsRecordOnboarding(hInp.value, mInp.value, sInp.value);
+          const tempsFormate = tempsParDistance[dist];
           if (tempsFormate) {
             const dateExistante = (records[dist] && records[dist].date) || null;
             records[dist] = { temps: tempsFormate, date: dateExistante };
