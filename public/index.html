@@ -2964,6 +2964,26 @@ function renderDashboard() {
     return wrapperVide;
   }
 
+  // Calcul unique du moteur de décision pour tout ce render() du dashboard
+  // (31/07/2026, correctif de perf) — calculerEtatMoteurDecision() était
+  // appelée deux fois de façon identique dans cette fonction
+  // (semaineCiblePhysioActive et moteurDecisionEl), avec exactement les
+  // mêmes entrées (stravaActivities/statuses/profilCoureur/window.
+  // __PLAN_BRUT__, aucune mutation entre les deux appels d'origine) — un
+  // calcul non négligeable (adapterHistoriqueAvecRpe + calculerRunnerState
+  // + analyserTendance sur 6 semaines, chacune re-parcourant
+  // stravaActivities) exécuté deux fois pour un résultat strictement
+  // identique à chaque render. Calculé une seule fois ici, réutilisé par
+  // les deux blocs plus bas.
+  const etatMoteurPartage = calculerEtatMoteurDecision();
+
+  // Même correctif de perf (31/07/2026) : activitesDuPlan() (filtre simple
+  // sur stravaActivities, moins coûteux que le moteur de décision ci-dessus
+  // mais tout de même appelé 2 fois à l'identique dans cette fonction) —
+  // calculé une fois, réutilisé par heroPred (totalKmRun) et les barres de
+  // progression globales (totalKm/totalMin) plus bas.
+  const activitesDuPlanPartage = activitesDuPlan();
+
   // ── Fin de bloc Mode Forme — propose de générer le bloc suivant
   // (21/07/2026) ──────────────────────────────────────────────────────────
   // Même pattern que la progression marche-course ci-dessus : détection
@@ -3356,7 +3376,7 @@ function renderDashboard() {
   const semaineCiblePhysioActive = (() => {
     if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.estPlanRepli) return null;
     if (typeof DecisionEngineApply === 'undefined') return null;
-    const etatMoteurLeger = calculerEtatMoteurDecision();
+    const etatMoteurLeger = etatMoteurPartage;
     const decisionLegere = etatMoteurLeger ? etatMoteurLeger.decision : null;
     if (!decisionLegere || decisionLegere.type !== 'reduire_charge') return null;
     const cleIgnoreeLegere = clePourPlan("lk_decision_moteur_ignoree");
@@ -3642,7 +3662,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // si pas de séance qualité aujourd'hui ou readiness non renseignée.
     const readinessDuJour = seanceQualiteAujourdhui ? sessionReadiness[seanceQualiteAujourdhui.uid] : undefined;
 
-    const etatMoteur = calculerEtatMoteurDecision();
+    const etatMoteur = etatMoteurPartage;
 
     // Cas "readiness fatigué SANS décision reduire_charge du RuleEngine" —
     // cf. conception 23/07/2026, principe "entre-deux" : jamais de
@@ -3937,7 +3957,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     ),
     // ── Stats séances ─────────────────────────────────────────────────────
     (()=>{
-      const totalKmRun = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
+      const totalKmRun = Math.round(activitesDuPlanPartage.reduce((s,a)=>s+a.distance,0)/100)/10;
       return el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",paddingTop:"10px",borderTop:"1px solid rgba(var(--text-rgb),0.2)",marginTop:"10px"}},
         el("span",{style:{color:"var(--accent2)",fontWeight:"700"}},"✅ "+done),
         el("span",{class:"muted"},"·"),
@@ -4303,8 +4323,8 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   }
 
     // ── Barres de progression km + temps ─────────────────────────────────────
-  const totalKm = Math.round(activitesDuPlan().reduce((s,a)=>s+a.distance,0)/100)/10;
-  const totalMin = Math.round(activitesDuPlan().reduce((s,a)=>s+a.moving_time,0)/60);
+  const totalKm = Math.round(activitesDuPlanPartage.reduce((s,a)=>s+a.distance,0)/100)/10;
+  const totalMin = Math.round(activitesDuPlanPartage.reduce((s,a)=>s+a.moving_time,0)/60);
   const totalH = Math.floor(totalMin/60);
   const totalMmin = totalMin%60;
 
