@@ -251,7 +251,19 @@ export function rebuildPredHistorySequentielle(startDate, endDate, ctx) {
   let d = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
   while (d <= end) {
-    const dateStr = d.toISOString().slice(0,10);
+    // CORRECTIF fuseau horaire (31/07/2026, bug préexistant dans l'original
+    // repéré après extraction de ce module — signalé par Laurent : 2 points
+    // pour "aujourd'hui" sur le graphe Stats, axe X décalé). d.toISOString()
+    // convertit toujours en UTC, alors que `d` est construit en heure LOCALE
+    // (`new Date(startDate + "T00:00:00")`, sans Z) — en France l'été
+    // (UTC+2), entre minuit et 2h du matin locales, .toISOString() peut
+    // retourner la date du lendemain. Résultat : cette boucle générait une
+    // entrée pour une date "en avance" par rapport à today() (déjà corrigée
+    // pour ce même biais, cf. définition de today() dans index.html),
+    // provoquant un doublon quand predict10K() cherchait ensuite l'entrée du
+    // jour avec la vraie date locale. Mêmes getters que today() : cohérent
+    // avec d.setDate(d.getDate()+1) plus bas, déjà en heure locale.
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const borneBrute = calculerBorneBruteAtDate(dateStr, ctx);
     const fiabilite = fiabilitePlanPonderee(dateStr, allSessions, statuses);
     if (aDesNouvellesDonneesQualite(dateStr, allSessions, statuses, stravaActivities, manualPerf)) {
@@ -412,7 +424,11 @@ export function predict10K(ctx) {
   let lavendouWeight = POIDS_DEPART - progression * (POIDS_DEPART - POIDS_PLANCHER);
 
   // Garde-fou : dernière séance VMA ou SPEC dans les 3 dernières semaines ?
-  const dateLimiteRecente = new Date(new Date(todayFn()).getTime() - 21*86400000).toISOString().slice(0,10);
+  // Même correctif fuseau horaire que dans rebuildPredHistorySequentielle
+  // ci-dessus — impact mineur ici (fenêtre "3 dernières semaines" décalée
+  // d'un jour au pire), corrigé par cohérence.
+  const dLimite = new Date(new Date(todayFn()).getTime() - 21*86400000);
+  const dateLimiteRecente = `${dLimite.getFullYear()}-${String(dLimite.getMonth()+1).padStart(2,'0')}-${String(dLimite.getDate()).padStart(2,'0')}`;
   const dateVmaRecente = hasVma ? vmaData.runs.some(r => r.start_date_local?.slice(0,10) >= dateLimiteRecente) : false;
   const dateSpecRecente = hasSpec ? specData.runs.some(r => r.start_date_local?.slice(0,10) >= dateLimiteRecente) : false;
   const donneesRecentes = dateVmaRecente || dateSpecRecente;
