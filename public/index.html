@@ -8055,6 +8055,12 @@ function renderSettings() {
   // distances de record jugé abusé) — borne la colonne heures à une plage
   // réaliste selon la distance concernée. Repli sur 24 si non fourni, pour
   // rester rétrocompatible avec un éventuel appelant qui ne le précise pas.
+  // Registre des instances de roulette actives, indexé par idPrefix
+  // (31/07/2026) — nécessaire pour le bouton "Effacer" (cf.
+  // creerChampsTempsHMS), qui doit pouvoir repositionner visuellement une
+  // roulette déjà créée sans la reconstruire entièrement.
+  const roulettesActivesReglages = {};
+
   window.initRouletteHMS = function(idPrefix, hInit, mInit, sInit, heuresMax = 24){
     const inputH = document.getElementById(idPrefix + '-h');
     const inputM = document.getElementById(idPrefix + '-m');
@@ -8066,9 +8072,10 @@ function renderSettings() {
       input.dispatchEvent(new Event('input', { bubbles:true }));
     };
 
-    creerColonneRouletteRecglages(idPrefix + '-rouletteH', Array.from({length:heuresMax+1},(_,i)=>i), hInit, v => declencherInput(inputH, v));
-    creerColonneRouletteRecglages(idPrefix + '-rouletteM', Array.from({length:60},(_,i)=>i), mInit, v => declencherInput(inputM, v));
-    creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
+    const colH = creerColonneRouletteRecglages(idPrefix + '-rouletteH', Array.from({length:heuresMax+1},(_,i)=>i), hInit, v => declencherInput(inputH, v));
+    const colM = creerColonneRouletteRecglages(idPrefix + '-rouletteM', Array.from({length:60},(_,i)=>i), mInit, v => declencherInput(inputM, v));
+    const colS = creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
+    roulettesActivesReglages[idPrefix] = { h: colH, m: colM, s: colS };
   };
 
   window.parserTempsRecordEnHMS = function(str) {
@@ -8133,6 +8140,7 @@ function renderSettings() {
     const distDepuisPrefix = idPrefix.replace(/^rec-temps-/, '');
     const heuresMax = HEURES_MAX_PAR_DISTANCE[distDepuisPrefix] ?? 9;
     const wrap = document.createElement("div");
+    wrap.id = idPrefix + "-wrap";
     wrap.style.cssText = "display:flex;align-items:center;gap:4px;flex-shrink:0;";
 
     const roulette = document.createElement("div");
@@ -8156,6 +8164,51 @@ function renderSettings() {
 
     wrap.appendChild(roulette);
     wrap.appendChild(hInp); wrap.appendChild(mInp); wrap.appendChild(sInp);
+
+    // Retire l'état "effacé" dès que l'utilisateur retouche la roulette
+    // après un clic sur Effacer (accidentel ou changement d'avis) — les 3
+    // inputs cachés reçoivent un vrai événement 'input' à chaque défilement
+    // (cf. declencherInput dans initRouletteHMS), donc ce listener suffit
+    // à couvrir n'importe quelle colonne (h/m/s) sans les cibler une par
+    // une.
+    [hInp, mInp, sInp].forEach(inp => {
+      inp.addEventListener('input', () => { delete wrap.dataset.recordEfface; });
+    });
+
+    // Bouton "Effacer" (31/07/2026, demande de Laurent) — avec la roulette,
+    // il n'existe plus d'état "champ vide" naturel comme avec l'ancien
+    // champ texte (elle affiche toujours une valeur numérique, y compris
+    // "0:00" après un scroll complet vers le haut). Sans ce bouton,
+    // remettre la roulette à 0:00 aurait été interprété comme un vrai
+    // temps saisi de 0 seconde — à la fois faux (aucun coureur n'a un
+    // record à 0:00) et bloqué à tort par le garde-fou record du monde
+    // (0:00 est toujours < n'importe quel record réel). data-record-efface
+    // sur wrap distingue explicitement "l'utilisateur veut supprimer ce
+    // record" de "l'utilisateur a saisi 0:00" — retiré dès que la roulette
+    // est de nouveau manipulée (listener ci-dessus), donc revenir sur la
+    // roulette après un clic Effacer accidentel annule l'effacement.
+    //
+    // NOTE : le clic sur ce bouton appelle définirValeur(0) sur chaque
+    // colonne, ce qui déclenche onSelect -> declencherInput -> dispatch
+    // 'input' -> le listener ci-dessus retirerait immédiatement l'attribut
+    // qu'on vient de poser. On pose donc recordEfface APRÈS avoir
+    // repositionné les roulettes, pas avant.
+    const btnEffacer = document.createElement("button");
+    btnEffacer.type = "button";
+    btnEffacer.textContent = "✕";
+    btnEffacer.title = "Effacer ce record";
+    btnEffacer.style.cssText = "flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--border-soft);color:var(--text-muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;";
+    btnEffacer.addEventListener("click", () => {
+      const rouletteRef = roulettesActivesReglages[idPrefix];
+      if (rouletteRef) {
+        rouletteRef.h?.definirValeur(0, false);
+        rouletteRef.m?.definirValeur(0, false);
+        rouletteRef.s?.definirValeur(0, false);
+      }
+      hInp.value = "0"; mInp.value = "0"; sInp.value = "0";
+      wrap.dataset.recordEfface = "true";
+    });
+    wrap.appendChild(btnEffacer);
 
     // Construction différée (setTimeout 0) : les 3 conteneurs de colonnes
     // doivent être insérés dans le vrai DOM (via wrap.appendChild plus
@@ -8431,7 +8484,16 @@ function renderSettings() {
       const mInp = document.getElementById("rec-temps-"+dist+"-m");
       const sInp = document.getElementById("rec-temps-"+dist+"-s");
       const dateInp = document.getElementById("rec-date-"+dist);
-      const tempsFormate = (hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null;
+      // Bouton "Effacer" (31/07/2026) — cf. son commentaire dans
+      // creerChampsTempsHMS pour le détail complet. Un record marqué
+      // "effacé" est traité comme une suppression explicite, jamais
+      // comme une saisie de 0:00 (qui échouerait de toute façon le
+      // garde-fou record du monde juste en dessous, à tort).
+      const wrapRecord = document.getElementById("rec-temps-"+dist+"-wrap");
+      const estEfface = wrapRecord?.dataset.recordEfface === "true";
+      const tempsFormate = estEfface
+        ? null
+        : ((hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null);
       // Garde-fou record du monde (31/07/2026, demande de Laurent :
       // "empêcher de mettre des objectifs irréalistes... des temps
       // records du monde") — vérifié AVANT le badge record_battu et
