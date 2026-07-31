@@ -5844,6 +5844,21 @@ function renderWeekDetail(weekNum) {
 // groupe juste après l'avoir ouvert, surprenant pour l'utilisateur.
 const etatGroupesAccordeon = {};
 
+// Registre de l'état ouvert/fermé de chaque carte record, indexé par
+// distance (31/07/2026, demande de Laurent : "la section est trop
+// grande, on pourrait pas organiser ça mieux ?", puis bug corrigé le même
+// jour : "je n'ai pas le temps de changer la valeur que la carte se
+// ferme") — même principe que etatGroupesAccordeon juste au-dessus,
+// déclaré au niveau GLOBAL du fichier (pas à l'intérieur de
+// renderSettings()) pour persister entre les appels de render(). Une
+// première version le déclarait par erreur à l'intérieur de
+// renderSettings(), donc un nouvel objet vide était recréé à CHAQUE
+// render() (déclenché par le debounce d'auto-sauvegarde des records,
+// toutes les 400ms après un clic +/-) — la carte se refermait donc
+// systématiquement dès la première sauvegarde automatique, avant même que
+// l'utilisateur n'ait fini d'ajuster une valeur.
+const etatCartesRecords = {};
+
 function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
   const contenuValide = contenuElements.filter(Boolean);
   if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
@@ -8673,14 +8688,6 @@ function renderSettings() {
       }).catch(() => {});
     }
   }
-
-  // Registre de l'état ouvert/fermé de chaque carte record, indexé par
-  // distance (31/07/2026, demande de Laurent : "la section est trop
-  // grande, on pourrait pas organiser ça mieux ?") — même principe que
-  // etatGroupesAccordeon pour les groupes principaux : sans ce registre,
-  // l'état serait perdu à chaque render() (déclenché par
-  // sauvegarderUnRecord() via le badge record_battu, entre autres).
-  const etatCartesRecords = {};
 
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏅 Records personnels"),
