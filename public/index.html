@@ -8743,9 +8743,25 @@ function renderSettings() {
         // chaque colonne si l'utilisateur enchaîne heures puis minutes
         // puis secondes en quelques secondes ; le dernier changement de la
         // série déclenche l'unique sauvegarde réelle.
+        //
+        // CORRECTIF (31/07/2026, bug signalé par Laurent : "l'enregistrement
+        // ne se fait toujours pas" — confirmé en console, l'input caché se
+        // mettait bien à jour mais profilCoureur.records restait figé) —
+        // document.getElementById() cherche dans le VRAI document, mais à
+        // ce stade de la construction de recordsSection, champsHMS/
+        // editionWrap/carteWrap ne sont pas encore attachés (ils ne le
+        // deviennent qu'une fois renderSettings() entièrement retournée et
+        // insérée par render()) : getElementById retournait donc null pour
+        // les 3 inputs, et `if (!inpCache) return` faisait sortir de la
+        // fonction avant même de poser le listener 'input' — la sauvegarde
+        // automatique n'était donc jamais câblée. Remplacé par
+        // champsHMS.querySelector(), qui cherche dans l'arbre DOM déjà
+        // construit en mémoire, peu importe qu'il soit attaché au document
+        // ou non — cohérent avec btnEffacerRecord juste en dessous, qui
+        // utilisait déjà ce bon pattern.
         let debounceRecord = null;
         [dist+"-h", dist+"-m", dist+"-s"].forEach(suffixe => {
-          const inpCache = document.getElementById("rec-temps-"+suffixe);
+          const inpCache = champsHMS.querySelector("#rec-temps-"+suffixe);
           if (!inpCache) return;
           inpCache.addEventListener("input", () => {
             clearTimeout(debounceRecord);
