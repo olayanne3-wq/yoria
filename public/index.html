@@ -2794,13 +2794,24 @@ function verifierEtAppliquerAlluresDynamiques() {
 
   const semaineInfo = window.__PLAN_BRUT__.semaines.find(s => s.semaineNum === derniereSemainePaireComplete);
   if (!semaineInfo || !window.__PLAN_BRUT__.dateDebut) return;
-  const debutPlan = new Date(window.__PLAN_BRUT__.dateDebut + "T00:00:00Z");
-  const dateFinPeriode = new Date(debutPlan);
-  dateFinPeriode.setUTCDate(debutPlan.getUTCDate() + derniereSemainePaireComplete * 7 - 1);
-  const dateFinPeriodeStr = dateFinPeriode.toISOString().slice(0,10);
-  const dateFinPeriodePrecedente = new Date(debutPlan);
-  dateFinPeriodePrecedente.setUTCDate(debutPlan.getUTCDate() + (derniereSemainePaireComplete - 2) * 7 - 1);
-  const dateFinPeriodePrecedenteStr = dateFinPeriodePrecedente.toISOString().slice(0,10);
+  // CORRECTIF fuseau horaire (31/07/2026, même famille que le correctif
+  // predictor.js du même jour) : dateFinPeriode/dateFinPeriodePrecedente
+  // étaient calculées en UTC pur (T00:00:00Z + setUTCDate + toISOString()),
+  // puis comparées à predHistory[].date — qui est produite en heure LOCALE
+  // via today() (cf. predictor.js). En France l'été (UTC+2), ce mélange
+  // peut décaler d'un jour la date de fin de période cherchée dans
+  // predHistory, faisant potentiellement rater une entrée existante (repli
+  // silencieux sur la plus proche disponible, cf. trouverEstimationAvant) ou
+  // en trouver une un jour trop tôt/tard. Repris ici avec les mêmes getters
+  // locaux que today()/rebuildPredHistorySequentielle (predictor.js), pour
+  // que ce calcul reste cohérent avec l'index réel de predHistory.
+  const debutPlanLocal = new Date(window.__PLAN_BRUT__.dateDebut + "T00:00:00");
+  const dateFinPeriode = new Date(debutPlanLocal);
+  dateFinPeriode.setDate(debutPlanLocal.getDate() + derniereSemainePaireComplete * 7 - 1);
+  const dateFinPeriodeStr = `${dateFinPeriode.getFullYear()}-${String(dateFinPeriode.getMonth()+1).padStart(2,'0')}-${String(dateFinPeriode.getDate()).padStart(2,'0')}`;
+  const dateFinPeriodePrecedente = new Date(debutPlanLocal);
+  dateFinPeriodePrecedente.setDate(debutPlanLocal.getDate() + (derniereSemainePaireComplete - 2) * 7 - 1);
+  const dateFinPeriodePrecedenteStr = `${dateFinPeriodePrecedente.getFullYear()}-${String(dateFinPeriodePrecedente.getMonth()+1).padStart(2,'0')}-${String(dateFinPeriodePrecedente.getDate()).padStart(2,'0')}`;
 
   // Trouver l'entrée predHistory la plus proche de (mais pas après) chaque
   // date de fin de période — predHistory a une entrée par jour, donc en
