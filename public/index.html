@@ -4578,56 +4578,111 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
 // ══════════════════════════════════════════════════════════════════════════════
 // SEMAINES
 // ══════════════════════════════════════════════════════════════════════════════
+// Mapping type de séance (format v1, PLAN/week.sessions) -> couleur/label
+// pour la grille jour-par-jour (31/07/2026, demande de Laurent : voir le
+// plan sous forme de grille indiquant type + statut de chaque séance,
+// directement dans l'onglet Semaines). Couleurs choisies pour rester
+// cohérentes avec les usages existants de --warn/--accent/--accent2
+// ailleurs dans le dashboard (ex. weekStats affiche déjà le réel en
+// --warn) — pas de nouvelle palette introduite.
+const TYPE_SEANCE_COULEUR = {
+  EF: "var(--accent2)",
+  LONGUE: "var(--accent)",
+  VMA: "var(--warn)",
+  SEUIL: "var(--warn)",
+  SPEC: "var(--warn)",
+  RACE: "var(--warn)",
+  REPOS: "var(--border-soft)"
+};
+// SPEC (allure-course dans le moteur v2) affiché "Spécifique" en toutes
+// lettres dans la grille (demande explicite de Laurent), pas juste le
+// code court utilisé ailleurs dans l'app.
+const TYPE_SEANCE_LABEL = {
+  EF: "EF", LONGUE: "Longue", VMA: "VMA", SEUIL: "Seuil", SPEC: "Spécifique", RACE: "Course"
+};
+const JOURS_LABEL_COURT = ["L","M","M","J","V","S","D"];
+
+// Construit la grille jour-par-jour d'une semaine (7 cases, une par jour du
+// plan — le plan est toujours généré avec exactement 7 sessions/semaine,
+// REPOS inclus, cf. plan-generator.js placerSemaine). Chaque case non-REPOS
+// est cliquable et ouvre directement le détail de cette semaine (même
+// mécanisme que le clic sur l'en-tête de la carte, cf. plus bas) — pas de
+// ciblage du jour précis à l'intérieur de la vue détail, cohérent avec le
+// fonctionnement déjà existant de renderWeekDetail (qui ne prend qu'un
+// numéro de semaine, jamais un jour précis).
+function renderGrilleJoursSemaine(week) {
+  return el("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"6px",marginBottom:"12px"}},
+    week.sessions.map((s,i) => {
+      const estRepos = s.type === "REPOS";
+      const statut = statuses[`${week.week}-${i}`];
+      const aVenir = !statut && !estRepos;
+      const couleur = TYPE_SEANCE_COULEUR[s.type] || "var(--border-soft)";
+      const cell = el(estRepos ? "div" : "button",{
+        style:{
+          position:"relative", height:"52px", borderRadius:"5px",
+          background:couleur, opacity: aVenir ? "0.35" : "1",
+          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"1px",
+          border:"none", padding:"0", cursor: estRepos ? "default" : "pointer", font:"inherit"
+        }
+      },
+        el("span",{style:{fontSize:"8px",color:"var(--text-muted)",position:"absolute",top:"2px",left:"3px"}}, JOURS_LABEL_COURT[i]),
+        estRepos ? null : el("span",{style:{fontSize:"9px",fontWeight:"600",color:"var(--bg)",textAlign:"center",lineHeight:"1.1",padding:"0 2px"}}, TYPE_SEANCE_LABEL[s.type] || s.type),
+        (statut && !estRepos) ? el("div",{style:{position:"absolute",bottom:"1px",right:"1px",fontSize:"18px",lineHeight:"1",width:"22px",height:"22px",display:"flex",alignItems:"center",justifyContent:"center"}}, statut) : null
+      );
+      if (!estRepos) {
+        cell.addEventListener("click",(e)=>{
+          e.stopPropagation(); // ne pas aussi déclencher le clic sur l'en-tête de la carte
+          selectedWeek = week.week;
+          setView("weekDetail");
+        });
+      }
+      return cell;
+    })
+  );
+}
+
 function renderWeeks() {
   const cw=currentWeek();
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"var(--text2)",fontSize:"14px"}},"Semaine actuelle : ",el("span",{style:{color:"var(--accent)",fontWeight:"700"}},"S"+cw)),
     ...PLAN.map(week=>{
       const pct=weekPct(week), isActive=week.week===cw, color=phaseOf(week.week).color, decharge=estSemaineDecharge(week.week);
-      const b=el("button",{style:{width:"100%",background:isActive?"var(--border-soft)":"var(--bg)",border:`1px solid ${isActive?"rgba(var(--accent-rgb),0.33)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:"12px"}},
-        el("div",{style:{textAlign:"center",minWidth:"36px"}},
-          el("div",{style:{color,fontSize:"18px",fontWeight:"800",lineHeight:"1"}},"S"+week.week),
-          isActive?el("div",{style:{color:"var(--accent)",fontSize:"13px",fontWeight:"700"}},"NOW"):null
-        ),
-        el("div",{style:{flex:"1"}},
-          el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}},
-            el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600"}},phaseOf(week.week).label),
-            decharge?el("span",{class:"pill",style:{background:"rgba(var(--accent-rgb),0.13)",color:"var(--accent)"}},"Décharge"):null
-          ),
-          el("div",{class:"muted",style:{fontSize:"13px",marginTop:"2px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
-          el("div",{style:{height:"3px",background:"var(--border-soft)",borderRadius:"2px",marginTop:"6px",marginBottom:"6px"}},
-            el("div",{style:{height:"100%",width:pct+"%",background:color,borderRadius:"2px"}})
-          ),
-          (()=>{
-            const ws=weekStats(week.week);
-            if (!ws) return null;
-            if (ws.hasReal) return el("div",{},
-              el("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"2px"}},
-                el("span",{class:"muted",style:{fontSize:"12px"}},"Distance"),
-                el("span",{style:{fontSize:"12px"}},
-                  el("span",{style:{color:"var(--warn)",fontWeight:"700"}},ws.realKm+" km"),
-                  el("span",{class:"muted"}," / ~"+ws.plannedKm+" km")
-                )
-              ),
-              el("div",{style:{display:"flex",justifyContent:"space-between"}},
-                el("span",{class:"muted",style:{fontSize:"12px"}},"Durée"),
-                el("span",{style:{fontSize:"12px"}},
-                  el("span",{style:{color:"var(--warn)",fontWeight:"700"}},
-                    Math.floor(ws.realMin/60)+"h"+(ws.realMin%60).toString().padStart(2,"0")+"'"
-                  ),
-                  el("span",{class:"muted"}," / ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"'")
-                )
-              )
-            );
-            return el("div",{class:"muted",style:{fontSize:"12px",fontStyle:"italic"}},
-              "~"+ws.plannedKm+" km · ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"' prévus"
-            );
-          })()
-        ),
-        el("div",{class:"muted",style:{fontSize:"14px"}},pct+"%")
+      const entete=el("button",{style:{all:"unset",boxSizing:"border-box",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",width:"100%",marginBottom:"4px"}},
+        el("span",{style:{fontSize:"16px",fontWeight:"700",color}},"S"+week.week),
+        el("span",{style:{fontSize:"14px",fontWeight:"600",color:"var(--text)"}},phaseOf(week.week).label),
+        decharge?el("span",{class:"pill",style:{background:"rgba(var(--accent-rgb),0.13)",color:"var(--accent)"}},"Décharge"):null,
+        isActive?el("span",{style:{fontSize:"11px",background:"var(--accent)",color:"var(--bg)",padding:"2px 8px",borderRadius:"6px",fontWeight:"700"}},"Actuelle"):null,
+        el("span",{class:"muted",style:{marginLeft:"auto",fontSize:"13px"}},pct+"%")
       );
-      b.addEventListener("click",()=>{ selectedWeek=week.week; setView("weekDetail"); });
-      return b;
+      entete.addEventListener("click",()=>{ selectedWeek=week.week; setView("weekDetail"); });
+
+      const card=el("div",{style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px"}},
+        entete,
+        el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"12px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
+        renderGrilleJoursSemaine(week),
+        (()=>{
+          const ws=weekStats(week.week);
+          if (!ws) return null;
+          if (ws.hasReal) return el("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"12px"}},
+            el("span",{},
+              el("span",{class:"muted"},"Distance "),
+              el("span",{style:{color:"var(--warn)",fontWeight:"700"}},ws.realKm+" km"),
+              el("span",{class:"muted"}," / ~"+ws.plannedKm+" km")
+            ),
+            el("span",{},
+              el("span",{class:"muted"},"Durée "),
+              el("span",{style:{color:"var(--warn)",fontWeight:"700"}},
+                Math.floor(ws.realMin/60)+"h"+(ws.realMin%60).toString().padStart(2,"0")+"'"
+              ),
+              el("span",{class:"muted"}," / ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"'")
+            )
+          );
+          return el("div",{class:"muted",style:{fontSize:"12px",fontStyle:"italic"}},
+            "~"+ws.plannedKm+" km · ~"+Math.floor(ws.plannedMin/60)+"h"+(ws.plannedMin%60).toString().padStart(2,"0")+"' prévus"
+          );
+        })()
+      );
+      return card;
     })
   );
 }
