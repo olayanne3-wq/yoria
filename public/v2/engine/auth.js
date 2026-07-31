@@ -599,10 +599,10 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .roulette-colonne .roulette-pad{ height:42px; scroll-snap-align:none; }
       #ecran-onboarding .roulette-item{
         height:36px; display:flex; align-items:center; justify-content:center;
-        font-size:18px; font-weight:600; color:var(--text-muted);
+        font-size:18px; font-weight:600; line-height:1; color:var(--text-muted);
         scroll-snap-align:center; transition:color 0.15s, font-size 0.15s;
       }
-      #ecran-onboarding .roulette-item.actif{ color:var(--text); font-size:22px; }
+      #ecran-onboarding .roulette-item.actif{ color:var(--text); font-size:22px; line-height:1; }
       #ecran-onboarding .roulette-sep{ font-size:18px; color:var(--text-muted); align-self:center; }
       </style>
       <div id="ecran-onboarding">
