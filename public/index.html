@@ -8664,9 +8664,26 @@ function renderSettings() {
     // élimine tout problème de logique du code lui-même et pointe vers un
     // délai insuffisant) — double requestAnimationFrame (~2 frames,
     // ~32ms) insuffisant, remplacé par un délai fixe plus généreux.
-    setTimeout(() => {
-      window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
-    }, 100);
+    // CHANGEMENT D'APPROCHE (31/07/2026) — plusieurs tentatives de délai
+    // (setTimeout(0), double requestAnimationFrame, setTimeout(100ms)) ont
+    // toutes échoué à corriger le bug (scrollTop restait à 0 au premier
+    // rendu de l'écran, mais un appel manuel après quelques secondes en
+    // console fonctionnait toujours). Plutôt que de deviner encore un
+    // délai, on vérifie maintenant une VRAIE condition avant d'agir :
+    // l'élément doit être attaché au document ET visible (offsetParent
+    // non null — un élément caché par un ancêtre display:none, ou pas
+    // encore dans le DOM, a offsetParent===null). Polling toutes les
+    // 16ms (~1 frame), abandonné après 2 secondes (cas anormal, pas de
+    // boucle infinie).
+    (function attendreEtInitialiser(tentative) {
+      const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
+      if (conteneurTest && conteneurTest.offsetParent !== null) {
+        window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
+        return;
+      }
+      if (tentative > 120) return; // ~2s, abandon — cas anormal
+      setTimeout(() => attendreEtInitialiser((tentative ?? 0) + 1), 16);
+    })(0);
 
     return wrap;
   };
