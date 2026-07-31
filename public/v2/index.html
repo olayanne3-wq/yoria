@@ -747,23 +747,26 @@
      côté JS (cf. creerRouletteTemps()). ──────────────────────────────────── */
   .roulette-temps{
     display:flex;
-    align-items:center;
+    align-items:flex-start;
     justify-content:center;
     gap:2px;
     background:rgba(var(--text-rgb),0.04);
     border:1px solid var(--line);
     border-radius:16px;
-    padding:0 10px;
+    padding:4px 10px;
     margin-bottom:10px;
     position:relative;
-    height:150px;
+    height:106px;
+    box-sizing:border-box;
   }
-  /* Fenêtre de sélection : bande horizontale fixe au centre, indique quel
-     item de chaque colonne est actuellement retenu. */
+  /* Fenêtre de sélection : bande horizontale fixe, centrée sur le viewport
+     réduit (50px) de chaque colonne — top recalculé (31/07/2026, ajout des
+     boutons +/-) : padding-top (4px) + bouton+gap (24px) + moitié du
+     viewport (25px) - moitié de la fenêtre (22px) = 31px. */
   .roulette-fenetre{
     position:absolute;
     left:10px; right:10px;
-    top:50%; transform:translateY(-50%);
+    top:31px;
     height:44px;
     border-top:1px solid var(--line);
     border-bottom:1px solid var(--line);
@@ -772,14 +775,19 @@
     pointer-events:none;
   }
   .roulette-colonne{
-    flex:1;
-    max-width:70px;
-    height:100%;
+    width:44px;
+    height:150px;
     overflow-y:scroll;
     scroll-snap-type:y mandatory;
     scrollbar-width:none;
     -ms-overflow-style:none;
     font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;
+    /* Décalage négatif (31/07/2026, ajout des boutons +/-) — la colonne
+       garde sa vraie hauteur de 150px en interne (nécessaire au scroll),
+       mais n'est visible qu'à travers .roulette-viewport (50px, ci-dessous)
+       : centrée dedans via ce margin-top négatif calculé une fois pour
+       toutes (-50px = moitié colonne (75) - moitié viewport (25)). */
+    margin-top:-50px;
   }
   .roulette-colonne::-webkit-scrollbar{ display:none; }
   .roulette-colonne .roulette-pad{
@@ -795,18 +803,37 @@
     font-size:26px; font-weight:600; line-height:1;
     color:rgba(var(--text-rgb),0.3);
     scroll-snap-align:center;
-    transition:color 0.15s, font-size 0.15s;
+    transition:opacity 0.1s;
     position:relative; z-index:1;
+    /* Masqué par défaut (31/07/2026, déployé depuis Réglages où ce
+       composant a été mis au point) — seul le chiffre actif reste
+       visible, le geste de défilement tactile reste identique. */
+    opacity:0;
   }
   .roulette-item.actif{
     color:var(--paper);
-    font-size:32px;
-    line-height:1;
+    opacity:1;
   }
-  .roulette-sep{ font-size:28px; color:rgba(var(--text-rgb),0.35); align-self:center; }
+  .roulette-sep{ font-size:22px; color:rgba(var(--text-rgb),0.35); align-self:center; margin-top:24px; }
   .roulette-unit-label{
     position:absolute; bottom:-20px; left:0; right:0;
     text-align:center; font-size:11px; color:rgba(var(--text-rgb),0.45);
+  }
+  /* Boutons +/- (31/07/2026, déployés depuis Réglages) — au-dessus et
+     en-dessous de chaque colonne, dans un viewport réduit (50px,
+     overflow:hidden) qui ne montre que la bande centrale de la colonne
+     (150px de haut en interne, nécessaire au mécanisme de scroll). */
+  .roulette-viewport{
+    width:44px; height:50px; overflow:hidden; position:relative;
+  }
+  .roulette-btn-stepper{
+    width:32px; height:22px; border-radius:6px; border:1px solid var(--line);
+    background:rgba(var(--text-rgb),0.05); color:rgba(var(--text-rgb),0.5);
+    font-size:15px; font-weight:700; cursor:pointer; padding:0; line-height:1;
+    flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  }
+  .roulette-mini-colonne{
+    display:flex; flex-direction:column; align-items:center; gap:2px; flex:1;
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1345,11 +1372,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <p class="sub" id="refHelpText">Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.</p>
       <div class="roulette-temps" id="rouletteRef">
         <div class="roulette-fenetre"></div>
-        <div class="roulette-colonne" id="rouletteRefHour" style="display:none;"></div>
+        <div class="roulette-mini-colonne" id="rouletteRefHourWrap" style="display:none;">
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefHourPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteRefHour"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefHourMoins">−</button>
+        </div>
         <span class="roulette-sep" id="rouletteRefHourSep" style="display:none;">:</span>
-        <div class="roulette-colonne" id="rouletteRefMin"></div>
+        <div class="roulette-mini-colonne">
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefMinPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteRefMin"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefMinMoins">−</button>
+        </div>
         <span class="roulette-sep">:</span>
-        <div class="roulette-colonne" id="rouletteRefSec"></div>
+        <div class="roulette-mini-colonne">
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefSecPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteRefSec"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteRefSecMoins">−</button>
+        </div>
         <span class="roulette-unit-label" id="tUnit">min:sec</span>
       </div>
       <input type="hidden" id="tHour" value="">
@@ -1368,11 +1407,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         <div class="alt-chips" id="altChips"></div>
         <div class="roulette-temps" id="rouletteAlt">
           <div class="roulette-fenetre"></div>
-          <div class="roulette-colonne" id="rouletteAltHour" style="display:none;"></div>
+          <div class="roulette-mini-colonne" id="rouletteAltHourWrap" style="display:none;">
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltHourPlus">+</button>
+            <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteAltHour"></div></div>
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltHourMoins">−</button>
+          </div>
           <span class="roulette-sep" id="rouletteAltHourSep" style="display:none;">:</span>
-          <div class="roulette-colonne" id="rouletteAltMin"></div>
+          <div class="roulette-mini-colonne">
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltMinPlus">+</button>
+            <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteAltMin"></div></div>
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltMinMoins">−</button>
+          </div>
           <span class="roulette-sep">:</span>
-          <div class="roulette-colonne" id="rouletteAltSec"></div>
+          <div class="roulette-mini-colonne">
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltSecPlus">+</button>
+            <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteAltSec"></div></div>
+            <button type="button" class="roulette-btn-stepper" id="rouletteAltSecMoins">−</button>
+          </div>
           <span class="roulette-unit-label" id="aUnit">min:sec</span>
         </div>
         <input type="hidden" id="aHour" value="0">
@@ -1402,11 +1453,23 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <p class="sub">On vérifie la faisabilité selon le temps disponible avant course.</p>
       <div class="roulette-temps" id="rouletteObj">
         <div class="roulette-fenetre"></div>
-        <div class="roulette-colonne" id="rouletteObjHour" style="display:none;"></div>
+        <div class="roulette-mini-colonne" id="rouletteObjHourWrap" style="display:none;">
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjHourPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteObjHour"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjHourMoins">−</button>
+        </div>
         <span class="roulette-sep" id="rouletteObjHourSep" style="display:none;">:</span>
-        <div class="roulette-colonne" id="rouletteObjMin"></div>
+        <div class="roulette-mini-colonne">
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjMinPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteObjMin"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjMinMoins">−</button>
+        </div>
         <span class="roulette-sep">:</span>
-        <div class="roulette-colonne" id="rouletteObjSec"></div>
+        <div class="roulette-mini-colonne">
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjSecPlus">+</button>
+          <div class="roulette-viewport"><div class="roulette-colonne" id="rouletteObjSec"></div></div>
+          <button type="button" class="roulette-btn-stepper" id="rouletteObjSecMoins">−</button>
+        </div>
         <span class="roulette-unit-label" id="oUnit">min:sec</span>
       </div>
       <input type="hidden" id="oHour" value="48">
@@ -2088,10 +2151,24 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       },
       valeur(){ return valeurActuelle; },
     };
-    // Positionnement initial (31/07/2026) : sans cet appel, la colonne
-    // restait visuellement scrollée sur son tout premier item (00) au
-    // chargement, quelle que soit valeurInitiale.
-    api.definirValeur(valeurInitiale, false);
+    // Positionnement initial (31/07/2026) — vérifié par condition réelle
+    // plutôt que délai arbitraire (déployé depuis Réglages, où un bug
+    // similaire — scrollTop restant à 0 au tout premier rendu d'un écran,
+    // malgré des données correctes — a nécessité plusieurs itérations
+    // avant de trouver la vraie cause : ni setTimeout(0), ni
+    // requestAnimationFrame, ni un délai fixe ne suffisaient de façon
+    // fiable ; seule une vérification que l'élément est réellement visible
+    // — offsetParent non null — avant d'agir a résolu le problème,
+    // peu importe le nombre de millisecondes/frames écoulées). Polling
+    // toutes les 16ms, abandonné après 2s (cas anormal).
+    (function attendreEtPositionner(tentative) {
+      if (conteneur.offsetParent !== null) {
+        api.definirValeur(valeurInitiale, false);
+        return;
+      }
+      if ((tentative ?? 0) > 120) return;
+      setTimeout(() => attendreEtPositionner((tentative ?? 0) + 1), 16);
+    })(0);
     return api;
   }
 
@@ -2115,6 +2192,37 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const colS = creerColonneRoulette(idRoulette + 'Sec', Array.from({length:60},(_,i)=>i), parseInt(inputS.value||'0',10), v => declencherInput(inputS, v));
 
     roulettesActives[prefix] = { h: colH, m: colM, s: colS };
+
+    // Boutons +/- (31/07/2026, déployés depuis Réglages) — incrémentent/
+    // décrémentent la colonne d'une unité, avec bouclage aux bornes.
+    // animer=false systématiquement (scroll instantané) : behavior:'smooth'
+    // entre en conflit avec scroll-snap-type:y mandatory (cf. le bug déjà
+    // corrigé pour les boutons +/- de Réglages, même cause ici).
+    function cablerBoutonPlus(idBouton, colApi, inputCible, maxValeur) {
+      const btn = document.getElementById(idBouton);
+      if (!btn || !colApi) return;
+      btn.addEventListener('click', () => {
+        const nouvelle = (colApi.valeur() + 1) % (maxValeur + 1);
+        colApi.definirValeur(nouvelle, false);
+        declencherInput(inputCible, nouvelle);
+      });
+    }
+    function cablerBoutonMoins(idBouton, colApi, inputCible, maxValeur) {
+      const btn = document.getElementById(idBouton);
+      if (!btn || !colApi) return;
+      btn.addEventListener('click', () => {
+        const nouvelle = (colApi.valeur() - 1 + maxValeur + 1) % (maxValeur + 1);
+        colApi.definirValeur(nouvelle, false);
+        declencherInput(inputCible, nouvelle);
+      });
+    }
+    cablerBoutonPlus(idRoulette+'HourPlus', colH, inputH, heuresMax);
+    cablerBoutonMoins(idRoulette+'HourMoins', colH, inputH, heuresMax);
+    cablerBoutonPlus(idRoulette+'MinPlus', colM, inputM, 59);
+    cablerBoutonMoins(idRoulette+'MinMoins', colM, inputM, 59);
+    cablerBoutonPlus(idRoulette+'SecPlus', colS, inputS, 59);
+    cablerBoutonMoins(idRoulette+'SecMoins', colS, inputS, 59);
+
     return roulettesActives[prefix];
   }
 
@@ -2162,6 +2270,25 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       inputKm.dispatchEvent(new Event('input', { bubbles:true }));
     };
     const col = creerColonneRoulette('roulette' + idInputCache + 'Km', Array.from({length:bornMax+1},(_,i)=>i), valeurInitiale, declencherInput);
+
+    // Boutons +/- (31/07/2026, déployés depuis Réglages) — même principe
+    // que les roulettes h/m/s : bouclage aux bornes, scroll instantané.
+    const btnPlus = document.getElementById('roulette'+idInputCache+'KmPlus');
+    const btnMoins = document.getElementById('roulette'+idInputCache+'KmMoins');
+    if (btnPlus && col) {
+      btnPlus.addEventListener('click', () => {
+        const nouvelle = (col.valeur() + 1) % (bornMax + 1);
+        col.definirValeur(nouvelle, false);
+        declencherInput(nouvelle);
+      });
+    }
+    if (btnMoins && col) {
+      btnMoins.addEventListener('click', () => {
+        const nouvelle = (col.valeur() - 1 + bornMax + 1) % (bornMax + 1);
+        col.definirValeur(nouvelle, false);
+        declencherInput(nouvelle);
+      });
+    }
     return col;
   }
 
@@ -2185,9 +2312,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   // applyDistanceMeta()/syncAltTimeFormat() font déjà sur les anciens
   // inputs texte — même bascule, appliquée en plus aux conteneurs roulette).
   function basculerColonneHeuresRoulette(idRoulette, afficher){
-    const colH = document.getElementById(idRoulette + 'Hour');
+    // Cible désormais le wrapper englobant (31/07/2026, ajout des boutons
+    // +/- : la structure show/hide doit maintenant couvrir bouton+/
+    // viewport/bouton-, pas seulement la colonne .roulette-colonne comme
+    // avant) — idRoulette+'HourWrap', posé sur .roulette-mini-colonne
+    // dans le HTML statique de chaque roulette (Ref/Obj/Alt).
+    const wrapH = document.getElementById(idRoulette + 'HourWrap');
     const sepH = document.getElementById(idRoulette + 'HourSep');
-    if (colH) colH.style.display = afficher ? 'block' : 'none';
+    if (wrapH) wrapH.style.display = afficher ? 'flex' : 'none';
     if (sepH) sepH.style.display = afficher ? 'inline-block' : 'none';
   }
 
@@ -2284,7 +2416,11 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
           <div class="volume-status"><span>✏️</span><span>Saisie manuelle</span></div>
           <div class="roulette-temps" id="roulette${idInput}">
             <div class="roulette-fenetre"></div>
-            <div class="roulette-colonne" id="roulette${idInput}Km"></div>
+            <div class="roulette-mini-colonne">
+              <button type="button" class="roulette-btn-stepper" id="roulette${idInput}KmPlus">+</button>
+              <div class="roulette-viewport"><div class="roulette-colonne" id="roulette${idInput}Km"></div></div>
+              <button type="button" class="roulette-btn-stepper" id="roulette${idInput}KmMoins">−</button>
+            </div>
             <span class="roulette-unit-label">km / semaine</span>
           </div>
           <input type="hidden" id="${idInput}" value="${state.valeur ?? ''}">
