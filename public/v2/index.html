@@ -2102,6 +2102,53 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     return roulettesActives[prefix];
   }
 
+  // Volume de départ pour la roulette (31/07/2026, demande de Laurent) —
+  // remplace l'ancien repli arbitraire à 30km par le vrai volume minimum
+  // requis par le moteur pour la distance visée (cf. Engine.
+  // VOLUME_MIN_PAR_JOURS, plan-generator.js — même table utilisée par
+  // generatePlan() pour refuser un plan si le volume est trop faible pour
+  // le nombre de jours choisi).
+  //
+  // Base retenue : 3 jours/semaine — l'étape volume (step 2) est affichée
+  // AVANT le choix des jours disponibles (step 8) dans le flux du wizard,
+  // le vrai nombre de jours n'est donc pas encore connu à ce stade. 3j est
+  // un compromis délibéré (discuté avec Laurent le 31/07/2026) : le cas le
+  // plus représentatif d'un coureur qui suit un plan structuré, plutôt que
+  // le minimum extrême à 2j. Si l'ordre des étapes change un jour, cette
+  // fonction pourra lire le vrai nombre de jours choisi à la place.
+  //
+  // Mode Forme : pas de distance visée (cycle sans objectif course), donc
+  // pas de table VOLUME_MIN_PAR_JOURS applicable — 10km fixe (valeur
+  // demandée explicitement par Laurent, cohérente avec un volume de
+  // reprise/entretien prudent).
+  const JOURS_REFERENCE_VOLUME_DEPART = 3;
+  function calculerVolumeDepartRoulette(estForme){
+    if (estForme) return 10;
+    const distanceLabel = distanceMeta[currentDist]?.label;
+    const table = window.Engine?.VOLUME_MIN_PAR_JOURS?.[distanceLabel];
+    return (table && table[JOURS_REFERENCE_VOLUME_DEPART]) || 30; // repli si Engine pas encore chargé ou distance inconnue
+  }
+
+  // Roulette à une seule colonne pour une valeur simple en km (volume
+  // hebdomadaire manuel, 31/07/2026) — pas de padStart(2,'0') contrairement
+  // à initRouletteTemps() : un volume s'affiche "0", "30", "150", jamais
+  // "00"/"30"/"150" avec un zéro superflu devant les valeurs à 1 chiffre.
+  // idInputCache : id de l'input hidden existant (ex. 'manualVolumeInput'
+  // ou 'manualVolumeInputForme') — même principe de compatibilité que
+  // initRouletteTemps, l'input caché reste la source de vérité lue par
+  // tout le reste du code (collectParamsFromWizard, validation nextStep...).
+  function initRouletteVolume(idInputCache, valeurInitiale, max){
+    const inputKm = document.getElementById(idInputCache);
+    if (!inputKm) return null;
+    const bornMax = max || 150;
+    const declencherInput = (valeur) => {
+      inputKm.value = String(valeur);
+      inputKm.dispatchEvent(new Event('input', { bubbles:true }));
+    };
+    const col = creerColonneRoulette('roulette' + idInputCache + 'Km', Array.from({length:bornMax+1},(_,i)=>i), valeurInitiale, declencherInput);
+    return col;
+  }
+
   // Synchronise les 3 colonnes d'un groupe sur les valeurs actuelles des
   // inputs cachés (utilisé quand une valeur est écrite par ailleurs, ex.
   // preremplirDepuisProfilCoureur()/applyDistanceMeta()/applyAltEstimate() —
@@ -2214,12 +2261,29 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       conteneur.innerHTML = `
         <div class="volume-card-inner">
           <div class="volume-status"><span>✏️</span><span>Saisie manuelle</span></div>
-          <div class="time-input" style="margin-bottom:14px;">
-            <input type="text" maxlength="3" value="${state.valeur ?? ''}" placeholder="km" id="${idInput}" style="width:3ch;">
-            <span class="unit">km / semaine</span>
+          <div class="roulette-temps" id="roulette${idInput}">
+            <div class="roulette-fenetre"></div>
+            <div class="roulette-colonne" id="roulette${idInput}Km"></div>
+            <span class="roulette-unit-label">km / semaine</span>
           </div>
+          <input type="hidden" id="${idInput}" value="${state.valeur ?? ''}">
           ${state.stravaDisponible ? `<div class="volume-actions"><button class="btn-ghost" onclick="${suffixeToggle}('strava')">Revenir à l'estimation Strava</button></div>` : ''}
         </div>`;
+      // Roulette volume (31/07/2026) — une seule colonne (0 à 150km, plage
+      // large mais réaliste pour un coureur amateur/confirmé). Hauteur de
+      // picker standard (150px, comme les roulettes de temps) pour rester
+      // cohérente avec le calcul de padding déjà en place dans
+      // creerColonneRoulette() (HAUTEUR_PAD calibré pour 150px). Recréée à
+      // chaque renderVolumeCard() (le conteneur est vidé via innerHTML
+      // juste au-dessus) — contrairement aux roulettes de temps (créées
+      // une seule fois au chargement de la page), le volume est ré-affiché
+      // à chaque bascule strava/manuel, donc la roulette doit l'être aussi.
+      //
+      // Valeur de départ (31/07/2026, demande de Laurent) : plus de champ
+      // "vide" possible avec une roulette (toujours une valeur affichée) —
+      // calculerVolumeDepartRoulette() choisit une valeur de départ
+      // cohérente plutôt qu'un 0 ou un 30 arbitraire, cf. sa définition.
+      initRouletteVolume(idInput, parseInt(state.valeur, 10) || calculerVolumeDepartRoulette(estForme));
       return;
     }
 
