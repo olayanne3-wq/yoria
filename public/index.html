@@ -7984,33 +7984,25 @@ function renderSettings() {
 
   // ── Thème clair / sombre ─────────────────────────────────────────────
   const themeActuel = localStorage.getItem('lk_theme') || 'light';
-  const themeSection = el("div", {style:{marginBottom:"24px"}},
-    el("div",{class:"label"},"🎨 Apparence"),
-    card(
-      el("div",{style:{display:"flex",gap:"8px"}},
-        el("button",{style:{
-          flex:"1",padding:"10px",borderRadius:"8px",cursor:"pointer",fontSize:"14px",fontWeight:"700",
-          border: themeActuel==="light" ? "1px solid var(--accent)" : "1px solid var(--border)",
-          background: themeActuel==="light" ? "rgba(var(--accent-rgb),0.13)" : "transparent",
-          color: themeActuel==="light" ? "var(--accent)" : "var(--text-muted)"
-        }, onClick: ()=>{
-          localStorage.setItem('lk_theme','light');
-          document.documentElement.setAttribute('data-theme','light');
-          render();
-        }},"☀️ Clair"),
-        el("button",{style:{
-          flex:"1",padding:"10px",borderRadius:"8px",cursor:"pointer",fontSize:"14px",fontWeight:"700",
-          border: themeActuel==="dark" ? "1px solid var(--accent)" : "1px solid var(--border)",
-          background: themeActuel==="dark" ? "rgba(var(--accent-rgb),0.13)" : "transparent",
-          color: themeActuel==="dark" ? "var(--accent)" : "var(--text-muted)"
-        }, onClick: ()=>{
-          localStorage.setItem('lk_theme','dark');
-          document.documentElement.setAttribute('data-theme','dark');
-          render();
-        }},"🌙 Sombre")
-      )
-    )
-  );
+  // Apparence (31/07/2026, demande de Laurent) — auparavant une carte
+  // pleine largeur avec 2 boutons Clair/Sombre, mêlée au groupe "Compte et
+  // abonnement" (logique bancale : un réglage d'affichage général n'a
+  // rien à voir avec l'identité du compte ou la facturation). Remplacée
+  // par un simple bouton icône toggle, discret, intégré à droite de
+  // l'en-tête de l'app (appHeaderEl ci-dessous) plutôt qu'une section à
+  // part entière — c'est un réglage qu'on ajuste rarement mais qu'on veut
+  // pouvoir trouver vite, sans lui donner l'importance visuelle d'une
+  // vraie section de compte.
+  const themeToggleBtn = el("button",{style:{
+    marginLeft:"auto", flexShrink:"0", width:"36px", height:"36px", borderRadius:"50%",
+    border:"1px solid var(--border)", background:"var(--border-soft)",
+    fontSize:"16px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"
+  }, onClick: ()=>{
+    const nouveauTheme = themeActuel === "light" ? "dark" : "light";
+    localStorage.setItem('lk_theme', nouveauTheme);
+    document.documentElement.setAttribute('data-theme', nouveauTheme);
+    render();
+  }}, themeActuel === "light" ? "🌙" : "☀️");
 
   // ── Profil coureur + Objectif + PPS ─────────────────────────────────────
   const categorieFFA = calculerCategorieAgeFFA(profilCoureur.anneeNaissance, today());
@@ -8783,7 +8775,8 @@ function renderSettings() {
     el("div",{},
       el("div",{style:{color:"var(--text)",fontSize:"16px",fontWeight:"800"}},"Yoria"),
       el("div",{class:"muted",style:{fontSize:"14px"}},VERSIONS[0].ver+" · yoria.run")
-    )
+    ),
+    themeToggleBtn
   );
 
   // Bouton global "Enregistrer" retiré (31/07/2026, demande de Laurent) —
@@ -9011,7 +9004,7 @@ function renderSettings() {
     formeClotureSection,
 
     renderGroupeAccordeonStats("👤","Compte et abonnement","var(--accent)", [
-      accountSection, themeSection, abonnementSection
+      accountSection, abonnementSection
     ]),
 
     renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
