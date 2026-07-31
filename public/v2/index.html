@@ -4295,6 +4295,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         alert("Renseigne ton temps de référence avant de continuer (ou utilise \"Je n'ai pas de référence\").");
         return;
       }
+      // Garde-fou record du monde (31/07/2026, demande de Laurent :
+      // "empêcher de mettre des objectifs irréalistes... des temps
+      // records du monde") — le champ de référence sert de base à
+      // computeAllures() pour TOUTES les allures du plan (E/T/I/V), un
+      // temps physiologiquement impossible ici fausserait tout le plan,
+      // pas seulement l'objectif. cf. Engine.RECORDS_MONDE_SECONDES pour
+      // les sources et la méthode de calcul des seuils.
+      const refSecondsGF = Engine.parseTimeToSeconds(tempsSaisi);
+      const recordMondeRef = Engine.RECORDS_MONDE_SECONDES[distanceMeta[currentDist].label];
+      if (recordMondeRef && refSecondsGF < recordMondeRef) {
+        alert(`Ce temps de référence (${tempsSaisi}) est plus rapide que le record du monde actuel sur cette distance — vérifie ta saisie.`);
+        return;
+      }
     }
     // Validation à la sortie de l'étape 4 (objectif) — même raison et même
     // date que l'étape 3 ci-dessus. Les champs oHour/oMin/oSec ont des
@@ -4308,6 +4321,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       const objSaisi = readTimeFields('o', longFormat);
       if (Engine.parseTimeToSeconds(objSaisi) <= 0) {
         alert("Renseigne ton objectif avant de continuer.");
+        return;
+      }
+      // Garde-fou record du monde (31/07/2026) — même principe que
+      // l'étape 3 ci-dessus, cf. son commentaire pour le détail.
+      const objSecondsGF = Engine.parseTimeToSeconds(objSaisi);
+      const recordMondeObj = Engine.RECORDS_MONDE_SECONDES[distanceMeta[currentDist].label];
+      if (recordMondeObj && objSecondsGF < recordMondeObj) {
+        alert(`Cet objectif (${objSaisi}) est plus rapide que le record du monde actuel sur cette distance — vérifie ta saisie.`);
         return;
       }
     }
