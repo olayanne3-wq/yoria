@@ -8954,17 +8954,43 @@ function renderSettings() {
       el("button",{style:{width:"100%",background:hasRes?"rgba(var(--accent2-rgb),0.13)":"var(--border-soft)",border:"1px solid "+(hasRes?"rgba(var(--accent2-rgb),0.27)":"var(--border)"),borderRadius:"8px",padding:"10px",color:hasRes?"var(--accent2)":"var(--text-muted)",fontSize:"14px",fontWeight:"700",cursor:hasRes?"pointer":"not-allowed"},onClick:()=>hasRes?exportPdfResultats():null},"Fiche resultats"+(hasRes?"":" (apres la course)"))
     )
   );
+  // Doublon corrigé (31/07/2026, signalé pendant la restructuration en
+  // accordéons) : stravaSection était référencée deux fois ci-dessous (une
+  // fois directement, une fois enveloppée dans un div supplémentaire) —
+  // un même élément DOM ne peut être inséré qu'une fois (la seconde
+  // insertion déplaçait silencieusement le nœud plutôt que de le
+  // dupliquer, donc pas de bug visible, mais du code confus/mort). Une
+  // seule référence conservée, dans le groupe Intégrations ci-dessous.
+  //
+  // Regroupement en accordéons (31/07/2026, demande de Laurent, "faisons
+  // la même chose pour l'onglet paramètres", cohérent avec Stats/Course) —
+  // 4 groupes : Compte et apparence / Profil coureur / Intégrations /
+  // Autres. saveBtn reste DANS le groupe Profil coureur (juste après
+  // recordsSection) plutôt qu'en dehors de tout accordéon : il n'enregistre
+  // que les champs de ce groupe (identité, poids/taille/FC, records,
+  // objectif) — les autres sections (thème, Strava, abonnement) ont leur
+  // propre sauvegarde immédiate au clic, jamais via ce bouton.
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
-    accountSection,
-    themeSection,
     formeClotureSection,
-    profileSection, niveauSection, sexeSection, recordsSection, saveBtn, pdfSection, dataSourceSection, stravaSection, importFitSection,
-    el("div",{style:{marginBottom:"24px"}}, stravaSection),
-    githubToken ? qrSection : null,
-    abonnementSection,
-    versionSection
+
+    renderGroupeAccordeonStats("👤","Compte et apparence","var(--accent)", [
+      accountSection, themeSection
+    ]),
+
+    renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
+      profileSection, niveauSection, sexeSection, recordsSection, saveBtn
+    ]),
+
+    renderGroupeAccordeonStats("🔗","Intégrations","var(--warn)", [
+      dataSourceSection, stravaSection, importFitSection,
+      githubToken ? qrSection : null
+    ]),
+
+    renderGroupeAccordeonStats("⚙️","Autres","var(--text-muted)", [
+      pdfSection, abonnementSection, versionSection
+    ])
   );
 }
 
