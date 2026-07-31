@@ -83,6 +83,32 @@ export function vitesseDepuisVdotEtDistance(vdot, distanceM) {
 
 export const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
 
+// Records du monde (route, hommes — plancher le plus strict, protège aussi
+// les temps féminins qui restent toujours au-dessus) par distance, en
+// secondes. Utilisés comme plancher ABSOLU de temps saisissable dans le
+// wizard (temps de référence/objectif) et les records personnels
+// (Réglages/onboarding) — empêcher de saisir un temps physiologiquement
+// impossible (31/07/2026, demande de Laurent). Sources croisées au
+// 31/07/2026 (Wikipédia FR "Records du monde d'athlétisme"/"5|10
+// kilomètres"/"Half marathon", articles spécialisés) :
+// 5K  : Berihu Aregawi, 12:49 (31/12/2021, Barcelone)
+// 10K : Yomif Kejelcha, 26:31 (16/02/2025, Valence) — record le plus
+//       récent trouvé ; un temps encore plus rapide (26:11, Joshua
+//       Cheptegei) apparaît dans certaines sources croisées comme record
+//       du 10 000m PISTE, pas route — 26:31 retenu par prudence
+//       (distance/support corrects), la marge entre les deux est de toute
+//       façon négligeable pour l'usage de ce garde-fou.
+// Semi: Jacob Kiplimo, 57:20 (2026)
+// Marathon: Sabastian Sawe, 1:59:30 (26/04/2026, Londres)
+// À vérifier/rafraîchir périodiquement — ces records progressent
+// régulièrement (le marathon est passé sous la barre des 2h en 2026).
+export const RECORDS_MONDE_SECONDES = {
+  '5K': 12 * 60 + 49,
+  '10K': 26 * 60 + 31,
+  'Semi': 57 * 60 + 20,
+  'Marathon': 1 * 3600 + 59 * 60 + 30,
+};
+
 export const PACE_RATIOS = {
   recup: 1.33,
   E: 1.225,
