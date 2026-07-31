@@ -5801,13 +5801,25 @@ function renderWeekDetail(weekNum) {
 // des null, filtrés ici) — pas de re-render global au clic, juste un
 // toggle display sur le conteneur local, même pattern que le panneau
 // détail sources de la carte Estimation (cf. `detailOpen` ligne ~3946).
+// Registre de l'état ouvert/fermé des groupes accordéon, indexé par titre
+// (31/07/2026) — sans ce registre, l'état "ouvert" (variable locale à
+// chaque appel de renderGroupeAccordeonStats) serait perdu à chaque
+// render() global (app.innerHTML="" + reconstruction, cf. render()).
+// Pour Stats/Course ce n'était pas gênant (aucun champ de ces onglets ne
+// déclenche un render() automatique en cours de saisie), mais Paramètres
+// si (ex. changer la date de naissance ou l'objectif déclenche un render()
+// pour rafraîchir catégorie FFA/allure affichée) — sans ce correctif,
+// modifier un champ du groupe "Profil coureur" aurait refermé ce même
+// groupe juste après l'avoir ouvert, surprenant pour l'utilisateur.
+const etatGroupesAccordeon = {};
+
 function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
   const contenuValide = contenuElements.filter(Boolean);
   if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
 
-  let ouvert = false;
-  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",transition:"transform 0.15s",marginLeft:"auto"}}, "›");
-  const conteneurContenu = el("div",{style:{display:"none",marginTop:"10px"}}, ...contenuValide);
+  let ouvert = etatGroupesAccordeon[titre] ?? false;
+  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",transition:"transform 0.15s",marginLeft:"auto",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}}, "›");
+  const conteneurContenu = el("div",{style:{display:ouvert?"block":"none",marginTop:"10px"}}, ...contenuValide);
 
   const entete = el("button",{style:{
     all:"unset", boxSizing:"border-box", cursor:"pointer", width:"100%",
@@ -5820,6 +5832,7 @@ function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
   );
   entete.addEventListener("click", () => {
     ouvert = !ouvert;
+    etatGroupesAccordeon[titre] = ouvert;
     conteneurContenu.style.display = ouvert ? "block" : "none";
     chevron.style.transform = ouvert ? "rotate(90deg)" : "rotate(0deg)";
   });
@@ -8047,6 +8060,45 @@ function renderSettings() {
         const inputWidth = r.width || "80px";
         inp.style.cssText = "width:"+inputWidth+";background:var(--border-soft);border:1px solid "+(r.color?"rgba(var(--accent-rgb),0.27)":"var(--border)")+";border-radius:6px;padding:5px 8px;color:"+inputColor+";font-size:15px;text-align:right;font-family:inherit;font-variant-numeric:tabular-nums;font-weight:"+(r.color?"700":"400")+";";
         inp.value = r.val;
+        // Auto-sauvegarde à la sortie du champ (31/07/2026, demande de
+        // Laurent : "les RP devraient être autovalidés dès qu'ils sont
+        // saisis... dans profil coureur pourrait-on faire la même chose ?")
+        // — remplace le bouton "Enregistrer" global unique par une
+        // sauvegarde individuelle par champ. Déclenchée sur 'change' (donc
+        // à la perte de focus / touche Entrée pour un <input>), pas
+        // 'input' (à chaque frappe) : sauvegarderProfilCoureur() fait un
+        // vrai appel réseau Supabase (cf. son commentaire), le déclencher
+        // à chaque lettre tapée sur prénom/nom aurait été excessif —
+        // confirmé explicitement par Laurent avant d'implémenter ainsi.
+        // Logique de lecture reprise telle quelle depuis l'ancien
+        // handler unique de saveBtn (ci-dessous), juste répartie par id de
+        // champ plutôt que tout lu d'un coup au clic sur un bouton commun.
+        inp.addEventListener("change", avecRetourTactile(()=>{
+          if (r.id === "inp-prenom") { profilCoureur.prenom = inp.value.trim(); sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-nom") { profilCoureur.nom = inp.value.trim(); sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-date-naissance") {
+            profilCoureur.dateNaissance = inp.value || null;
+            // anneeNaissance reste dérivée automatiquement de dateNaissance
+            // — cf. commentaire original sur ce point, inchangé.
+            profilCoureur.anneeNaissance = profilCoureur.dateNaissance ? parseInt(profilCoureur.dateNaissance.slice(0,4)) : null;
+            sauvegarderProfilCoureur();
+            render(); // catégorie FFA/anniversaire dépendent de la date de naissance
+          }
+          else if (r.id === "inp-poids") { runnerWeight = parseInt(inp.value)||null; profilCoureur.poids = runnerWeight; sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-taille") { runnerHeight = parseInt(inp.value)||null; profilCoureur.taille = runnerHeight; sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-fcmax") { runnerFcMax = parseInt(inp.value)||181; profilCoureur.fcMax = runnerFcMax; sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-fcrepos") { profilCoureur.fcRepos = parseInt(inp.value)||null; sauvegarderProfilCoureur(); }
+          else if (r.id === "pps-input") { runnerPps = inp.value.trim(); profilCoureur.pps = runnerPps; sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-goal") {
+            // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
+            // logique que l'ancien handler saveBtn, inchangée.
+            const parts = inp.value.split(":").map(Number);
+            let s = null;
+            if (parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) s = parts[0]*60+parts[1];
+            else if (parts.length===3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) s = parts[0]*3600+parts[1]*60+parts[2];
+            if (s!==null && s>0) { raceGoalTime=s; save(clePourPlan("lk_race_goal"),raceGoalTime); render(); } // allure/km affichée dépend de raceGoalTime
+          }
+        }));
         tdInput.appendChild(inp);
         const tdUnit = document.createElement("td");
         tdUnit.style.cssText = "padding:8px 0 8px 8px;color:var(--text-muted);font-size:14px;width:36px;white-space:nowrap;";
@@ -8417,6 +8469,63 @@ function renderSettings() {
     return wrap;
   };
 
+  // Auto-sauvegarde d'un record personnel individuel (31/07/2026, demande
+  // de Laurent : "les RP devraient être autovalidés dès qu'ils sont
+  // saisis") — même logique de garde-fou record du monde et de badge
+  // "record_battu" que l'ancien handler saveBtn (ci-dessous), mais
+  // appliquée à UNE SEULE distance, appelée à chaque sélection dans la
+  // roulette (event 'input', déjà dispatché par declencherInput à chaque
+  // défilement — cf. initRouletteHMS — donc pas besoin d'un event
+  // supplémentaire ni d'un debounce : chaque sélection de roulette est
+  // déjà un choix ferme, pas une saisie progressive comme du texte) ou de
+  // changement de la date associée (event 'change').
+  function sauvegarderUnRecord(dist) {
+    profilCoureur.records = profilCoureur.records || {};
+    const hInp = document.getElementById("rec-temps-"+dist+"-h");
+    const mInp = document.getElementById("rec-temps-"+dist+"-m");
+    const sInp = document.getElementById("rec-temps-"+dist+"-s");
+    const dateInp = document.getElementById("rec-date-"+dist);
+    const wrapRecord = document.getElementById("rec-temps-"+dist+"-wrap");
+    const estEfface = wrapRecord?.dataset.recordEfface === "true";
+    const tempsFormate = estEfface
+      ? null
+      : ((hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null);
+
+    if (tempsFormate) {
+      try {
+        const secondesSaisies = parseTimeToSeconds(tempsFormate);
+        const recordMonde = RECORDS_MONDE_SECONDES[dist];
+        if (recordMonde && secondesSaisies < recordMonde) {
+          alert(`Temps plus rapide que le record du monde actuel sur : ${dist} — non enregistré, vérifie ta saisie.`);
+          return; // ne sauvegarde pas, laisse la roulette dans son état actuel
+        }
+      } catch (e) { /* format de temps invalide, ignoré ici — non bloquant pour ce garde-fou précis */ }
+    }
+
+    let recordBattu = false;
+    try {
+      const ancienTemps = profilCoureur.records[dist]?.temps;
+      if (tempsFormate && ancienTemps && parseTimeToSeconds(tempsFormate) < parseTimeToSeconds(ancienTemps)) {
+        recordBattu = true;
+      }
+    } catch (e) { /* format de temps invalide, ignoré silencieusement ici */ }
+
+    if (tempsFormate) {
+      profilCoureur.records[dist] = { temps: tempsFormate, date: dateInp?.value || null };
+    } else {
+      profilCoureur.records[dist] = null;
+    }
+    sauvegarderProfilCoureur();
+
+    if (recordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
+      enregistrerBadgeDebloque('record_battu', 1).then(() => {
+        window.__badgesCache__.record_battu = true;
+        window.__badgesNouveauxAAfficher__ = [...(window.__badgesNouveauxAAfficher__ || []), { badgeId: 'record_battu', niveau: 1, seuil: null }];
+        render();
+      }).catch(() => {});
+    }
+  }
+
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🏅 Records personnels"),
     (()=>{
@@ -8434,12 +8543,34 @@ function renderSettings() {
         dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
         dateInp.value = rec?.date || "";
         dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;flex:1;min-width:110px;";
+        dateInp.addEventListener("change", avecRetourTactile(()=>sauvegarderUnRecord(dist)));
         row.appendChild(label); row.appendChild(champsHMS); row.appendChild(dateInp);
         wrap.appendChild(row);
+        // Auto-sauvegarde sur chaque colonne de la roulette (h/m/s) — un
+        // léger debounce (400ms) évite un appel réseau distinct pour
+        // chaque colonne si l'utilisateur enchaîne heures puis minutes
+        // puis secondes en quelques secondes ; le dernier changement de la
+        // série déclenche l'unique sauvegarde réelle.
+        let debounceRecord = null;
+        [dist+"-h", dist+"-m", dist+"-s"].forEach(suffixe => {
+          const inpCache = document.getElementById("rec-temps-"+suffixe);
+          if (!inpCache) return;
+          inpCache.addEventListener("input", () => {
+            clearTimeout(debounceRecord);
+            debounceRecord = setTimeout(() => sauvegarderUnRecord(dist), 400);
+          });
+        });
+        // Bouton "Effacer" (cf. creerChampsTempsHMS) écrit directement
+        // dans les inputs cachés sans dispatcher d'event 'input' — sauvegarde
+        // explicite ici pour que l'effacement soit lui aussi auto-validé.
+        const btnEffacerRecord = champsHMS.querySelector("button");
+        if (btnEffacerRecord) {
+          btnEffacerRecord.addEventListener("click", () => { setTimeout(() => sauvegarderUnRecord(dist), 0); });
+        }
       });
       const note = document.createElement("p");
       note.className = "muted"; note.style.cssText = "font-size:13px;margin-top:10px;margin-bottom:0;";
-      note.textContent = "La date est optionnelle — elle aide juste à savoir si un record est encore à jour.";
+      note.textContent = "La date est optionnelle — elle aide juste à savoir si un record est encore à jour. Enregistré automatiquement dès la saisie.";
       wrap.appendChild(note);
       return wrap;
     })(),
@@ -8655,109 +8786,13 @@ function renderSettings() {
     )
   );
 
-  // ── Bouton global Enregistrer ─────────────────────────────────────────────
-  const saveBtn = document.createElement("button");
-  saveBtn.style.cssText = "width:100%;background:linear-gradient(135deg,var(--accent),var(--warn));border:none;border-radius:12px;padding:14px;color:#F8FAFC;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:24px;";
-  saveBtn.textContent = "💾 Enregistrer les paramètres";
-  saveBtn.addEventListener("click", avecRetourTactile(()=>{
-    // Lire toutes les valeurs des inputs
-    const prenom = document.getElementById("inp-prenom"); if(prenom) { profilCoureur.prenom=prenom.value.trim(); }
-    const nom = document.getElementById("inp-nom"); if(nom) { profilCoureur.nom=nom.value.trim(); }
-    const dateNaissance = document.getElementById("inp-date-naissance"); if(dateNaissance) {
-      profilCoureur.dateNaissance = dateNaissance.value || null;
-      // anneeNaissance reste dérivée automatiquement de dateNaissance —
-      // ne consomme jamais dateNaissance directement, seul plan-generator.js/
-      // le wizard (computeFcMaxTanaka) et calculerCategorieAgeFFA lisent
-      // encore anneeNaissance (l'année seule leur suffit).
-      profilCoureur.anneeNaissance = profilCoureur.dateNaissance ? parseInt(profilCoureur.dateNaissance.slice(0,4)) : null;
-    }
-    profilCoureur.records = profilCoureur.records || {};
-    let auMoinsUnRecordBattu = false;
-    let recordIrrealisteDetecte = null;
-    ["5K","10K","Semi","Marathon"].forEach(dist => {
-      const hInp = document.getElementById("rec-temps-"+dist+"-h");
-      const mInp = document.getElementById("rec-temps-"+dist+"-m");
-      const sInp = document.getElementById("rec-temps-"+dist+"-s");
-      const dateInp = document.getElementById("rec-date-"+dist);
-      // Bouton "Effacer" (31/07/2026) — cf. son commentaire dans
-      // creerChampsTempsHMS pour le détail complet. Un record marqué
-      // "effacé" est traité comme une suppression explicite, jamais
-      // comme une saisie de 0:00 (qui échouerait de toute façon le
-      // garde-fou record du monde juste en dessous, à tort).
-      const wrapRecord = document.getElementById("rec-temps-"+dist+"-wrap");
-      const estEfface = wrapRecord?.dataset.recordEfface === "true";
-      const tempsFormate = estEfface
-        ? null
-        : ((hInp || mInp || sInp) ? window.formaterHMSEnTempsRecord(hInp?.value, mInp?.value, sInp?.value) : null);
-      // Garde-fou record du monde (31/07/2026, demande de Laurent :
-      // "empêcher de mettre des objectifs irréalistes... des temps
-      // records du monde") — vérifié AVANT le badge record_battu et
-      // l'écriture dans profilCoureur.records, pour ne jamais persister
-      // une valeur physiologiquement impossible. cf.
-      // RECORDS_MONDE_SECONDES (plan-generator.js) pour les sources et
-      // la méthode de calcul des seuils. Un seul message d'alerte
-      // groupé en fin de boucle (recordIrrealisteDetecte) plutôt qu'un
-      // alert() par distance — évite d'enchaîner plusieurs popups
-      // bloquants si plusieurs distances sont concernées à la fois.
-      if (tempsFormate) {
-        try {
-          const secondesSaisies = parseTimeToSeconds(tempsFormate);
-          const recordMonde = RECORDS_MONDE_SECONDES[dist];
-          if (recordMonde && secondesSaisies < recordMonde) {
-            recordIrrealisteDetecte = recordIrrealisteDetecte
-              ? `${recordIrrealisteDetecte}, ${dist}`
-              : dist;
-            return; // ne sauvegarde pas cette distance, passe à la suivante
-          }
-        } catch (e) { /* format de temps invalide, ignoré ici — non bloquant pour ce garde-fou précis */ }
-      }
-      // Badge "record_battu" (27/07/2026) — comparaison AVANT écrasement :
-      // un temps plus RAPIDE (moins de secondes) que l'ancien record déjà
-      // enregistré compte comme un vrai record battu. Une saisie identique,
-      // plus lente, ou une distance sans record préalable (première saisie)
-      // ne déclenche jamais le badge — ce n'est pas "battre" un record.
-      try {
-        const ancienTemps = profilCoureur.records[dist]?.temps;
-        if (tempsFormate && ancienTemps && parseTimeToSeconds(tempsFormate) < parseTimeToSeconds(ancienTemps)) {
-          auMoinsUnRecordBattu = true;
-        }
-      } catch (e) { /* format de temps invalide, ignoré silencieusement ici — la validation du champ reste ailleurs */ }
-      if (tempsFormate) {
-        profilCoureur.records[dist] = { temps: tempsFormate, date: dateInp?.value || null };
-      } else {
-        profilCoureur.records[dist] = null;
-      }
-    });
-    if (recordIrrealisteDetecte) {
-      alert(`Temps plus rapide que le record du monde actuel sur : ${recordIrrealisteDetecte} — non enregistré, vérifie ta saisie.`);
-    }
-    if (auMoinsUnRecordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
-      enregistrerBadgeDebloque('record_battu', 1).then(() => {
-        window.__badgesCache__.record_battu = true;
-        window.__badgesNouveauxAAfficher__ = [...(window.__badgesNouveauxAAfficher__ || []), { badgeId: 'record_battu', niveau: 1, seuil: null }];
-        render();
-      }).catch(() => {});
-    }
-    const poids = document.getElementById("inp-poids"); if(poids) { runnerWeight=parseInt(poids.value)||null; profilCoureur.poids=runnerWeight; }
-    const taille = document.getElementById("inp-taille"); if(taille) { runnerHeight=parseInt(taille.value)||null; profilCoureur.taille=runnerHeight; }
-    const fcmax = document.getElementById("inp-fcmax"); if(fcmax) { runnerFcMax=parseInt(fcmax.value)||181; profilCoureur.fcMax=runnerFcMax; }
-    const fcrepos = document.getElementById("inp-fcrepos"); if(fcrepos) { profilCoureur.fcRepos=parseInt(fcrepos.value)||null; }
-    const pps = document.getElementById("pps-input"); if(pps) { runnerPps=pps.value.trim(); profilCoureur.pps=runnerPps; }
-    sauvegarderProfilCoureur();
-    const goal = document.getElementById("inp-goal"); if(goal) {
-      // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
-      // correction que fmtTime/fmtTimeShort (cf. commentaire associé),
-      // pertinent pour un objectif Semi/Marathon qui dépasse l'heure.
-      const parts=goal.value.split(":").map(Number);
-      let s = null;
-      if (parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) s = parts[0]*60+parts[1];
-      else if (parts.length===3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) s = parts[0]*3600+parts[1]*60+parts[2];
-      if (s!==null && s>0) { raceGoalTime=s; save(clePourPlan("lk_race_goal"),raceGoalTime); }
-    }
-    saveBtn.textContent = "✅ Paramètres enregistrés !";
-    setTimeout(()=>{ saveBtn.textContent = "💾 Enregistrer les paramètres"; }, 2000);
-    render();
-  }));
+  // Bouton global "Enregistrer" retiré (31/07/2026, demande de Laurent) —
+  // remplacé par l'auto-sauvegarde individuelle de chaque champ (à la
+  // sortie du champ pour le texte/nombre, dès sélection pour les
+  // roulettes de records) — cf. les listeners "change"/"input" ajoutés
+  // directement sur chaque input dans profileSection et recordsSection
+  // ci-dessus, et la fonction sauvegarderUnRecord() qui reprend la même
+  // logique de garde-fou record du monde/badge que ce bouton avait.
 
   // Clôture du plan Forme — ajoutée le 13 juillet 2026. Un plan Forme sans
   // dateCloture est considéré "actif indéfiniment" par la logique de
@@ -8963,24 +8998,28 @@ function renderSettings() {
   // seule référence conservée, dans le groupe Intégrations ci-dessous.
   //
   // Regroupement en accordéons (31/07/2026, demande de Laurent, "faisons
-  // la même chose pour l'onglet paramètres", cohérent avec Stats/Course) —
-  // 4 groupes : Compte et apparence / Profil coureur / Intégrations /
-  // Autres. saveBtn reste DANS le groupe Profil coureur (juste après
-  // recordsSection) plutôt qu'en dehors de tout accordéon : il n'enregistre
-  // que les champs de ce groupe (identité, poids/taille/FC, records,
-  // objectif) — les autres sections (thème, Strava, abonnement) ont leur
-  // propre sauvegarde immédiate au clic, jamais via ce bouton.
+  // la même chose pour l'onglet paramètres", cohérent avec Stats/Course,
+  // puis affiné sur retour explicite : abonnement rejoint Compte, records
+  // personnels sortis en groupe séparé, Autres renommé Export, version
+  // sortie en groupe séparé) — 6 groupes : Compte et abonnement / Profil
+  // coureur / Records personnels / Intégrations / Export / Version. Plus
+  // de saveBtn nulle part : chaque champ s'auto-sauvegarde individuellement
+  // (cf. profileSection et recordsSection ci-dessus, sauvegarderUnRecord()).
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
     appHeaderEl,
     formeClotureSection,
 
-    renderGroupeAccordeonStats("👤","Compte et apparence","var(--accent)", [
-      accountSection, themeSection
+    renderGroupeAccordeonStats("👤","Compte et abonnement","var(--accent)", [
+      accountSection, themeSection, abonnementSection
     ]),
 
     renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
-      profileSection, niveauSection, sexeSection, recordsSection, saveBtn
+      profileSection, niveauSection, sexeSection
+    ]),
+
+    renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
+      recordsSection
     ]),
 
     renderGroupeAccordeonStats("🔗","Intégrations","var(--warn)", [
@@ -8988,8 +9027,12 @@ function renderSettings() {
       githubToken ? qrSection : null
     ]),
 
-    renderGroupeAccordeonStats("⚙️","Autres","var(--text-muted)", [
-      pdfSection, abonnementSection, versionSection
+    renderGroupeAccordeonStats("📤","Export","var(--text-muted)", [
+      pdfSection
+    ]),
+
+    renderGroupeAccordeonStats("ℹ️","Version","var(--text-muted)", [
+      versionSection
     ])
   );
 }
