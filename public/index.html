@@ -4634,6 +4634,24 @@ function renderGrilleJoursSemaine(week) {
           e.stopPropagation(); // ne pas aussi déclencher le clic sur l'en-tête de la carte
           selectedWeek = week.week;
           setView("weekDetail");
+          // Scroll direct vers la carte de cette séance précise (31/07/2026,
+          // demande de Laurent : le clic doit ouvrir la séance elle-même,
+          // pas juste faire défiler jusqu'en haut de la semaine). setView()
+          // appelle render() de façon synchrone (app.innerHTML="" puis
+          // reconstruction immédiate, cf. render()) — le DOM de
+          // renderWeekDetail est donc déjà inséré et interrogeable ici,
+          // sans besoin de setTimeout/attente asynchrone.
+          const uid = `${week.week}-${i}`;
+          const carteCible = document.getElementById("carte-"+uid);
+          if (carteCible) {
+            carteCible.scrollIntoView({ block:"center", behavior:"smooth" });
+            // Léger surlignage temporaire pour indiquer clairement quelle
+            // carte a été ciblée par le clic (utile si plusieurs séances
+            // se ressemblent visuellement, ex. deux EF la même semaine).
+            const contourOriginal = carteCible.style.boxShadow;
+            carteCible.style.boxShadow = "0 0 0 2px var(--accent), " + contourOriginal;
+            setTimeout(() => { carteCible.style.boxShadow = contourOriginal; }, 1200);
+          }
         });
       }
       return cell;
@@ -5601,7 +5619,14 @@ function renderWeekDetail(weekNum) {
     // peu importe le statut réel, c'est le bug remonté par Laurent ("on
     // voit seulement l'onglet validé vert").
     const isDoneSession = ["✅","❌","⚠️","😴"].includes(statutEffectif) && effSess.type!=="REPOS";
-    const card=el("div",{style:{
+    // id ajouté (31/07/2026, demande de Laurent : le clic sur un jour de
+    // la grille récapitulative de l'onglet Semaines doit ouvrir directement
+    // la carte de la séance, pas juste faire défiler jusqu'en haut de la
+    // semaine) — cf. renderGrilleJoursSemaine, qui scrolle vers cet id
+    // après avoir changé de vue. Basé sur uid (déjà unique et stable dans
+    // tout le fichier, cf. statuses[uid]/ALL_SESSIONS), préfixé "carte-"
+    // pour éviter toute collision avec un id existant ailleurs dans le DOM.
+    const card=el("div",{id:"carte-"+uid,style:{
       background:isToday?"var(--border-soft)":"var(--bg)",
       border:`1px solid ${isToday?"rgba(var(--accent-rgb),0.2)":st.colorSoft+"0.13)"}`,
       borderTop:`3px solid ${st.color}`,
