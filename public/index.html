@@ -8636,45 +8636,22 @@ function renderSettings() {
     boutonsValidation.appendChild(btnEffacer);
     wrap.appendChild(boutonsValidation);
 
-    // Construction différée (setTimeout 0) : les 3 conteneurs de colonnes
-    // doivent être insérés dans le vrai DOM (via wrap.appendChild plus
-    // bas côté appelant) avant que initRouletteHMS() puisse mesurer/
-    // positionner leur scroll — cohérent avec le composant de
-    // public/v2/index.html, qui a le même besoin (garanti par l'ordre du
-    // script principal côté wizard, mais ici cette fonction est appelée
-    // au milieu de la construction d'un arbre DOM pas encore attaché).
-    // CORRECTIF (31/07/2026, bug confirmé par inspection console fournie
-    // par Laurent : scrollTop restait à 0 malgré un appel explicite à
-    // definirValeur(), le chiffre affiché restait bloqué sur "00" alors
-    // que la vraie valeur était bien stockée dans les inputs cachés) —
-    // setTimeout(0) ne garantit pas que le navigateur ait terminé un cycle
-    // complet de layout avant l'exécution (la géométrie de scroll de
-    // .roulette-colonne, notamment scrollHeight, pouvait ne pas être
-    // stabilisée à temps — probablement lié au viewport réduit avec
-    // overflow:hidden ajouté récemment, combiné à la grille CSS 2 colonnes
-    // de la disposition des records). Double requestAnimationFrame :
-    // garantit que le navigateur a peint au moins une fois avant
-    // d'exécuter le code, donc que toute géométrie de scroll est fiable.
-    // CORRECTIF (31/07/2026, bug confirmé par inspection console fournie
-    // par Laurent : scrollTop restait à 0 malgré un appel explicite à
-    // definirValeur(), le chiffre affiché restait bloqué sur "00" alors
-    // que la vraie valeur était bien stockée dans les inputs cachés — un
-    // appel MANUEL à window.initRouletteHMS() en console, quelques
-    // secondes après le chargement, fonctionnait parfaitement, ce qui
-    // élimine tout problème de logique du code lui-même et pointe vers un
-    // délai insuffisant) — double requestAnimationFrame (~2 frames,
-    // ~32ms) insuffisant, remplacé par un délai fixe plus généreux.
-    // CHANGEMENT D'APPROCHE (31/07/2026) — plusieurs tentatives de délai
-    // (setTimeout(0), double requestAnimationFrame, setTimeout(100ms)) ont
-    // toutes échoué à corriger le bug (scrollTop restait à 0 au premier
-    // rendu de l'écran, mais un appel manuel après quelques secondes en
-    // console fonctionnait toujours). Plutôt que de deviner encore un
-    // délai, on vérifie maintenant une VRAIE condition avant d'agir :
-    // l'élément doit être attaché au document ET visible (offsetParent
-    // non null — un élément caché par un ancêtre display:none, ou pas
-    // encore dans le DOM, a offsetParent===null). Polling toutes les
-    // 16ms (~1 frame), abandonné après 2 secondes (cas anormal, pas de
-    // boucle infinie).
+    // Positionnement différé de la roulette au bon moment (31/07/2026,
+    // bug corrigé après plusieurs tentatives) — au tout premier rendu
+    // d'un écran (mais pas aux suivants), le chiffre actif restait
+    // bloqué visuellement sur "00" malgré des données correctes en
+    // interne : scrollTop assigné ne prenait pas effet. Ni setTimeout(0),
+    // ni un double requestAnimationFrame, ni un délai fixe de 100ms
+    // n'ont suffi à résoudre ça de façon fiable — un appel manuel via la
+    // console, après quelques secondes, fonctionnait pourtant toujours,
+    // ce qui écartait un problème de logique du composant lui-même.
+    // Résolu en vérifiant une vraie condition avant d'agir plutôt qu'en
+    // devinant un délai : l'élément doit être RÉELLEMENT visible
+    // (offsetParent non null, signe qu'aucun ancêtre n'est display:none
+    // et que l'élément est bien attaché au document) — condition
+    // vérifiée en boucle toutes les 16ms, jusqu'à confirmation (abandon
+    // après 2s si jamais atteinte, cas anormal qui ne devrait pas se
+    // produire en pratique).
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
       if (conteneurTest && conteneurTest.offsetParent !== null) {
