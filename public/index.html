@@ -92,10 +92,23 @@ input[type=text], input[type=number], input[type=password] {
    CSS pur (scroll-snap), adapté aux variables --text-rgb/--accent-rgb/
    --surface de ce fichier (le wizard utilise --paper/--line, propres à
    son propre thème). ────────────────────────────────────────────────── */
+/* CORRECTIF (31/07/2026, bug signalé par Laurent avec capture d'écran :
+   le conteneur s'étirait sur toute la hauteur disponible, chiffres et
+   boutons flottant n'importe où) — .roulette-temps n'avait plus de
+   height fixe après le passage à padding:4px 8px (perdue en même temps
+   que l'ancien height:120px), et align-items:stretch forçait chaque
+   mini-colonne (bouton + roulette + bouton, cf. creerColonneAvecBoutons)
+   à s'étirer pour occuper tout l'espace du parent — qui grandissait lui-
+   même sans contrainte selon son conteneur externe (editionWrap, sans
+   hauteur propre). Hauteur totale fixée en dur (168px = padding 8 +
+   bouton+gap 20 + colonne 120 + bouton+gap 20, boutons réduits à 18px de
+   haut — cf. plus bas), align-items repassé à flex-start (alignement en
+   haut, pas d'étirement). */
 .roulette-temps{
-  display:flex; align-items:stretch; justify-content:center; gap:2px;
+  display:flex; align-items:flex-start; justify-content:center; gap:2px;
   background:var(--border-soft); border:1px solid var(--border);
-  border-radius:12px; padding:4px 8px; position:relative;
+  border-radius:12px; padding:4px 8px; position:relative; height:168px;
+  box-sizing:border-box;
 }
 /* top calculé en pixels (31/07/2026, ajout des boutons +/-) plutôt que
    top:50% — la fenêtre doit rester centrée sur la COLONNE scrollable
@@ -108,7 +121,7 @@ input[type=text], input[type=number], input[type=password] {
   background:var(--surface); border-radius:8px; pointer-events:none;
 }
 .roulette-colonne{
-  flex:1; max-width:56px; height:120px; overflow-y:scroll;
+  flex:1; max-width:38px; height:120px; overflow-y:scroll;
   scroll-snap-type:y mandatory; scrollbar-width:none; -ms-overflow-style:none;
   font-variant-numeric:tabular-nums;
 }
@@ -8455,7 +8468,14 @@ function renderSettings() {
 
     const roulette = document.createElement("div");
     roulette.className = "roulette-temps";
-    roulette.style.cssText = "flex-shrink:0;width:150px;";
+    // Largeur réduite (31/07/2026, bug signalé par Laurent avec capture
+    // d'écran : disposition écrasée, boutons +/- empilés au lieu d'être
+    // côte à côte) — 150px ne tenait plus dans l'espace réel d'une carte
+    // de la grille 2x2 des records (~149px utiles sur mobile, calculé
+    // après le passage à ce nouveau layout compact), laissant à peine de
+    // place pour 3 mini-colonnes de boutons. Réduit à 130px, avec les
+    // boutons +/- eux-mêmes réduits en proportion (28px -> 24px de large).
+    roulette.style.cssText = "flex-shrink:0;width:130px;";
     const fenetre = document.createElement("div"); fenetre.className = "roulette-fenetre";
 
     // Boutons +/- au-dessus et en dessous de chaque colonne (31/07/2026,
@@ -8478,7 +8498,7 @@ function renderSettings() {
       mini.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;";
       const btnPlus = document.createElement("button");
       btnPlus.type = "button"; btnPlus.id = idBoutonPlus; btnPlus.textContent = "+";
-      btnPlus.style.cssText = "width:28px;height:20px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-size:13px;font-weight:700;cursor:pointer;padding:0;line-height:1;flex-shrink:0;";
+      btnPlus.style.cssText = "width:24px;height:18px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;padding:0;line-height:1;flex-shrink:0;";
       const col = document.createElement("div");
       col.className = "roulette-colonne"; col.id = idColonne;
       const btnMoins = document.createElement("button");
