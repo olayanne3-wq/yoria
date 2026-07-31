@@ -92,31 +92,24 @@ input[type=text], input[type=number], input[type=password] {
    CSS pur (scroll-snap), adapté aux variables --text-rgb/--accent-rgb/
    --surface de ce fichier (le wizard utilise --paper/--line, propres à
    son propre thème). ────────────────────────────────────────────────── */
-/* CORRECTIF (31/07/2026, bug signalé par Laurent avec capture d'écran :
-   le conteneur s'étirait sur toute la hauteur disponible, chiffres et
-   boutons flottant n'importe où) — .roulette-temps n'avait plus de
-   height fixe après le passage à padding:4px 8px (perdue en même temps
-   que l'ancien height:120px), et align-items:stretch forçait chaque
-   mini-colonne (bouton + roulette + bouton, cf. creerColonneAvecBoutons)
-   à s'étirer pour occuper tout l'espace du parent — qui grandissait lui-
-   même sans contrainte selon son conteneur externe (editionWrap, sans
-   hauteur propre). Hauteur totale fixée en dur (168px = padding 8 +
-   bouton+gap 20 + colonne 120 + bouton+gap 20, boutons réduits à 18px de
-   haut — cf. plus bas), align-items repassé à flex-start (alignement en
-   haut, pas d'étirement). */
+/* Hauteur totale réduite (31/07/2026, bug signalé par Laurent : "grand
+   espace entre les chiffres et les +/-") — passée de 168px à 92px après
+   l'ajout d'un viewport réduit (44px) autour de chaque colonne, cf.
+   creerColonneAvecBoutons : padding 8 + bouton+gap 20 + viewport 44 +
+   bouton+gap 20. align-items:flex-start (pas d'étirement, cf. correctif
+   précédent sur ce même point). */
 .roulette-temps{
   display:flex; align-items:flex-start; justify-content:center; gap:2px;
   background:var(--border-soft); border:1px solid var(--border);
-  border-radius:12px; padding:4px 8px; position:relative; height:168px;
+  border-radius:12px; padding:4px 8px; position:relative; height:92px;
   box-sizing:border-box;
 }
-/* top calculé en pixels (31/07/2026, ajout des boutons +/-) plutôt que
-   top:50% — la fenêtre doit rester centrée sur la COLONNE scrollable
-   (120px), pas sur tout .roulette-temps qui inclut maintenant les boutons
-   +/- au-dessus. Calcul : padding-top (4px) + hauteur bouton+gap (20px) +
-   moitié de la colonne (60px) - moitié de la fenêtre (18px) = 66px. */
+/* top recalculé (31/07/2026, même correctif que ci-dessus) — la fenêtre
+   doit rester centrée sur le VIEWPORT réduit (44px), pas sur l'ancienne
+   colonne pleine hauteur. Calcul : padding-top (4px) + bouton+gap (20px)
+   + moitié du viewport (22px) - moitié de la fenêtre (18px) = 28px. */
 .roulette-fenetre{
-  position:absolute; left:8px; right:8px; top:66px;
+  position:absolute; left:8px; right:8px; top:28px;
   height:36px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
   background:var(--surface); border-radius:8px; pointer-events:none;
 }
@@ -8511,12 +8504,30 @@ function renderSettings() {
       const btnPlus = document.createElement("button");
       btnPlus.type = "button"; btnPlus.id = idBoutonPlus; btnPlus.textContent = "+";
       btnPlus.style.cssText = "width:24px;height:18px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;padding:0;line-height:1;flex-shrink:0;";
+
+      // Viewport réduit (31/07/2026, bug signalé par Laurent : "grand
+      // espace entre les chiffres et les +/-") — .roulette-colonne garde sa
+      // vraie hauteur de 120px en interne (nécessaire au mécanisme de
+      // scroll/scroll-snap, cf. HAUTEUR_PICKER=120 dans initRouletteHMS/
+      // definirValeur, jamais changé), mais n'est visible qu'à travers une
+      // fenêtre de 44px (overflow:hidden), centrée sur la bande de
+      // sélection interne via un décalage négatif calculé une fois pour
+      // toutes (-38px = moitié viewport - moitié colonne). Depuis que seul
+      // le chiffre actif reste visible (opacity:0 sur les autres, ajouté
+      // plus tôt le même jour), les ~84px de colonne restants au-dessus/
+      // en-dessous de la fenêtre de sélection n'avaient plus aucune raison
+      // d'être visibles à l'écran.
+      const viewport = document.createElement("div");
+      viewport.style.cssText = "height:44px;overflow:hidden;position:relative;";
       const col = document.createElement("div");
       col.className = "roulette-colonne"; col.id = idColonne;
+      col.style.marginTop = "-38px";
+      viewport.appendChild(col);
+
       const btnMoins = document.createElement("button");
       btnMoins.type = "button"; btnMoins.id = idBoutonMoins; btnMoins.textContent = "−";
       btnMoins.style.cssText = btnPlus.style.cssText;
-      mini.appendChild(btnPlus); mini.appendChild(col); mini.appendChild(btnMoins);
+      mini.appendChild(btnPlus); mini.appendChild(viewport); mini.appendChild(btnMoins);
       return mini;
     }
 
@@ -8568,6 +8579,7 @@ function renderSettings() {
     // repositionné les roulettes, pas avant.
     const btnEffacer = document.createElement("button");
     btnEffacer.type = "button";
+    btnEffacer.className = "btn-effacer-record";
     btnEffacer.textContent = "✕";
     btnEffacer.title = "Effacer ce record";
     btnEffacer.style.cssText = "flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--border-soft);color:var(--text-muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;";
@@ -8642,6 +8654,16 @@ function renderSettings() {
       profilCoureur.records[dist] = null;
     }
     sauvegarderProfilCoureur();
+
+    // CORRECTIF (31/07/2026, bug signalé par Laurent : "le temps ne
+    // s'enregistre pas") — la sauvegarde fonctionnait bien en interne
+    // (profilCoureur.records mis à jour, sauvegarderProfilCoureur()
+    // appelée), mais rien ne rafraîchissait la carte compacte affichée
+    // (le résumé temps/date construit dans recordsSection) : sans ce
+    // render(), l'ancien ancien état restait visible à l'écran jusqu'à
+    // ce que l'utilisateur navigue ailleurs et revienne, donnant
+    // l'impression trompeuse que rien n'avait été enregistré.
+    render();
 
     if (recordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
       enregistrerBadgeDebloque('record_battu', 1).then(() => {
@@ -8733,7 +8755,7 @@ function renderSettings() {
         // Bouton "Effacer" (cf. creerChampsTempsHMS) écrit directement
         // dans les inputs cachés sans dispatcher d'event 'input' — sauvegarde
         // explicite ici pour que l'effacement soit lui aussi auto-validé.
-        const btnEffacerRecord = champsHMS.querySelector("button");
+        const btnEffacerRecord = champsHMS.querySelector(".btn-effacer-record");
         if (btnEffacerRecord) {
           btnEffacerRecord.addEventListener("click", () => { setTimeout(() => sauvegarderUnRecord(dist), 0); });
         }
