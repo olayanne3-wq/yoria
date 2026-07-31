@@ -44,7 +44,7 @@ yoria/
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~8300 lignes)
+│   ├── index.html                 # App principale (dashboard, ~10200 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
@@ -119,6 +119,19 @@ référence, objectif, volume hebdomadaire (plus de repli silencieux à
 30km/semaine), jour de sortie longue. sessionStorage nettoyé au retour
 volontaire à l'app.
 
+**Roulettes de saisie de temps/volume (temps de référence, objectif,
+estimation alternative, volume hebdomadaire manuel)** — composant partagé
+(`creerColonneRoulette`), boutons +/- au-dessus/en-dessous de chaque
+colonne en complément du geste de défilement tactile (jamais un
+remplacement), seul le chiffre actif reste visible pendant le défilement.
+Positionnement initial vérifié par condition réelle (élément visible,
+`offsetParent !== null`, polling 16ms) plutôt que par délai arbitraire —
+un simple `setTimeout`/`requestAnimationFrame` s'est révélé insuffisant
+pour garantir un positionnement fiable au tout premier rendu d'un écran
+(mais fonctionnait aux rendus suivants), cause exacte non identifiée avec
+certitude. Voir §4 pour le même composant côté Réglages (records
+personnels) et son historique de mise au point complet.
+
 **Non fait** : audit no-scroll systématique du wizard — nécessite un rendu
 réel en navigateur, approche retenue = tests réels de Laurent au cas par
 cas plutôt qu'estimation.
@@ -170,6 +183,48 @@ seules les répétitions individuelles restent repliées derrière "▼ détail"
 Sans Strava ni saisie manuelle, le clic sur un statut ouvre automatiquement
 le formulaire de saisie. Statut futur : rangée de boutons masquée
 complètement (pas juste désactivée).
+
+**Onglets Stats et Course — accordéons thématiques (31/07/2026)** —
+`renderGroupeAccordeonStats()` (composant générique malgré son nom,
+réutilisé tel quel pour Course via `renderGroupeAccordeonCourse()`),
+repliés par défaut. État ouvert/fermé persistant entre les `render()`
+successifs via un registre au niveau module (`etatGroupesAccordeon`,
+indexé par titre de groupe — les titres doivent rester uniques tous
+onglets confondus pour éviter une collision dans ce registre partagé).
+Stats : 5 groupes (Objectif et progression / Charge et récupération /
+Performance technique / Référence / Tests). Course : 2 groupes
+(Préparation pratique / Stratégie) — Météo et Résumé de préparation
+restent hors accordéon (une seule carte chacun).
+
+**Onglet Réglages — 6 groupes accordéon (31/07/2026)** — Compte et
+abonnement / Profil coureur / Records personnels / Intégrations / Export /
+Version, même mécanisme de persistance d'état que Stats/Course. Deux
+sections restent hors accordéon, toujours visibles : la clôture de plan
+Forme (action irréversible) et le thème clair/sombre (bouton icône
+discret, intégré à l'en-tête de l'app plutôt qu'une carte séparée — fond
+blanc fixe derrière ☀️, fond noir fixe derrière 🌙, indépendant du thème
+actif pour un contraste constant).
+
+**Records personnels — grille compacte avec validation explicite
+(31/07/2026)** — chaque distance (5K/10K/Semi/Marathon) affiche
+directement sa roulette (h/m/s) et son champ date, sans étape de clic
+intermédiaire. Bouton **✓ Valider** (au-dessus du bouton ✕ Effacer,
+regroupés verticalement) — seul déclencheur de sauvegarde
+(`sauvegarderUnRecord(dist)`), plus aucune sauvegarde automatique
+pendant la saisie (un mécanisme d'auto-sauvegarde par debounce a été
+essayé puis abandonné, jugé trop capricieux). Roulette : seul le chiffre
+actif reste visible pendant le défilement (chiffres voisins masqués en
+opacité), boutons +/- au-dessus/en-dessous de chaque colonne en
+complément du geste de défilement tactile. Positionnement initial vérifié
+par condition réelle (élément visible) plutôt que délai arbitraire — cf.
+§3 pour le détail complet de cette mise au point (plusieurs itérations de
+délai infructueuses avant de trouver ce qui fonctionne de façon fiable).
+Bouton Effacer : remet la roulette à 0 et marque l'état "effacé"
+(`dataset.recordEfface`), mais ne sauvegarde pas non plus tout seul — il
+faut valider avec ✓ pour que la suppression soit persistée. Même
+composant déployé sur les roulettes du wizard (temps de référence,
+objectif, estimation alternative, volume manuel — cf. §3) et de
+l'onboarding (cf. §12).
 
 ## 5. Persistance
 
@@ -231,10 +286,14 @@ strictement par propriétaire. Schéma SQL dans `schema-decision-memory.sql`.
   profil (record le plus pertinent, repli Riegel sinon).
   `verifierCoherenceRecord()` écarte un record si écart >10% à
   l'estimation Riegel des autres.
-- **Sauvegarde** : un seul point d'entrée réel, `sauvegarderProfilCoureur()`.
-  Les sélecteurs Niveau/Sexe ne doivent JAMAIS appeler cette fonction
-  directement au clic — seulement mettre à jour l'état local puis
-  `render()`, sinon un profil incomplet écrase Supabase.
+- **Sauvegarde** : plus de bouton "Enregistrer" global (retiré le
+  31/07/2026, cf. §4) — chaque champ du profil coureur (identité,
+  poids/taille/FC, objectif) s'auto-sauvegarde individuellement à la
+  sortie du champ (`sauvegarderProfilCoureur()`), les records personnels
+  passent par validation explicite (cf. §4). Les sélecteurs Niveau/Sexe
+  ne doivent JAMAIS appeler `sauvegarderProfilCoureur()` directement au
+  clic — seulement mettre à jour l'état local puis `render()`, sinon un
+  profil incomplet écrase Supabase.
 - **Un seul compte Supabase Auth par email** — vérifier `Authentication →
   Users` en cas de doute, un profil orphelin peut coexister
   silencieusement avec le vrai profil actif.
@@ -327,6 +386,14 @@ affichent `plan.message`, sans câblage supplémentaire nécessaire.
 `decision-engine-apply.classic.js` n'a aucun lien avec
 `repartirVolumeSemaine` (il réduit des séances déjà générées, jamais leur
 répartition) — rien à y propager.
+
+**Records du monde — plancher absolu de temps saisissable** —
+`RECORDS_MONDE_SECONDES` (5K/10K/Semi/Marathon, hommes route), bloque
+toute saisie de temps plus rapide, partout où un temps de référence/
+objectif/record est saisi (wizard, Réglages, onboarding). Table dupliquée
+en local dans `auth.js` (onboarding) — ce module ne doit jamais dépendre
+de l'ordre de chargement d'`index.html`/`plan-generator.js`, à garder
+synchronisée manuellement si les records évoluent.
 
 **Allures dynamiques** — jusqu'ici, les allures E/T/I restaient calibrées
 sur `paramsOrigine.tempsReference` pendant toute la durée du plan, même
@@ -572,6 +639,16 @@ l'écran de bienvenue si `echecChargementProfil` est vrai — sinon un
 `localStorage` non réhydraté est pris à tort pour "profil jamais
 renseigné" et écrase le vrai profil Supabase.
 
+**Écran d'onboarding (`monterEcranOnboarding`, `auth.js`)** — records
+personnels saisis via le même composant roulette que Réglages (boutons
++/-, viewport réduit, bouton ✓ Valider par distance, positionnement
+initial par condition réelle — cf. §4 pour le détail complet de ce
+composant). Porté intégralement en local dans `auth.js`, jamais importé
+depuis `index.html` (contrainte d'indépendance : ce module ne doit jamais
+dépendre de l'ordre de chargement d'`index.html`). Garde-fou record du
+monde appliqué à la validation finale (`terminer()`), avant de résoudre
+la promesse — laisse corriger sans quitter l'écran.
+
 ## 13. Publication Play Store (TWA Android)
 
 - Package : `app.vercel.plan_10k_alpha.twa` (identifiant permanent)
@@ -645,6 +722,22 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
   navigateur, jamais via `toISOString().slice(0,10)`** (toujours UTC) —
   utiliser `getFullYear()`/`getMonth()`/`getDate()`. L'UTC explicite
   reste correct pour les calculs de plage basés sur `dateDebut` du plan.
+- **Un registre d'état de composant (accordéon, toggle...) qui doit
+  survivre à un `render()` complet doit être déclaré au niveau module,
+  jamais à l'intérieur de la fonction qui construit l'écran** — sinon un
+  nouvel objet vide est recréé à chaque appel, perdant silencieusement
+  tout état précédent. Erreur déjà commise deux fois de suite le
+  31/07/2026 (groupes accordéon, puis cartes de records) avant d'être
+  généralisée en principe explicite.
+- **Le positionnement initial d'un élément scrollable (roulette,
+  carrousel...) construit dans un écran qui vient d'être affiché ne doit
+  jamais dépendre d'un délai arbitraire** (`setTimeout`, même
+  `requestAnimationFrame` double) — vérifier une condition réelle
+  (élément attaché et visible, `offsetParent !== null`) via polling
+  léger. Un délai peut fonctionner au clic normal tout en échouant
+  silencieusement au tout premier rendu d'un écran (cause exacte non
+  identifiée avec certitude sur ce projet, mais le correctif par
+  condition réelle s'est montré fiable dans les deux cas).
 
 ## 16. État des chantiers ouverts
 
@@ -653,6 +746,7 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Wizard déjà câblé génériquement — aucun changement nécessaire côté `v2/index.html`. |
 | Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
+| Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). Onboarding (§12) mis à jour en cohérence mais **non testé en conditions réelles** — nécessite un nouveau compte de test ou de forcer l'affichage de cet écran. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
@@ -666,6 +760,7 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Lié à R-070 : ni accélération après succès répétés, ni lissage de la remontée. Nécessiterait de persister la dernière ampleur appliquée entre séances qualité — pas pire que la situation actuelle, pas priorisé |
 | Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 `analyserAdaptations()`/`appliquerAdaptations()` sont déjà branchées sur le dashboard (`adaptationEl`), mais jamais observées par Laurent car jamais déclenchées sur ses données réelles. Deux cartes restent volontairement séparées (granularités différentes). Reste à coder : garde-fou si les deux cartes ciblent la même semaine (physio prioritaire) + journalisation de collision |
 | Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Le modèle extrapole uniformément le rythme observé, alors qu'il évolue souvent en phase Spécifique/Affûtage. Chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`) pour comparer a posteriori une fois assez de données — pas encore assez de recul pour juger |
+
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
 `bibliotheque-seances.md`.
