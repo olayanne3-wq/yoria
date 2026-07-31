@@ -515,13 +515,20 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     // synchronise vers les inputs cachés onb-rec-{dist}-h/-m/-s — mêmes
     // ids que la version précédente (input type=number), donc terminer()
     // plus bas n'a besoin d'AUCUNE modification pour lire ces valeurs.
+    //
+    // HEURES_MAX_PAR_DISTANCE (31/07/2026, demande de Laurent : 24h
+    // identique pour les 4 distances jugé abusé) — même table que
+    // index.html (Réglages), cf. son commentaire pour le détail du
+    // raisonnement par distance.
+    const HEURES_MAX_PAR_DISTANCE = { "5K": 1, "10K": 2, "Semi": 4, "Marathon": 9 };
     function initRouletteHMSOnboarding(dist, hInit, mInit, sInit){
       const inputH = hote.querySelector(`#onb-rec-${dist}-h`);
       const inputM = hote.querySelector(`#onb-rec-${dist}-m`);
       const inputS = hote.querySelector(`#onb-rec-${dist}-s`);
       if (!inputH || !inputM || !inputS) return;
+      const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
       const declencherInput = (input, valeur) => { input.value = String(valeur); };
-      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteH`, Array.from({length:24},(_,i)=>i), hInit ?? 0, v => declencherInput(inputH, v));
+      creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteH`, Array.from({length:heuresMax+1},(_,i)=>i), hInit ?? 0, v => declencherInput(inputH, v));
       creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteM`, Array.from({length:60},(_,i)=>i), mInit ?? 0, v => declencherInput(inputM, v));
       creerColonneRouletteOnboarding(`onb-rec-${dist}-rouletteS`, Array.from({length:60},(_,i)=>i), sInit ?? 0, v => declencherInput(inputS, v));
     }
