@@ -6997,6 +6997,17 @@ function calculerStrategieCourse(distanceKmCourse, tempsObjectifSec) {
 // ══════════════════════════════════════════════════════════════════════════════
 // COURSE
 // ══════════════════════════════════════════════════════════════════════════════
+// Sous-titre de regroupement léger pour l'onglet Course (31/07/2026,
+// demande de Laurent : rendre l'onglet "plus agréable, cohérent et
+// logique" — réordonné en groupes visuels + card() réutilisée partout au
+// lieu du style répété manuellement sur chaque section). Volontairement
+// plus discret que renderGroupeAccordeonStats (pas un accordéon ici, ces
+// groupes sont petits — 2-3 cartes chacun — et tout reste visible d'un
+// coup, cohérent avec le reste de cet onglet qui n'a jamais été replié).
+function renderSousTitreGroupeCourse(titre) {
+  return el("div",{style:{fontSize:"13px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"0.5px",marginTop:"20px",marginBottom:"8px"}}, titre);
+}
+
 function renderCourse() {
   const cd = countdown();
 
@@ -7028,28 +7039,30 @@ function renderCourse() {
 
   const horairesCard = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"⏰ Horaires"),
-    el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
-      el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-        el("span",{class:"muted",style:{fontSize:"15px"}},"Retrait dossards"),
-        (()=>{
-          const inp = document.createElement("input");
-          inp.type = "time"; inp.id = "horaire-dossard-input";
-          inp.style.cssText = "width:110px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;text-align:right;box-sizing:border-box;";
-          inp.value = raceHoraires.dossard || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
-          return inp;
-        })()
-      ),
-      el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
-        el("span",{class:"muted",style:{fontSize:"15px"}},"Départ course"),
-        (()=>{
-          const inp = document.createElement("input");
-          inp.type = "time"; inp.id = "horaire-depart-input";
-          inp.style.cssText = "width:110px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;text-align:right;box-sizing:border-box;";
-          inp.value = raceHoraires.depart || "";
-          inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
-          return inp;
-        })()
+    card(
+      el("div",{style:{display:"flex",flexDirection:"column",gap:"10px"}},
+        el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
+          el("span",{class:"muted",style:{fontSize:"15px"}},"Retrait dossards"),
+          (()=>{
+            const inp = document.createElement("input");
+            inp.type = "time"; inp.id = "horaire-dossard-input";
+            inp.style.cssText = "width:110px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;text-align:right;box-sizing:border-box;";
+            inp.value = raceHoraires.dossard || "";
+            inp.addEventListener("change", (e)=>{ raceHoraires.dossard=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
+            return inp;
+          })()
+        ),
+        el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
+          el("span",{class:"muted",style:{fontSize:"15px"}},"Départ course"),
+          (()=>{
+            const inp = document.createElement("input");
+            inp.type = "time"; inp.id = "horaire-depart-input";
+            inp.style.cssText = "width:110px;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:13px;text-align:right;box-sizing:border-box;";
+            inp.value = raceHoraires.depart || "";
+            inp.addEventListener("change", (e)=>{ raceHoraires.depart=e.target.value; save(clePourPlan("lk_race_horaires"),raceHoraires); });
+            return inp;
+          })()
+        )
       )
     )
   );
@@ -7065,25 +7078,27 @@ function renderCourse() {
 
   const checklistCard = el("div",{style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🎽 Checklist équipement"),
-    el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}},
-      ...CHECKLIST.map(item=>{
-        const checked = checklistItems[item.key]||false;
-        const row = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",cursor:"pointer"}},
-          el("div",{style:{
-            width:"18px",height:"18px",borderRadius:"4px",flexShrink:"0",
-            background:checked?"var(--accent)":"var(--border-soft)",
-            border:checked?"1px solid var(--accent)":"1px solid var(--border)",
-            display:"flex",alignItems:"center",justifyContent:"center"
-          }}, checked?el("span",{style:{color:"#F8FAFC",fontSize:"14px",fontWeight:"700"}},"✓"):null),
-          el("span",{style:{color:checked?"var(--text2)":"var(--text)",fontSize:"15px",textDecoration:checked?"line-through":"none"}},item.label)
-        );
-        row.addEventListener("click",()=>{
-          checklistItems[item.key]=!checked;
-          save(clePourPlan("lk_checklist"),checklistItems);
-          render();
-        });
-        return row;
-      })
+    card(
+      el("div",{style:{display:"flex",flexDirection:"column",gap:"10px"}},
+        ...CHECKLIST.map(item=>{
+          const checked = checklistItems[item.key]||false;
+          const row = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",cursor:"pointer"}},
+            el("div",{style:{
+              width:"18px",height:"18px",borderRadius:"4px",flexShrink:"0",
+              background:checked?"var(--accent)":"var(--border-soft)",
+              border:checked?"1px solid var(--accent)":"1px solid var(--border)",
+              display:"flex",alignItems:"center",justifyContent:"center"
+            }}, checked?el("span",{style:{color:"#F8FAFC",fontSize:"14px",fontWeight:"700"}},"✓"):null),
+            el("span",{style:{color:checked?"var(--text2)":"var(--text)",fontSize:"15px",textDecoration:checked?"line-through":"none"}},item.label)
+          );
+          row.addEventListener("click",()=>{
+            checklistItems[item.key]=!checked;
+            save(clePourPlan("lk_checklist"),checklistItems);
+            render();
+          });
+          return row;
+        })
+      )
     )
   );
 
@@ -7115,26 +7130,30 @@ function renderCourse() {
     // La météo sera fetchée et affichée
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
-      el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",textAlign:"center"}},
-        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible dans les 16 jours avant la course")
+      card(
+        el("div",{style:{textAlign:"center"}},
+          el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible dans les 16 jours avant la course")
+        )
       )
     );
   } else {
     meteoRaceEl = el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"🌡️ Météo prévue le "+fmtDate(DATE_COURSE_REFERENCE)),
-      el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",textAlign:"center"}},
-        el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du "+fmtDate((() => {
-          // CORRECTIF 23/07/2026 : l'ancien calcul (Date - 16*86400000 ms
-          // puis toISOString()) risquait un décalage d'un jour selon l'heure
-          // d'exécution (mélange interprétation locale de DATE_COURSE_REFERENCE
-          // et reconversion UTC) — remplacé par setDate(), cohérent avec
-          // demain()/today() ci-dessus, gère aussi nativement les changements
-          // heure été/hiver sur une plage de 16 jours.
-          const d = new Date(DATE_COURSE_REFERENCE+"T00:00:00");
-          d.setDate(d.getDate() - 16);
-          const yyyy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-          return `${yyyy}-${mm}-${dd}`;
-        })())+" · J–"+daysToRace+" actuellement")
+      card(
+        el("div",{style:{textAlign:"center"}},
+          el("div",{class:"muted",style:{fontSize:"14px",fontStyle:"italic"}},"Disponible à partir du "+fmtDate((() => {
+            // CORRECTIF 23/07/2026 : l'ancien calcul (Date - 16*86400000 ms
+            // puis toISOString()) risquait un décalage d'un jour selon l'heure
+            // d'exécution (mélange interprétation locale de DATE_COURSE_REFERENCE
+            // et reconversion UTC) — remplacé par setDate(), cohérent avec
+            // demain()/today() ci-dessus, gère aussi nativement les changements
+            // heure été/hiver sur une plage de 16 jours.
+            const d = new Date(DATE_COURSE_REFERENCE+"T00:00:00");
+            d.setDate(d.getDate() - 16);
+            const yyyy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+            return `${yyyy}-${mm}-${dd}`;
+          })())+" · J–"+daysToRace+" actuellement")
+        )
       )
     );
   }
@@ -7209,7 +7228,7 @@ function renderCourse() {
 
   const prepCard = el("div",{style:{marginBottom:"12px"}},
     el("div",{class:"label"},"📋 Résumé de préparation"),
-    el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
+    card(
       el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"12px"}},
         el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"10px",textAlign:"center"}},
           el("div",{style:{color:"var(--accent2)",fontSize:"20px",fontWeight:"800"}},totalDone+""),
@@ -7224,7 +7243,14 @@ function renderCourse() {
           el("div",{class:"muted",style:{fontSize:"12px"}},"estimation")
         )
       ),
-      el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"8px 10px",background:verdictRaceColor+"11",border:"1px solid "+verdictRaceColor+"33",borderRadius:"8px"}},
+      // Bug corrigé (31/07/2026) : verdictRaceColor+"11" collait un suffixe
+      // hex directement sur une variable CSS (var(--warn)11 — invalide,
+      // même famille de bug déjà documentée pour colorAvecOpacite() plus
+      // haut dans ce fichier, jamais appliquée ici). Remplacé par
+      // colorAvecOpacite(), avec les opacités réelles visées par les
+      // anciens suffixes hex (0x11/255≈0.067 pour le fond, 0x33/255=0.2
+      // pour la bordure), pour garder la même intention visuelle.
+      el("div",{style:{display:"flex",alignItems:"center",gap:"8px",padding:"8px 10px",background:colorAvecOpacite(verdictRaceColor,0.067),border:"1px solid "+colorAvecOpacite(verdictRaceColor,0.2),borderRadius:"8px"}},
         el("span",{style:{fontSize:"16px"}},completionRate>=80?"🟢":completionRate>=60?"🟡":"🔴"),
         el("div",{},
           el("div",{style:{color:verdictRaceColor,fontSize:"14px",fontWeight:"700"}},completionRate+"% de complétion"),
@@ -7264,37 +7290,58 @@ function renderCourse() {
     )
   );
 
+  // Résultat officiel (post-course uniquement) — label corrigé (31/07/2026,
+  // "Mon resultat officiel"/"Resultat"/"apres" sans accents, jamais relu
+  // depuis sa création) et card() réutilisée comme le reste de cet onglet.
+  const resultatCard = (()=>{
+    if (today() < DATE_COURSE_REFERENCE) return null;
+    const existingResult = load(clePourPlan("lk_race_result"), null);
+    const inp2 = document.createElement("input");
+    inp2.type="time"; inp2.step="1";
+    inp2.style.cssText="flex:1;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:16px;";
+    if (existingResult) {
+      const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss3=existingResult%60;
+      inp2.value=hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss3.toString().padStart(2,"0");
+    }
+    const btn2=document.createElement("button");
+    btn2.textContent=existingResult?"Modifier":"Enregistrer";
+    btn2.style.cssText="background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#F8FAFC;font-size:14px;font-weight:700;cursor:pointer;";
+    btn2.addEventListener("click",()=>{
+      const parts=inp2.value.split(":");
+      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
+    });
+    const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
+    row2.appendChild(inp2); row2.appendChild(btn2);
+    const card2=el("div",{style:{marginBottom:"16px"}},
+      el("div",{class:"label"},"🏅 Mon résultat officiel"),
+      card(
+        el("div",{style:{color:"var(--text-muted)",fontSize:"13px"}},existingResult?"Résultat : "+fmtTime(existingResult):"Saisis ton temps après la course")
+      )
+    );
+    card2.querySelector("div:last-child").appendChild(row2);
+    return card2;
+  })();
+
+  // Ordre réorganisé (31/07/2026, demande de Laurent : rendre l'onglet
+  // "plus agréable, cohérent et logique") — regroupement en 2 sous-blocs
+  // visuels (Préparation pratique / Stratégie), aucune section supprimée,
+  // juste réordonnées : Info → Préparation pratique (horaires, checklist,
+  // parcours) → Météo → Stratégie (allures, conseil coach) → Résumé →
+  // Résultat (post-course).
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
-    infoCard, prepCard, meteoRaceEl, horairesCard, splitsCard, coachRaceEl, checklistCard, parcoursCard,
-    (()=>{
-      if (today() < DATE_COURSE_REFERENCE) return null;
-      const existingResult = load(clePourPlan("lk_race_result"), null);
-      const inp2 = document.createElement("input");
-      inp2.type="time"; inp2.step="1";
-      inp2.style.cssText="flex:1;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:16px;";
-      if (existingResult) {
-        const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss3=existingResult%60;
-        inp2.value=hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss3.toString().padStart(2,"0");
-      }
-      const btn2=document.createElement("button");
-      btn2.textContent=existingResult?"Modifier":"Enregistrer";
-      btn2.style.cssText="background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#F8FAFC;font-size:14px;font-weight:700;cursor:pointer;";
-      btn2.addEventListener("click",()=>{
-        const parts=inp2.value.split(":");
-        if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
-      });
-      const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
-      row2.appendChild(inp2); row2.appendChild(btn2);
-      const card2=el("div",{style:{marginBottom:"16px"}},
-        el("div",{class:"label"},"Mon resultat officiel"),
-        el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
-          el("div",{style:{color:"var(--text-muted)",fontSize:"13px"}},existingResult?"Resultat : "+fmtTime(existingResult):"Saisis ton temps apres la course")
-        )
-      );
-      card2.querySelector("div:last-child").appendChild(row2);
-      return card2;
-    })()
+    infoCard,
+
+    renderSousTitreGroupeCourse("Préparation pratique"),
+    horairesCard, checklistCard, parcoursCard,
+
+    meteoRaceEl,
+
+    renderSousTitreGroupeCourse("Stratégie"),
+    splitsCard, coachRaceEl,
+
+    prepCard,
+    resultatCard
   );
 }
 
