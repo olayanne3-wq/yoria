@@ -8608,7 +8608,28 @@ function renderSettings() {
       hInp.value = "0"; mInp.value = "0"; sInp.value = "0";
       wrap.dataset.recordEfface = "true";
     });
-    wrap.appendChild(btnEffacer);
+
+    // Bouton "✓ Valider" (31/07/2026, remplace l'auto-sauvegarde par
+    // debounce sur demande de Laurent : "la validation est toujours trop
+    // rapide" — même avec le correctif du bug de listener manquant, un
+    // debounce de 400ms validait chaque changement de colonne sans que
+    // l'utilisateur ait fini d'ajuster les 3 valeurs h/m/s, et fermait la
+    // carte en cours de saisie). Regroupé verticalement au-dessus du
+    // bouton Effacer, dans le même wrapper — la sauvegarde ne se déclenche
+    // plus QUE sur un clic explicite ici, jamais automatiquement pendant
+    // le défilement de la roulette.
+    const btnValider = document.createElement("button");
+    btnValider.type = "button";
+    btnValider.className = "btn-valider-record";
+    btnValider.textContent = "✓";
+    btnValider.title = "Valider ce record";
+    btnValider.style.cssText = "flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border-accent, var(--accent));background:rgba(var(--accent-rgb),0.13);color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;margin-bottom:4px;";
+
+    const boutonsValidation = document.createElement("div");
+    boutonsValidation.style.cssText = "display:flex;flex-direction:column;align-items:center;flex-shrink:0;";
+    boutonsValidation.appendChild(btnValider);
+    boutonsValidation.appendChild(btnEffacer);
+    wrap.appendChild(boutonsValidation);
 
     // Construction différée (setTimeout 0) : les 3 conteneurs de colonnes
     // doivent être insérés dans le vrai DOM (via wrap.appendChild plus
@@ -8733,7 +8754,11 @@ function renderSettings() {
         dateInp.type = "date"; dateInp.id = "rec-date-"+dist;
         dateInp.value = rec?.date || "";
         dateInp.style.cssText = "background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-muted);font-size:13px;width:100%;box-sizing:border-box;margin-top:8px;";
-        dateInp.addEventListener("change", avecRetourTactile(()=>sauvegarderUnRecord(dist)));
+        // Ne sauvegarde plus immédiatement au changement (31/07/2026,
+        // cohérent avec l'abandon de l'auto-sauvegarde par debounce sur
+        // le temps) — la date attend elle aussi le clic explicite sur
+        // "✓ Valider", lu directement depuis dateInp.value au moment de
+        // sauvegarderUnRecord().
         editionWrap.appendChild(champsHMS); editionWrap.appendChild(dateInp);
 
         resume.addEventListener("click", () => {
@@ -8745,48 +8770,28 @@ function renderSettings() {
         carteWrap.appendChild(resume); carteWrap.appendChild(editionWrap);
         grille.appendChild(carteWrap);
 
-        // Auto-sauvegarde sur chaque colonne de la roulette (h/m/s) — un
-        // léger debounce (400ms) évite un appel réseau distinct pour
-        // chaque colonne si l'utilisateur enchaîne heures puis minutes
-        // puis secondes en quelques secondes ; le dernier changement de la
-        // série déclenche l'unique sauvegarde réelle.
-        //
-        // CORRECTIF (31/07/2026, bug signalé par Laurent : "l'enregistrement
-        // ne se fait toujours pas" — confirmé en console, l'input caché se
-        // mettait bien à jour mais profilCoureur.records restait figé) —
-        // document.getElementById() cherche dans le VRAI document, mais à
-        // ce stade de la construction de recordsSection, champsHMS/
-        // editionWrap/carteWrap ne sont pas encore attachés (ils ne le
-        // deviennent qu'une fois renderSettings() entièrement retournée et
-        // insérée par render()) : getElementById retournait donc null pour
-        // les 3 inputs, et `if (!inpCache) return` faisait sortir de la
-        // fonction avant même de poser le listener 'input' — la sauvegarde
-        // automatique n'était donc jamais câblée. Remplacé par
-        // champsHMS.querySelector(), qui cherche dans l'arbre DOM déjà
-        // construit en mémoire, peu importe qu'il soit attaché au document
-        // ou non — cohérent avec btnEffacerRecord juste en dessous, qui
-        // utilisait déjà ce bon pattern.
-        let debounceRecord = null;
-        [dist+"-h", dist+"-m", dist+"-s"].forEach(suffixe => {
-          const inpCache = champsHMS.querySelector("#rec-temps-"+suffixe);
-          if (!inpCache) return;
-          inpCache.addEventListener("input", () => {
-            clearTimeout(debounceRecord);
-            debounceRecord = setTimeout(() => sauvegarderUnRecord(dist), 400);
-          });
-        });
-        // Bouton "Effacer" (cf. creerChampsTempsHMS) écrit directement
-        // dans les inputs cachés sans dispatcher d'event 'input' — sauvegarde
-        // explicite ici pour que l'effacement soit lui aussi auto-validé.
-        const btnEffacerRecord = champsHMS.querySelector(".btn-effacer-record");
-        if (btnEffacerRecord) {
-          btnEffacerRecord.addEventListener("click", () => { setTimeout(() => sauvegarderUnRecord(dist), 0); });
+        // Validation explicite (31/07/2026, remplace l'auto-sauvegarde par
+        // debounce — jugée trop capricieuse par Laurent : "la validation
+        // est toujours trop rapide") — plus aucun listener sur l'event
+        // 'input' des colonnes de la roulette, la sauvegarde ne se
+        // déclenche plus que sur un clic explicite du bouton "✓ Valider"
+        // (cf. creerChampsTempsHMS, juste au-dessus du bouton Effacer).
+        const btnValiderRecord = champsHMS.querySelector(".btn-valider-record");
+        if (btnValiderRecord) {
+          btnValiderRecord.addEventListener("click", avecRetourTactile(() => sauvegarderUnRecord(dist)));
         }
+        // Bouton "Effacer" — ne sauvegarde plus automatiquement lui non
+        // plus (cohérent avec l'abandon de l'auto-sauvegarde) : il marque
+        // juste l'état "effacé" visuellement (cf. creerChampsTempsHMS,
+        // wrap.dataset.recordEfface), la vraie suppression n'est
+        // persistée qu'au clic explicite sur "✓ Valider" ensuite. Son
+        // propre comportement de marquage reste câblé dans
+        // creerChampsTempsHMS, rien à faire de plus ici.
       });
 
       const note = document.createElement("p");
       note.className = "muted"; note.style.cssText = "font-size:13px;margin-top:10px;margin-bottom:0;";
-      note.textContent = "Touche une distance pour voir ou modifier son record — enregistré automatiquement dès la saisie.";
+      note.textContent = "Touche une distance, ajuste le temps, puis valide avec ✓.";
 
       const conteneurGlobal = document.createElement("div");
       conteneurGlobal.appendChild(grille);
