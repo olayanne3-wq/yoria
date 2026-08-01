@@ -306,7 +306,29 @@ function trierTablesPourReinjection(nomsTables) {
   return [...reste, ...dansOrdre];
 }
 
-async function recreerUtilisateurSiAbsent(config, utilisateur) {
+// Garde-fou ajouté le 01/08/2026 suite à un incident réel : le champ id
+// manuel peut contenir une faute de frappe ou correspondre à un mauvais
+// utilisateur — recréer un compte Auth avec un id qui ne correspond à
+// AUCUNE donnée réelle produit un compte fantôme vide (aucun plan, aucun
+// profil), qui trompe silencieusement Laurent en donnant l'impression que
+// la réinjection a réussi alors qu'aucune donnée n'est rattachable.
+//
+// Principe : l'id et l'email ne sont pas la même clé (user_id est la clé
+// de vérité pour les données, email est la clé de recherche humaine) —
+// rien ne garantit qu'ils forment la bonne paire tant qu'on ne l'a pas
+// vérifié contre une donnée déjà connue. On exige donc qu'au moins une
+// ligne des données à réinjecter porte bien cet id — la preuve que ce
+// n'est pas un id inventé, mais celui effectivement associé aux données
+// qu'on s'apprête à réinjecter.
+function verifierCoherenceIdDonnees(id, donnees) {
+  for (const rows of Object.values(donnees || {})) {
+    if (!Array.isArray(rows)) continue;
+    if (rows.some((row) => row.user_id === id)) return true;
+  }
+  return false;
+}
+
+async function recreerUtilisateurSiAbsent(config, utilisateur, donnees) {
   const checkResponse = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users/${utilisateur.id}`,
     {
@@ -319,6 +341,14 @@ async function recreerUtilisateurSiAbsent(config, utilisateur) {
 
   if (checkResponse.ok) {
     return { recree: false };
+  }
+
+  if (!verifierCoherenceIdDonnees(utilisateur.id, donnees)) {
+    const err = new Error(
+      `L'identifiant ${utilisateur.id} ne correspond à aucune ligne dans les données à réinjecter pour ${utilisateur.email} — recréer le compte avec cet id créerait un compte vide plutôt que de retrouver ses vraies données. Vérifie que l'id est correct (relis-le depuis le fichier JSON), ou que le fichier chargé contient bien les données de cet utilisateur.`,
+    );
+    err.status = 409;
+    throw err;
   }
 
   // L'Admin API Supabase permet de spécifier explicitement l'id à la
@@ -542,7 +572,7 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
   const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null, diagnostic };
 
   if (exportData.type === 'export_utilisateur' && exportData.utilisateur) {
-    rapport.recreationCompte = await recreerUtilisateurSiAbsent(config, exportData.utilisateur);
+    rapport.recreationCompte = await recreerUtilisateurSiAbsent(config, exportData.utilisateur, exportData.donnees);
   }
 
   const nomsTables = Object.keys(exportData.donnees);
