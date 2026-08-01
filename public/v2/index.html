@@ -3465,7 +3465,22 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
-    const nouveauxParams = { ...plan.paramsOrigine, volumeActuel: nouveauVolume };
+    // CORRECTIF (02/08/2026, bug signalé par Laurent — "j'ai essayé de
+    // baisser le volume à partir de la semaine prochaine et je ne vois
+    // pas d'effet") : semaineCharniere doit être calculée AVANT l'appel
+    // à generatePlan() et transmise via semaineDepartVolume, pour que la
+    // PROGRESSION du volume (+10%/semaine vers le plafond) démarre
+    // réellement à cette semaine plutôt que de repartir depuis la
+    // semaine 1 du plan — cf. le commentaire complet dans
+    // computeVolumeProgression (plan-generator.js) pour le détail de la
+    // cause. Avant ce correctif, semaineCharniere n'était calculée
+    // qu'après coup pour découper les semaines conservées : la
+    // régénération elle-même utilisait toujours volumeDepart comme point
+    // de départ semaine 1, et la baisse demandée avait le temps de
+    // remonter presque à son niveau d'origine avant d'atteindre la
+    // charnière.
+    const semaineCharniere = semaineActuelleOuProchaine(plan) + 1;
+    const nouveauxParams = { ...plan.paramsOrigine, volumeActuel: nouveauVolume, semaineDepartVolume: semaineCharniere };
     let planPropre;
     try {
       planPropre = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
@@ -3480,7 +3495,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
-    const semaineCharniere = semaineActuelleOuProchaine(plan) + 1;
     planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
       if (semaineNouvelle.semaineNum < semaineCharniere) {
         const semaineAncienne = plan.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
