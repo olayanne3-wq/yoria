@@ -370,14 +370,123 @@ async function upsertLignes(config, table, rows) {
   }
 }
 
-async function reinjecter(config, exportData) {
-  if (!exportData || typeof exportData !== 'object' || !exportData.donnees) {
+// Filtre un export GLOBAL déjà chargé en mémoire pour ne garder que les
+// lignes d'un utilisateur précis, avant réinjection — ajouté le 01/08/2026
+// suite à un besoin réel de Laurent : réinjecter un seul coureur à partir
+// d'un gros export global déjà téléchargé, sans repasser par un export
+// ciblé séparé. Retrouve l'utilisateur par email (même méthode que
+// exportUtilisateur — liste tout, filtre côté serveur), puis réutilise
+// EXACTEMENT filtrerLignesUtilisateur() sur les données déjà en mémoire
+// (aucun nouvel appel Supabase nécessaire, l'export global les contient
+// déjà toutes). Bloque explicitement si l'email ne correspond à aucune
+// ligne dans CET export précis (cf. discussion de conception du
+// 01/08/2026 : mieux vaut un échec net qu'un upsert silencieux de 0 ligne
+// qui masquerait une erreur de frappe ou un export périmé).
+async function filtrerExportGlobalParUtilisateur(config, exportData, email) {
+  const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+    headers: {
+      apikey: config.supabaseKey,
+      Authorization: `Bearer ${config.supabaseKey}`,
+    },
+  });
+
+  if (!usersResponse.ok) {
+    throw new Error("Erreur lors de la recherche du compte.");
+  }
+
+  const usersData = await usersResponse.json();
+  const users = Array.isArray(usersData) ? usersData : usersData.users || [];
+  const user = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
+
+  if (!user) {
+    const err = new Error("Aucun compte trouvé avec cette adresse e-mail.");
+    err.status = 404;
+    throw err;
+  }
+
+  const donneesFiltrees = {};
+  let totalLignesTrouvees = 0;
+
+  for (const [table, rows] of Object.entries(exportData.donnees || {})) {
+    if (table === 'beta_testers') {
+      // Pas de user_id — rattachement par email, cf. exportUtilisateur().
+      const lignes = (Array.isArray(rows) ? rows : []).filter(
+        (row) => (row.email || '').toLowerCase() === email.toLowerCase(),
+      );
+      if (lignes.length > 0) {
+        donneesFiltrees[table] = lignes;
+        totalLignesTrouvees += lignes.length;
+      }
+      continue;
+    }
+
+    if (table === 'decision_outcomes') {
+      // Pas de user_id direct — filtré après coup une fois
+      // decision_events connu, cf. bloc ci-dessous.
+      continue;
+    }
+
+    const filtrees = filtrerLignesUtilisateur(rows, user.id);
+    if (filtrees === null) {
+      // Table sans colonne utilisateur repérable — ignorée pour ce
+      // filtrage ciblé, comme pour l'export ciblé (cf.
+      // filtrerLignesUtilisateur).
+      continue;
+    }
+    if (filtrees.length > 0) {
+      donneesFiltrees[table] = filtrees;
+      totalLignesTrouvees += filtrees.length;
+    }
+  }
+
+  // decision_outcomes filtré via la chaîne indirecte, à partir des
+  // decision_events déjà retenus ci-dessus pour cet utilisateur.
+  if (Array.isArray(exportData.donnees?.decision_outcomes)) {
+    const eventIds = new Set((donneesFiltrees.decision_events || []).map((e) => e.id));
+    const outcomesFiltres = exportData.donnees.decision_outcomes.filter((o) =>
+      eventIds.has(o.decision_event_id),
+    );
+    if (outcomesFiltres.length > 0) {
+      donneesFiltrees.decision_outcomes = outcomesFiltres;
+      totalLignesTrouvees += outcomesFiltres.length;
+    }
+  }
+
+  if (totalLignesTrouvees === 0) {
+    const err = new Error(
+      `Aucune ligne trouvée pour ${email} dans cet export. Vérifie l'adresse e-mail ou que cet export contient bien ses données.`,
+    );
+    err.status = 404;
+    throw err;
+  }
+
+  return {
+    type: 'export_utilisateur',
+    genereLe: exportData.genereLe,
+    utilisateur: { id: user.id, email: user.email },
+    donnees: donneesFiltrees,
+  };
+}
+
+async function reinjecter(config, exportDataBrut, filtrerEmail) {
+  if (!exportDataBrut || typeof exportDataBrut !== 'object' || !exportDataBrut.donnees) {
     const err = new Error("Fichier de sauvegarde invalide (champ 'donnees' manquant).");
     err.status = 400;
     throw err;
   }
 
-  const rapport = { recreationCompte: null, tables: [] };
+  let exportData = exportDataBrut;
+
+  // Filtrage optionnel d'un export GLOBAL par email avant réinjection —
+  // n'a de sens que sur un export_global ; un export_utilisateur est déjà
+  // scoped à une seule personne, filtrer dessus n'apporterait rien (et
+  // risquerait de filtrer sur le mauvais champ si l'email ne correspond
+  // pas exactement à l'utilisateur déjà ciblé par l'export).
+  if (filtrerEmail && exportDataBrut.type === 'export_global') {
+    exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail);
+  }
+
+  const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null };
 
   if (exportData.type === 'export_utilisateur' && exportData.utilisateur) {
     rapport.recreationCompte = await recreerUtilisateurSiAbsent(config, exportData.utilisateur);
@@ -486,11 +595,12 @@ export default async function handler(request, response) {
 
     if (action === 'reinject') {
       const exportData = body.exportData;
+      const filtrerEmail = String(body.filtrerEmail || '').trim().toLowerCase() || null;
       if (!exportData) {
         return json(response, 400, { message: 'Fichier de sauvegarde manquant.' });
       }
       try {
-        const rapport = await reinjecter(config, exportData);
+        const rapport = await reinjecter(config, exportData, filtrerEmail);
         return json(response, 200, { success: true, rapport });
       } catch (error) {
         console.error('[backup] Erreur réinjection :', error);
