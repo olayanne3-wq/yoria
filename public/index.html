@@ -2799,6 +2799,25 @@ function predict10K() {
 // rebuildPredHistorySequentielle() — un module ES ne peut pas réassigner
 // une variable let du scope appelant à travers un paramètre, cf. en-tête
 // de predictor.js.
+// BUG CRITIQUE CORRIGÉ (31/07/2026, signalé par Laurent : "je suis sur un
+// compte et rien dans paramètres je ne peux pas me déconnecter") —
+// nbSaisiesManuelles() était appelée à deux endroits (ci-dessous et plus
+// bas, ligne ~2821) mais n'était définie NULLE PART dans ce fichier :
+// ReferenceError immédiat au chargement, qui interrompait l'exécution du
+// script à ce point précis — tout le code situé après (y compris les
+// accordéons de Réglages et le bouton de déconnexion, bien plus loin dans
+// le fichier) restait donc dans un état "jamais initialisé"
+// (TDZ — temporal dead zone), provoquant une seconde erreur en cascade
+// dès qu'un render() y accédait. Aucun rapport avec le chantier des
+// accordéons en cours au moment où ce bug a été signalé — préexistant,
+// juste jamais remarqué avant car son point d'appel (rebuildPredHistory,
+// exécuté au chargement) ne plantait bien que si predHistory devait être
+// reconstruit ce jour-là (pas systématique). Compte le nombre de séances
+// ayant une saisie manuelle enregistrée (cf. manualPerf, juste au-dessus).
+function nbSaisiesManuelles() {
+  return Object.keys(manualPerf || {}).length;
+}
+
 function rebuildPredHistory() {
   if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
   isRebuilding = true; render();
