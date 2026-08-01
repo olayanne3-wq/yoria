@@ -282,14 +282,34 @@ ciblé) — bloque explicitement si aucune ligne ne correspond à cet e-mail
 dans l'export fourni, plutôt qu'un upsert silencieux de 0 ligne. Retrouver
 l'`id` de cet utilisateur pour le filtrage suit une cascade (le compte
 peut déjà avoir été supprimé, cas réel rencontré lors des premiers tests
-du 01/08/2026) : API Admin Auth d'abord, puis table `abonnements` de
-l'export (a un champ `email`), puis un `user_id` fourni manuellement en
-dernier recours si les deux échouent — jamais deviné silencieusement, le
-formulaire révèle ce champ seulement si le serveur le demande
-explicitement. Sans objet sur un export déjà ciblé (déjà scoped à une
-seule personne). Portée strictement limitée à la réparation d'une perte
-accidentelle — jamais un contournement d'une suppression de compte
-volontaire au titre du droit à l'effacement (RGPD art. 17).
+du 01/08/2026) : **un `user_id` fourni manuellement a toujours priorité
+absolue** quand il est renseigné (corrigé le 01/08/2026 — un ordre
+précédent laissait un compte Auth déjà recréé, potentiellement à un
+mauvais id lors d'une tentative ratée, court-circuiter silencieusement le
+champ manuel), sinon API Admin Auth, sinon table `abonnements` de l'export
+(a un champ `email`, mais pas garanti d'avoir un `user_id` renseigné —
+peut rester vide si l'abonnement a été créé par email avant toute
+connexion du compte). Sans objet sur un export déjà ciblé (déjà scoped à
+une seule personne).
+
+**Garde-fou de cohérence id/données avant recréation d'un compte
+(01/08/2026)** — un `id` et un `email` ne sont pas la même clé (`user_id`
+est la clé de vérité pour les données applicatives, `email` sert
+seulement à la recherche humaine) ; rien ne garantissait qu'ils forment
+la bonne paire une fois reconstitués manuellement. Incident réel : un
+`user_id` incorrect (mal recopié) a permis de recréer un compte Auth
+fantôme, vide de toute donnée, donnant l'illusion trompeuse d'une
+réinjection réussie. `recreerUtilisateurSiAbsent` exige désormais qu'au
+moins une ligne des données à réinjecter porte réellement cet `id` avant
+de créer le compte — sinon refuse explicitement (statut 409) plutôt que
+de laisser deviner silencieusement. N'empêche pas une faute de frappe
+sur un id qui correspondrait par coïncidence à un autre vrai utilisateur
+— seule la vérification manuelle du couple email/id dans une donnée déjà
+connue (ex. `plans_actif`) reste fiable à 100%.
+
+Portée strictement limitée à la réparation d'une perte accidentelle —
+jamais un contournement d'une suppression de compte volontaire au titre
+du droit à l'effacement (RGPD art. 17).
 
 **`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
 "coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
@@ -811,7 +831,8 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). Onboarding (§12) mis à jour en cohérence mais **non testé en conditions réelles** — nécessite un nouveau compte de test ou de forcer l'affichage de cet écran. |
-| Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. **Non testé en conditions réelles** — protocole prévu : compte de test jetable, cycle export → suppression → réinjection, avant tout usage sur un compte réel. |
+| Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. Incident de test formateur : un `user_id` mal recopié a produit un compte Auth fantôme sans données — corrigé par un garde-fou de cohérence id/données avant toute recréation de compte (§5). Compte réel de Laurent vérifié intact tout au long de l'incident (aucun chemin du code n'écrit hors du `user_id` explicitement ciblé). |
+| Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | 🔜 Identifié le 01/08/2026 en creusant l'incident de test sauvegarde/réinjection : `api/delete-account.js` dépend de cette cascade pour tout nettoyer, mais rien ne la vérifie automatiquement à la création d'une nouvelle table — seule une contrainte oubliée peut passer inaperçue jusqu'à ce qu'une suppression échoue en prod (déjà arrivé deux fois pour `decision_events`/`badges_debloques`, cf. §5). Idée retenue : requête d'audit sur `information_schema` listant les tables `public` avec colonne `user_id` et signalant celles sans cascade — pas encore codée, à faire dans une session dédiée plutôt qu'empilée sur un autre correctif. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
