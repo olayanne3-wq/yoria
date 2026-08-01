@@ -279,11 +279,17 @@ des données. Réinjection depuis un export **global** : champ e-mail
 optionnel pour isoler un seul utilisateur (filtrage côté serveur du JSON
 déjà chargé, réutilise la même logique de rattachement que l'export
 ciblé) — bloque explicitement si aucune ligne ne correspond à cet e-mail
-dans l'export fourni, plutôt qu'un upsert silencieux de 0 ligne. Sans
-objet sur un export déjà ciblé (déjà scoped à une seule personne).
-Portée strictement limitée à la réparation d'une perte accidentelle —
-jamais un contournement d'une suppression de compte volontaire au titre
-du droit à l'effacement (RGPD art. 17).
+dans l'export fourni, plutôt qu'un upsert silencieux de 0 ligne. Retrouver
+l'`id` de cet utilisateur pour le filtrage suit une cascade (le compte
+peut déjà avoir été supprimé, cas réel rencontré lors des premiers tests
+du 01/08/2026) : API Admin Auth d'abord, puis table `abonnements` de
+l'export (a un champ `email`), puis un `user_id` fourni manuellement en
+dernier recours si les deux échouent — jamais deviné silencieusement, le
+formulaire révèle ce champ seulement si le serveur le demande
+explicitement. Sans objet sur un export déjà ciblé (déjà scoped à une
+seule personne). Portée strictement limitée à la réparation d'une perte
+accidentelle — jamais un contournement d'une suppression de compte
+volontaire au titre du droit à l'effacement (RGPD art. 17).
 
 **`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
 "coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
