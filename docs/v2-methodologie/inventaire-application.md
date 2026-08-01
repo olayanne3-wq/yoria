@@ -35,7 +35,7 @@ yoria/
 │   ├── stripe-checkout.js        # Création session Stripe Checkout
 │   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
 │   ├── delete-account.js         # Suppression définitive d'un compte (cascade)
-│   ├── backup.js                 # Export global / ciblé utilisateur / réinjection (cf. §5, §16)
+│   ├── backup.js                 # Export global / ciblé utilisateur / réinjection / diagnostic cascades (cf. §5, §16)
 │   ├── beta.js                   # Candidature bêta (public)
 │   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits,
 │                                  # signalements)
@@ -44,6 +44,7 @@ yoria/
 │   └── v2-methodologie/
 │       ├── inventaire-application.md   # CE FICHIER
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
+│       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin, cf. §16)
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
 │   ├── index.html                 # App principale (dashboard, ~10200 lignes)
@@ -52,7 +53,7 @@ yoria/
 │   ├── beta/                      # Page candidature bêta publique
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
 │   │                              # Onglets : Candidatures, Sélectionnés, Invités,
-│   │                              # Signalements, Comptes, Sauvegarde, Statistiques
+│   │                              # Signalements, Comptes, Sauvegarde, Cascades, Statistiques
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -333,6 +334,25 @@ Portée strictement limitée à la réparation d'une perte accidentelle —
 jamais un contournement d'une suppression de compte volontaire au titre
 du droit à l'effacement (RGPD art. 17).
 
+**Diagnostic des cascades ON DELETE (`api/backup.js`, onglet Cascades de
+`beta-admin`, ajouté le 01/08/2026)** — vérifie proactivement que toute
+table applicative avec une colonne `user_id`/`id_utilisateur` a bien
+`ON DELETE CASCADE` vers `auth.users`, avant qu'une suppression de compte
+n'échoue en prod (cf. incident `decision_events`/`badges_debloques`
+ci-dessous). Repose sur deux fonctions RPC Postgres
+(`diagnostiquer_cascades_user_id`, `diagnostiquer_colonnes_user_id_sans_fk`
+— cf. `docs/v2-methodologie/diagnostic-cascades-user-id.sql`, à exécuter
+une fois dans le SQL Editor, accès restreint au `service_role`) : aucune
+lecture directe possible sur `information_schema` via PostgREST, seule
+une fonction RPC exécutant du SQL côté serveur peut interroger le
+catalogue système. Génère le SQL de correction prêt à copier-coller pour
+chaque table à risque — cet onglet ne modifie **jamais** le schéma
+lui-même, uniquement en lecture ; toute correction reste un geste manuel
+de Laurent dans le SQL Editor. À lancer occasionnellement (ex. avant une
+mise en production), pas à chaque table ajoutée — la vérification
+systématique au moment de créer une table reste la responsabilité
+principale (cf. §15).
+
 **`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
 "coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
 uniquement, aucune lecture n'exploite encore cette donnée.
@@ -355,14 +375,18 @@ seconde tentative de suppression — la première erreur masquait la
 seconde tant qu'elle n'était pas résolue). Les deux référencent
 maintenant `auth.users(id)` en `CASCADE`. `decision_outcomes` cascade
 indirectement via `decision_event_id` → `decision_events.id`, pas de
-lien direct à `user_id`. `plans_actif` n'a aucune contrainte de clé
-étrangère (vérifié explicitement, RAS). `api/delete-account.js` nettoie
-en plus `decision_events` explicitement en filet de sécurité
+lien direct à `user_id`. **`plans_actif` a été corrigé le 01/08/2026** —
+n'avait auparavant aucune contrainte de clé étrangère du tout (découvert
+par le diagnostic ci-dessus), donc une suppression de compte laissait ses
+plans orphelins silencieusement sans jamais échouer ni les nettoyer ;
+`ON DELETE CASCADE` ajouté vers `auth.users(id)`, aucune ligne orpheline
+préexistante trouvée au moment de l'ajout. `api/delete-account.js`
+nettoie en plus `decision_events` explicitement en filet de sécurité
 (`TABLES_A_NETTOYER`), avant l'appel à l'Admin API — **toute nouvelle
 table applicative liée à `user_id` doit être vérifiée en cascade** au
-moment de sa création (requête de diagnostic : lister les contraintes
-FK dont le nom contient `user_id` via `information_schema`), pas
-seulement au moment où quelqu'un tente de supprimer son compte.
+moment de sa création (diagnostic disponible dans `beta-admin`, onglet
+Cascades, cf. ci-dessus), pas seulement au moment où quelqu'un tente de
+supprimer son compte.
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -729,6 +753,11 @@ export ciblé utilisateur (réutilise la recherche par email du module
 Comptes), réinjection depuis un fichier JSON. Même règle stricte :
 jamais de lecture des tokens Strava d'un testeur.
 
+**Module "Cascades"** (`beta-admin`, cf. §5, §16) — diagnostic proactif
+des tables sans `ON DELETE CASCADE` vers `auth.users`, avec SQL de
+correction généré automatiquement. Lecture seule, aucune modification du
+schéma déclenchée depuis l'interface.
+
 ## 12. Authentification Supabase
 
 Auth email/mot de passe (pas de Google/Apple). Variables exposées via
@@ -875,6 +904,10 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
   (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
   défaut (liste noire, pas liste blanche), donc l'oubli expose la table
   par défaut plutôt que de la protéger par défaut.
+- **Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à
+  lancer occasionnellement (ex. avant une mise en production), pas à
+  chaque table ajoutée** — filet de rattrapage, pas remplacement de la
+  vérification systématique au moment de créer une table.
 
 ## 16. État des chantiers ouverts
 
@@ -886,7 +919,7 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). |
 | Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. Incident de test formateur : un `user_id` mal recopié a produit un compte Auth fantôme sans données — corrigé par un garde-fou de cohérence id/données avant toute recréation de compte (§5). Compte réel de Laurent vérifié intact tout au long de l'incident (aucun chemin du code n'écrit hors du `user_id` explicitement ciblé). |
 | Onboarding refondu en 4 pages avec profil complet | ✅ Livré et testé en conditions réelles le 01/08/2026. Détail complet en §12. Bug de saisie de record (lecture roulette directe) et bug d'affichage dans Réglages (roulette jamais construite si accordéon fermé au chargement) identifiés et corrigés au cours du même chantier — cf. §4 et §15 pour le détail du diagnostic. |
-| Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | 🔜 Identifié le 01/08/2026 en creusant l'incident de test sauvegarde/réinjection : `api/delete-account.js` dépend de cette cascade pour tout nettoyer, mais rien ne la vérifie automatiquement à la création d'une nouvelle table — seule une contrainte oubliée peut passer inaperçue jusqu'à ce qu'une suppression échoue en prod (déjà arrivé deux fois pour `decision_events`/`badges_debloques`, cf. §5). Idée retenue : requête d'audit sur `information_schema` listant les tables `public` avec colonne `user_id` et signalant celles sans cascade — pas encore codée, à faire dans une session dédiée plutôt qu'empilée sur un autre correctif. |
+| Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | ✅ Codé et lancé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Cascades de `beta-admin`, fonctions RPC dans `diagnostic-cascades-user-id.sql`). A immédiatement révélé un vrai trou : `plans_actif` — la table la plus importante du projet — n'avait aucune contrainte de clé étrangère du tout, jamais détecté auparavant. Corrigé le jour même (`ON DELETE CASCADE` ajouté, aucune ligne orpheline préexistante). Deuxième passage du diagnostic : aucune table à risque restante. Détail complet en §5. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
