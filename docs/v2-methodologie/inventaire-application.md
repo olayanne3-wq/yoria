@@ -196,7 +196,11 @@ onglets confondus pour éviter une collision dans ce registre partagé).
 Stats : 5 groupes (Objectif et progression / Charge et récupération /
 Performance technique / Référence / Tests). Course : 2 groupes
 (Préparation pratique / Stratégie) — Météo et Résumé de préparation
-restent hors accordéon (une seule carte chacun).
+restent hors accordéon (une seule carte chacun). Accepte un callback
+optionnel `onOuverture`, appelé à chaque ouverture du groupe (ajouté le
+01/08/2026 — cf. plus bas, records personnels) : utile pour tout contenu
+construit alors que le groupe est fermé et qui a besoin d'un traitement
+différé une fois réellement visible.
 
 **Onglet Réglages — 6 groupes accordéon (31/07/2026)** — Compte et
 abonnement / Profil coureur / Records personnels / Intégrations / Export /
@@ -227,6 +231,24 @@ faut valider avec ✓ pour que la suppression soit persistée. Même
 composant déployé sur les roulettes du wizard (temps de référence,
 objectif, estimation alternative, volume manuel — cf. §3) et de
 l'onboarding (cf. §12).
+
+**Roulette invisible dans un groupe accordéon fermé au chargement
+(corrigé le 01/08/2026)** — si "Records personnels" est fermé au premier
+`render()`, `attendreEtInitialiser()` abandonne après ~2s (le conteneur
+n'est jamais visible pendant cette fenêtre) et la roulette n'est **jamais
+construite** (0 item DOM, pas juste mal positionnée) — diagnostiqué par
+tests directs en console (`getBoundingClientRect().width`, nombre
+d'items, classe `.actif`), pas par relecture de code. Le callback
+`onOuverture` du groupe accordéon construit désormais la roulette à la
+demande (`window.initRouletteHMS`) si elle n'existe pas encore dans
+`roulettesActivesReglages` au moment de l'ouverture, plutôt que de
+supposer qu'elle existe déjà et se contenter de la repositionner. Piste
+secondaire explorée en cours de route (`offsetParent` renvoyant `null`
+malgré un élément visible et correctement dimensionné selon
+`getBoundingClientRect`, cause exacte non identifiée) : ajout de
+`getBoundingClientRect().width > 0` comme critère complémentaire dans
+`attendreEtInitialiser` — n'était pas la vraie cause du bug signalé par
+Laurent mais reste un vrai correctif utile en soi.
 
 ## 5. Persistance
 
@@ -718,15 +740,32 @@ l'écran de bienvenue si `echecChargementProfil` est vrai — sinon un
 `localStorage` non réhydraté est pris à tort pour "profil jamais
 renseigné" et écrase le vrai profil Supabase.
 
-**Écran d'onboarding (`monterEcranOnboarding`, `auth.js`)** — records
-personnels saisis via le même composant roulette que Réglages (boutons
-+/-, viewport réduit, bouton ✓ Valider par distance, positionnement
-initial par condition réelle — cf. §4 pour le détail complet de ce
-composant). Porté intégralement en local dans `auth.js`, jamais importé
+**Écran d'onboarding (`monterEcranOnboarding`, `auth.js`) — refonte en 4
+pages (01/08/2026)** — collecte désormais l'intégralité du profil
+coureur (pas seulement niveau/FC/année comme avant), réparti en 4 pages
+successives navigables (swipe horizontal + boutons Précédent/Suivant,
+même principe que `ECRANS_WIZARD`/`attacherSwipeEtapes` dans
+`v2/index.html`, porté indépendamment ici) : 1) Toi (prénom*, nom, date
+de naissance*) 2) Ta forme (poids, taille, FC max/repos, sexe, PPS) 3)
+Records personnels 4) Ton niveau* (* = obligatoire, bloque le passage à
+la page suivante/la validation finale). Records personnels saisis via le
+même composant roulette que Réglages (boutons +/-, viewport réduit,
+positionnement initial par condition réelle — cf. §4 pour le détail
+complet de ce composant, y compris son cas particulier accordéon). Champ
+date ajouté par record (manquait avant le 01/08/2026, empêchait tout
+départage de cohérence entre records via `verifierCoherenceRecord`).
+`terminer()` lit les valeurs directement depuis l'API de chaque roulette
+(`colApi.valeur()`) plutôt que les inputs cachés potentiellement pas
+encore synchronisés par le debounce du scroll (120ms) — corrige un bug
+réel où un record scrollé juste avant de cliquer Valider n'était jamais
+enregistré. Porté intégralement en local dans `auth.js`, jamais importé
 depuis `index.html` (contrainte d'indépendance : ce module ne doit jamais
 dépendre de l'ordre de chargement d'`index.html`). Garde-fou record du
 monde appliqué à la validation finale (`terminer()`), avant de résoudre
-la promesse — laisse corriger sans quitter l'écran.
+la promesse — laisse corriger sans quitter l'écran. `index.html` dérive
+`anneeNaissance` depuis `dateNaissance` au retour de l'onboarding (même
+logique que Réglages) — nécessaire depuis que l'onboarding résout
+`dateNaissance` mais plus `anneeNaissance` directement.
 
 ## 13. Publication Play Store (TWA Android)
 
@@ -812,11 +851,25 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
   carrousel...) construit dans un écran qui vient d'être affiché ne doit
   jamais dépendre d'un délai arbitraire** (`setTimeout`, même
   `requestAnimationFrame` double) — vérifier une condition réelle
-  (élément attaché et visible, `offsetParent !== null`) via polling
-  léger. Un délai peut fonctionner au clic normal tout en échouant
-  silencieusement au tout premier rendu d'un écran (cause exacte non
-  identifiée avec certitude sur ce projet, mais le correctif par
-  condition réelle s'est montré fiable dans les deux cas).
+  (élément attaché et visible) via polling léger. Un délai peut
+  fonctionner au clic normal tout en échouant silencieusement au tout
+  premier rendu d'un écran. **Cas particulier découvert le 01/08/2026** :
+  un composant construit alors que son conteneur parent est dans un
+  groupe accordéon FERMÉ peut voir sa condition de visibilité échouer
+  indéfiniment (le conteneur n'est jamais visible pendant la fenêtre
+  d'attente) et abandonner avant que l'utilisateur n'ouvre le groupe —
+  l'élément n'est alors jamais construit du tout, pas seulement mal
+  positionné. Tout composant de ce type niché dans un groupe accordéon
+  doit prévoir un callback `onOuverture` qui le construit à la demande
+  s'il n'existe pas encore, en plus de la tentative au chargement.
+- **En cas de bug d'affichage résistant à plusieurs correctifs
+  successifs, diagnostiquer par tests directs en console** (`getElementById`,
+  `getBoundingClientRect()`, `querySelectorAll(...).length`,
+  `document.body.contains(...)`, valeurs réelles des variables globales
+  exposées) plutôt que par relecture répétée du code — plusieurs
+  correctifs pertinents mais non prouvés ont été poussés avant qu'un
+  diagnostic en direct ne confirme la vraie cause (01/08/2026,
+  roulette de records invisible dans un groupe accordéon).
 - **Toute nouvelle table sensible (tokens, secrets) doit être ajoutée
   explicitement à la liste noire d'exclusion de `api/backup.js`
   (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
@@ -830,8 +883,9 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Wizard déjà câblé génériquement — aucun changement nécessaire côté `v2/index.html`. |
 | Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
-| Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). Onboarding (§12) mis à jour en cohérence mais **non testé en conditions réelles** — nécessite un nouveau compte de test ou de forcer l'affichage de cet écran. |
+| Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). |
 | Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. Incident de test formateur : un `user_id` mal recopié a produit un compte Auth fantôme sans données — corrigé par un garde-fou de cohérence id/données avant toute recréation de compte (§5). Compte réel de Laurent vérifié intact tout au long de l'incident (aucun chemin du code n'écrit hors du `user_id` explicitement ciblé). |
+| Onboarding refondu en 4 pages avec profil complet | ✅ Livré et testé en conditions réelles le 01/08/2026. Détail complet en §12. Bug de saisie de record (lecture roulette directe) et bug d'affichage dans Réglages (roulette jamais construite si accordéon fermé au chargement) identifiés et corrigés au cours du même chantier — cf. §4 et §15 pour le détail du diagnostic. |
 | Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | 🔜 Identifié le 01/08/2026 en creusant l'incident de test sauvegarde/réinjection : `api/delete-account.js` dépend de cette cascade pour tout nettoyer, mais rien ne la vérifie automatiquement à la création d'une nouvelle table — seule une contrainte oubliée peut passer inaperçue jusqu'à ce qu'une suppression échoue en prod (déjà arrivé deux fois pour `decision_events`/`badges_debloques`, cf. §5). Idée retenue : requête d'audit sur `information_schema` listant les tables `public` avec colonne `user_id` et signalant celles sans cascade — pas encore codée, à faire dans une session dédiée plutôt qu'empilée sur un autre correctif. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
