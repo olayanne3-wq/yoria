@@ -144,7 +144,11 @@
           <h2>Réinjection</h2>
           <p><small>Réimporte un fichier JSON exporté précédemment (global ou ciblé). Écrase les lignes existantes ayant le même identifiant (upsert). Si l'export cible un utilisateur dont le compte a depuis été supprimé, le compte est recréé automatiquement avec le même identifiant avant réinjection des données.</small></p>
           <input id="backup-file-input" type="file" accept="application/json">
-          <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter ce fichier</button>
+          <label style="display:block;margin-top:10px;">
+            Limiter à un seul utilisateur <small>(optionnel — uniquement pour un export global ; laisser vide pour tout réinjecter)</small>
+            <input id="backup-reinject-email" type="search" placeholder="Adresse e-mail à isoler dans cet export">
+          </label>
+          <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
           <div id="backup-reinject-status" class="notice" hidden></div>
           <div id="backup-reinject-report"></div>
         </div>
