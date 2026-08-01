@@ -1437,57 +1437,68 @@ async function chargerPdfJs() {
 // mais rien ne garantit que ce texte soit une vraie couche de texte
 // extractible plutôt que du texte vectorisé/converti en tracés par
 // l'export ; d'où le repli silencieux vers la saisie manuelle si
-// l'extraction échoue ou ne trouve rien. Retourne "YYYY-MM-DD" ou null.
-async function extraireExpirationPdfPps(dataUrl) {
+// Conversion PDF → image à l'import (02/08/2026, remplace le stockage du
+// PDF brut) — corrige un vrai problème constaté en test réel : le rendu
+// PDF via <iframe>/<embed> sur un blob URL n'a pas de lecteur PDF intégré
+// fiable sur mobile/TWA Android (contrairement à desktop où Chrome a son
+// viewer PDF natif) — Laurent voyait "PDF grisé + bouton Ouvrir" qui ne
+// menait nulle part. Rendu de la première page en canvas via pdf.js, puis
+// conversion JPEG — un seul chemin d'affichage (image) fiable partout,
+// réutilise directement <img> comme pour une photo importée. Au passage,
+// extraction du texte de la même page pour tenter de lire la date
+// d'expiration (repli silencieux vers saisie manuelle si non trouvée).
+// Compromis assumé : si un PPS FFA devait un jour tenir sur plusieurs
+// pages utiles, seule la première serait conservée — le gabarit observé
+// tient entièrement sur une page (photo, QR, infos).
+async function convertirPdfPpsEnImage(dataUrl) {
+  const pdfjs = await chargerPdfJs();
+  const base64 = dataUrl.split(",")[1];
+  const binaire = atob(base64);
+  const octets = new Uint8Array(binaire.length);
+  for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+  const doc = await pdfjs.getDocument({ data: octets }).promise;
+  const page = await doc.getPage(1);
+
+  // Échelle 2x pour une netteté correcte (le PPS contient un QR code à
+  // scanner) sans faire exploser le poids — comparable à la limite 1600px
+  // déjà appliquée aux photos importées.
+  const viewportBase = page.getViewport({ scale: 1 });
+  const echelle = Math.min(2, 1600 / Math.max(viewportBase.width, viewportBase.height));
+  const viewport = page.getViewport({ scale: echelle });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const imageJpeg = canvas.toDataURL("image/jpeg", 0.85);
+
+  let dateExpiration = null;
   try {
-    const pdfjs = await chargerPdfJs();
-    const base64 = dataUrl.split(",")[1];
-    const binaire = atob(base64);
-    const octets = new Uint8Array(binaire.length);
-    for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
-    const doc = await pdfjs.getDocument({ data: octets }).promise;
-    const page = await doc.getPage(1);
     const contenu = await page.getTextContent();
     const texte = contenu.items.map(it => it.str).join(" ");
     const m = texte.match(/EXPIRE\s*LE\s*(\d{2})\/(\d{2})\/(\d{4})/i);
-    if (!m) return null;
-    return m[3]+"-"+m[2]+"-"+m[1];
+    if (m) dateExpiration = m[3]+"-"+m[2]+"-"+m[1];
   } catch (err) {
     console.error("Extraction date PPS échouée:", err);
-    return null;
   }
+
+  return { imageJpeg, dateExpiration };
 }
 
 // Modale PPS unifiée (02/08/2026) — remplace ouvrirPpsPleinEcran +
 // ppsDocumentSection : import, aperçu, et suppression réunis en un seul
 // endroit accessible depuis le bouton "🩺 PPS" du header, sur toutes les
-// vues où appHeaderEl est rendu. PDF affiché via <iframe> sur un blob URL
-// (jamais window.open — cf. bug du 02/08/2026, écran blanc en nouvel
-// onglet sur PC/TWA) : reste dans l'app, bouton "Fermer" cohérent avec le
-// cas image, pas de perte de contexte de navigation.
+// vues où appHeaderEl est rendu. Tout PDF importé est converti en image
+// dès l'import (cf. convertirPdfPpsEnImage) — l'aperçu n'affiche donc
+// plus jamais qu'une <img>, jamais d'iframe/embed PDF (non fiable sur
+// mobile/TWA).
 function ouvrirPpsModale() {
-  let blobUrlActif = null; // révoqué à la fermeture de la modale
   const fermer = () => {
-    if (blobUrlActif) { URL.revokeObjectURL(blobUrlActif); blobUrlActif = null; }
     document.body.removeChild(overlay);
   };
 
   const construireApercu = (ppsDoc) => {
     if (!ppsDoc?.data) return el("div",{class:"muted",style:{fontSize:"14px",padding:"20px 0"}},"Aucun PPS enregistré.");
-    if (ppsDoc.type === "application/pdf") {
-      try {
-        const base64 = ppsDoc.data.split(",")[1];
-        const binaire = atob(base64);
-        const octets = new Uint8Array(binaire.length);
-        for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
-        const blob = new Blob([octets], { type: "application/pdf" });
-        blobUrlActif = URL.createObjectURL(blob);
-        return el("iframe",{src:blobUrlActif, style:{width:"100%", height:"70vh", border:"none", borderRadius:"12px", background:"#fff"}});
-      } catch (err) {
-        console.error("Erreur aperçu PDF PPS:", err);
-        return el("div",{style:{color:"var(--warn)",fontSize:"14px",padding:"20px 0"}},"Impossible d'afficher l'aperçu du PDF.");
-      }
-    }
     return el("img",{src:ppsDoc.data, style:{maxWidth:"100%", maxHeight:"70vh", borderRadius:"12px", boxShadow:"0 4px 24px rgba(0,0,0,0.5)"}});
   };
 
@@ -1548,25 +1559,26 @@ function ouvrirPpsModale() {
             if (fichier) {
               if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
               if (fichier.type === "application/pdf") {
-                const data = await new Promise((resolve, reject) => {
+                if (statutEl) statutEl.textContent = "🔍 Conversion et lecture du PDF...";
+                const dataUrlBrut = await new Promise((resolve, reject) => {
                   const reader = new FileReader();
                   reader.onload = () => resolve(reader.result);
                   reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
                   reader.readAsDataURL(fichier);
                 });
-                profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
-                // Tentative d'extraction auto de la date d'expiration —
-                // n'écrase jamais une date déjà saisie manuellement dans le
-                // champ par l'utilisateur avant de cliquer Enregistrer.
+                const { imageJpeg, dateExpiration } = await convertirPdfPpsEnImage(dataUrlBrut);
+                profilCoureur.ppsDocument = { data: imageJpeg, type: "image/jpeg", nomFichier: fichier.name };
+                // N'écrase jamais une date déjà saisie manuellement dans le
+                // champ avant de cliquer Enregistrer.
                 if (!expInput.value) {
-                  if (statutEl) statutEl.textContent = "🔍 Recherche de la date d'expiration...";
-                  const dateExtraite = await extraireExpirationPdfPps(data);
-                  if (dateExtraite) {
-                    expInput.value = dateExtraite;
+                  if (dateExpiration) {
+                    expInput.value = dateExpiration;
                     if (statutEl) statutEl.textContent = "✓ Date d'expiration détectée automatiquement";
                   } else {
                     if (statutEl) statutEl.textContent = "Date non détectée — renseigne-la manuellement si besoin";
                   }
+                } else {
+                  if (statutEl) statutEl.textContent = "";
                 }
               } else {
                 // Compression côté client — cf. commentaire historique dans
