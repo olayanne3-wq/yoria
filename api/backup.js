@@ -430,6 +430,7 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
 
   const donneesFiltrees = {};
   let totalLignesTrouvees = 0;
+  const diagnosticParTable = {};
 
   for (const [table, rows] of Object.entries(exportData.donnees || {})) {
     if (table === 'beta_testers') {
@@ -437,6 +438,7 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
       const lignes = (Array.isArray(rows) ? rows : []).filter(
         (row) => (row.email || '').toLowerCase() === email.toLowerCase(),
       );
+      diagnosticParTable[table] = { avant: (rows || []).length, apres: lignes.length, mode: 'email' };
       if (lignes.length > 0) {
         donneesFiltrees[table] = lignes;
         totalLignesTrouvees += lignes.length;
@@ -455,8 +457,16 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
       // Table sans colonne utilisateur repérable — ignorée pour ce
       // filtrage ciblé, comme pour l'export ciblé (cf.
       // filtrerLignesUtilisateur).
+      diagnosticParTable[table] = { avant: (rows || []).length, apres: null, mode: 'sans_colonne_utilisateur' };
       continue;
     }
+    // Échantillon des user_id réellement présents dans cette table (les 3
+    // premiers distincts), pour comparer visuellement avec le userId
+    // utilisé si le filtrage ne trouve rien — diagnostic ajouté le
+    // 01/08/2026 suite à un cas où le filtrage ne matchait aucune ligne
+    // sans cause évidente à la relecture du code.
+    const echantillonUserIds = [...new Set((rows || []).map((r) => r.user_id).filter(Boolean))].slice(0, 3);
+    diagnosticParTable[table] = { avant: (rows || []).length, apres: filtrees.length, mode: 'user_id', echantillonUserIds };
     if (filtrees.length > 0) {
       donneesFiltrees[table] = filtrees;
       totalLignesTrouvees += filtrees.length;
@@ -478,9 +488,11 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
 
   if (totalLignesTrouvees === 0) {
     const err = new Error(
-      `Aucune ligne trouvée pour ${email} dans cet export. Vérifie l'adresse e-mail ou que cet export contient bien ses données.`,
+      `Aucune ligne trouvée pour ${email} (userId=${userId}) dans cet export. Vérifie l'adresse e-mail ou que cet export contient bien ses données.`,
     );
     err.status = 404;
+    err.diagnosticParTable = diagnosticParTable;
+    err.userId = userId;
     throw err;
   }
 
@@ -488,6 +500,7 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
     type: 'export_utilisateur',
     genereLe: exportData.genereLe,
     utilisateur: { id: userId, email },
+    diagnosticParTable,
     donnees: donneesFiltrees,
   };
 }
@@ -513,6 +526,8 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
   if (filtrerEmail && exportDataBrut.type === 'export_global') {
     exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail, userIdManuel);
     diagnostic.tablesApresFiltrage = Object.keys(exportData.donnees).length;
+    diagnostic.parTable = exportData.diagnosticParTable;
+    diagnostic.userIdUtilise = exportData.utilisateur?.id;
   }
 
   const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null, diagnostic };
@@ -639,6 +654,8 @@ export default async function handler(request, response) {
         return json(response, error.status || 500, {
           message: error.message || "La réinjection a échoué.",
           besoinUserIdManuel: error.besoinUserIdManuel || false,
+          diagnosticParTable: error.diagnosticParTable || null,
+          userIdUtilise: error.userId || null,
         });
       }
     }
