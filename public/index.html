@@ -1417,7 +1417,28 @@ function sauvegarderProfilCoureur() {
 function ouvrirPpsPleinEcran(ppsDoc) {
   if (!ppsDoc?.data) return;
   if (ppsDoc.type === "application/pdf") {
-    window.open(ppsDoc.data, "_blank");
+    // BUG CORRIGÉ (02/08/2026, signalé par Laurent — "ça m'ouvre ça mais
+    // rien, écran blanc") : window.open() avec une data: URI base64 très
+    // longue échoue silencieusement sur beaucoup de navigateurs/TWA
+    // Android (limite de longueur d'URL dépassée, ou popup ouvert vide
+    // sans erreur JS remontée). Conversion en vrai Blob + URL objet
+    // (blob:...) — pas de limite de taille, ouverture fiable partout.
+    try {
+      const base64 = ppsDoc.data.split(",")[1];
+      const binaire = atob(base64);
+      const octets = new Uint8Array(binaire.length);
+      for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+      const blob = new Blob([octets], { type: "application/pdf" });
+      const blobUrl = URL.createObjectURL(blob);
+      const fenetre = window.open(blobUrl, "_blank");
+      if (!fenetre) alert("Le navigateur a bloqué l'ouverture. Autorise les pop-ups pour Yoria, ou réessaie.");
+      // Révocation différée (pas immédiate : la fenêtre/onglet a besoin
+      // du temps de charger le blob avant qu'on libère l'URL).
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      console.error("Erreur ouverture PDF PPS:", err);
+      alert("Impossible d'ouvrir le PDF. Essaie de le réimporter depuis Réglages.");
+    }
     return;
   }
   const overlay = el("div",{style:{
