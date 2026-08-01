@@ -19,6 +19,7 @@
       <button class="nav" data-view="signalements">🐛 Signalements</button>
       <button class="nav" data-view="accounts">👤 Comptes</button>
       <button class="nav" data-view="backup">💾 Sauvegarde</button>
+      <button class="nav" data-view="cascades">🔗 Cascades</button>
       <button class="nav" data-view="statistics">↗ Statistiques</button>
     </nav>
     <a class="site-link" href="/beta" target="_blank" rel="noopener">Voir le site bêta</a>
@@ -155,6 +156,16 @@
           <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
           <div id="backup-reinject-status" class="notice" hidden></div>
           <div id="backup-reinject-report"></div>
+        </div>
+      </section>
+
+      <section class="view" data-panel="cascades">
+        <div class="card">
+          <h2>Diagnostic des cascades ON DELETE</h2>
+          <p><small>Vérifie que chaque table applicative liée à un utilisateur (colonne <code>user_id</code>/<code>id_utilisateur</code>) supprime bien ses lignes automatiquement quand le compte Auth est supprimé (<code>ON DELETE CASCADE</code>) — sinon <code>api/delete-account.js</code> échoue en erreur de contrainte. À lancer occasionnellement (ex. avant une mise en production), pas à chaque table ajoutée.</small></p>
+          <button id="cascades-run-btn" class="secondary">🔍 Lancer le diagnostic</button>
+          <div id="cascades-status" class="notice" hidden></div>
+          <div id="cascades-result"></div>
         </div>
       </section>
 
