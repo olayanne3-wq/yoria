@@ -5,11 +5,10 @@
 // selon navigateur) plutôt qu'en haut — Laurent voyait "FC max" en
 // premier au lieu de "Année de naissance". Passé à align-items:
 // flex-start pour garantir un affichage démarrant toujours en haut.
-// Source de vérité : public/v2/engine/auth.js
-// Copie non-module dérivée : public/engine-classic-scripts/auth.classic.js
-// (mêmes conventions que plan-generator.js / v1-bridge.js / gist-sync.js /
-// weather.js — cf. inventaire §3. À régénérer manuellement à chaque modif,
-// comme les autres modules du moteur.)
+// Source de vérité unique : public/v2/engine/auth.js, chargé dynamiquement
+// via import() par index.html et v2/index.html (pas de copie classic —
+// auth.classic.js/sync-storage.classic.js ont été retirés le 19/07/2026,
+// cf. inventaire §3, même étape de conversion que plan-generator.js).
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -375,10 +374,17 @@ export async function deconnecter() {
 // ------------------------------------------------------------
 // Écran d'onboarding profil — v2.8 (§17.7), affiché une seule fois
 // juste après la création de compte, avant le premier wizard course/
-// forme. Collecte les données qui ne sont plus jamais demandées dans
-// le wizard (année de naissance, FC max, niveau — cf. NIVEAU_MAP dans
-// v2/index.html) puisqu'elles vivent désormais uniquement dans le
-// profil coureur (Réglages), pas dans les paramètres d'un plan précis.
+// forme. Refonte du 01/08/2026 (demande de Laurent) : collecte
+// désormais l'intégralité du profil coureur (pas seulement niveau/FC/
+// année comme avant), réparti en 4 pages successives navigables (swipe +
+// boutons Précédent/Suivant, même principe que ECRANS_WIZARD dans
+// v2/index.html) pour éviter un formulaire trop long en une seule vue :
+// 1) Toi (prénom*, nom, date de naissance*)
+// 2) Ta forme (poids, taille, FC max/repos, sexe, PPS)
+// 3) Records personnels
+// 4) Ton niveau*
+// (* = obligatoire, bloque le passage à la page suivante / la validation
+// finale — seuls prénom, date de naissance et niveau le sont).
 //
 // Ne touche PAS directement à localStorage/Supabase : l'appelant
 // (index.html / v2/index.html) est responsable de fusionner le retour
@@ -388,9 +394,9 @@ export async function deconnecter() {
 //
 // profilExistant : objet profilCoureur actuel (peut être partiellement
 // rempli si migré depuis l'ancien format, cf. migrerVersProfilCoureur).
-// Résout avec { anneeNaissance, fcMax, niveau } — à fusionner par
-// l'appelant, pas un profil complet (poids/taille/records restent
-// gérés ailleurs dans Réglages, pas dans cet onboarding minimal).
+// Résout avec { prenom, nom, dateNaissance, poids, taille, pps, fcMax,
+// fcRepos, sexe, niveau, records } — profil complet à fusionner par
+// l'appelant (plus un sous-ensemble minimal comme avant le 01/08/2026).
 // ------------------------------------------------------------
 export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
   const hote = document.getElementById(conteneurId);
@@ -610,16 +616,18 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         padding: 20px; box-sizing: border-box; overflow-y: auto;
       }
       #ecran-onboarding .carte { width: 100%; max-width: 400px; }
-      #ecran-onboarding .bandeau { text-align: center; margin-bottom: 24px; }
+      #ecran-onboarding .bandeau { text-align: center; margin-bottom: 20px; }
       #ecran-onboarding .bandeau h1 { font-size: 1.25rem; margin: 0 0 6px; font-weight: 700; }
       #ecran-onboarding .bandeau .sous-titre { color: var(--text-muted); font-size: 0.85rem; }
       #ecran-onboarding label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted); }
+      #ecran-onboarding label .obligatoire { color: var(--warn); margin-left: 3px; }
       #ecran-onboarding input {
         width: 100%; padding: 11px 12px; margin-bottom: 16px; border-radius: 8px;
         border: 1px solid var(--border); background: var(--bg); color: var(--text);
         font-size: 0.95rem; box-sizing: border-box;
       }
       #ecran-onboarding input:focus { outline: none; border-color: var(--accent); }
+      #ecran-onboarding input.champ-manquant { border-color: var(--warn); }
       #ecran-onboarding .niveau-opt {
         display: flex; align-items: center; gap: 10px; padding: 12px 14px;
         border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
@@ -640,10 +648,15 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         padding: 12px 14px; margin-bottom: 16px;
       }
       #ecran-onboarding .record-row {
-        display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: nowrap;
+        display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: wrap;
       }
       #ecran-onboarding .record-row + .record-row { border-top: 1px solid var(--border); }
       #ecran-onboarding .record-row .dist-label { width: 56px; flex-shrink: 0; font-size: 0.85rem; color: var(--text-muted); }
+      #ecran-onboarding .record-row .rec-date {
+        flex: 1 1 100%; margin: 6px 0 0; padding: 5px 8px; font-size: 0.78rem;
+        background: var(--border-soft, rgba(0,0,0,0.04)); border: 1px solid var(--border);
+        border-radius: 6px; color: var(--text-muted); box-sizing: border-box;
+      }
       #ecran-onboarding .records-note { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0; }
       #ecran-onboarding .btn-effacer-record {
         flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
@@ -657,11 +670,37 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         font-size: 0.95rem; cursor: pointer; margin-top: 10px;
       }
       #ecran-onboarding .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
+      #ecran-onboarding .btn-secondaire {
+        width: 100%; padding: 12px; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--bg); color: var(--text);
+        font-weight: 600; font-size: 0.95rem; cursor: pointer; margin-top: 10px;
+      }
       #ecran-onboarding .lien-secondaire {
         margin-top: 12px; font-size: 0.82rem; text-align: center; color: var(--text-muted);
         cursor: pointer; background: none; border: none; width: 100%;
       }
       #ecran-onboarding .lien-secondaire:hover { color: var(--accent); }
+      /* ── Navigation entre pages (01/08/2026, refonte demandée par
+         Laurent : onboarding découpé en 4 pages successives plutôt qu'un
+         long formulaire unique — même principe que ECRANS_WIZARD/
+         afficherEcranWizard dans v2/index.html). ──── */
+      #ecran-onboarding .onb-page { display: none; }
+      #ecran-onboarding .onb-page.actif { display: block; }
+      #ecran-onboarding .onb-progression {
+        display: flex; justify-content: center; gap: 6px; margin-bottom: 18px;
+      }
+      #ecran-onboarding .onb-point {
+        width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+        transition: background 0.15s;
+      }
+      #ecran-onboarding .onb-point.actif { background: var(--accent); }
+      #ecran-onboarding .onb-point.franchi { background: var(--accent2, var(--accent)); opacity: 0.5; }
+      #ecran-onboarding .onb-nav { display: flex; gap: 10px; margin-top: 4px; }
+      #ecran-onboarding .onb-nav .btn-secondaire,
+      #ecran-onboarding .onb-nav .btn-principal { margin-top: 0; }
+      #ecran-onboarding .onb-erreur {
+        color: var(--warn); font-size: 0.78rem; margin: -10px 0 14px; min-height: 1.1em;
+      }
       /* ── Roulette de saisie de temps (31/07/2026) — mêmes dimensions que
          Réglages (index.html), portée séparément ici (cf. commentaire sur
          creerColonneRouletteOnboarding plus haut). Chiffres non-actifs
@@ -717,33 +756,76 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             <h1>Ton profil</h1>
             <div class="sous-titre">Ces infos servent à personnaliser tes plans — modifiables plus tard dans Réglages</div>
           </div>
-          <label for="onb-annee">Année de naissance</label>
-          <input type="number" id="onb-annee" placeholder="1985" min="1920" max="2020" value="${profilExistant.anneeNaissance || ''}">
-          <label for="onb-fcmax">FC max (bpm)</label>
-          <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax && profilExistant.fcMax !== 181 ? profilExistant.fcMax : ''}">
-          <label for="onb-fcrepos">FC repos (bpm) — optionnel</label>
-          <input type="number" id="onb-fcrepos" placeholder="55" value="${profilExistant.fcRepos || ''}">
-          <label>Sexe — optionnel, affine le calcul de charge</label>
-          <div id="onb-sexes" class="sexe-opts"></div>
-          <label>Records personnels — optionnel, laisse vide si tu ne sais pas</label>
-          <div id="onb-records" class="records-wrap"></div>
-          <label>Ton niveau</label>
+          <div class="onb-progression">
+            <span class="onb-point" data-page="0"></span>
+            <span class="onb-point" data-page="1"></span>
+            <span class="onb-point" data-page="2"></span>
+            <span class="onb-point" data-page="3"></span>
+          </div>
+
+          <div class="onb-page" id="onb-page-0" data-page="0">
+            <label for="onb-prenom">Prénom<span class="obligatoire">*</span> — utilisé par ton coach</label>
+            <input type="text" id="onb-prenom" placeholder="Alex" value="${profilExistant.prenom || ''}">
+            <label for="onb-nom">Nom — optionnel</label>
+            <input type="text" id="onb-nom" placeholder="Dupont" value="${profilExistant.nom || ''}">
+            <label for="onb-date-naissance">Date de naissance<span class="obligatoire">*</span></label>
+            <input type="date" id="onb-date-naissance" value="${profilExistant.dateNaissance || ''}">
+            <div class="onb-erreur" id="onb-erreur-0"></div>
+          </div>
+
+          <div class="onb-page" id="onb-page-1" data-page="1">
+            <label for="onb-poids">Poids (kg) — optionnel</label>
+            <input type="number" id="onb-poids" placeholder="70" value="${profilExistant.poids || ''}">
+            <label for="onb-taille">Taille (cm) — optionnel</label>
+            <input type="number" id="onb-taille" placeholder="175" value="${profilExistant.taille || ''}">
+            <label for="onb-fcmax">FC max (bpm) — optionnel</label>
+            <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax && profilExistant.fcMax !== 181 ? profilExistant.fcMax : ''}">
+            <label for="onb-fcrepos">FC repos (bpm) — optionnel</label>
+            <input type="number" id="onb-fcrepos" placeholder="55" value="${profilExistant.fcRepos || ''}">
+            <label>Sexe — optionnel, affine le calcul de charge</label>
+            <div id="onb-sexes" class="sexe-opts"></div>
+            <label for="onb-pps">PPS / Licence FFA — optionnel</label>
+            <input type="text" id="onb-pps" placeholder="Numéro" value="${profilExistant.pps || ''}">
+          </div>
+
+          <div class="onb-page" id="onb-page-2" data-page="2">
+            <label>Records personnels — optionnel, laisse vide si tu ne sais pas</label>
+            <div id="onb-records" class="records-wrap"></div>
+          </div>
+
+          <div class="onb-page" id="onb-page-3" data-page="3">
+            <label>Ton niveau<span class="obligatoire">*</span></label>
             <div id="onb-niveaux"></div>
-            <button class="btn-principal" id="onb-valider" disabled>Valider</button>
+            <div class="onb-erreur" id="onb-erreur-3"></div>
+          </div>
+
+          <div class="onb-nav">
+            <button class="btn-secondaire" id="onb-precedent" style="display:none;">← Précédent</button>
+            <button class="btn-principal" id="onb-suivant">Suivant</button>
+            <button class="btn-principal" id="onb-valider" style="display:none;" disabled>Valider</button>
           </div>
         </div>
+      </div>
       `;
     const niveauxHost = hote.querySelector('#onb-niveaux');
     const sexesHost = hote.querySelector('#onb-sexes');
     const recordsHost = hote.querySelector('#onb-records');
     const validerBtn = hote.querySelector('#onb-valider');
+    const suivantBtn = hote.querySelector('#onb-suivant');
+    const precedentBtn = hote.querySelector('#onb-precedent');
+    const NB_PAGES = 4;
+    let pageActuelle = 0;
 
     // Rendu des 4 lignes de record (5K/10K/Semi/Marathon) — roulette h/m/s
-    // avec boutons +/- (31/07/2026, déployé depuis Réglages) — champ
-    // optionnel, ne touche jamais à validerBtn.disabled (même principe que
-    // sexe : seul niveauChoisi contrôle la validation). Construction de la
-    // roulette différée (setTimeout 0) : le DOM de chaque ligne doit être
-    // attaché (recordsHost.appendChild ci-dessous) avant que
+    // avec boutons +/- (31/07/2026, déployé depuis Réglages) + champ date
+    // (01/08/2026, ajouté pour parité complète avec Réglages, cf.
+    // discussion de conception : la date manquait, empêchant tout
+    // départage de cohérence entre records — cf. verifierCoherenceRecord
+    // dans v2/index.html, qui utilise cette date pour trancher). Champs
+    // optionnels, ne touchent jamais à validerBtn.disabled (même principe
+    // que sexe : seul niveauChoisi contrôle la validation). Construction
+    // de la roulette différée (setTimeout 0) : le DOM de chaque ligne doit
+    // être attaché (recordsHost.appendChild ci-dessous) avant que
     // initRouletteHMSOnboarding() puisse positionner le scroll initial —
     // même contrainte que la version Réglages (index.html).
     DISTANCES_RECORD.forEach((dist) => {
@@ -777,7 +859,8 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         `<input type="hidden" id="onb-rec-${dist}-h" value="${hms.h ?? ''}">` +
         `<input type="hidden" id="onb-rec-${dist}-m" value="${hms.m ?? ''}">` +
         `<input type="hidden" id="onb-rec-${dist}-s" value="${hms.s ?? ''}">` +
-        `<button type="button" class="btn-effacer-record" id="onb-rec-${dist}-effacer" title="Effacer ce record">✕</button>`;
+        `<button type="button" class="btn-effacer-record" id="onb-rec-${dist}-effacer" title="Effacer ce record">✕</button>` +
+        `<input type="date" class="rec-date" id="onb-rec-${dist}-date" value="${recExistant?.date || ''}">`;
       recordsHost.appendChild(row);
       setTimeout(() => initRouletteHMSOnboarding(dist, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0), 0);
 
@@ -823,6 +906,104 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     }
     rafraichirSexes();
 
+    // ── Navigation entre les 4 pages (01/08/2026) — même principe que
+    // ECRANS_WIZARD/afficherEcranWizard/attacherSwipeEtapes dans
+    // v2/index.html, porté ici indépendamment (même contrainte d'absence
+    // de dépendance sur index.html/v2/index.html que le reste de ce
+    // fichier). Chaque page peut définir sa propre validation avant de
+    // laisser passer à la suivante — retourne un message d'erreur (string)
+    // si bloqué, ou null si la page est valide.
+    function validerPage0() {
+      const prenom = hote.querySelector('#onb-prenom').value.trim();
+      const dateNaissance = hote.querySelector('#onb-date-naissance').value;
+      const inputPrenom = hote.querySelector('#onb-prenom');
+      const inputDate = hote.querySelector('#onb-date-naissance');
+      inputPrenom.classList.toggle('champ-manquant', !prenom);
+      inputDate.classList.toggle('champ-manquant', !dateNaissance);
+      if (!prenom && !dateNaissance) return 'Prénom et date de naissance obligatoires.';
+      if (!prenom) return 'Prénom obligatoire.';
+      if (!dateNaissance) return 'Date de naissance obligatoire.';
+      return null;
+    }
+    function validerPage3() {
+      if (!niveauChoisi) return 'Choisis ton niveau pour continuer.';
+      return null;
+    }
+    const VALIDATEURS_PAGE = { 0: validerPage0, 3: validerPage3 };
+
+    function afficherPage(index) {
+      pageActuelle = index;
+      for (let i = 0; i < NB_PAGES; i++) {
+        hote.querySelector(`#onb-page-${i}`).classList.toggle('actif', i === index);
+        const point = hote.querySelector(`.onb-point[data-page="${i}"]`);
+        point.classList.toggle('actif', i === index);
+        point.classList.toggle('franchi', i < index);
+      }
+      precedentBtn.style.display = index === 0 ? 'none' : 'block';
+      suivantBtn.style.display = index === NB_PAGES - 1 ? 'none' : 'block';
+      validerBtn.style.display = index === NB_PAGES - 1 ? 'block' : 'none';
+      const erreurEl = hote.querySelector(`#onb-erreur-${index}`);
+      if (erreurEl) erreurEl.textContent = '';
+    }
+
+    function allerPageSuivante() {
+      const validateur = VALIDATEURS_PAGE[pageActuelle];
+      if (validateur) {
+        const erreur = validateur();
+        if (erreur) {
+          const erreurEl = hote.querySelector(`#onb-erreur-${pageActuelle}`);
+          if (erreurEl) erreurEl.textContent = erreur;
+          return;
+        }
+      }
+      if (pageActuelle < NB_PAGES - 1) afficherPage(pageActuelle + 1);
+    }
+    function allerPagePrecedente() {
+      if (pageActuelle > 0) afficherPage(pageActuelle - 1);
+    }
+
+    suivantBtn.addEventListener('click', allerPageSuivante);
+    precedentBtn.addEventListener('click', allerPagePrecedente);
+
+    // Swipe horizontal entre pages (01/08/2026, intégré dès cette version
+    // — demande explicite de Laurent) — même pattern que attacherSwipeEtapes
+    // dans v2/index.html (seuil 50px, distinction horizontal/vertical dès
+    // 10px de mouvement pour ne jamais intercepter un scroll vertical de
+    // page). Porté ici indépendamment, comme le reste de ce fichier.
+    // Swipe gauche = page suivante (avec la même validation que le bouton
+    // Suivant — ne saute jamais une page obligatoire non remplie), swipe
+    // droite = page précédente (jamais bloqué, revenir en arrière est
+    // toujours permis).
+    function attacherSwipePages(conteneurSelector) {
+      const conteneur = hote.querySelector(conteneurSelector);
+      if (!conteneur) return;
+      let swipeStartX = null, swipeStartY = null, swipeDecided = null;
+      conteneur.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        swipeStartX = e.touches[0].clientX;
+        swipeStartY = e.touches[0].clientY;
+        swipeDecided = null;
+      }, { passive: true });
+      conteneur.addEventListener('touchmove', (e) => {
+        if (swipeStartX === null || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - swipeStartX;
+        const dy = e.touches[0].clientY - swipeStartY;
+        if (swipeDecided === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          swipeDecided = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+        }
+      }, { passive: true });
+      conteneur.addEventListener('touchend', (e) => {
+        if (swipeStartX === null || swipeDecided !== 'horizontal') { swipeStartX = null; return; }
+        const dx = (e.changedTouches[0]?.clientX ?? swipeStartX) - swipeStartX;
+        swipeStartX = null;
+        if (Math.abs(dx) < 50) return;
+        if (dx < 0) allerPageSuivante(); else allerPagePrecedente();
+      }, { passive: true });
+    }
+    attacherSwipePages('#ecran-onboarding .carte');
+
+    afficherPage(0);
+
     function rafraichirNiveaux() {
       niveauxHost.innerHTML = '';
       NIVEAUX.forEach(n => {
@@ -838,21 +1019,37 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       });
     }
     rafraichirNiveaux();
-    if (niveauChoisi) validerBtn.disabled = false;
 
     // Le choix du niveau est obligatoire (v2.9, 15/07/2026) — un profil
-      // avec niveau:null redéclenchait cet écran à l'infini à chaque
-      // connexion, le bouton "Passer pour l'instant" permettait justement
-      // d'arriver à cet état. Retiré : le bouton Valider reste désactivé
-      // tant qu'aucune option de niveau n'est cliquée (cf.
-      // rafraichirNiveaux plus haut), donc terminer() n'est plus jamais
-      // appelée sans un niveauChoisi valide.
+    // avec niveau:null redéclenchait cet écran à l'infini à chaque
+    // connexion. Depuis le 01/08/2026, appliqué via validerPage3() (la
+    // page niveau étant désormais la dernière) plutôt qu'un
+    // validerBtn.disabled global — terminer() n'est appelée qu'après avoir
+    // franchi cette validation, jamais avec niveauChoisi vide.
       function terminer() {
         // Garde-fou record du monde (31/07/2026, demande de Laurent) —
         // vérifié AVANT de masquer l'écran/résoudre la promesse, pour
         // laisser la personne corriger sans quitter l'onboarding. Un seul
         // message groupé si plusieurs distances sont concernées à la fois
         // (même logique que Réglages, cf. son commentaire).
+        //
+        // CORRECTIF (01/08/2026, bug signalé par Laurent : un record
+        // saisi par scroll de roulette n'était pas enregistré) — cause :
+        // les inputs cachés onb-rec-{dist}-h/-m/-s ne sont mis à jour que
+        // via le callback onSelect de la roulette, lui-même déclenché sur
+        // l'événement 'scroll' avec un debounce de 120ms (cf.
+        // creerColonneRouletteOnboarding). Cliquer sur CE bouton Valider
+        // global juste après avoir arrêté de faire défiler la DERNIÈRE
+        // colonne touchée pouvait donc lire un input encore non
+        // synchronisé. Lit désormais directement colApi.valeur() de
+        // chaque roulette active (valeur en mémoire, jamais sujette au
+        // debounce) plutôt que hInp.value/mInp.value/sInp.value —
+        // élimine le risque de timing, peu importe la rapidité entre le
+        // dernier geste de scroll et ce clic. Repli sur les inputs cachés
+        // si une roulette n'a jamais été instanciée (cas normalement
+        // impossible en pratique, chaque ligne étant construite au
+        // rendu de l'écran, mais gardé par prudence plutôt que de
+        // supposer roulettesActivesOnboarding[dist] toujours défini).
         let recordIrrealisteDetecte = null;
         const tempsParDistance = {};
         DISTANCES_RECORD.forEach((dist) => {
@@ -862,10 +1059,14 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             tempsParDistance[dist] = null;
             return;
           }
+          const rouletteRef = roulettesActivesOnboarding[dist];
           const hInp = hote.querySelector(`#onb-rec-${dist}-h`);
           const mInp = hote.querySelector(`#onb-rec-${dist}-m`);
           const sInp = hote.querySelector(`#onb-rec-${dist}-s`);
-          const tempsFormate = formaterHMSEnTempsRecordOnboarding(hInp.value, mInp.value, sInp.value);
+          const hVal = rouletteRef?.h ? rouletteRef.h.valeur() : hInp.value;
+          const mVal = rouletteRef?.m ? rouletteRef.m.valeur() : mInp.value;
+          const sVal = rouletteRef?.s ? rouletteRef.s.valeur() : sInp.value;
+          const tempsFormate = formaterHMSEnTempsRecordOnboarding(hVal, mVal, sVal);
           tempsParDistance[dist] = tempsFormate;
           if (tempsFormate) {
             const secondesSaisies = parserTempsEnSecondesOnboarding(tempsFormate);
@@ -883,7 +1084,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         }
 
         hote.querySelector('#ecran-onboarding').style.display = 'none';
-        const annee = parseInt(hote.querySelector('#onb-annee').value) || profilExistant.anneeNaissance || null;
+        const prenom = hote.querySelector('#onb-prenom').value.trim();
+        const nom = hote.querySelector('#onb-nom').value.trim();
+        const dateNaissance = hote.querySelector('#onb-date-naissance').value || profilExistant.dateNaissance || null;
+        const poids = parseInt(hote.querySelector('#onb-poids').value) || profilExistant.poids || null;
+        const taille = parseInt(hote.querySelector('#onb-taille').value) || profilExistant.taille || null;
+        const pps = hote.querySelector('#onb-pps').value.trim() || profilExistant.pps || '';
         const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
         const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
         const records = { ...(profilExistant.records || {}) };
@@ -891,9 +1097,9 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
           const rowDist = hote.querySelector(`#onb-rec-${dist}-row`);
           const estEfface = rowDist?.dataset.recordEfface === 'true';
           const tempsFormate = tempsParDistance[dist];
+          const dateInp = hote.querySelector(`#onb-rec-${dist}-date`);
           if (tempsFormate) {
-            const dateExistante = (records[dist] && records[dist].date) || null;
-            records[dist] = { temps: tempsFormate, date: dateExistante };
+            records[dist] = { temps: tempsFormate, date: dateInp?.value || null };
           } else if (estEfface || !(profilExistant.records && profilExistant.records[dist])) {
             // estEfface : effacement explicite, doit toujours écraser un
             // éventuel record préexistant (31/07/2026, bug corrigé en même
@@ -904,7 +1110,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
           }
         });
         resolve({
-          anneeNaissance: annee,
+          prenom,
+          nom,
+          dateNaissance,
+          poids,
+          taille,
+          pps,
           fcMax: fcmax,
           fcRepos: fcrepos,
           sexe: sexeChoisi,
@@ -913,7 +1124,15 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         });
       }
 
-      validerBtn.addEventListener('click', terminer);
+      validerBtn.addEventListener('click', () => {
+        const erreur = validerPage3();
+        if (erreur) {
+          const erreurEl = hote.querySelector('#onb-erreur-3');
+          if (erreurEl) erreurEl.textContent = erreur;
+          return;
+        }
+        terminer();
+      });
   });
 }
 
