@@ -8169,7 +8169,6 @@ function renderSettings() {
         {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km", val: raceGoalTime >= 3600
           ? Math.floor(raceGoalTime/3600)+":"+Math.floor((raceGoalTime%3600)/60).toString().padStart(2,"0")+":"+(raceGoalTime%60).toString().padStart(2,"0")
           : Math.floor(raceGoalTime/60)+":"+(raceGoalTime%60).toString().padStart(2,"0"), color:"var(--accent)"},
-        {label:"PPS", id:"pps-input", type:"text", unit:"", val:runnerPps||"", width:"160px"},
       ];
       rows.forEach((r,i)=>{
         const tr = document.createElement("tr");
@@ -8221,7 +8220,6 @@ function renderSettings() {
           else if (r.id === "inp-taille") { runnerHeight = parseInt(inp.value)||null; profilCoureur.taille = runnerHeight; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-fcmax") { runnerFcMax = parseInt(inp.value)||181; profilCoureur.fcMax = runnerFcMax; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-fcrepos") { profilCoureur.fcRepos = parseInt(inp.value)||null; sauvegarderProfilCoureur(); }
-          else if (r.id === "pps-input") { runnerPps = inp.value.trim(); profilCoureur.pps = runnerPps; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-goal") {
             // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
             // logique que l'ancien handler saveBtn, inchangée.
@@ -8387,24 +8385,70 @@ function renderSettings() {
         el("button",{id:"pps-enregistrer-btn", style:{
           marginTop:"6px", padding:"10px", borderRadius:"8px", border:"none",
           background:"var(--accent)", color:"#fff", fontSize:"14px", fontWeight:"700", cursor:"pointer"
-        }, onClick: avecRetourTactile(async ()=>{
+        }, onClick: avecRetourTactile(async (e)=>{
+          const btn = e.currentTarget;
           const fileInput = document.getElementById("pps-file-input");
           const expInput = document.getElementById("pps-expiration-input");
           const fichier = fileInput?.files?.[0];
           if (!fichier && !expInput?.value) { alert("Choisis un fichier ou renseigne au moins une date d'expiration."); return; }
-          if (expInput?.value) profilCoureur.ppsExpiration = expInput.value;
-          if (fichier) {
-            if (fichier.size > 5*1024*1024) { alert("Fichier trop volumineux (max 5 Mo)."); return; }
-            const data = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
-              reader.readAsDataURL(fichier);
-            });
-            profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
+          const libelleOriginal = btn.textContent;
+          btn.textContent = "⏳ Enregistrement...";
+          btn.disabled = true;
+          try {
+            if (expInput?.value) profilCoureur.ppsExpiration = expInput.value;
+            if (fichier) {
+              if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
+              if (fichier.type === "application/pdf") {
+                const data = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
+                  reader.readAsDataURL(fichier);
+                });
+                profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
+              } else {
+                // Compression côté client (redimensionnement + JPEG) —
+                // corrige un échec silencieux constaté en test réel (02/08/2026,
+                // signalé par Laurent : "le fichier ne s'enregistre pas", sans
+                // erreur visible) : une photo de téléphone non compressée
+                // (souvent 3-8 Mo, HEIC/JPEG haute résolution) fait exploser le
+                // JSONB envoyé par sauvegarderProfilCoureur(), qui échoue en
+                // fire-and-forget (synchroniserVersSupabase) sans jamais
+                // remonter d'erreur ni bloquer l'écriture localStorage — le
+                // profil semblait "s'enregistrer" en local mais jamais vers
+                // Supabase (donc perdu à la prochaine reconnexion/autre
+                // appareil). Redimensionnement max 1600px + JPEG qualité 0.82
+                // suffit largement à garder le QR/texte lisible en plein écran
+                // tout en réduisant le poids de 80-95% dans la plupart des cas.
+                const data = await new Promise((resolve, reject) => {
+                  const img = new Image();
+                  const readerUrl = URL.createObjectURL(fichier);
+                  img.onload = () => {
+                    const maxDim = 1600;
+                    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                    const canvas = document.createElement("canvas");
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    URL.revokeObjectURL(readerUrl);
+                    resolve(canvas.toDataURL("image/jpeg", 0.82));
+                  };
+                  img.onerror = () => { URL.revokeObjectURL(readerUrl); reject(new Error("Image illisible")); };
+                  img.src = readerUrl;
+                });
+                profilCoureur.ppsDocument = { data, type: "image/jpeg", nomFichier: fichier.name };
+              }
+            }
+            sauvegarderProfilCoureur();
+            btn.textContent = "✓ Enregistré";
+            setTimeout(() => render(), 600);
+          } catch (err) {
+            console.error("Erreur enregistrement PPS:", err);
+            alert("Échec de l'enregistrement : "+(err.message||"erreur inconnue")+". Réessaie avec une photo plus légère si le problème persiste.");
+            btn.textContent = libelleOriginal;
+            btn.disabled = false;
           }
-          sauvegarderProfilCoureur();
-          render();
         })}, "✓ Enregistrer")
       )
     )
@@ -9200,6 +9244,16 @@ function renderSettings() {
       el("div",{style:{color:"var(--text)",fontSize:"16px",fontWeight:"800"}},"Yoria"),
       el("div",{class:"muted",style:{fontSize:"14px"}},VERSIONS[0].ver+" · yoria.run")
     ),
+    // Accès rapide au PPS (02/08/2026, demande de Laurent : "accessible en
+    // un clic, à côté du bouton mode sombre") — n'apparaît que si un
+    // document est déjà enregistré (profilCoureur.ppsDocument, cf.
+    // ppsDocumentSection plus bas). Réutilise directement
+    // ouvrirPpsPleinEcran(), même fonction que le bouton de la carte.
+    profilCoureur.ppsDocument ? el("button",{style:{
+      flexShrink:"0", padding:"0 12px", height:"36px", borderRadius:"18px",
+      border:"1px solid var(--border)", background:"var(--border-soft)",
+      color:"var(--text)", fontSize:"13px", fontWeight:"700", cursor:"pointer"
+    }, onClick: avecRetourTactile(()=>ouvrirPpsPleinEcran(profilCoureur.ppsDocument))}, "🩺 PPS") : null,
     themeToggleBtn
   );
 
