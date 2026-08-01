@@ -8439,8 +8439,7 @@ function renderSettings() {
     const inputH = document.getElementById(idPrefix + '-h');
     const inputM = document.getElementById(idPrefix + '-m');
     const inputS = document.getElementById(idPrefix + '-s');
-    console.log('[DIAG2]', idPrefix, 'initRouletteHMS: inputH', !!inputH, 'inputM', !!inputM, 'inputS', !!inputS);
-    if (!inputH || !inputM || !inputS) { console.log('[DIAG2]', idPrefix, '-> RETURN précoce, inputs manquants'); return; } // DOM pas encore attaché, cf. setTimeout appelant
+    if (!inputH || !inputM || !inputS) return; // DOM pas encore attaché, cf. setTimeout appelant
 
     const declencherInput = (input, valeur) => {
       input.value = String(valeur);
@@ -8747,13 +8746,11 @@ function renderSettings() {
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
       const visible = conteneurTest && (conteneurTest.offsetParent !== null || conteneurTest.getBoundingClientRect().width > 0);
-      if (tentative === 0 || tentative === 121) console.log('[DIAG2]', idPrefix, 'tentative', tentative, 'visible:', visible, 'width:', conteneurTest?.getBoundingClientRect().width);
       if (visible) {
-        console.log('[DIAG2]', idPrefix, '-> initRouletteHMS appelée à la tentative', tentative);
         window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
         return;
       }
-      if (tentative > 120) { console.log('[DIAG2]', idPrefix, '-> ABANDON'); return; }
+      if (tentative > 120) return; // ~2s, abandon — cas anormal (groupe accordéon fermé au chargement : normal, cf. callback onOuverture qui construit la roulette à la demande dans ce cas)
       setTimeout(() => attendreEtInitialiser((tentative ?? 0) + 1), 16);
     })(0);
 
@@ -9335,19 +9332,34 @@ function renderSettings() {
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
       recordsSection
     ], () => {
-      // Repositionne les roulettes de records à l'ouverture du groupe
-      // (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats) —
-      // filet de sécurité complémentaire au correctif getBoundingClientRect
-      // dans attendreEtInitialiser (cf. son commentaire) : si jamais une
-      // roulette a malgré tout été positionnée sans classe .actif visible
-      // pour une raison encore différente, cette repasse à l'ouverture
-      // corrige la situation en relisant la valeur déjà connue en mémoire.
+      // Construit/repositionne les roulettes de records à l'ouverture du
+      // groupe (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats
+      // et attendreEtInitialiser) — diagnostic en direct (console) a montré
+      // que le groupe étant FERMÉ au tout premier chargement de page,
+      // attendreEtInitialiser abandonne (après ~2s) AVANT que l'utilisateur
+      // n'ouvre la section — la roulette n'est alors jamais construite du
+      // tout (0 item dans le DOM, pas juste mal positionnée). Un simple
+      // repositionnement (definirValeur sur une roulette déjà existante)
+      // ne suffisait donc pas : il faut appeler initRouletteHMS pour de
+      // vrai si la roulette n'existe pas encore dans le registre.
       ["5K","10K","Semi","Marathon"].forEach((dist) => {
-        const roulette = roulettesActivesReglages["rec-temps-"+dist];
-        if (!roulette) return;
-        roulette.h?.definirValeur(roulette.h.valeur(), false);
-        roulette.m?.definirValeur(roulette.m.valeur(), false);
-        roulette.s?.definirValeur(roulette.s.valeur(), false);
+        const idPrefix = "rec-temps-"+dist;
+        const roulette = roulettesActivesReglages[idPrefix];
+        if (roulette) {
+          // Déjà construite (cas où attendreEtInitialiser a réussi avant
+          // l'abandon) — simple repositionnement défensif.
+          roulette.h?.definirValeur(roulette.h.valeur(), false);
+          roulette.m?.definirValeur(roulette.m.valeur(), false);
+          roulette.s?.definirValeur(roulette.s.valeur(), false);
+          return;
+        }
+        // Jamais construite (cas normal si le groupe était fermé au
+        // chargement) — construction directe maintenant que le conteneur
+        // est réellement visible (le clic vient d'ouvrir le groupe).
+        const rec = profilCoureur.records?.[dist];
+        const hms = window.parserTempsRecordEnHMS(rec?.temps);
+        const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
+        window.initRouletteHMS(idPrefix, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0, heuresMax);
       });
     }),
 
