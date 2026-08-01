@@ -18,6 +18,7 @@
       <button class="nav" data-view="invited">✉ Invités</button>
       <button class="nav" data-view="signalements">🐛 Signalements</button>
       <button class="nav" data-view="accounts">👤 Comptes</button>
+      <button class="nav" data-view="backup">💾 Sauvegarde</button>
       <button class="nav" data-view="statistics">↗ Statistiques</button>
     </nav>
     <a class="site-link" href="/beta" target="_blank" rel="noopener">Voir le site bêta</a>
@@ -119,6 +120,34 @@
         </div>
         <div id="account-status" class="notice" hidden></div>
         <div id="account-result"></div>
+      </section>
+
+      <section class="view" data-panel="backup">
+        <div class="card">
+          <h2>Export global</h2>
+          <p><small>Découvre automatiquement toutes les tables de la base (via introspection PostgREST) et exporte l'intégralité de leur contenu en un fichier JSON téléchargeable. Filet de sécurité en cas de désastre complet — le plan Supabase actuel (Free) ne fait aucune sauvegarde automatique.</small></p>
+          <button id="backup-global-btn" class="secondary">📦 Télécharger l'export global</button>
+          <div id="backup-global-status" class="notice" hidden></div>
+        </div>
+
+        <div class="card">
+          <h2>Export ciblé par utilisateur</h2>
+          <p><small>Exporte uniquement les données d'un testeur précis (retrouvé par e-mail), y compris ses décisions du moteur. Le scénario le plus probable en pratique : un testeur signale un souci sur son plan.</small></p>
+          <div class="filters">
+            <input id="backup-user-email" type="search" placeholder="Adresse e-mail du testeur">
+            <button id="backup-user-btn" class="secondary">Exporter cet utilisateur</button>
+          </div>
+          <div id="backup-user-status" class="notice" hidden></div>
+        </div>
+
+        <div class="card">
+          <h2>Réinjection</h2>
+          <p><small>Réimporte un fichier JSON exporté précédemment (global ou ciblé). Écrase les lignes existantes ayant le même identifiant (upsert). Si l'export cible un utilisateur dont le compte a depuis été supprimé, le compte est recréé automatiquement avec le même identifiant avant réinjection des données.</small></p>
+          <input id="backup-file-input" type="file" accept="application/json">
+          <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter ce fichier</button>
+          <div id="backup-reinject-status" class="notice" hidden></div>
+          <div id="backup-reinject-report"></div>
+        </div>
       </section>
 
       <section class="view" data-panel="statistics"><div id="statistics" class="grid2"></div></section>
