@@ -749,6 +749,22 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .roulette-mini-colonne{
         display:flex; flex-direction:column; align-items:center; gap:2px; flex:1;
       }
+      /* ── Module PPS (02/08/2026) — même principe visuel que la modale de
+         index.html (bouton import, aperçu, suppression), porté ici en
+         version compacte car intégré dans une page de formulaire plutôt
+         qu'en plein écran séparé. ──── */
+      #ecran-onboarding .pps-apercu {
+        max-width: 100%; max-height: 160px; border-radius: 8px; display: block;
+        margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+      #ecran-onboarding .pps-statut {
+        font-size: 0.78rem; color: var(--text-muted); min-height: 1.1em; margin-top: 4px;
+      }
+      #ecran-onboarding .pps-btn-secondaire-petit {
+        padding: 8px; border-radius: 8px; border: 1px solid var(--border);
+        background: transparent; color: var(--text-muted); font-size: 0.78rem;
+        cursor: pointer; margin-top: 6px; width: 100%;
+      }
       </style>
       <div id="ecran-onboarding">
         <div class="carte">
@@ -784,8 +800,8 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             <input type="number" id="onb-fcrepos" placeholder="55" value="${profilExistant.fcRepos || ''}">
             <label>Sexe — optionnel, affine le calcul de charge</label>
             <div id="onb-sexes" class="sexe-opts"></div>
-            <label for="onb-pps">PPS / Licence FFA — optionnel</label>
-            <input type="text" id="onb-pps" placeholder="Numéro" value="${profilExistant.pps || ''}">
+            <label>🩺 Pass Prévention Santé (PPS) — optionnel</label>
+            <div id="onb-pps-zone"></div>
           </div>
 
           <div class="onb-page" id="onb-page-2" data-page="2">
@@ -815,6 +831,124 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     const precedentBtn = hote.querySelector('#onb-precedent');
     const NB_PAGES = 4;
     let pageActuelle = 0;
+
+    // ── Module PPS (02/08/2026, remplace l'ancien champ texte "PPS /
+    // Licence FFA") — porte une version compacte de la modale PPS de
+    // index.html (import, conversion PDF→image, aperçu, suppression),
+    // dans ce module indépendant qui ne doit jamais dépendre du chargement
+    // d'index.html (même contrainte que le reste de ce fichier — cf.
+    // commentaire en tête sur creerColonneRouletteOnboarding). Optionnel :
+    // ne bloque jamais la validation de l'onboarding, comme l'ancien champ
+    // texte qu'il remplace. État tenu en closure (ppsDocumentState),
+    // transmis à terminer() plus bas comme les autres champs.
+    let ppsDocumentState = (profilExistant.ppsDocument && profilExistant.ppsDocument.data)
+      ? profilExistant.ppsDocument
+      : null;
+    let _pdfJsModuleOnboarding = null;
+    async function chargerPdfJsOnboarding() {
+      if (_pdfJsModuleOnboarding) return _pdfJsModuleOnboarding;
+      const mod = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs");
+      mod.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs";
+      _pdfJsModuleOnboarding = mod;
+      return _pdfJsModuleOnboarding;
+    }
+    // Conversion PDF → image (même logique que convertirPdfPpsEnImage
+    // dans index.html, cf. son commentaire pour le détail du raisonnement :
+    // le rendu PDF inline n'est pas fiable sur mobile/TWA, donc conversion
+    // systématique en image dès l'import plutôt qu'un stockage du PDF brut).
+    async function convertirPdfEnImageOnboarding(dataUrl) {
+      const pdfjs = await chargerPdfJsOnboarding();
+      const base64 = dataUrl.split(",")[1];
+      const binaire = atob(base64);
+      const octets = new Uint8Array(binaire.length);
+      for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+      const doc = await pdfjs.getDocument({ data: octets }).promise;
+      const page = await doc.getPage(1);
+      const viewportBase = page.getViewport({ scale: 1 });
+      const echelle = Math.min(2, 1600 / Math.max(viewportBase.width, viewportBase.height));
+      const viewport = page.getViewport({ scale: echelle });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas.toDataURL("image/jpeg", 0.85);
+    }
+    function rafraichirZonePps() {
+      const zone = hote.querySelector('#onb-pps-zone');
+      if (!zone) return;
+      zone.innerHTML = '';
+      if (ppsDocumentState?.data) {
+        const img = document.createElement('img');
+        img.className = 'pps-apercu';
+        img.src = ppsDocumentState.data;
+        zone.appendChild(img);
+        const btnSupprimer = document.createElement('button');
+        btnSupprimer.type = 'button';
+        btnSupprimer.className = 'pps-btn-secondaire-petit';
+        btnSupprimer.textContent = '🗑️ Supprimer';
+        btnSupprimer.addEventListener('click', () => {
+          ppsDocumentState = null;
+          rafraichirZonePps();
+        });
+        zone.appendChild(btnSupprimer);
+      } else {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*,application/pdf';
+        fileInput.id = 'onb-pps-file-input';
+        fileInput.style.fontSize = '0.85rem';
+        zone.appendChild(fileInput);
+        const statutEl = document.createElement('div');
+        statutEl.className = 'pps-statut';
+        zone.appendChild(statutEl);
+        fileInput.addEventListener('change', async () => {
+          const fichier = fileInput.files?.[0];
+          if (!fichier) return;
+          if (fichier.size > 15 * 1024 * 1024) {
+            statutEl.textContent = 'Fichier trop volumineux (max 15 Mo).';
+            return;
+          }
+          statutEl.textContent = '⏳ Import en cours...';
+          try {
+            if (fichier.type === 'application/pdf') {
+              const dataUrlBrut = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Lecture du fichier échouée'));
+                reader.readAsDataURL(fichier);
+              });
+              const imageJpeg = await convertirPdfEnImageOnboarding(dataUrlBrut);
+              ppsDocumentState = { data: imageJpeg, type: 'image/jpeg', nomFichier: fichier.name };
+            } else {
+              const data = await new Promise((resolve, reject) => {
+                const img = new Image();
+                const readerUrl = URL.createObjectURL(fichier);
+                img.onload = () => {
+                  const maxDim = 1600;
+                  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                  const canvas = document.createElement('canvas');
+                  canvas.width = Math.round(img.width * scale);
+                  canvas.height = Math.round(img.height * scale);
+                  const ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                  URL.revokeObjectURL(readerUrl);
+                  resolve(canvas.toDataURL('image/jpeg', 0.82));
+                };
+                img.onerror = () => { URL.revokeObjectURL(readerUrl); reject(new Error('Image illisible')); };
+                img.src = readerUrl;
+              });
+              ppsDocumentState = { data, type: 'image/jpeg', nomFichier: fichier.name };
+            }
+            rafraichirZonePps();
+          } catch (err) {
+            console.error('Erreur import PPS onboarding:', err);
+            statutEl.textContent = "Échec de l'import : " + (err.message || 'erreur inconnue');
+          }
+        });
+      }
+    }
+    rafraichirZonePps();
 
     // Rendu des 4 lignes de record (5K/10K/Semi/Marathon) — roulette h/m/s
     // avec boutons +/- (31/07/2026, déployé depuis Réglages) + champ date
@@ -1089,7 +1223,6 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         const dateNaissance = hote.querySelector('#onb-date-naissance').value || profilExistant.dateNaissance || null;
         const poids = parseInt(hote.querySelector('#onb-poids').value) || profilExistant.poids || null;
         const taille = parseInt(hote.querySelector('#onb-taille').value) || profilExistant.taille || null;
-        const pps = hote.querySelector('#onb-pps').value.trim() || profilExistant.pps || '';
         const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
         const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
         const records = { ...(profilExistant.records || {}) };
@@ -1115,12 +1248,12 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
           dateNaissance,
           poids,
           taille,
-          pps,
           fcMax: fcmax,
           fcRepos: fcrepos,
           sexe: sexeChoisi,
           niveau: niveauChoisi,
-          records
+          records,
+          ppsDocument: ppsDocumentState,
         });
       }
 
