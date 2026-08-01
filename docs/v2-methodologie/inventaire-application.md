@@ -275,9 +275,15 @@ indirecte (`decision_event_id`, pas de `user_id` direct sur la seconde
 table). Réinjection d'un utilisateur dont le compte Auth a été supprimé :
 recréation automatique avec le même `id` (nécessaire pour que les clés
 étrangères de l'export pointent vers le bon utilisateur) avant réinjection
-des données. Portée strictement limitée à la réparation d'une perte
-accidentelle — jamais un contournement d'une suppression de compte
-volontaire au titre du droit à l'effacement (RGPD art. 17).
+des données. Réinjection depuis un export **global** : champ e-mail
+optionnel pour isoler un seul utilisateur (filtrage côté serveur du JSON
+déjà chargé, réutilise la même logique de rattachement que l'export
+ciblé) — bloque explicitement si aucune ligne ne correspond à cet e-mail
+dans l'export fourni, plutôt qu'un upsert silencieux de 0 ligne. Sans
+objet sur un export déjà ciblé (déjà scoped à une seule personne).
+Portée strictement limitée à la réparation d'une perte accidentelle —
+jamais un contournement d'une suppression de compte volontaire au titre
+du droit à l'effacement (RGPD art. 17).
 
 **`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
 "coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
