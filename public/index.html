@@ -320,6 +320,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         profilBrut || {},
         complement
       );
+      // Dérive anneeNaissance depuis dateNaissance (01/08/2026) — même
+      // logique que renderSettings() dans ce fichier (cf. ligne ~8134) :
+      // depuis la refonte de l'onboarding en 4 pages, celui-ci résout
+      // dateNaissance mais plus anneeNaissance directement. Sans cette
+      // dérivation, computeFcMaxTanaka/calculerCategorieAgeFFA (qui ne
+      // consomment que l'année) resteraient cassés pour tout compte créé
+      // via l'onboarding.
+      profilMisAJour.anneeNaissance = profilMisAJour.dateNaissance ? parseInt(profilMisAJour.dateNaissance.slice(0,4)) : (profilMisAJour.anneeNaissance || null);
       localStorage.setItem('lk_profil_coureur', JSON.stringify(profilMisAJour));
       // save() n'est pas encore défini à ce stade du chargement (plus loin
       // dans ce fichier) — on reproduit ici le même geste de sync que
