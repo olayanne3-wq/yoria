@@ -32,10 +32,6 @@
 
 const TABLES_EXCLUES = [];
 
-// Colonnes à tester, dans cet ordre de préférence, pour rattacher une
-// ligne d'une table à un utilisateur lors d'un export/réinjection CIBLÉ.
-// decision_outcomes n'a AUCUNE des deux (seulement decision_event_id) —
-// traité séparément via la chaîne indirecte, cf. exporterDecisions().
 const COLONNES_USER = ['user_id', 'id_utilisateur'];
 
 const json = (response, status, payload) =>
@@ -60,7 +56,7 @@ async function supabaseRequest(config, path, options = {}) {
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
-    // La réponse reste du texte (ex. erreur HTML improbable).
+    // La réponse reste du texte.
   }
 
   if (!response.ok) {
@@ -76,22 +72,7 @@ async function supabaseRequest(config, path, options = {}) {
   return data;
 }
 
-// Exécute une requête SQL brute via la fonction RPC générique n'existe
-// pas par défaut sur Supabase — on utilise donc information_schema via
-// PostgREST, qui EST exposé nativement en lecture (schéma information_schema
-// n'est pas exposé par défaut par PostgREST : on interroge donc plutôt
-// pg_catalog via une requête SQL exécutée par la Management API n'est pas
-// disponible côté clé service_role REST. Solution retenue : Supabase
-// expose une vue "pg_tables" accessible uniquement en SQL direct, donc on
-// passe par le endpoint SQL de la Management API si disponible, sinon on
-// utilise le endpoint standard /rest/v1/ avec introspection OpenAPI (qui,
-// lui, EST exposé par PostgREST par défaut sur la racine /rest/v1/).
 async function listerTables(config) {
-  // PostgREST expose sa propre spec OpenAPI à la racine /rest/v1/ — ses
-  // clés de premier niveau sous "definitions" (ou "paths" selon version)
-  // sont exactement les tables/vues du schéma exposé (public). C'est la
-  // méthode fiable et déjà accessible avec la clé service_role, sans
-  // extension ni fonction SQL supplémentaire à créer côté base.
   const response = await fetch(`${config.supabaseUrl}/rest/v1/`, {
     headers: {
       apikey: config.supabaseKey,
@@ -122,9 +103,6 @@ async function exporterTableComplete(config, table) {
     );
     return { table, rows: Array.isArray(rows) ? rows : [], erreur: null };
   } catch (error) {
-    // Best-effort par table — une table illisible (ex. vue sans SELECT
-    // simple) ne doit pas faire échouer l'export entier, elle est juste
-    // signalée dans le résultat pour que Laurent le voie.
     return { table, rows: [], erreur: error.message };
   }
 }
@@ -151,22 +129,13 @@ async function exportGlobal(config) {
   };
 }
 
-// Filtre les lignes d'une table déjà entièrement chargée pour ne garder
-// que celles rattachées à un utilisateur donné, en essayant chaque
-// colonne candidate de COLONNES_USER. Une table sans aucune de ces
-// colonnes est ignorée pour l'export ciblé (elle n'a pas de notion
-// d'utilisateur — ex. beta_testers est gardée à part, cf. plus bas).
 function filtrerLignesUtilisateur(rows, userId) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const colonne = COLONNES_USER.find((c) => Object.prototype.hasOwnProperty.call(rows[0], c));
-  if (!colonne) return null; // signale "table sans notion d'utilisateur"
+  if (!colonne) return null;
   return rows.filter((row) => row[colonne] === userId);
 }
 
-// decision_outcomes n'a pas de user_id direct (cf. inventaire §5) —
-// remonte la chaîne decision_outcomes.decision_event_id ->
-// decision_events.id -> decision_events.user_id, exactement comme le fait
-// déjà api/beta-admin.js pour la lecture en Comptes.
 async function exporterDecisions(config, userId) {
   const events = await supabaseRequest(
     config,
@@ -189,10 +158,6 @@ async function exporterDecisions(config, userId) {
 }
 
 async function exportUtilisateur(config, email) {
-  // Retrouve l'utilisateur Auth par email — même méthode que le module
-  // "Comptes" existant (cf. api/beta-admin.js, search_user_plan) :
-  // filtrage peu fiable de l'API Admin par email, donc on liste tout et
-  // on filtre côté serveur. Volume de comptes faible en bêta.
   const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
     headers: {
       apikey: config.supabaseKey,
@@ -215,11 +180,6 @@ async function exportUtilisateur(config, email) {
   }
 
   const tables = await listerTables(config);
-  // decision_events/decision_outcomes traités séparément (chaîne
-  // indirecte) — on les exclut de la boucle générique pour éviter un
-  // double export ou un export incomplet (decision_outcomes n'a pas de
-  // colonne utilisateur directe, la boucle générique le raterait de toute
-  // façon, mais autant être explicite).
   const tablesGeneriques = tables.filter(
     (t) => t !== 'decision_events' && t !== 'decision_outcomes',
   );
@@ -236,18 +196,12 @@ async function exportUtilisateur(config, email) {
     }
     const filtrees = filtrerLignesUtilisateur(rows, user.id);
     if (filtrees === null) {
-      // Table sans colonne user_id/id_utilisateur repérable — ex. table
-      // globale sans notion d'utilisateur (beta_testers utilise "email",
-      // pas un user_id Auth — traité séparément ci-dessous par email).
       tablesSansNotionUtilisateur.push(table);
       continue;
     }
     donnees[table] = filtrees;
   }
 
-  // beta_testers n'a pas de user_id (candidature avant création de
-  // compte) — rattachement par email plutôt que par id, cas particulier
-  // documenté explicitement plutôt que deviné silencieusement.
   if (tablesSansNotionUtilisateur.includes('beta_testers')) {
     try {
       const candidats = await supabaseRequest(
@@ -279,47 +233,14 @@ async function exportUtilisateur(config, email) {
   };
 }
 
-// Réinjection — upsert (ON CONFLICT sur la clé primaire "id" standard,
-// écrase la ligne existante si elle existe déjà) plutôt qu'un simple
-// INSERT, cf. discussion de conception du 01/08/2026 : le scénario réel
-// est "remettre les bonnes données à la place des mauvaises", pas
-// "refuser si déjà présent".
-//
-// Ordre de réinjection : d'abord recréer l'utilisateur Auth s'il
-// n'existe plus (même id — nécessaire pour que les FK des autres tables
-// pointent vers un utilisateur existant), PUIS les tables dans un ordre
-// qui respecte les dépendances connues : decision_events avant
-// decision_outcomes (FK directe), tout le reste sans ordre garanti
-// (pas de dépendances FK connues entre plans_actif/plan_donnees/
-// abonnements/signalements au niveau du schéma applicatif actuel,
-// cf. inventaire §5 — à revoir si une contrainte FK est ajoutée entre
-// elles un jour).
 const ORDRE_REINJECTION = ['decision_events', 'decision_outcomes'];
 
 function trierTablesPourReinjection(nomsTables) {
   const dansOrdre = ORDRE_REINJECTION.filter((t) => nomsTables.includes(t));
   const reste = nomsTables.filter((t) => !ORDRE_REINJECTION.includes(t));
-  // Bug corrigé le 01/08/2026 : le .filter précédent EXCLUAIT beta_testers
-  // de la liste sans jamais le réintégrer ailleurs — il n'était donc
-  // jamais réinjecté. beta_testers reste dans "reste", sa position n'a
-  // pas d'importance particulière (pas de dépendance FK connue).
   return [...reste, ...dansOrdre];
 }
 
-// Garde-fou ajouté le 01/08/2026 suite à un incident réel : le champ id
-// manuel peut contenir une faute de frappe ou correspondre à un mauvais
-// utilisateur — recréer un compte Auth avec un id qui ne correspond à
-// AUCUNE donnée réelle produit un compte fantôme vide (aucun plan, aucun
-// profil), qui trompe silencieusement Laurent en donnant l'impression que
-// la réinjection a réussi alors qu'aucune donnée n'est rattachable.
-//
-// Principe : l'id et l'email ne sont pas la même clé (user_id est la clé
-// de vérité pour les données, email est la clé de recherche humaine) —
-// rien ne garantit qu'ils forment la bonne paire tant qu'on ne l'a pas
-// vérifié contre une donnée déjà connue. On exige donc qu'au moins une
-// ligne des données à réinjecter porte bien cet id — la preuve que ce
-// n'est pas un id inventé, mais celui effectivement associé aux données
-// qu'on s'apprête à réinjecter.
 function verifierCoherenceIdDonnees(id, donnees) {
   for (const rows of Object.values(donnees || {})) {
     if (!Array.isArray(rows)) continue;
@@ -351,13 +272,6 @@ async function recreerUtilisateurSiAbsent(config, utilisateur, donnees) {
     throw err;
   }
 
-  // L'Admin API Supabase permet de spécifier explicitement l'id à la
-  // création (paramètre "id" du body) — nécessaire pour que toutes les
-  // FK de l'export pointent vers le bon utilisateur recréé. Un mot de
-  // passe aléatoire est généré (l'utilisateur devra passer par
-  // "mot de passe oublié" pour se reconnecter — pas d'email de bienvenue
-  // envoyé automatiquement ici, volontairement, pour laisser Laurent
-  // décider s'il prévient le testeur).
   const motDePasseTemporaire = `Reinject-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
   const createResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
@@ -402,36 +316,7 @@ async function upsertLignes(config, table, rows) {
   }
 }
 
-// Filtre un export GLOBAL déjà chargé en mémoire pour ne garder que les
-// lignes d'un utilisateur précis, avant réinjection — ajouté le 01/08/2026
-// suite à un besoin réel de Laurent : réinjecter un seul coureur à partir
-// d'un gros export global déjà téléchargé, sans repasser par un export
-// ciblé séparé. Réutilise EXACTEMENT filtrerLignesUtilisateur() sur les
-// données déjà en mémoire (aucun nouvel appel Supabase nécessaire pour
-// les LIGNES, l'export global les contient déjà toutes) — mais il faut
-// d'abord connaître l'`user_id` Auth correspondant à l'email fourni.
-//
-// Cas réel rencontré le 01/08/2026 : le compte a déjà été supprimé
-// (scénario même de test backup/restore) — l'API Admin ne le retrouve
-// plus par email. Repli en cascade pour trouver l'id quand même :
-//   1. API Admin Auth (cas normal, compte encore actif)
-//   2. Table `abonnements` dans l'EXPORT (a un champ email — cf.
-//      upsertAbonnementGratuit dans beta-admin.js), si l'utilisateur a
-//      un abonnement enregistré
-//   3. `userId` fourni explicitement en paramètre (Laurent peut le lire
-//      à l'œil dans le fichier JSON — n'importe quelle ligne de cet
-//      utilisateur porte son `user_id`) — dernier recours si les deux
-//      premiers échouent, jamais deviné silencieusement.
 async function retrouverUserIdParEmail(config, exportData, email, userIdManuel) {
-  // L'id manuel, quand fourni, a TOUJOURS priorité — corrige un cas réel
-  // rencontré le 01/08/2026 : une tentative précédente avait recréé le
-  // compte Auth avec un id incorrect (erreur de saisie), et les tentatives
-  // suivantes retrouvaient ce compte existant (donc son mauvais id) avant
-  // même de regarder le champ manuel, qui n'était qu'un dernier recours.
-  // Puisque l'id manuel est lu directement par Laurent dans le fichier
-  // JSON exporté, c'est la source la plus fiable quand elle est fournie —
-  // elle ne doit jamais être court-circuitée par un état Auth qui peut
-  // lui-même être le résultat d'une correction ratée.
   if (userIdManuel) return userIdManuel;
 
   const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
@@ -473,7 +358,6 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
 
   for (const [table, rows] of Object.entries(exportData.donnees || {})) {
     if (table === 'beta_testers') {
-      // Pas de user_id — rattachement par email, cf. exportUtilisateur().
       const lignes = (Array.isArray(rows) ? rows : []).filter(
         (row) => (row.email || '').toLowerCase() === email.toLowerCase(),
       );
@@ -486,24 +370,14 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
     }
 
     if (table === 'decision_outcomes') {
-      // Pas de user_id direct — filtré après coup une fois
-      // decision_events connu, cf. bloc ci-dessous.
       continue;
     }
 
     const filtrees = filtrerLignesUtilisateur(rows, userId);
     if (filtrees === null) {
-      // Table sans colonne utilisateur repérable — ignorée pour ce
-      // filtrage ciblé, comme pour l'export ciblé (cf.
-      // filtrerLignesUtilisateur).
       diagnosticParTable[table] = { avant: (rows || []).length, apres: null, mode: 'sans_colonne_utilisateur' };
       continue;
     }
-    // Échantillon des user_id réellement présents dans cette table (les 3
-    // premiers distincts), pour comparer visuellement avec le userId
-    // utilisé si le filtrage ne trouve rien — diagnostic ajouté le
-    // 01/08/2026 suite à un cas où le filtrage ne matchait aucune ligne
-    // sans cause évidente à la relecture du code.
     const echantillonUserIds = [...new Set((rows || []).map((r) => r.user_id).filter(Boolean))].slice(0, 3);
     diagnosticParTable[table] = { avant: (rows || []).length, apres: filtrees.length, mode: 'user_id', echantillonUserIds };
     if (filtrees.length > 0) {
@@ -512,8 +386,6 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email, user
     }
   }
 
-  // decision_outcomes filtré via la chaîne indirecte, à partir des
-  // decision_events déjà retenus ci-dessus pour cet utilisateur.
   if (Array.isArray(exportData.donnees?.decision_outcomes)) {
     const eventIds = new Set((donneesFiltrees.decision_events || []).map((e) => e.id));
     const outcomesFiltres = exportData.donnees.decision_outcomes.filter((o) =>
@@ -557,11 +429,6 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
 
   let exportData = exportDataBrut;
 
-  // Filtrage optionnel d'un export GLOBAL par email avant réinjection —
-  // n'a de sens que sur un export_global ; un export_utilisateur est déjà
-  // scoped à une seule personne, filtrer dessus n'apporterait rien (et
-  // risquerait de filtrer sur le mauvais champ si l'email ne correspond
-  // pas exactement à l'utilisateur déjà ciblé par l'export).
   if (filtrerEmail && exportDataBrut.type === 'export_global') {
     exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail, userIdManuel);
     diagnostic.tablesApresFiltrage = Object.keys(exportData.donnees).length;
@@ -589,6 +456,70 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
   return rapport;
 }
 
+// ============================================================
+// Diagnostic des cascades ON DELETE (01/08/2026)
+// ============================================================
+// api/delete-account.js dépend entièrement de ce que chaque table
+// applicative liée à user_id ait ON DELETE CASCADE vers auth.users —
+// sinon supprimer un compte échoue en erreur 23503 (violation de
+// contrainte de clé étrangère). Déjà arrivé deux fois (decision_events,
+// badges_debloques) avant correction au cas par cas. Ce diagnostic liste
+// PROACTIVEMENT ce qui manque, avec le SQL de correction prêt à copier —
+// à lancer manuellement avant chaque mise en production plutôt qu'à
+// chaque table ajoutée (cf. discussion de conception du 01/08/2026), en
+// filet de rattrapage : la vérification systématique au moment de créer
+// une table reste la responsabilité principale, cf. inventaire §15.
+//
+// Nécessite les fonctions RPC diagnostiquer_cascades_user_id() et
+// diagnostiquer_colonnes_user_id_sans_fk() côté Supabase — cf.
+// docs/v2-methodologie/diagnostic-cascades-user-id.sql, à exécuter UNE
+// FOIS dans le SQL Editor avant la première utilisation. Si ces
+// fonctions RPC n'existent pas encore, l'appel échoue avec un message
+// d'erreur PostgREST explicite (fonction introuvable) — traduit pour
+// l'utilisateur dans le handler ci-dessous plutôt que laissé cryptique.
+async function diagnostiquerCascades(config) {
+  const [cascadesRes, sansFkRes] = await Promise.all([
+    supabaseRequest(config, 'rpc/diagnostiquer_cascades_user_id', { method: 'POST', body: JSON.stringify({}) }),
+    supabaseRequest(config, 'rpc/diagnostiquer_colonnes_user_id_sans_fk', { method: 'POST', body: JSON.stringify({}) }),
+  ]);
+
+  const cascades = Array.isArray(cascadesRes) ? cascadesRes : [];
+  const sansFk = Array.isArray(sansFkRes) ? sansFkRes : [];
+
+  const avecCascadeManquante = cascades.filter((c) => c.delete_rule !== 'CASCADE');
+  const avecCascadeOk = cascades.filter((c) => c.delete_rule === 'CASCADE');
+
+  const genererSqlCorrection = (row) =>
+    `ALTER TABLE public.${row.table_name} DROP CONSTRAINT ${row.constraint_name};\n` +
+    `ALTER TABLE public.${row.table_name} ADD CONSTRAINT ${row.constraint_name} ` +
+    `FOREIGN KEY (${row.column_name}) REFERENCES public.${row.referenced_table}(id) ON DELETE CASCADE;`;
+
+  const genererSqlAjoutFk = (row) =>
+    `-- Aucune contrainte de clé étrangère du tout sur ${row.table_name}.${row.column_name}.\n` +
+    `-- Vérifie d'abord qu'il s'agit bien d'un vrai user_id vers auth.users avant d'exécuter :\n` +
+    `ALTER TABLE public.${row.table_name} ADD CONSTRAINT ${row.table_name}_${row.column_name}_fkey ` +
+    `FOREIGN KEY (${row.column_name}) REFERENCES auth.users(id) ON DELETE CASCADE;`;
+
+  return {
+    genereLe: new Date().toISOString(),
+    aRisque: [
+      ...avecCascadeManquante.map((row) => ({
+        table: row.table_name,
+        colonne: row.column_name,
+        probleme: `FK vers ${row.referenced_table}, règle actuelle : ${row.delete_rule} (pas CASCADE)`,
+        sql: genererSqlCorrection(row),
+      })),
+      ...sansFk.map((row) => ({
+        table: row.table_name,
+        colonne: row.column_name,
+        probleme: 'Aucune contrainte de clé étrangère du tout',
+        sql: genererSqlAjoutFk(row),
+      })),
+    ],
+    ok: avecCascadeOk.map((row) => ({ table: row.table_name, colonne: row.column_name })),
+  };
+}
+
 export default async function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Frame-Options', 'DENY');
@@ -605,11 +536,6 @@ export default async function handler(request, response) {
     });
   }
 
-  // Auth — même cookie/token que api/beta-admin.js. Réimplémentation
-  // minimale volontaire (pas d'import croisé entre deux fonctions
-  // serverless Vercel, chacune doit rester déployable indépendamment) —
-  // garder ces deux blocs synchronisés si le format du cookie change un
-  // jour dans beta-admin.js.
   const crypto = await import('node:crypto');
   const COOKIE = 'yoria_beta_admin';
 
@@ -646,7 +572,6 @@ export default async function handler(request, response) {
   }
 
   if (request.method === 'GET') {
-    // Export global — GET simple, pas de body nécessaire.
     try {
       const result = await exportGlobal(config);
       return json(response, 200, result);
@@ -695,6 +620,22 @@ export default async function handler(request, response) {
           besoinUserIdManuel: error.besoinUserIdManuel || false,
           diagnosticParTable: error.diagnosticParTable || null,
           userIdUtilise: error.userId || null,
+        });
+      }
+    }
+
+    if (action === 'diagnostic_cascades') {
+      try {
+        const result = await diagnostiquerCascades(config);
+        return json(response, 200, result);
+      } catch (error) {
+        console.error('[backup] Erreur diagnostic cascades :', error);
+        const messageFonctionManquante = /function .*diagnostiquer_.* does not exist/i.test(error.message || '')
+          || error.data?.message?.includes('diagnostiquer_');
+        return json(response, error.status || 500, {
+          message: messageFonctionManquante
+            ? "Les fonctions SQL de diagnostic n'existent pas encore côté Supabase — exécute d'abord docs/v2-methodologie/diagnostic-cascades-user-id.sql dans le SQL Editor (à faire une seule fois)."
+            : (error.message || "Le diagnostic n'a pas pu être généré."),
         });
       }
     }
