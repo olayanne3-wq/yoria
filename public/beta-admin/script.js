@@ -230,10 +230,24 @@ $("#backup-reinject-btn").onclick = async () => {
     return;
   }
 
+  const filtrerEmail = $("#backup-reinject-email").value.trim();
+
+  if (filtrerEmail && exportData.type !== "export_global") {
+    afficherStatutBackup("#backup-reinject-status", "error", "Le filtrage par e-mail ne s'applique qu'à un export global — ce fichier est déjà un export ciblé sur un seul utilisateur, laisse le champ vide.");
+    return;
+  }
+
   const nbTables = exportData.donnees ? Object.keys(exportData.donnees).length : 0;
-  const cible = exportData.type === "export_utilisateur" ? `l'utilisateur ${exportData.utilisateur?.email || "inconnu"}` : "TOUTES les données de la base";
+  let cible;
+  if (filtrerEmail) {
+    cible = `UNIQUEMENT l'utilisateur ${filtrerEmail} (isolé depuis cet export global)`;
+  } else if (exportData.type === "export_utilisateur") {
+    cible = `l'utilisateur ${exportData.utilisateur?.email || "inconnu"}`;
+  } else {
+    cible = "TOUTES les données de la base";
+  }
   const confirmation = confirm(
-    `Réinjecter ce fichier va écraser (upsert) les lignes existantes pour ${cible}, sur ${nbTables} table(s).\n\nCette action n'est pas réversible facilement.\n\nConfirmer la réinjection ?`,
+    `Réinjecter ce fichier va écraser (upsert) les lignes existantes pour ${cible}, sur ${nbTables} table(s) présentes dans le fichier.\n\nCette action n'est pas réversible facilement.\n\nConfirmer la réinjection ?`,
   );
   if (!confirmation) return;
 
@@ -245,8 +259,8 @@ $("#backup-reinject-btn").onclick = async () => {
   $("#backup-reinject-report").innerHTML = "";
 
   try {
-    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "reinject", exportData }) });
-    afficherStatutBackup("#backup-reinject-status", "", "Réinjection terminée.");
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "reinject", exportData, filtrerEmail: filtrerEmail || undefined }) });
+    afficherStatutBackup("#backup-reinject-status", "", filtrerEmail ? `Réinjection terminée pour ${filtrerEmail} uniquement.` : "Réinjection terminée.");
     $("#backup-reinject-report").innerHTML = rapportReinjectionHtml(result.rapport);
   } catch (e) {
     afficherStatutBackup("#backup-reinject-status", "error", e.message);
@@ -259,6 +273,9 @@ $("#backup-reinject-btn").onclick = async () => {
 function rapportReinjectionHtml(rapport) {
   if (!rapport) return "";
   let html = "";
+  if (rapport.filtrePar) {
+    html += `<p><small>🎯 Filtré sur : <strong>${esc(rapport.filtrePar)}</strong></small></p>`;
+  }
   if (rapport.recreationCompte) {
     html += `<p><small>${rapport.recreationCompte.recree ? "✅ Compte auth recréé (l'utilisateur devra réinitialiser son mot de passe)." : "Compte auth déjà existant, non recréé."}</small></p>`;
   }
