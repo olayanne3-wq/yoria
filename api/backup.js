@@ -299,9 +299,11 @@ const ORDRE_REINJECTION = ['decision_events', 'decision_outcomes'];
 function trierTablesPourReinjection(nomsTables) {
   const dansOrdre = ORDRE_REINJECTION.filter((t) => nomsTables.includes(t));
   const reste = nomsTables.filter((t) => !ORDRE_REINJECTION.includes(t));
-  return [...reste.filter((t) => t !== 'beta_testers'), ...dansOrdre];
-  // beta_testers réinjecté avant tout le reste n'a pas d'intérêt
-  // particulier ; laissé dans "reste", ordre non significatif ici.
+  // Bug corrigé le 01/08/2026 : le .filter précédent EXCLUAIT beta_testers
+  // de la liste sans jamais le réintégrer ailleurs — il n'était donc
+  // jamais réinjecté. beta_testers reste dans "reste", sa position n'a
+  // pas d'importance particulière (pas de dépendance FK connue).
+  return [...reste, ...dansOrdre];
 }
 
 async function recreerUtilisateurSiAbsent(config, utilisateur) {
@@ -497,6 +499,10 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
     throw err;
   }
 
+  const diagnostic = {
+    tablesDansFichierSource: Object.keys(exportDataBrut.donnees).length,
+  };
+
   let exportData = exportDataBrut;
 
   // Filtrage optionnel d'un export GLOBAL par email avant réinjection —
@@ -506,16 +512,19 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
   // pas exactement à l'utilisateur déjà ciblé par l'export).
   if (filtrerEmail && exportDataBrut.type === 'export_global') {
     exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail, userIdManuel);
+    diagnostic.tablesApresFiltrage = Object.keys(exportData.donnees).length;
   }
 
-  const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null };
+  const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null, diagnostic };
 
   if (exportData.type === 'export_utilisateur' && exportData.utilisateur) {
     rapport.recreationCompte = await recreerUtilisateurSiAbsent(config, exportData.utilisateur);
   }
 
   const nomsTables = Object.keys(exportData.donnees);
+  diagnostic.nomsTablesAvantTri = nomsTables;
   const ordre = trierTablesPourReinjection(nomsTables);
+  diagnostic.nomsTablesApresTri = ordre;
 
   for (const table of ordre) {
     const rows = exportData.donnees[table];
