@@ -148,6 +148,10 @@
             Limiter à un seul utilisateur <small>(optionnel — uniquement pour un export global ; laisser vide pour tout réinjecter)</small>
             <input id="backup-reinject-email" type="search" placeholder="Adresse e-mail à isoler dans cet export">
           </label>
+          <label id="backup-reinject-userid-wrap" style="display:none;margin-top:10px;">
+            Identifiant utilisateur <small>(le compte a été supprimé et n'a pas d'abonnement enregistré — colle son "user_id", visible dans une ligne de l'export JSON pour cet utilisateur)</small>
+            <input id="backup-reinject-userid" type="text" placeholder="uuid, ex. 3f2e1a9c-...">
+          </label>
           <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
           <div id="backup-reinject-status" class="notice" hidden></div>
           <div id="backup-reinject-report"></div>
