@@ -27,7 +27,10 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.30", title:"Réglages réorganisés en accordéons, roulettes de saisie améliorées", current:true, notes:[
+      { ver:"v2.31", title:"Sauvegarde et réinjection de données (admin bêta)", current:true, notes:[
+        "💾 Nouvel outil interne d'export/réinjection de données, accessible depuis l'administration bêta — filet de sécurité tant que le plan Supabase reste gratuit (aucune sauvegarde automatique incluse à ce niveau)",
+      ]},
+      { ver:"v2.30", title:"Réglages réorganisés en accordéons, roulettes de saisie améliorées", current:false, notes:[
         "📂 Réglages, Stats et Course sont désormais organisés en sections repliables, plus faciles à parcourir",
         "🏅 Records personnels : présentation plus compacte, avec validation explicite (bouton ✓) plutôt qu'un enregistrement automatique",
         "🎡 Nouveaux boutons +/- sur les roulettes de saisie de temps, en plus du geste de défilement habituel — disponibles sur les records personnels, le temps de référence, l'objectif et le volume hebdomadaire du wizard",
