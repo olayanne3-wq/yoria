@@ -8729,11 +8729,13 @@ function renderSettings() {
     // produire en pratique).
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
+      console.log('[DIAG-roulette]', idPrefix, 'tentative', tentative, 'conteneurTest existe:', !!conteneurTest, 'offsetParent:', conteneurTest?.offsetParent);
       if (conteneurTest && conteneurTest.offsetParent !== null) {
+        console.log('[DIAG-roulette]', idPrefix, '-> APPEL initRouletteHMS');
         window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
         return;
       }
-      if (tentative > 120) return; // ~2s, abandon — cas anormal
+      if (tentative > 120) { console.log('[DIAG-roulette]', idPrefix, '-> ABANDON après 120 tentatives'); return; }
       setTimeout(() => attendreEtInitialiser((tentative ?? 0) + 1), 16);
     })(0);
 
@@ -9315,6 +9317,7 @@ function renderSettings() {
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
       recordsSection
     ], () => {
+      console.log('[DIAG-accordeon] onOuverture Records appelé, roulettesActivesReglages:', roulettesActivesReglages);
       // Repositionne les roulettes de records à l'ouverture du groupe
       // (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats) —
       // au moment de la construction de recordsSection, le groupe était
@@ -9327,6 +9330,7 @@ function renderSettings() {
       // maintenant que le conteneur est réellement visible.
       ["5K","10K","Semi","Marathon"].forEach((dist) => {
         const roulette = roulettesActivesReglages["rec-temps-"+dist];
+        console.log('[DIAG-accordeon]', dist, 'roulette trouvée:', !!roulette);
         if (!roulette) return;
         roulette.h?.definirValeur(roulette.h.valeur(), false);
         roulette.m?.definirValeur(roulette.m.valeur(), false);
