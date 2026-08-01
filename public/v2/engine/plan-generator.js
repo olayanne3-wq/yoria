@@ -1686,8 +1686,28 @@ export function generatePlan(profil, params) {
       });
 
       let kmQualiteTotal = 0;
-      const tauxAffutageSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.fractionPic ?? 1;
-      const dechargeSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.estDecharge ?? false;
+      const entreeVolumeSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale);
+      // CORRECTIF (02/08/2026, bug signalé par Laurent — message
+      // VOLUME_JOURS_INCOMPATIBLE identique quel que soit le volume
+      // saisi, même à 100km/semaine). Cause : avec semaineDepart > 1 (cf.
+      // computeVolumeProgression), volumesParSemaine ne contient
+      // AUCUNE entrée pour les semaines de Construction antérieures à la
+      // charnière — c'est voulu (l'appelant ne conserve de toute façon
+      // que les semaines >= charnière, cf. appliquerChangementVolume
+      // dans v2/index.html), mais cette boucle continue de parcourir
+      // TOUTES les semaines depuis la semaine 1 du plan, sans exception.
+      // volumeCibleSemaine retombait donc à 0 pour ces semaines
+      // fantômes, ce qui les faisait passer "sous le seuil" à coup sûr
+      // et déclenchait le garde-fou peu importe le volume réellement
+      // saisi. Une semaine sans entrée dans volumesParSemaine n'est pas
+      // une vraie semaine générée par CETTE progression — elle est
+      // explicitement exclue des statistiques du garde-fou (comme déjà
+      // le cas pour les semaines de décharge/Affûtage) et son contenu
+      // EF/longue garde son volume nul plutôt que d'être recalculé avec
+      // une valeur invalide.
+      const semaineHorsProgression = entreeVolumeSemaine === undefined;
+      const tauxAffutageSemaine = entreeVolumeSemaine?.fractionPic ?? 1;
+      const dechargeSemaine = entreeVolumeSemaine?.estDecharge ?? false;
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'qualite') {
           const { sousType, contenu, kmEstime, structureIntervalles } = genererContenuQualite({
@@ -1711,7 +1731,7 @@ export function generatePlan(profil, params) {
         }
       }
 
-      const volumeCibleSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.volumeKm ?? 0;
+      const volumeCibleSemaine = entreeVolumeSemaine?.volumeKm ?? 0;
       const { warnings: warningsRepartition, kmLongue, kmParEF, nbEF, aLongue } = recalculerRepartitionEFLongue({
         assignment,
         volumeCibleKm: volumeCibleSemaine,
@@ -1721,14 +1741,14 @@ export function generatePlan(profil, params) {
         alluresSec: allSeconds,
         nbJours: profil.joursDisponiblesHabituels.length
       });
-      if (!(phase.nom === 'Affutage' || dechargeSemaine)) {
+      if (!(phase.nom === 'Affutage' || dechargeSemaine || semaineHorsProgression)) {
         warningsRepartition.forEach(w => {
           const suffixeJour = w.jour !== undefined && w.code !== 'VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION' ? ` (jour ${w.jour})` : '';
           warningsSemaines.push({ ...w, message: `S${semaineGlobale}${suffixeJour} : ${w.message}` });
         });
       }
 
-      if (phase.nom === 'Construction' && !dechargeSemaine) {
+      if (phase.nom === 'Construction' && !dechargeSemaine && !semaineHorsProgression) {
         nbSemainesConstructionTotal++;
         const longueSousSeuil = aLongue && kmLongue < VOLUME_MIN_LONGUE_KM;
         const efSousSeuil = nbEF > 0 && kmParEF < VOLUME_MIN_EF_KM;
@@ -1738,8 +1758,8 @@ export function generatePlan(profil, params) {
       semaines.push({
         semaineNum: semaineGlobale,
         phase: phase.nom,
-        volumeCibleKm: volumesParSemaine.find(v => v.semaine === semaineGlobale)?.volumeKm ?? null,
-        estDechargeSemaine: volumesParSemaine.find(v => v.semaine === semaineGlobale)?.estDecharge ?? false,
+        volumeCibleKm: entreeVolumeSemaine?.volumeKm ?? null,
+        estDechargeSemaine: entreeVolumeSemaine?.estDecharge ?? false,
         assignment,
         warnings: warningsPlacement
       });
