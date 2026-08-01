@@ -142,7 +142,7 @@ async function backupReq(o = {}) {
   const r = await fetch(BACKUP_API, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...o });
   let j = {};
   try { j = await r.json(); } catch {}
-  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; e.besoinUserIdManuel = j.besoinUserIdManuel || false; throw e; }
   return j;
 }
 
@@ -259,11 +259,16 @@ $("#backup-reinject-btn").onclick = async () => {
   $("#backup-reinject-report").innerHTML = "";
 
   try {
-    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "reinject", exportData, filtrerEmail: filtrerEmail || undefined }) });
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "reinject", exportData, filtrerEmail: filtrerEmail || undefined, userIdManuel: $("#backup-reinject-userid").value.trim() || undefined }) });
     afficherStatutBackup("#backup-reinject-status", "", filtrerEmail ? `Réinjection terminée pour ${filtrerEmail} uniquement.` : "Réinjection terminée.");
     $("#backup-reinject-report").innerHTML = rapportReinjectionHtml(result.rapport);
   } catch (e) {
-    afficherStatutBackup("#backup-reinject-status", "error", e.message);
+    if (e.besoinUserIdManuel) {
+      $("#backup-reinject-userid-wrap").style.display = "block";
+      afficherStatutBackup("#backup-reinject-status", "error", e.message + " Renseigne-le ci-dessous puis relance.");
+    } else {
+      afficherStatutBackup("#backup-reinject-status", "error", e.message);
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = label;
