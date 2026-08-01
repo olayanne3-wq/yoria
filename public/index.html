@@ -316,7 +316,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if ((!profilBrut || !profilBrut.niveau) && !resultatPrechargement.echecChargementProfil) {
       const complement = await LkAuth.monterEcranOnboarding('ecran-auth-hote', profilBrut || {});
       const profilMisAJour = Object.assign(
-        { prenom: "", nom: "", poids: null, taille: null, fcMax: 181, pps: "", records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
+        { prenom: "", nom: "", poids: null, taille: null, fcMax: 181, pps: "", ppsDocument: null, ppsExpiration: null, records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
         profilBrut || {},
         complement
       );
@@ -1431,12 +1431,6 @@ async function chargerPdfJs() {
   return _pdfJsModule;
 }
 
-// Tentative d'extraction de la date d'expiration depuis le texte d'un PDF
-// PPS (02/08/2026, demande de Laurent). Le PPS FFA affiche toujours
-// "EXPIRE LE JJ/MM/AAAA" en haut du document (cf. gabarit Figma observé) —
-// mais rien ne garantit que ce texte soit une vraie couche de texte
-// extractible plutôt que du texte vectorisé/converti en tracés par
-// l'export ; d'où le repli silencieux vers la saisie manuelle si
 // Conversion PDF → image à l'import (02/08/2026, remplace le stockage du
 // PDF brut) — corrige un vrai problème constaté en test réel : le rendu
 // PDF via <iframe>/<embed> sur un blob URL n'a pas de lecteur PDF intégré
@@ -1444,12 +1438,17 @@ async function chargerPdfJs() {
 // viewer PDF natif) — Laurent voyait "PDF grisé + bouton Ouvrir" qui ne
 // menait nulle part. Rendu de la première page en canvas via pdf.js, puis
 // conversion JPEG — un seul chemin d'affichage (image) fiable partout,
-// réutilise directement <img> comme pour une photo importée. Au passage,
-// extraction du texte de la même page pour tenter de lire la date
-// d'expiration (repli silencieux vers saisie manuelle si non trouvée).
-// Compromis assumé : si un PPS FFA devait un jour tenir sur plusieurs
-// pages utiles, seule la première serait conservée — le gabarit observé
-// tient entièrement sur une page (photo, QR, infos).
+// réutilise directement <img> comme pour une photo importée. Compromis
+// assumé : si un PPS FFA devait un jour tenir sur plusieurs pages utiles,
+// seule la première serait conservée — le gabarit observé tient
+// entièrement sur une page (photo, QR, infos).
+//
+// Extraction automatique de la date d'expiration TENTÉE puis RETIRÉE
+// (02/08/2026) : le texte "EXPIRE LE JJ/MM/AAAA" du gabarit PPS FFA
+// (généré via Figma) s'est révélé non détectable en pratique sur le
+// document réel de Laurent — probablement du texte vectorisé en tracés
+// plutôt qu'une vraie couche de texte extractible par pdf.js. Saisie
+// manuelle de la date reste le seul chemin, simple et fiable.
 async function convertirPdfPpsEnImage(dataUrl) {
   const pdfjs = await chargerPdfJs();
   const base64 = dataUrl.split(",")[1];
@@ -1470,19 +1469,7 @@ async function convertirPdfPpsEnImage(dataUrl) {
   canvas.height = viewport.height;
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const imageJpeg = canvas.toDataURL("image/jpeg", 0.85);
-
-  let dateExpiration = null;
-  try {
-    const contenu = await page.getTextContent();
-    const texte = contenu.items.map(it => it.str).join(" ");
-    const m = texte.match(/EXPIRE\s*LE\s*(\d{2})\/(\d{2})\/(\d{4})/i);
-    if (m) dateExpiration = m[3]+"-"+m[2]+"-"+m[1];
-  } catch (err) {
-    console.error("Extraction date PPS échouée:", err);
-  }
-
-  return { imageJpeg, dateExpiration };
+  return canvas.toDataURL("image/jpeg", 0.85);
 }
 
 // Modale PPS unifiée (02/08/2026) — remplace ouvrirPpsPleinEcran +
@@ -1559,27 +1546,16 @@ function ouvrirPpsModale() {
             if (fichier) {
               if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
               if (fichier.type === "application/pdf") {
-                if (statutEl) statutEl.textContent = "🔍 Conversion et lecture du PDF...";
+                if (statutEl) statutEl.textContent = "🔍 Conversion du PDF...";
                 const dataUrlBrut = await new Promise((resolve, reject) => {
                   const reader = new FileReader();
                   reader.onload = () => resolve(reader.result);
                   reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
                   reader.readAsDataURL(fichier);
                 });
-                const { imageJpeg, dateExpiration } = await convertirPdfPpsEnImage(dataUrlBrut);
+                const imageJpeg = await convertirPdfPpsEnImage(dataUrlBrut);
                 profilCoureur.ppsDocument = { data: imageJpeg, type: "image/jpeg", nomFichier: fichier.name };
-                // N'écrase jamais une date déjà saisie manuellement dans le
-                // champ avant de cliquer Enregistrer.
-                if (!expInput.value) {
-                  if (dateExpiration) {
-                    expInput.value = dateExpiration;
-                    if (statutEl) statutEl.textContent = "✓ Date d'expiration détectée automatiquement";
-                  } else {
-                    if (statutEl) statutEl.textContent = "Date non détectée — renseigne-la manuellement si besoin";
-                  }
-                } else {
-                  if (statutEl) statutEl.textContent = "";
-                }
+                if (statutEl) statutEl.textContent = "";
               } else {
                 // Compression côté client — cf. commentaire historique dans
                 // l'ancien handler (02/08/2026, bug d'échec silencieux sur
