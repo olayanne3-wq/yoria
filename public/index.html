@@ -352,6 +352,39 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     }
 
     window.__resoudreAuthPret__(user);
+
+    // CORRECTIF (01/08/2026, bug signalé par Laurent : un record saisi à
+    // l'onboarding n'apparaissait pas dans Réglages tant que la page
+    // n'était pas rechargée complètement, ex. changement d'onglet
+    // provoquant un rechargement navigateur) — cause : ce bloc est un
+    // script de type module, donc DIFFÉRÉ par le navigateur même s'il
+    // apparaît en premier dans le HTML, alors que le script classique
+    // plus bas (`let profilCoureur = migrerVersProfilCoureur()`)
+    // s'exécute lui IMMÉDIATEMENT à sa rencontre — donc EN RÉALITÉ AVANT
+    // ce bloc-ci, malgré l'ordre inverse dans le fichier. La variable
+    // globale profilCoureur capturait ainsi le localStorage D'AVANT
+    // l'écriture de l'onboarding. IMPORTANT : depuis ce module séparé,
+    // seul window.profilCoureur (exposé explicitement ligne ~1353) est
+    // atteignable — réassigner window.profilCoureur = nouvelObjet ne
+    // suffirait PAS, car renderSettings() (même script classique que la
+    // déclaration `let profilCoureur`) lit la fermeture lexicale locale,
+    // pas window.profilCoureur. Object.assign() MUTE l'objet existant en
+    // place plutôt que de le remplacer — comme window.profilCoureur et
+    // la variable locale profilCoureur pointent vers le MÊME objet, cette
+    // mutation est visible des deux côtés, y compris par renderSettings().
+    if (window.profilCoureur) {
+      try {
+        const profilFrais = JSON.parse(localStorage.getItem('lk_profil_coureur') || 'null');
+        if (profilFrais) {
+          Object.keys(window.profilCoureur).forEach(k => delete window.profilCoureur[k]);
+          Object.assign(window.profilCoureur, profilFrais);
+          if (typeof window.render === 'function') window.render();
+        }
+      } catch (e) {
+        console.warn('Rafraîchissement profilCoureur post-onboarding non déclenché :', e.message);
+      }
+    }
+
     return user;
   });
 })();
@@ -5871,7 +5904,7 @@ function renderWeekDetail(weekNum) {
 // groupe juste après l'avoir ouvert, surprenant pour l'utilisateur.
 const etatGroupesAccordeon = {};
 
-function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
+function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements, onOuverture) {
   const contenuValide = contenuElements.filter(Boolean);
   if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
 
@@ -5893,6 +5926,21 @@ function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements) {
     etatGroupesAccordeon[titre] = ouvert;
     conteneurContenu.style.display = ouvert ? "block" : "none";
     chevron.style.transform = ouvert ? "rotate(90deg)" : "rotate(0deg)";
+    // Correctif (01/08/2026, bug signalé par Laurent : record personnel
+    // enregistré mais roulette invisible/vide dans Réglages) — le
+    // contenu de ce groupe (recordsSection, avec ses roulettes) est
+    // construit INCONDITIONNELLEMENT dès le premier render(), que le
+    // groupe soit ouvert ou fermé (seul son display change). Si le
+    // groupe est fermé par défaut au moment de cette construction, le
+    // positionnement initial des roulettes (attendreEtInitialiser,
+    // condition offsetParent !== null) échoue et ABANDONNE après 2s
+    // (le conteneur est caché tant que le groupe reste fermé) — rien ne
+    // le redéclenchait ensuite à l'ouverture, laissant les roulettes
+    // visuellement figées sans chiffre actif marqué, malgré des données
+    // correctes en mémoire. onOuverture (optionnel, fourni uniquement
+    // par les groupes qui en ont besoin, ex. Records personnels) permet
+    // de redéclencher ce positionnement explicitement à chaque ouverture.
+    if (ouvert && typeof onOuverture === 'function') onOuverture();
   });
 
   return el("div",{},
@@ -9266,7 +9314,25 @@ function renderSettings() {
 
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
       recordsSection
-    ]),
+    ], () => {
+      // Repositionne les roulettes de records à l'ouverture du groupe
+      // (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats) —
+      // au moment de la construction de recordsSection, le groupe était
+      // fermé (offsetParent null), donc attendreEtInitialiser a abandonné
+      // sans jamais poser la classe .actif ni positionner le scroll.
+      // roulettesActivesReglages (déjà rempli par initRouletteHMS, cf.
+      // plus haut dans ce fichier) garde une référence vivante à chaque
+      // colonne — on relit sa valeur déjà connue (colApi.valeur(), jamais
+      // perdue même sans positionnement visuel) et on la réapplique
+      // maintenant que le conteneur est réellement visible.
+      ["5K","10K","Semi","Marathon"].forEach((dist) => {
+        const roulette = roulettesActivesReglages["rec-temps-"+dist];
+        if (!roulette) return;
+        roulette.h?.definirValeur(roulette.h.valeur(), false);
+        roulette.m?.definirValeur(roulette.m.valeur(), false);
+        roulette.s?.definirValeur(roulette.s.valeur(), false);
+      });
+    }),
 
     renderGroupeAccordeonStats("🔗","Intégrations","var(--warn)", [
       dataSourceSection, stravaSection, importFitSection,
