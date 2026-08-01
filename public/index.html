@@ -1377,6 +1377,8 @@ function migrerVersProfilCoureur() {
     niveau: null, // 'debutant'|'intermediaire'|'confirme' — v2.8, retire du wizard (§17.7)
     poids: ancienPoids, taille: ancienneTaille, fcMax: ancienneFcMax ?? 181,
     pps: ancienPps,
+    ppsDocument: null, // {data, type, nomFichier} — document PPS FFA en base64, cf. ppsDocumentSection
+    ppsExpiration: null, // "YYYY-MM-DD"
     records: { "5K": null, "10K": null, "Semi": null, "Marathon": null }
   };
   save("lk_profil_coureur", profil);
@@ -1405,6 +1407,30 @@ function sauvegarderProfilCoureur() {
   if (window.__UTILISATEUR__?.id && window.LkSync?.synchroniserVersSupabase) {
     window.LkSync.synchroniserVersSupabase(window.__UTILISATEUR__.id, null, 'lk_profil_coureur', profilCoureur);
   }
+}
+
+// Affichage plein écran du PPS (01/08/2026) — but : accès en un tap au
+// retrait de dossard, sans naviguer dans Réglages. Image affichée
+// directement ; PDF ouvert dans un nouvel onglet (rendu inline non fiable
+// en PWA/TWA selon l'OS — laisser le lecteur PDF natif s'en charger est
+// plus robuste qu'un <iframe>).
+function ouvrirPpsPleinEcran(ppsDoc) {
+  if (!ppsDoc?.data) return;
+  if (ppsDoc.type === "application/pdf") {
+    window.open(ppsDoc.data, "_blank");
+    return;
+  }
+  const overlay = el("div",{style:{
+    position:"fixed", inset:"0", background:"rgba(0,0,0,0.92)", zIndex:"9999",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px"
+  }, onClick: (e)=>{ if (e.target === overlay) document.body.removeChild(overlay); }},
+    el("img",{src:ppsDoc.data, style:{maxWidth:"100%", maxHeight:"85vh", borderRadius:"12px", boxShadow:"0 4px 24px rgba(0,0,0,0.5)"}}),
+    el("button",{style:{
+      marginTop:"20px", padding:"12px 28px", borderRadius:"24px", border:"none",
+      background:"#fff", color:"#000", fontSize:"15px", fontWeight:"700", cursor:"pointer"
+    }, onClick: ()=>document.body.removeChild(overlay)}, "Fermer")
+  );
+  document.body.appendChild(overlay);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -8304,6 +8330,86 @@ function renderSettings() {
   );
 
 
+  // ── Document PPS (Pass Prévention Santé FFA) — 01/08/2026 ───────────────
+  // Stocke le document officiel (image ou PDF) déjà généré côté FFA, avec
+  // sa date d'expiration saisie manuellement (pas d'OCR — le format du
+  // document FFA n'est pas garanti stable). But : affichage direct en plein
+  // écran depuis l'app au moment du retrait de dossard, sans avoir à
+  // rouvrir l'appli/le compte FFA. Stocké en base64 dans profilCoureur
+  // (ppsDocument: {data, type, nomFichier}, ppsExpiration: "YYYY-MM-DD"),
+  // donc synchronisé au même titre que le reste du profil via
+  // sauvegarderProfilCoureur() — aucun mécanisme de sync séparé nécessaire.
+  const ppsDoc = profilCoureur.ppsDocument || null;
+  const ppsExpiration = profilCoureur.ppsExpiration || null;
+  let joursAvantExpirationPps = null;
+  if (ppsExpiration) {
+    const msParJour = 86400000;
+    joursAvantExpirationPps = Math.ceil((new Date(ppsExpiration+"T00:00:00") - new Date(today()+"T00:00:00")) / msParJour);
+  }
+  const ppsAlerteExpiration = joursAvantExpirationPps !== null && joursAvantExpirationPps <= 30;
+  const ppsDocumentSection = el("div", {style:{marginBottom:"16px"}},
+    el("div",{class:"label"},"🩺 Pass Prévention Santé (PPS)"),
+    card(
+      ppsAlerteExpiration ? el("div",{style:{
+        background: "rgba(var(--warn-rgb),0.13)",
+        border: "1px solid rgba(var(--warn-rgb),0.27)",
+        borderRadius:"8px", padding:"8px 12px", marginBottom:"10px", fontSize:"13px", fontWeight:"700",
+        color: "var(--warn)"
+      }}, joursAvantExpirationPps < 0
+        ? "⚠️ PPS expiré depuis "+Math.abs(joursAvantExpirationPps)+" jour(s)"
+        : "⚠️ PPS expire dans "+joursAvantExpirationPps+" jour(s)"
+      ) : null,
+      ppsDoc ? el("div",{style:{display:"flex",flexDirection:"column",gap:"10px"}},
+        el("button",{id:"pps-voir-btn", style:{
+          width:"100%", padding:"12px", borderRadius:"8px", border:"1px solid var(--border)",
+          background:"var(--border-soft)", color:"var(--text)", fontSize:"14px", fontWeight:"700", cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center", gap:"8px"
+        }, onClick: avecRetourTactile(()=>ouvrirPpsPleinEcran(ppsDoc))}, "🔍 Afficher le PPS", ppsExpiration ? el("span",{style:{fontWeight:"400",color:"var(--text-muted)",fontSize:"12px"}}," (expire le "+new Date(ppsExpiration+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+")") : null),
+        el("button",{style:{
+          width:"100%", padding:"8px", borderRadius:"8px", border:"1px solid var(--border)",
+          background:"transparent", color:"var(--text-muted)", fontSize:"13px", cursor:"pointer"
+        }, onClick: avecRetourTactile(()=>{
+          if (!confirm("Supprimer le PPS enregistré ?")) return;
+          profilCoureur.ppsDocument = null;
+          profilCoureur.ppsExpiration = null;
+          sauvegarderProfilCoureur();
+          render();
+        })}, "🗑️ Supprimer")
+      ) : el("div",{class:"muted",style:{fontSize:"13px",marginBottom:"10px"}},"Aucun PPS enregistré. Importe le PDF ou la photo de ton pass (délivré par la FFA) pour l'avoir sous la main au retrait de dossard."),
+      el("div",{style:{display:"flex",flexDirection:"column",gap:"8px",marginTop: ppsDoc ? "12px" : "0", paddingTop: ppsDoc ? "12px" : "0", borderTop: ppsDoc ? "1px solid var(--border)" : "none"}},
+        el("label",{style:{fontSize:"12px",color:"var(--text-muted)"}}, ppsDoc ? "Remplacer le document :" : "Importer :"),
+        el("input",{id:"pps-file-input", type:"file", accept:"image/*,application/pdf", style:{fontSize:"13px",color:"var(--text)"}}),
+        el("label",{style:{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px"}},"Date d'expiration :"),
+        el("input",{id:"pps-expiration-input", type:"date", value: ppsExpiration||"", style:{
+          padding:"6px 8px", borderRadius:"6px", border:"1px solid var(--border)", background:"var(--border-soft)",
+          color:"var(--text)", fontSize:"14px", fontFamily:"inherit"
+        }}),
+        el("button",{id:"pps-enregistrer-btn", style:{
+          marginTop:"6px", padding:"10px", borderRadius:"8px", border:"none",
+          background:"var(--accent)", color:"#fff", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+        }, onClick: avecRetourTactile(async ()=>{
+          const fileInput = document.getElementById("pps-file-input");
+          const expInput = document.getElementById("pps-expiration-input");
+          const fichier = fileInput?.files?.[0];
+          if (!fichier && !expInput?.value) { alert("Choisis un fichier ou renseigne au moins une date d'expiration."); return; }
+          if (expInput?.value) profilCoureur.ppsExpiration = expInput.value;
+          if (fichier) {
+            if (fichier.size > 5*1024*1024) { alert("Fichier trop volumineux (max 5 Mo)."); return; }
+            const data = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
+              reader.readAsDataURL(fichier);
+            });
+            profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
+          }
+          sauvegarderProfilCoureur();
+          render();
+        })}, "✓ Enregistrer")
+      )
+    )
+  );
+
   // ── Records personnels par distance (v2.3, 12 juillet 2026 ; saisie h/min/sec
   // séparée depuis v2.14, 18/07/2026) ────────────────────────────────────────
   // Un temps de référence par distance, mémorisé une fois pour toutes dans
@@ -9326,7 +9432,7 @@ function renderSettings() {
     ]),
 
     renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
-      profileSection, niveauSection, sexeSection
+      profileSection, niveauSection, sexeSection, ppsDocumentSection
     ]),
 
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
