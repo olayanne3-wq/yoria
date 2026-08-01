@@ -393,6 +393,17 @@ async function upsertLignes(config, table, rows) {
 //      utilisateur porte son `user_id`) — dernier recours si les deux
 //      premiers échouent, jamais deviné silencieusement.
 async function retrouverUserIdParEmail(config, exportData, email, userIdManuel) {
+  // L'id manuel, quand fourni, a TOUJOURS priorité — corrige un cas réel
+  // rencontré le 01/08/2026 : une tentative précédente avait recréé le
+  // compte Auth avec un id incorrect (erreur de saisie), et les tentatives
+  // suivantes retrouvaient ce compte existant (donc son mauvais id) avant
+  // même de regarder le champ manuel, qui n'était qu'un dernier recours.
+  // Puisque l'id manuel est lu directement par Laurent dans le fichier
+  // JSON exporté, c'est la source la plus fiable quand elle est fournie —
+  // elle ne doit jamais être court-circuitée par un état Auth qui peut
+  // lui-même être le résultat d'une correction ratée.
+  if (userIdManuel) return userIdManuel;
+
   const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
     headers: {
       apikey: config.supabaseKey,
@@ -414,8 +425,6 @@ async function retrouverUserIdParEmail(config, exportData, email, userIdManuel) 
     );
     if (abonnement?.user_id) return abonnement.user_id;
   }
-
-  if (userIdManuel) return userIdManuel;
 
   const err = new Error(
     `Impossible de retrouver l'identifiant de ${email} — le compte n'existe plus et aucune donnée de l'export ne permet de le déduire. Renseigne son identifiant utilisateur manuellement (visible dans le fichier JSON, champ "user_id" d'une de ses lignes).`,
