@@ -14,16 +14,12 @@
 // ---------------------------------------------------------------------------
 
 export function parseTimeToSeconds(str) {
-  // "50:21" -> 3021 ; "1:52:00" -> 6720
   const parts = str.split(':').map(Number);
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   throw new Error(`Format de temps invalide: ${str}`);
 }
 
-// Inverse de parseTimeToSeconds — toujours "mm:ss" (suffisant pour les
-// distances de référence courtes type 10K utilisées par le test
-// semi-Cooper ; pas de format "h:mm:ss" nécessaire ici).
 export function formatSecondsToTime(totalSeconds) {
   const s = Math.round(totalSeconds);
   const m = Math.floor(s / 60);
@@ -32,10 +28,6 @@ export function formatSecondsToTime(totalSeconds) {
 }
 
 export function formatPace(secPerKm) {
-  // BUG corrigé le 22/07/2026 (trouvé en vérifiant le fix VMA/10K) :
-  // Math.round(secPerKm % 60) pouvait arrondir à 60 sans jamais reporter
-  // sur les minutes (ex. 359.6 sec/km -> "5:60/km" au lieu de "6:00/km").
-  // Arrondi désormais sur le total en secondes avant de séparer min/sec.
   const total = Math.round(secPerKm);
   const m = Math.floor(total / 60);
   const s = total % 60;
@@ -46,7 +38,6 @@ export function paceFromTime(totalSeconds, distanceKm) {
   return totalSeconds / distanceKm;
 }
 
-// Formule de Riegel : prédit un temps sur d2 à partir d'un temps connu sur d1
 export function riegelPredict(t1Seconds, d1Km, d2Km) {
   return t1Seconds * Math.pow(d2Km / d1Km, 1.06);
 }
@@ -83,25 +74,6 @@ export function vitesseDepuisVdotEtDistance(vdot, distanceM) {
 
 export const KM_BY_DISTANCE = { '5K': 5, '10K': 10, 'Semi': 21.1, 'Marathon': 42.2 };
 
-// Records du monde (route, hommes — plancher le plus strict, protège aussi
-// les temps féminins qui restent toujours au-dessus) par distance, en
-// secondes. Utilisés comme plancher ABSOLU de temps saisissable dans le
-// wizard (temps de référence/objectif) et les records personnels
-// (Réglages/onboarding) — empêcher de saisir un temps physiologiquement
-// impossible (31/07/2026, demande de Laurent). Sources croisées au
-// 31/07/2026 (Wikipédia FR "Records du monde d'athlétisme"/"5|10
-// kilomètres"/"Half marathon", articles spécialisés) :
-// 5K  : Berihu Aregawi, 12:49 (31/12/2021, Barcelone)
-// 10K : Yomif Kejelcha, 26:31 (16/02/2025, Valence) — record le plus
-//       récent trouvé ; un temps encore plus rapide (26:11, Joshua
-//       Cheptegei) apparaît dans certaines sources croisées comme record
-//       du 10 000m PISTE, pas route — 26:31 retenu par prudence
-//       (distance/support corrects), la marge entre les deux est de toute
-//       façon négligeable pour l'usage de ce garde-fou.
-// Semi: Jacob Kiplimo, 57:20 (2026)
-// Marathon: Sabastian Sawe, 1:59:30 (26/04/2026, Londres)
-// À vérifier/rafraîchir périodiquement — ces records progressent
-// régulièrement (le marathon est passé sous la barre des 2h en 2026).
 export const RECORDS_MONDE_SECONDES = {
   '5K': 12 * 60 + 49,
   '10K': 26 * 60 + 31,
@@ -434,24 +406,6 @@ export const PLAFONDS_VOLUME = {
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
-// Volume hebdomadaire minimum par distance ET par nombre de jours
-// d'entraînement/semaine (29/07/2026, cf. inventaire §16). D'abord codé
-// comme une table unique valable "toutes distances" (calibrée uniquement
-// sur 10K), puis corrigé le même jour après vérification : Semi et
-// Marathon (rotation Construction plus volumineuse — tempo-court/
-// seuil-2min génèrent des séances qualité plus grosses que seuil-court/
-// i-30-30 en 10K) nécessitent un seuil sensiblement plus haut, surtout à
-// 5-7 jours (jusqu'à +7km d'écart pour Marathon à 7j). 5K est à l'inverse
-// plus permissif (qualité plus légère). Dérivé par simulation directe sur
-// le moteur réel (repartirVolumeSemaine + genererContenuQualite, niveau
-// intermédiaire, une distance à la fois) en cherchant le premier volume
-// ne déclenchant plus le garde-fou VOLUME_JOURS_INCOMPATIBLE ni la
-// contrainte "longue >= qualité + marge" — puis arrondi légèrement
-// au-dessus par cohérence avec la marge de sécurité déjà appliquée
-// ailleurs dans ce fichier (valeur pas un seuil exact, un palier rond
-// avec un peu de marge). Volontairement identique quel que soit le
-// niveau du coureur — la contrainte dominante (longue >= qualité) dépend
-// peu du niveau dans les cas testés.
 export const VOLUME_MIN_PAR_JOURS = {
   '5K':       { 2: 12, 3: 16, 4: 19, 5: 28, 6: 31, 7: 34 },
   '10K':      { 2: 16, 3: 20, 4: 23, 5: 32, 6: 35, 7: 38 },
@@ -476,16 +430,6 @@ export function categoriserAmpleurObjectif(refTimeSeconds, objectifTimeSeconds) 
   return 'ambitieuse';
 }
 
-// Phase du plan (Construction/Specifique/Affutage/...) correspondant à une
-// date donnée — fonction pure en LECTURE SEULE, sans dépendance DOM ni
-// variable globale (27/07/2026, cf. inventaire §16, chantiers "pondérer
-// Spécifique/Affûtage dans la Projection" et "changement de date de
-// course"). Utilisée à la fois côté dashboard classic (index.html, sur
-// window.__PLAN_BRUT__) et côté wizard (v2/index.html, sur
-// dernierPlanGenere) — d'où sa place ici plutôt que dupliquée dans les
-// deux fichiers consommateurs. Retourne null si dateDebut ou semaines
-// sont absents (plan de repli, Mode Forme sans notion de phases
-// identiques, etc.) — jamais bloquant pour l'appelant.
 export function phaseAtDate(plan, dateStr) {
   if (!plan?.dateDebut || !Array.isArray(plan.semaines)) return null;
   const debut = new Date(plan.dateDebut + "T00:00:00Z");
@@ -535,7 +479,38 @@ export function computePhases({ dateDebut, dateCourse, distance, niveau, ampleur
   };
 }
 
-export function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif, phases }) {
+// Progression du volume hebdomadaire (+10%/semaine, décharge tous les 4
+// semaines, affûtage en fin de plan). volumeDepart s'applique par défaut
+// à la semaine 1 (comportement historique, génération initiale d'un
+// plan) — semaineDepart (02/08/2026) permet de faire démarrer ce même
+// calcul à une semaine ultérieure du plan, en conservant la logique de
+// progression/décharge à partir de ce point plutôt que depuis zéro.
+//
+// CORRECTIF (02/08/2026, bug signalé par Laurent — "j'ai essayé de
+// baisser le volume à partir de la semaine prochaine et je ne vois pas
+// d'effet"). Cause : le levier "Volume" de l'accordéon "Modifier mon
+// plan" (v2/index.html, appliquerChangementVolume) régénérait tout le
+// plan avec le nouveau volume comme point de départ SEMAINE 1, puis ne
+// gardait que les semaines à partir de la charnière réelle (semaine en
+// cours + 1, souvent 8-10-12...). Comme cette fonction fait progresser
+// le volume de +10%/semaine vers un plafond quasi fixe, la nouvelle
+// courbe recalculée depuis semaine 1 avait largement le temps de
+// remonter près du plafond avant d'atteindre la charnière — la baisse
+// demandée par l'utilisateur était donc presque totalement absorbée
+// avant même d'apparaître dans les semaines conservées. semaineDepart
+// corrige ça en faisant démarrer LA PROGRESSION elle-même à la charnière
+// (le nouveau volume s'applique directement à cette semaine, la
+// progression +10%/décharge reprend ensuite depuis ce niveau) —
+// v2/index.html passe désormais semaineDepart: semaineCharniere à cet
+// appel plutôt que de laisser le défaut à 1. Les semaines AVANT
+// semaineDepart ne sont pas produites par cette fonction (tableau vide
+// pour elles) : sans impact, l'appelant ne conserve de toute façon que
+// les semaines >= charnière (cf. appliquerChangementVolume). Le rythme
+// des décharges (tous les 4 semaines) reste calculé sur le numéro de
+// semaine RÉEL du plan (semaineDepart + offset), pas réindexé à 1 —
+// sinon le rythme de décharge se désynchroniserait de celui déjà en
+// cours dans les semaines conservées avant la charnière.
+export function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif, phases, semaineDepart = 1 }) {
   const [plafondBas, plafondHaut] = PLAFONDS_VOLUME[distance][niveau];
   const plafondPopulation = (plafondBas + plafondHaut) / 2;
   const warnings = [];
@@ -566,10 +541,10 @@ export function computeVolumeProgression({ volumeDepart, distance, niveau, total
   const volumesParSemaine = [];
   let peak = volumeDepart;
 
-  for (let s = 1; s <= semainesProgression; s++) {
+  for (let s = semaineDepart; s <= semainesProgression; s++) {
     const estDecharge = s % 4 === 0 && s > 1;
-    if (s === 1) {
-      volumesParSemaine.push({ semaine: 1, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
+    if (s === semaineDepart) {
+      volumesParSemaine.push({ semaine: s, volumeKm: Math.round(peak * 10) / 10, estDecharge: false });
       continue;
     }
     if (estDecharge) {
@@ -1042,23 +1017,6 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
 const DUREE_MAX_EF_MIN = 75;
 const DUREE_MAX_LONGUE_MIN = { '5K': 90, '10K': 90, 'Semi': 120, 'Marathon': 150 };
 
-// Paliers marche-course (27/07/2026, révisé en profondeur avec Laurent) —
-// AVANT : 7 paliers démarrant directement à 5min de course CONTINUE,
-// jugé trop exigeant pour un grand débutant n'ayant jamais couru (aucune
-// étape d'alternance marche/course avant le premier bloc continu).
-// Confirmé par la littérature : le "White Plan" de Daniels (chapitre 11,
-// programme spécifiquement conçu pour les débutants) utilise une approche
-// walk/run sur ses 9 premières semaines, jamais un bloc continu d'emblée.
-// APRÈS : 13 paliers en 2 phases — 6 paliers d'ALTERNANCE (marche/course
-// répétées, la part de course augmente progressivement) puis 7 paliers de
-// CONTINU croissant (5 à 30min), reprenant à l'identique les anciens
-// paliers 0-6 sous des id 6-12. Chaque palier franchissable dès la 1ère
-// séance validée (palierMarcheCourseFor, inchangé) — RIEN n'oblige à
-// prendre plusieurs séances par palier, y compris à la transition
-// alternance→continu (palier 5→6) : décision actée avec Laurent après
-// avoir chiffré que la progression la plus rapide passe désormais à
-// ~13 séances (~1 mois à 3 séances/semaine) contre ~7 avant — delai jugé
-// acceptable pour la sécurité supplémentaire apportée.
 export const PALIERS_MARCHE_COURSE = [
   { id: 0,  continu: false, reps: 8, courseSec: 60,  marcheSec: 120, label: '8× (1min course / 2min marche)' },
   { id: 1,  continu: false, reps: 8, courseSec: 90,  marcheSec: 90,  label: '8× (1min30 course / 1min30 marche)' },
@@ -1089,10 +1047,6 @@ export function genererContenuMarcheCourse({ palierId = 0 }) {
   const palier = PALIERS_MARCHE_COURSE[Math.min(palierId, PALIERS_MARCHE_COURSE.length - 1)];
 
   if (!palier.continu) {
-    // Paliers d'alternance (0-5, 27/07/2026) — durée "course" du palier
-    // pour le calcul d'échauffement = durée cumulée de course réelle
-    // (reps × courseSec), cohérent avec la logique déjà utilisée pour les
-    // paliers continus (DUREE_CIBLE_MARCHE_COURSE_MIN - temps de course).
     const dureeCourseCumuleeMin = (palier.reps * palier.courseSec) / 60;
     const dureeEchauffementRetour = Math.max(
       DUREE_MIN_ECHAUFFEMENT_RETOUR_MIN,
@@ -1569,10 +1523,6 @@ export function placerSeanceTest(plan, alluresSec) {
 function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTotal, distance, phase, alluresSec, nbJours }) {
   const nbEF = Object.values(assignment).filter(s => s.type === 'ef').length;
   const aLongue = Object.values(assignment).some(s => s.type === 'longue');
-  // nbJours = nb de jours d'entraînement/semaine, requis par le ratio
-  // longue variable (cf. repartirVolumeSemaine) — dérivé du nombre total
-  // de séances de la semaine (EF + qualité + longue) si non fourni
-  // explicitement par l'appelant, pour rester robuste aux appels existants.
   const nbJoursEffectif = nbJours ?? Object.keys(assignment).length;
   const { kmLongue, kmParEF, warning: warningRepartition } = repartirVolumeSemaine({
     volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours: nbJoursEffectif
@@ -1600,29 +1550,8 @@ function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTot
   return { warnings, kmLongue, kmParEF, nbEF, aLongue };
 }
 
-// Ratio longue variable selon le nombre de jours disponibles/semaine
-// (29/07/2026, remplace RATIO_LONGUE=0.28 fixe — cf. inventaire §16,
-// chantier "volume minimum requis selon le nombre de jours"). Motivation :
-// à faible nombre de jours, un ratio fixe comprimait artificiellement la
-// longue (elle pouvait finir sous VOLUME_MIN_LONGUE_KM alors que le volume
-// hebdo total restait correct), alors que la littérature (Daniels +
-// sources croisées type RunningAHEAD/runlovers.it) confirme qu'un ratio
-// plus élevé est normal et attendu à 2-3 jours/semaine (jusqu'à 40-50%),
-// le ratio redescendant vers les standards Daniels (25-30%) à 5-7 jours où
-// plusieurs EF absorbent le reste du volume. Paliers ronds arbitrés avec
-// Laurent après simulation sur le moteur réel, pas une formule continue.
 const RATIO_LONGUE_PAR_JOURS = { 2: 0.45, 3: 0.38, 4: 0.33, 5: 0.28, 6: 0.25, 7: 0.22 };
 const RATIO_LONGUE_DEFAUT = 0.28;
-
-// Marge minimale (km) entre la longue et le cumul qualité de la semaine —
-// la longue ne doit JAMAIS être plus courte que le total des séances
-// qualité, quel que soit le ratio ci-dessus (contrainte actée avec
-// Laurent le 29/07/2026 : "on ne peut pas accepter que la longue ne soit
-// pas la plus longue séance"). Nécessaire car le volume d'une séance
-// qualité dépend de paramètres fixes par niveau (reps × durée dans
-// genererContenuQualite), indépendants du volume hebdo cible — à bas
-// volume, la qualité peut donc dépasser une longue calculée par simple
-// ratio si cette contrainte n'existe pas.
 const MARGE_LONGUE_VS_QUALITE_KM = 1;
 
 export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours }) {
@@ -1675,13 +1604,6 @@ function differencierEF({ assignment, kmParEF }) {
 }
 
 export function generatePlan(profil, params) {
-  // Validation amont volume/jours (29/07/2026) — vérifie AVANT de générer
-  // quoi que ce soit que le volume de départ est cohérent avec le nombre
-  // de jours disponibles, plutôt que de laisser tourner toute la
-  // génération pour la refuser après coup via nbSemainesConstructionSousSeuil
-  // plus bas (garde-fou complémentaire, toujours en place). Ce contrôle
-  // amont est plus rapide et donne un message ciblé sur le levier à
-  // ajuster (volume ou jours) avant même de calculer phases/allures.
   const nbJoursProfil = profil.joursDisponiblesHabituels?.length ?? 0;
   const volumeMinRequis = VOLUME_MIN_PAR_JOURS[params.distance]?.[nbJoursProfil];
   if (volumeMinRequis !== undefined && params.volumeActuel < volumeMinRequis) {
@@ -1728,7 +1650,8 @@ export function generatePlan(profil, params) {
     totalSemaines,
     contraintes: params.contraintesPonctuelles ?? [],
     ampleurObjectif,
-    phases
+    phases,
+    semaineDepart: params.semaineDepartVolume ?? 1
   });
 
   const semainesReacclimatation = Math.min(
@@ -1763,8 +1686,8 @@ export function generatePlan(profil, params) {
       });
 
       let kmQualiteTotal = 0;
-      const tauxAffutageSemaine = volumesParSemaine[semaineGlobale - 1]?.fractionPic ?? 1;
-      const dechargeSemaine = volumesParSemaine[semaineGlobale - 1]?.estDecharge ?? false;
+      const tauxAffutageSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.fractionPic ?? 1;
+      const dechargeSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.estDecharge ?? false;
       for (const [jour, seance] of Object.entries(assignment)) {
         if (seance.type === 'qualite') {
           const { sousType, contenu, kmEstime, structureIntervalles } = genererContenuQualite({
@@ -1788,7 +1711,7 @@ export function generatePlan(profil, params) {
         }
       }
 
-      const volumeCibleSemaine = volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? 0;
+      const volumeCibleSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale)?.volumeKm ?? 0;
       const { warnings: warningsRepartition, kmLongue, kmParEF, nbEF, aLongue } = recalculerRepartitionEFLongue({
         assignment,
         volumeCibleKm: volumeCibleSemaine,
@@ -1815,8 +1738,8 @@ export function generatePlan(profil, params) {
       semaines.push({
         semaineNum: semaineGlobale,
         phase: phase.nom,
-        volumeCibleKm: volumesParSemaine[semaineGlobale - 1]?.volumeKm ?? null,
-        estDechargeSemaine: volumesParSemaine[semaineGlobale - 1]?.estDecharge ?? false,
+        volumeCibleKm: volumesParSemaine.find(v => v.semaine === semaineGlobale)?.volumeKm ?? null,
+        estDechargeSemaine: volumesParSemaine.find(v => v.semaine === semaineGlobale)?.estDecharge ?? false,
         assignment,
         warnings: warningsPlacement
       });
