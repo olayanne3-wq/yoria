@@ -268,16 +268,28 @@ uniquement, aucune lecture n'exploite encore cette donnée.
 une décision à la première séance ultérieure avec un statut connu
 (référence `decision_event_id`, pas `user_id` directement — n'a pas cette
 colonne). RLS strictement par propriétaire. Schéma SQL dans
-`schema-decision-memory.sql`. Les deux tables sont en `ON DELETE CASCADE`
-sur leur clé étrangère respective (`decision_events.user_id` →
-`auth.users`, `decision_outcomes.decision_event_id` → `decision_events`)
-— corrigé le 31/07/2026, la suppression de compte
-(`api/delete-account.js`) échouait auparavant avec une violation de
-contrainte (`decision_events` n'avait pas de cascade). Ce même endpoint
-nettoie aussi explicitement ces deux tables en filet de sécurité, avant
-l'appel à l'Admin API — toute nouvelle table applicative liée à
-`user_id` doit soit être en cascade, soit être ajoutée à
-`TABLES_A_NETTOYER` dans ce fichier.
+`schema-decision-memory.sql`.
+
+**Suppression de compte — toutes les tables applicatives liées à
+`user_id` doivent être en `ON DELETE CASCADE`** (corrigé le 31/07/2026,
+signalé par Laurent : "je suis sur un compte... je ne peux pas me
+déconnecter" puis "Échec de la suppression côté Supabase" une fois le
+premier bug réglé). Deux tables étaient sans cascade et bloquaient
+`api/delete-account.js` avec une violation de contrainte (erreur
+PostgreSQL 23503) : `decision_events` (`delete_rule=NO ACTION` à
+l'origine) et `badges_debloques` (idem, découverte séparément lors d'une
+seconde tentative de suppression — la première erreur masquait la
+seconde tant qu'elle n'était pas résolue). Les deux référencent
+maintenant `auth.users(id)` en `CASCADE`. `decision_outcomes` cascade
+indirectement via `decision_event_id` → `decision_events.id`, pas de
+lien direct à `user_id`. `plans_actif` n'a aucune contrainte de clé
+étrangère (vérifié explicitement, RAS). `api/delete-account.js` nettoie
+en plus `decision_events` explicitement en filet de sécurité
+(`TABLES_A_NETTOYER`), avant l'appel à l'Admin API — **toute nouvelle
+table applicative liée à `user_id` doit être vérifiée en cascade** au
+moment de sa création (requête de diagnostic : lister les contraintes
+FK dont le nom contient `user_id` via `information_schema`), pas
+seulement au moment où quelqu'un tente de supprimer son compte.
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
