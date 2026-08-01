@@ -142,7 +142,7 @@ async function backupReq(o = {}) {
   const r = await fetch(BACKUP_API, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...o });
   let j = {};
   try { j = await r.json(); } catch {}
-  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; e.besoinUserIdManuel = j.besoinUserIdManuel || false; throw e; }
+  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; e.besoinUserIdManuel = j.besoinUserIdManuel || false; e.diagnosticParTable = j.diagnosticParTable || null; e.userIdUtilise = j.userIdUtilise || null; throw e; }
   return j;
 }
 
@@ -269,11 +269,30 @@ $("#backup-reinject-btn").onclick = async () => {
     } else {
       afficherStatutBackup("#backup-reinject-status", "error", e.message);
     }
+    if (e.diagnosticParTable) {
+      let html = "";
+      if (e.userIdUtilise) html += `<p><small>🆔 userId utilisé pour le filtrage : <code>${esc(e.userIdUtilise)}</code></small></p>`;
+      html += diagnosticParTableHtml(e.diagnosticParTable);
+      $("#backup-reinject-report").innerHTML = html;
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = label;
   }
 };
+
+function diagnosticParTableHtml(parTable) {
+  const lignes = Object.entries(parTable).map(([table, d]) => {
+    const echantillon = d.echantillonUserIds && d.echantillonUserIds.length
+      ? `<br><small>ex. user_id présents : ${d.echantillonUserIds.map((id) => `<code>${esc(id)}</code>`).join(", ")}</small>`
+      : "";
+    return `<tr><td>${esc(table)}</td><td>${d.avant}</td><td>${d.apres != null ? d.apres : "—"}</td><td><small>${esc(d.mode)}</small>${echantillon}</td></tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Table</th><th>Lignes avant filtrage</th><th>Lignes après</th><th>Mode</th></tr></thead>
+    <tbody>${lignes}</tbody>
+  </table></div>`;
+}
 
 function rapportReinjectionHtml(rapport) {
   if (!rapport) return "";
@@ -281,6 +300,12 @@ function rapportReinjectionHtml(rapport) {
   if (rapport.diagnostic) {
     const d = rapport.diagnostic;
     html += `<p><small>🔍 Diagnostic — tables dans le fichier source : ${d.tablesDansFichierSource}${d.tablesApresFiltrage != null ? ` · après filtrage : ${d.tablesApresFiltrage}` : ""} · réinjectées : ${(d.nomsTablesApresTri || []).length} (${esc((d.nomsTablesApresTri || []).join(", ") || "aucune")})</small></p>`;
+    if (d.userIdUtilise) {
+      html += `<p><small>🆔 userId utilisé pour le filtrage : <code>${esc(d.userIdUtilise)}</code></small></p>`;
+    }
+    if (d.parTable) {
+      html += diagnosticParTableHtml(d.parTable);
+    }
   }
   if (rapport.filtrePar) {
     html += `<p><small>🎯 Filtré sur : <strong>${esc(rapport.filtrePar)}</strong></small></p>`;
