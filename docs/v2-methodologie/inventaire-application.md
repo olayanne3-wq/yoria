@@ -265,8 +265,19 @@ Un plan Forme clôturé (`dateCloture` posée) ne peut plus être écrasé via
 uniquement, aucune lecture n'exploite encore cette donnée.
 `decision_events` journalise chaque décision du `RuleEngine`
 (proposée/appliquée/ignorée, contexte complet). `decision_outcomes` lie
-une décision à la première séance ultérieure avec un statut connu. RLS
-strictement par propriétaire. Schéma SQL dans `schema-decision-memory.sql`.
+une décision à la première séance ultérieure avec un statut connu
+(référence `decision_event_id`, pas `user_id` directement — n'a pas cette
+colonne). RLS strictement par propriétaire. Schéma SQL dans
+`schema-decision-memory.sql`. Les deux tables sont en `ON DELETE CASCADE`
+sur leur clé étrangère respective (`decision_events.user_id` →
+`auth.users`, `decision_outcomes.decision_event_id` → `decision_events`)
+— corrigé le 31/07/2026, la suppression de compte
+(`api/delete-account.js`) échouait auparavant avec une violation de
+contrainte (`decision_events` n'avait pas de cascade). Ce même endpoint
+nettoie aussi explicitement ces deux tables en filet de sécurité, avant
+l'appel à l'Admin API — toute nouvelle table applicative liée à
+`user_id` doit soit être en cascade, soit être ajoutée à
+`TABLES_A_NETTOYER` dans ce fichier.
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
