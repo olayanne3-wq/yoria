@@ -34,6 +34,8 @@ yoria/
 │   ├── config.js                 # Expose SUPABASE_URL/SUPABASE_ANON_KEY au client
 │   ├── stripe-checkout.js        # Création session Stripe Checkout
 │   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
+│   ├── delete-account.js         # Suppression définitive d'un compte (cascade)
+│   ├── backup.js                 # Export global / ciblé utilisateur / réinjection (cf. §5, §16)
 │   ├── beta.js                   # Candidature bêta (public)
 │   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits,
 │                                  # signalements)
@@ -50,7 +52,7 @@ yoria/
 │   ├── beta/                      # Page candidature bêta publique
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
 │   │                              # Onglets : Candidatures, Sélectionnés, Invités,
-│   │                              # Signalements, Comptes, Statistiques
+│   │                              # Signalements, Comptes, Sauvegarde, Statistiques
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -259,6 +261,23 @@ Le système Gist v2 (`gist-sync.js`) a été entièrement retiré des écritures
 anti-chevauchement de dates, fonction pure indépendante de la persistance).
 Un plan Forme clôturé (`dateCloture` posée) ne peut plus être écrasé via
 `mettreAJourPlanSupabase()`.
+
+**Sauvegarde/restauration de la base (`api/backup.js`, cf. §16)** — le
+projet Supabase est en plan **Free**, qui n'inclut ni Daily Backups ni
+PITR (les deux démarrent au plan Pro). `api/backup.js`, accessible depuis
+`beta-admin` (onglet Sauvegarde), comble ce manque : export global
+(découverte automatique des tables via introspection PostgREST — jamais
+de liste blanche codée en dur, toute nouvelle table est incluse au
+prochain export sans modification de code), export ciblé par utilisateur
+(email, réutilise la recherche du module Comptes), et réinjection en
+upsert. `decision_events`/`decision_outcomes` traités via la chaîne
+indirecte (`decision_event_id`, pas de `user_id` direct sur la seconde
+table). Réinjection d'un utilisateur dont le compte Auth a été supprimé :
+recréation automatique avec le même `id` (nécessaire pour que les clés
+étrangères de l'export pointent vers le bon utilisateur) avant réinjection
+des données. Portée strictement limitée à la réparation d'une perte
+accidentelle — jamais un contournement d'une suppression de compte
+volontaire au titre du droit à l'effacement (RGPD art. 17).
 
 **`decision_events`/`decision_outcomes`** — étape 1 du chantier de vision
 "coach adaptatif à mémoire par coureur" (cf. §16). Écriture best-effort
@@ -651,6 +670,11 @@ Section "Décisions du moteur" : 50 dernières lignes de `decision_events`.
 tokens Strava d'un testeur — uniquement des données déjà stockées côté
 Yoria.
 
+**Module "Sauvegarde"** (`beta-admin`, cf. §5, §16) — export global,
+export ciblé utilisateur (réutilise la recherche par email du module
+Comptes), réinjection depuis un fichier JSON. Même règle stricte :
+jamais de lecture des tokens Strava d'un testeur.
+
 ## 12. Authentification Supabase
 
 Auth email/mot de passe (pas de Google/Apple). Variables exposées via
@@ -761,6 +785,11 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
   silencieusement au tout premier rendu d'un écran (cause exacte non
   identifiée avec certitude sur ce projet, mais le correctif par
   condition réelle s'est montré fiable dans les deux cas).
+- **Toute nouvelle table sensible (tokens, secrets) doit être ajoutée
+  explicitement à la liste noire d'exclusion de `api/backup.js`
+  (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
+  défaut (liste noire, pas liste blanche), donc l'oubli expose la table
+  par défaut plutôt que de la protéger par défaut.
 
 ## 16. État des chantiers ouverts
 
@@ -770,6 +799,7 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). Onboarding (§12) mis à jour en cohérence mais **non testé en conditions réelles** — nécessite un nouveau compte de test ou de forcer l'affichage de cet écran. |
+| Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. **Non testé en conditions réelles** — protocole prévu : compte de test jetable, cycle export → suppression → réinjection, avant tout usage sur un compte réel. |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
