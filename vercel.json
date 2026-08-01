@@ -27,6 +27,10 @@
       "dest": "/api/beta-admin.js"
     },
     {
+      "src": "/api/backup",
+      "dest": "/api/backup.js"
+    },
+    {
       "src": "/api/strava/(.*)",
       "dest": "/api/strava.js"
     },
