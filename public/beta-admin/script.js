@@ -278,6 +278,10 @@ $("#backup-reinject-btn").onclick = async () => {
 function rapportReinjectionHtml(rapport) {
   if (!rapport) return "";
   let html = "";
+  if (rapport.diagnostic) {
+    const d = rapport.diagnostic;
+    html += `<p><small>🔍 Diagnostic — tables dans le fichier source : ${d.tablesDansFichierSource}${d.tablesApresFiltrage != null ? ` · après filtrage : ${d.tablesApresFiltrage}` : ""} · réinjectées : ${(d.nomsTablesApresTri || []).length} (${esc((d.nomsTablesApresTri || []).join(", ") || "aucune")})</small></p>`;
+  }
   if (rapport.filtrePar) {
     html += `<p><small>🎯 Filtré sur : <strong>${esc(rapport.filtrePar)}</strong></small></p>`;
   }
