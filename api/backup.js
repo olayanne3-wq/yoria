@@ -374,15 +374,23 @@ async function upsertLignes(config, table, rows) {
 // lignes d'un utilisateur précis, avant réinjection — ajouté le 01/08/2026
 // suite à un besoin réel de Laurent : réinjecter un seul coureur à partir
 // d'un gros export global déjà téléchargé, sans repasser par un export
-// ciblé séparé. Retrouve l'utilisateur par email (même méthode que
-// exportUtilisateur — liste tout, filtre côté serveur), puis réutilise
-// EXACTEMENT filtrerLignesUtilisateur() sur les données déjà en mémoire
-// (aucun nouvel appel Supabase nécessaire, l'export global les contient
-// déjà toutes). Bloque explicitement si l'email ne correspond à aucune
-// ligne dans CET export précis (cf. discussion de conception du
-// 01/08/2026 : mieux vaut un échec net qu'un upsert silencieux de 0 ligne
-// qui masquerait une erreur de frappe ou un export périmé).
-async function filtrerExportGlobalParUtilisateur(config, exportData, email) {
+// ciblé séparé. Réutilise EXACTEMENT filtrerLignesUtilisateur() sur les
+// données déjà en mémoire (aucun nouvel appel Supabase nécessaire pour
+// les LIGNES, l'export global les contient déjà toutes) — mais il faut
+// d'abord connaître l'`user_id` Auth correspondant à l'email fourni.
+//
+// Cas réel rencontré le 01/08/2026 : le compte a déjà été supprimé
+// (scénario même de test backup/restore) — l'API Admin ne le retrouve
+// plus par email. Repli en cascade pour trouver l'id quand même :
+//   1. API Admin Auth (cas normal, compte encore actif)
+//   2. Table `abonnements` dans l'EXPORT (a un champ email — cf.
+//      upsertAbonnementGratuit dans beta-admin.js), si l'utilisateur a
+//      un abonnement enregistré
+//   3. `userId` fourni explicitement en paramètre (Laurent peut le lire
+//      à l'œil dans le fichier JSON — n'importe quelle ligne de cet
+//      utilisateur porte son `user_id`) — dernier recours si les deux
+//      premiers échouent, jamais deviné silencieusement.
+async function retrouverUserIdParEmail(config, exportData, email, userIdManuel) {
   const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
     headers: {
       apikey: config.supabaseKey,
@@ -390,19 +398,33 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email) {
     },
   });
 
-  if (!usersResponse.ok) {
-    throw new Error("Erreur lors de la recherche du compte.");
+  if (usersResponse.ok) {
+    const usersData = await usersResponse.json();
+    const users = Array.isArray(usersData) ? usersData : usersData.users || [];
+    const user = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
+    if (user) return user.id;
   }
 
-  const usersData = await usersResponse.json();
-  const users = Array.isArray(usersData) ? usersData : usersData.users || [];
-  const user = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
-
-  if (!user) {
-    const err = new Error("Aucun compte trouvé avec cette adresse e-mail.");
-    err.status = 404;
-    throw err;
+  const abonnementsExport = exportData.donnees?.abonnements;
+  if (Array.isArray(abonnementsExport)) {
+    const abonnement = abonnementsExport.find(
+      (row) => (row.email || '').toLowerCase() === email.toLowerCase(),
+    );
+    if (abonnement?.user_id) return abonnement.user_id;
   }
+
+  if (userIdManuel) return userIdManuel;
+
+  const err = new Error(
+    `Impossible de retrouver l'identifiant de ${email} — le compte n'existe plus et aucune donnée de l'export ne permet de le déduire. Renseigne son identifiant utilisateur manuellement (visible dans le fichier JSON, champ "user_id" d'une de ses lignes).`,
+  );
+  err.status = 404;
+  err.besoinUserIdManuel = true;
+  throw err;
+}
+
+async function filtrerExportGlobalParUtilisateur(config, exportData, email, userIdManuel) {
+  const userId = await retrouverUserIdParEmail(config, exportData, email, userIdManuel);
 
   const donneesFiltrees = {};
   let totalLignesTrouvees = 0;
@@ -426,7 +448,7 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email) {
       continue;
     }
 
-    const filtrees = filtrerLignesUtilisateur(rows, user.id);
+    const filtrees = filtrerLignesUtilisateur(rows, userId);
     if (filtrees === null) {
       // Table sans colonne utilisateur repérable — ignorée pour ce
       // filtrage ciblé, comme pour l'export ciblé (cf.
@@ -463,12 +485,12 @@ async function filtrerExportGlobalParUtilisateur(config, exportData, email) {
   return {
     type: 'export_utilisateur',
     genereLe: exportData.genereLe,
-    utilisateur: { id: user.id, email: user.email },
+    utilisateur: { id: userId, email },
     donnees: donneesFiltrees,
   };
 }
 
-async function reinjecter(config, exportDataBrut, filtrerEmail) {
+async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
   if (!exportDataBrut || typeof exportDataBrut !== 'object' || !exportDataBrut.donnees) {
     const err = new Error("Fichier de sauvegarde invalide (champ 'donnees' manquant).");
     err.status = 400;
@@ -483,7 +505,7 @@ async function reinjecter(config, exportDataBrut, filtrerEmail) {
   // risquerait de filtrer sur le mauvais champ si l'email ne correspond
   // pas exactement à l'utilisateur déjà ciblé par l'export).
   if (filtrerEmail && exportDataBrut.type === 'export_global') {
-    exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail);
+    exportData = await filtrerExportGlobalParUtilisateur(config, exportDataBrut, filtrerEmail, userIdManuel);
   }
 
   const rapport = { recreationCompte: null, tables: [], filtrePar: filtrerEmail || null };
@@ -596,16 +618,18 @@ export default async function handler(request, response) {
     if (action === 'reinject') {
       const exportData = body.exportData;
       const filtrerEmail = String(body.filtrerEmail || '').trim().toLowerCase() || null;
+      const userIdManuel = String(body.userIdManuel || '').trim() || null;
       if (!exportData) {
         return json(response, 400, { message: 'Fichier de sauvegarde manquant.' });
       }
       try {
-        const rapport = await reinjecter(config, exportData, filtrerEmail);
+        const rapport = await reinjecter(config, exportData, filtrerEmail, userIdManuel);
         return json(response, 200, { success: true, rapport });
       } catch (error) {
         console.error('[backup] Erreur réinjection :', error);
         return json(response, error.status || 500, {
           message: error.message || "La réinjection a échoué.",
+          besoinUserIdManuel: error.besoinUserIdManuel || false,
         });
       }
     }
