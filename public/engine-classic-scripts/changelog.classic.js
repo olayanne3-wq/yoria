@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.31", title:"Sauvegarde et réinjection de données (admin bêta)", current:true, notes:[
+      { ver:"v2.32", title:"Profil complet dès l'inscription, outils internes de fiabilité", current:true, notes:[
+        "📝 L'inscription demande maintenant ton profil complet (prénom, date de naissance, poids, taille, records...) réparti en quelques étapes simples, avec navigation par glissement",
+        "🏅 Les records personnels saisis à l'inscription incluent maintenant la date, comme dans Réglages",
+        "🔧 Outils internes de fiabilité renforcés (sauvegarde des données, vérification de l'intégrité de la base) — sans impact visible pour toi, mais qui protègent tes données en coulisses",
+      ]},
+      { ver:"v2.31", title:"Sauvegarde et réinjection de données (admin bêta)", current:false, notes:[
         "💾 Nouvel outil interne d'export/réinjection de données, accessible depuis l'administration bêta — filet de sécurité tant que le plan Supabase reste gratuit (aucune sauvegarde automatique incluse à ce niveau)",
       ]},
       { ver:"v2.30", title:"Réglages réorganisés en accordéons, roulettes de saisie améliorées", current:false, notes:[
