@@ -320,6 +320,62 @@ function rapportReinjectionHtml(rapport) {
   return html;
 }
 
-const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",statistics:"Statistiques"};
+/*
+ * Onglet "Cascades" (01/08/2026) — diagnostic proactif des tables
+ * applicatives liées à user_id sans ON DELETE CASCADE vers auth.users.
+ * cf. commentaire de conception dans api/backup.js (diagnostiquerCascades).
+ * Chaque ligne à risque affiche le SQL de correction prêt à copier-coller
+ * dans le SQL Editor Supabase — cet onglet ne modifie JAMAIS le schéma
+ * lui-même, uniquement en lecture (nécessite les fonctions RPC créées par
+ * docs/v2-methodologie/diagnostic-cascades-user-id.sql, à exécuter une
+ * fois côté Supabase avant la première utilisation).
+ */
+$("#cascades-run-btn").onclick = async () => {
+  const btn = $("#cascades-run-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Diagnostic en cours…";
+  $("#cascades-status").hidden = true;
+  $("#cascades-result").innerHTML = "";
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "diagnostic_cascades" }) });
+    afficherStatutBackup("#cascades-status", "", `Diagnostic terminé — ${result.aRisque.length} table(s) à risque, ${result.ok.length} déjà correcte(s).`);
+    $("#cascades-result").innerHTML = cascadesResultHtml(result);
+  } catch (e) {
+    afficherStatutBackup("#cascades-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
+function cascadesResultHtml(result) {
+  let html = "";
+  if (result.aRisque.length > 0) {
+    html += `<article class="card">
+      <h2>⚠️ Tables à risque (${result.aRisque.length})</h2>
+      ${result.aRisque.map((r) => `
+        <div style="border-top:1px solid var(--border, #e2e2e2);padding:10px 0;">
+          <p><strong>${esc(r.table)}</strong>.<code>${esc(r.colonne)}</code></p>
+          <p><small>${esc(r.probleme)}</small></p>
+          <pre style="background:var(--border-soft, rgba(0,0,0,0.04));padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;white-space:pre-wrap;">${esc(r.sql)}</pre>
+        </div>
+      `).join("")}
+    </article>`;
+  } else {
+    html += `<article class="card"><h2>✅ Aucune table à risque</h2><p><small>Toutes les tables liées à un utilisateur ont bien ON DELETE CASCADE.</small></p></article>`;
+  }
+  if (result.ok.length > 0) {
+    html += `<article class="card"><h2>Tables correctes (${result.ok.length})</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Table</th><th>Colonne</th></tr></thead>
+        <tbody>${result.ok.map((r) => `<tr><td>${esc(r.table)}</td><td><code>${esc(r.colonne)}</code></td></tr>`).join("")}</tbody>
+      </table></div>
+    </article>`;
+  }
+  return html;
+}
+
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
