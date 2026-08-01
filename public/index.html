@@ -1414,42 +1414,197 @@ function sauvegarderProfilCoureur() {
 // directement ; PDF ouvert dans un nouvel onglet (rendu inline non fiable
 // en PWA/TWA selon l'OS — laisser le lecteur PDF natif s'en charger est
 // plus robuste qu'un <iframe>).
-function ouvrirPpsPleinEcran(ppsDoc) {
-  if (!ppsDoc?.data) return;
-  if (ppsDoc.type === "application/pdf") {
-    // BUG CORRIGÉ (02/08/2026, signalé par Laurent — "ça m'ouvre ça mais
-    // rien, écran blanc") : window.open() avec une data: URI base64 très
-    // longue échoue silencieusement sur beaucoup de navigateurs/TWA
-    // Android (limite de longueur d'URL dépassée, ou popup ouvert vide
-    // sans erreur JS remontée). Conversion en vrai Blob + URL objet
-    // (blob:...) — pas de limite de taille, ouverture fiable partout.
-    try {
-      const base64 = ppsDoc.data.split(",")[1];
-      const binaire = atob(base64);
-      const octets = new Uint8Array(binaire.length);
-      for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
-      const blob = new Blob([octets], { type: "application/pdf" });
-      const blobUrl = URL.createObjectURL(blob);
-      const fenetre = window.open(blobUrl, "_blank");
-      if (!fenetre) alert("Le navigateur a bloqué l'ouverture. Autorise les pop-ups pour Yoria, ou réessaie.");
-      // Révocation différée (pas immédiate : la fenêtre/onglet a besoin
-      // du temps de charger le blob avant qu'on libère l'URL).
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-    } catch (err) {
-      console.error("Erreur ouverture PDF PPS:", err);
-      alert("Impossible d'ouvrir le PDF. Essaie de le réimporter depuis Réglages.");
-    }
-    return;
+// Chargement à la demande de pdf.js (même pattern que chargerFitParser
+// pour le FIT — cf. commentaire associé) : utilisé pour deux choses
+// distinctes — (1) extraire le texte d'un PDF PPS importé afin de tenter
+// de lire automatiquement la date d'expiration ("EXPIRE LE JJ/MM/AAAA"),
+// (2) rien d'autre pour l'instant, l'aperçu du PDF passe par un <iframe>
+// natif sur le blob, pas par un rendu canvas pdf.js. Version pinned et
+// worker configuré explicitement (obligatoire avec pdf.js, sinon échec
+// silencieux au premier getDocument()).
+let _pdfJsModule = null;
+async function chargerPdfJs() {
+  if (_pdfJsModule) return _pdfJsModule;
+  const mod = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs");
+  mod.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs";
+  _pdfJsModule = mod;
+  return _pdfJsModule;
+}
+
+// Tentative d'extraction de la date d'expiration depuis le texte d'un PDF
+// PPS (02/08/2026, demande de Laurent). Le PPS FFA affiche toujours
+// "EXPIRE LE JJ/MM/AAAA" en haut du document (cf. gabarit Figma observé) —
+// mais rien ne garantit que ce texte soit une vraie couche de texte
+// extractible plutôt que du texte vectorisé/converti en tracés par
+// l'export ; d'où le repli silencieux vers la saisie manuelle si
+// l'extraction échoue ou ne trouve rien. Retourne "YYYY-MM-DD" ou null.
+async function extraireExpirationPdfPps(dataUrl) {
+  try {
+    const pdfjs = await chargerPdfJs();
+    const base64 = dataUrl.split(",")[1];
+    const binaire = atob(base64);
+    const octets = new Uint8Array(binaire.length);
+    for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+    const doc = await pdfjs.getDocument({ data: octets }).promise;
+    const page = await doc.getPage(1);
+    const contenu = await page.getTextContent();
+    const texte = contenu.items.map(it => it.str).join(" ");
+    const m = texte.match(/EXPIRE\s*LE\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (!m) return null;
+    return m[3]+"-"+m[2]+"-"+m[1];
+  } catch (err) {
+    console.error("Extraction date PPS échouée:", err);
+    return null;
   }
+}
+
+// Modale PPS unifiée (02/08/2026) — remplace ouvrirPpsPleinEcran +
+// ppsDocumentSection : import, aperçu, et suppression réunis en un seul
+// endroit accessible depuis le bouton "🩺 PPS" du header, sur toutes les
+// vues où appHeaderEl est rendu. PDF affiché via <iframe> sur un blob URL
+// (jamais window.open — cf. bug du 02/08/2026, écran blanc en nouvel
+// onglet sur PC/TWA) : reste dans l'app, bouton "Fermer" cohérent avec le
+// cas image, pas de perte de contexte de navigation.
+function ouvrirPpsModale() {
+  let blobUrlActif = null; // révoqué à la fermeture de la modale
+  const fermer = () => {
+    if (blobUrlActif) { URL.revokeObjectURL(blobUrlActif); blobUrlActif = null; }
+    document.body.removeChild(overlay);
+  };
+
+  const construireApercu = (ppsDoc) => {
+    if (!ppsDoc?.data) return el("div",{class:"muted",style:{fontSize:"14px",padding:"20px 0"}},"Aucun PPS enregistré.");
+    if (ppsDoc.type === "application/pdf") {
+      try {
+        const base64 = ppsDoc.data.split(",")[1];
+        const binaire = atob(base64);
+        const octets = new Uint8Array(binaire.length);
+        for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i);
+        const blob = new Blob([octets], { type: "application/pdf" });
+        blobUrlActif = URL.createObjectURL(blob);
+        return el("iframe",{src:blobUrlActif, style:{width:"100%", height:"70vh", border:"none", borderRadius:"12px", background:"#fff"}});
+      } catch (err) {
+        console.error("Erreur aperçu PDF PPS:", err);
+        return el("div",{style:{color:"var(--warn)",fontSize:"14px",padding:"20px 0"}},"Impossible d'afficher l'aperçu du PDF.");
+      }
+    }
+    return el("img",{src:ppsDoc.data, style:{maxWidth:"100%", maxHeight:"70vh", borderRadius:"12px", boxShadow:"0 4px 24px rgba(0,0,0,0.5)"}});
+  };
+
+  const ppsDocActuel = profilCoureur.ppsDocument || null;
+  const ppsExpirationActuelle = profilCoureur.ppsExpiration || null;
+
   const overlay = el("div",{style:{
     position:"fixed", inset:"0", background:"rgba(0,0,0,0.92)", zIndex:"9999",
-    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px"
-  }, onClick: (e)=>{ if (e.target === overlay) document.body.removeChild(overlay); }},
-    el("img",{src:ppsDoc.data, style:{maxWidth:"100%", maxHeight:"85vh", borderRadius:"12px", boxShadow:"0 4px 24px rgba(0,0,0,0.5)"}}),
-    el("button",{style:{
-      marginTop:"20px", padding:"12px 28px", borderRadius:"24px", border:"none",
-      background:"#fff", color:"#000", fontSize:"15px", fontWeight:"700", cursor:"pointer"
-    }, onClick: ()=>document.body.removeChild(overlay)}, "Fermer")
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start",
+    padding:"20px", overflowY:"auto"
+  }, onClick: (e)=>{ if (e.target === overlay) fermer(); }},
+    el("div",{style:{width:"100%", maxWidth:"480px", display:"flex", flexDirection:"column", gap:"14px"}},
+      el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between"}},
+        el("div",{style:{color:"#fff", fontSize:"18px", fontWeight:"800"}},"🩺 Pass Prévention Santé"),
+        el("button",{style:{
+          padding:"8px 20px", borderRadius:"20px", border:"none",
+          background:"#fff", color:"#000", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+        }, onClick: fermer}, "Fermer")
+      ),
+      construireApercu(ppsDocActuel),
+      ppsExpirationActuelle ? el("div",{style:{color:"#fff", fontSize:"13px", textAlign:"center"}},
+        "Expire le "+new Date(ppsExpirationActuelle+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})
+      ) : null,
+      ppsDocActuel ? el("button",{style:{
+        padding:"10px", borderRadius:"8px", border:"1px solid rgba(255,255,255,0.3)",
+        background:"transparent", color:"#fff", fontSize:"13px", cursor:"pointer"
+      }, onClick: avecRetourTactile(()=>{
+        if (!confirm("Supprimer le PPS enregistré ?")) return;
+        profilCoureur.ppsDocument = null;
+        profilCoureur.ppsExpiration = null;
+        sauvegarderProfilCoureur();
+        fermer();
+        render();
+      })}, "🗑️ Supprimer") : null,
+      el("div",{style:{borderTop:"1px solid rgba(255,255,255,0.2)", paddingTop:"14px", display:"flex", flexDirection:"column", gap:"8px"}},
+        el("label",{style:{fontSize:"13px", color:"#fff"}}, ppsDocActuel ? "Remplacer le document :" : "Importer un document (PDF ou photo) :"),
+        el("input",{id:"pps-modale-file-input", type:"file", accept:"image/*,application/pdf", style:{fontSize:"13px", color:"#fff"}}),
+        el("label",{style:{fontSize:"12px", color:"#fff", marginTop:"4px"}},"Date d'expiration :"),
+        el("input",{id:"pps-modale-expiration-input", type:"date", value: ppsExpirationActuelle||"", style:{
+          padding:"6px 8px", borderRadius:"6px", border:"1px solid rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.1)",
+          color:"#fff", fontSize:"14px", fontFamily:"inherit"
+        }}),
+        el("div",{id:"pps-modale-extraction-statut", style:{fontSize:"12px", color:"rgba(255,255,255,0.7)", minHeight:"16px"}}),
+        el("button",{id:"pps-modale-enregistrer-btn", style:{
+          marginTop:"6px", padding:"10px", borderRadius:"8px", border:"none",
+          background:"var(--accent)", color:"#fff", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+        }, onClick: avecRetourTactile(async (e)=>{
+          const btn = e.currentTarget;
+          const fileInput = document.getElementById("pps-modale-file-input");
+          const expInput = document.getElementById("pps-modale-expiration-input");
+          const statutEl = document.getElementById("pps-modale-extraction-statut");
+          const fichier = fileInput?.files?.[0];
+          if (!fichier && !expInput?.value) { alert("Choisis un fichier ou renseigne au moins une date d'expiration."); return; }
+          const libelleOriginal = btn.textContent;
+          btn.textContent = "⏳ Enregistrement...";
+          btn.disabled = true;
+          try {
+            if (fichier) {
+              if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
+              if (fichier.type === "application/pdf") {
+                const data = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
+                  reader.readAsDataURL(fichier);
+                });
+                profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
+                // Tentative d'extraction auto de la date d'expiration —
+                // n'écrase jamais une date déjà saisie manuellement dans le
+                // champ par l'utilisateur avant de cliquer Enregistrer.
+                if (!expInput.value) {
+                  if (statutEl) statutEl.textContent = "🔍 Recherche de la date d'expiration...";
+                  const dateExtraite = await extraireExpirationPdfPps(data);
+                  if (dateExtraite) {
+                    expInput.value = dateExtraite;
+                    if (statutEl) statutEl.textContent = "✓ Date d'expiration détectée automatiquement";
+                  } else {
+                    if (statutEl) statutEl.textContent = "Date non détectée — renseigne-la manuellement si besoin";
+                  }
+                }
+              } else {
+                // Compression côté client — cf. commentaire historique dans
+                // l'ancien handler (02/08/2026, bug d'échec silencieux sur
+                // gros fichiers non compressés).
+                const data = await new Promise((resolve, reject) => {
+                  const img = new Image();
+                  const readerUrl = URL.createObjectURL(fichier);
+                  img.onload = () => {
+                    const maxDim = 1600;
+                    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                    const canvas = document.createElement("canvas");
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    URL.revokeObjectURL(readerUrl);
+                    resolve(canvas.toDataURL("image/jpeg", 0.82));
+                  };
+                  img.onerror = () => { URL.revokeObjectURL(readerUrl); reject(new Error("Image illisible")); };
+                  img.src = readerUrl;
+                });
+                profilCoureur.ppsDocument = { data, type: "image/jpeg", nomFichier: fichier.name };
+              }
+            }
+            if (expInput?.value) profilCoureur.ppsExpiration = expInput.value;
+            sauvegarderProfilCoureur();
+            btn.textContent = "✓ Enregistré";
+            setTimeout(() => { fermer(); render(); }, 600);
+          } catch (err) {
+            console.error("Erreur enregistrement PPS:", err);
+            alert("Échec de l'enregistrement : "+(err.message||"erreur inconnue")+". Réessaie avec une photo plus légère si le problème persiste.");
+            btn.textContent = libelleOriginal;
+            btn.disabled = false;
+          }
+        })}, "✓ Enregistrer")
+      )
+    )
   );
   document.body.appendChild(overlay);
 }
@@ -8349,129 +8504,32 @@ function renderSettings() {
   );
 
 
-  // ── Document PPS (Pass Prévention Santé FFA) — 01/08/2026 ───────────────
-  // Stocke le document officiel (image ou PDF) déjà généré côté FFA, avec
-  // sa date d'expiration saisie manuellement (pas d'OCR — le format du
-  // document FFA n'est pas garanti stable). But : affichage direct en plein
-  // écran depuis l'app au moment du retrait de dossard, sans avoir à
-  // rouvrir l'appli/le compte FFA. Stocké en base64 dans profilCoureur
-  // (ppsDocument: {data, type, nomFichier}, ppsExpiration: "YYYY-MM-DD"),
-  // donc synchronisé au même titre que le reste du profil via
-  // sauvegarderProfilCoureur() — aucun mécanisme de sync séparé nécessaire.
-  const ppsDoc = profilCoureur.ppsDocument || null;
-  const ppsExpiration = profilCoureur.ppsExpiration || null;
-  let joursAvantExpirationPps = null;
-  if (ppsExpiration) {
+  // ── Rappel PPS (lecture seule) — 02/08/2026 ──────────────────────────────
+  // Import/affichage/suppression centralisés dans la modale ouverte depuis
+  // le bouton "🩺 PPS" du header (cf. appHeaderEl et ouvrirPpsModale) —
+  // demande de Laurent ("tout faire sur le bouton PPS"). Réglages garde
+  // seulement un rappel de statut, pas de formulaire ici.
+  const ppsDocRappel = profilCoureur.ppsDocument || null;
+  const ppsExpirationRappel = profilCoureur.ppsExpiration || null;
+  let joursAvantExpirationRappel = null;
+  if (ppsExpirationRappel) {
     const msParJour = 86400000;
-    joursAvantExpirationPps = Math.ceil((new Date(ppsExpiration+"T00:00:00") - new Date(today()+"T00:00:00")) / msParJour);
+    joursAvantExpirationRappel = Math.ceil((new Date(ppsExpirationRappel+"T00:00:00") - new Date(today()+"T00:00:00")) / msParJour);
   }
-  const ppsAlerteExpiration = joursAvantExpirationPps !== null && joursAvantExpirationPps <= 30;
+  const ppsAlerteRappel = joursAvantExpirationRappel !== null && joursAvantExpirationRappel <= 30;
   const ppsDocumentSection = el("div", {style:{marginBottom:"16px"}},
     el("div",{class:"label"},"🩺 Pass Prévention Santé (PPS)"),
     card(
-      ppsAlerteExpiration ? el("div",{style:{
-        background: "rgba(var(--warn-rgb),0.13)",
-        border: "1px solid rgba(var(--warn-rgb),0.27)",
-        borderRadius:"8px", padding:"8px 12px", marginBottom:"10px", fontSize:"13px", fontWeight:"700",
-        color: "var(--warn)"
-      }}, joursAvantExpirationPps < 0
-        ? "⚠️ PPS expiré depuis "+Math.abs(joursAvantExpirationPps)+" jour(s)"
-        : "⚠️ PPS expire dans "+joursAvantExpirationPps+" jour(s)"
-      ) : null,
-      ppsDoc ? el("div",{style:{display:"flex",flexDirection:"column",gap:"10px"}},
-        el("button",{id:"pps-voir-btn", style:{
-          width:"100%", padding:"12px", borderRadius:"8px", border:"1px solid var(--border)",
-          background:"var(--border-soft)", color:"var(--text)", fontSize:"14px", fontWeight:"700", cursor:"pointer",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:"8px"
-        }, onClick: avecRetourTactile(()=>ouvrirPpsPleinEcran(ppsDoc))}, "🔍 Afficher le PPS", ppsExpiration ? el("span",{style:{fontWeight:"400",color:"var(--text-muted)",fontSize:"12px"}}," (expire le "+new Date(ppsExpiration+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+")") : null),
-        el("button",{style:{
-          width:"100%", padding:"8px", borderRadius:"8px", border:"1px solid var(--border)",
-          background:"transparent", color:"var(--text-muted)", fontSize:"13px", cursor:"pointer"
-        }, onClick: avecRetourTactile(()=>{
-          if (!confirm("Supprimer le PPS enregistré ?")) return;
-          profilCoureur.ppsDocument = null;
-          profilCoureur.ppsExpiration = null;
-          sauvegarderProfilCoureur();
-          render();
-        })}, "🗑️ Supprimer")
-      ) : el("div",{class:"muted",style:{fontSize:"13px",marginBottom:"10px"}},"Aucun PPS enregistré. Importe le PDF ou la photo de ton pass (délivré par la FFA) pour l'avoir sous la main au retrait de dossard."),
-      el("div",{style:{display:"flex",flexDirection:"column",gap:"8px",marginTop: ppsDoc ? "12px" : "0", paddingTop: ppsDoc ? "12px" : "0", borderTop: ppsDoc ? "1px solid var(--border)" : "none"}},
-        el("label",{style:{fontSize:"12px",color:"var(--text-muted)"}}, ppsDoc ? "Remplacer le document :" : "Importer :"),
-        el("input",{id:"pps-file-input", type:"file", accept:"image/*,application/pdf", style:{fontSize:"13px",color:"var(--text)"}}),
-        el("label",{style:{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px"}},"Date d'expiration :"),
-        el("input",{id:"pps-expiration-input", type:"date", value: ppsExpiration||"", style:{
-          padding:"6px 8px", borderRadius:"6px", border:"1px solid var(--border)", background:"var(--border-soft)",
-          color:"var(--text)", fontSize:"14px", fontFamily:"inherit"
-        }}),
-        el("button",{id:"pps-enregistrer-btn", style:{
-          marginTop:"6px", padding:"10px", borderRadius:"8px", border:"none",
-          background:"var(--accent)", color:"#fff", fontSize:"14px", fontWeight:"700", cursor:"pointer"
-        }, onClick: avecRetourTactile(async (e)=>{
-          const btn = e.currentTarget;
-          const fileInput = document.getElementById("pps-file-input");
-          const expInput = document.getElementById("pps-expiration-input");
-          const fichier = fileInput?.files?.[0];
-          if (!fichier && !expInput?.value) { alert("Choisis un fichier ou renseigne au moins une date d'expiration."); return; }
-          const libelleOriginal = btn.textContent;
-          btn.textContent = "⏳ Enregistrement...";
-          btn.disabled = true;
-          try {
-            if (expInput?.value) profilCoureur.ppsExpiration = expInput.value;
-            if (fichier) {
-              if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
-              if (fichier.type === "application/pdf") {
-                const data = await new Promise((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(reader.result);
-                  reader.onerror = () => reject(new Error("Lecture du fichier échouée"));
-                  reader.readAsDataURL(fichier);
-                });
-                profilCoureur.ppsDocument = { data, type: fichier.type, nomFichier: fichier.name };
-              } else {
-                // Compression côté client (redimensionnement + JPEG) —
-                // corrige un échec silencieux constaté en test réel (02/08/2026,
-                // signalé par Laurent : "le fichier ne s'enregistre pas", sans
-                // erreur visible) : une photo de téléphone non compressée
-                // (souvent 3-8 Mo, HEIC/JPEG haute résolution) fait exploser le
-                // JSONB envoyé par sauvegarderProfilCoureur(), qui échoue en
-                // fire-and-forget (synchroniserVersSupabase) sans jamais
-                // remonter d'erreur ni bloquer l'écriture localStorage — le
-                // profil semblait "s'enregistrer" en local mais jamais vers
-                // Supabase (donc perdu à la prochaine reconnexion/autre
-                // appareil). Redimensionnement max 1600px + JPEG qualité 0.82
-                // suffit largement à garder le QR/texte lisible en plein écran
-                // tout en réduisant le poids de 80-95% dans la plupart des cas.
-                const data = await new Promise((resolve, reject) => {
-                  const img = new Image();
-                  const readerUrl = URL.createObjectURL(fichier);
-                  img.onload = () => {
-                    const maxDim = 1600;
-                    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-                    const canvas = document.createElement("canvas");
-                    canvas.width = Math.round(img.width * scale);
-                    canvas.height = Math.round(img.height * scale);
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    URL.revokeObjectURL(readerUrl);
-                    resolve(canvas.toDataURL("image/jpeg", 0.82));
-                  };
-                  img.onerror = () => { URL.revokeObjectURL(readerUrl); reject(new Error("Image illisible")); };
-                  img.src = readerUrl;
-                });
-                profilCoureur.ppsDocument = { data, type: "image/jpeg", nomFichier: fichier.name };
-              }
-            }
-            sauvegarderProfilCoureur();
-            btn.textContent = "✓ Enregistré";
-            setTimeout(() => render(), 600);
-          } catch (err) {
-            console.error("Erreur enregistrement PPS:", err);
-            alert("Échec de l'enregistrement : "+(err.message||"erreur inconnue")+". Réessaie avec une photo plus légère si le problème persiste.");
-            btn.textContent = libelleOriginal;
-            btn.disabled = false;
-          }
-        })}, "✓ Enregistrer")
-      )
+      ppsDocRappel
+        ? el("div",{style:{display:"flex",flexDirection:"column",gap:"4px"}},
+            el("div",{style:{fontSize:"14px",color:"var(--text)",fontWeight:"700"}}, "✓ PPS enregistré"),
+            ppsExpirationRappel ? el("div",{style:{fontSize:"13px",color: ppsAlerteRappel ? "var(--warn)" : "var(--text-muted)",fontWeight: ppsAlerteRappel ? "700" : "400"}},
+              (joursAvantExpirationRappel < 0 ? "⚠️ Expiré depuis "+Math.abs(joursAvantExpirationRappel)+" jour(s) — le " : "Expire le ")
+              +new Date(ppsExpirationRappel+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})
+            ) : el("div",{style:{fontSize:"13px",color:"var(--text-muted)"}},"Date d'expiration non renseignée"),
+            el("div",{class:"muted",style:{fontSize:"12px",marginTop:"6px"}},"Gérable via le bouton 🩺 PPS en haut de l'écran.")
+          )
+        : el("div",{class:"muted",style:{fontSize:"13px"}},"Aucun PPS enregistré. Utilise le bouton 🩺 PPS en haut de l'écran pour l'importer.")
     )
   );
 
@@ -9265,16 +9323,16 @@ function renderSettings() {
       el("div",{style:{color:"var(--text)",fontSize:"16px",fontWeight:"800"}},"Yoria"),
       el("div",{class:"muted",style:{fontSize:"14px"}},VERSIONS[0].ver+" · yoria.run")
     ),
-    // Accès rapide au PPS (02/08/2026, demande de Laurent : "accessible en
-    // un clic, à côté du bouton mode sombre") — n'apparaît que si un
-    // document est déjà enregistré (profilCoureur.ppsDocument, cf.
-    // ppsDocumentSection plus bas). Réutilise directement
-    // ouvrirPpsPleinEcran(), même fonction que le bouton de la carte.
-    profilCoureur.ppsDocument ? el("button",{style:{
+    // Accès PPS centralisé (02/08/2026, demande de Laurent : "tout faire
+    // sur le bouton PPS" — import/affichage/suppression réunis dans une
+    // seule modale plutôt que dispersés entre header et Réglages).
+    // Toujours visible, même sans PPS enregistré, pour permettre l'import
+    // direct sans passer par Réglages.
+    el("button",{style:{
       flexShrink:"0", padding:"0 12px", height:"36px", borderRadius:"18px",
       border:"1px solid var(--border)", background:"var(--border-soft)",
       color:"var(--text)", fontSize:"13px", fontWeight:"700", cursor:"pointer"
-    }, onClick: avecRetourTactile(()=>ouvrirPpsPleinEcran(profilCoureur.ppsDocument))}, "🩺 PPS") : null,
+    }, onClick: avecRetourTactile(()=>ouvrirPpsModale())}, "🩺 PPS"),
     themeToggleBtn
   );
 
