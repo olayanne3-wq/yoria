@@ -8727,15 +8727,30 @@ function renderSettings() {
     // vérifiée en boucle toutes les 16ms, jusqu'à confirmation (abandon
     // après 2s si jamais atteinte, cas anormal qui ne devrait pas se
     // produire en pratique).
+    // CORRECTIF (01/08/2026, bug signalé par Laurent : roulette de record
+    // invisible/vide dans la section "Records personnels", un groupe
+    // accordéon) — diagnostic en direct (console) a montré un cas
+    // inattendu : offsetParent restait null indéfiniment sur cet élément
+    // alors que getBoundingClientRect() renvoyait des dimensions et une
+    // position parfaitement normales (largeur/hauteur non nulles,
+    // document.body.contains() true, toute la chaîne d'ancêtres avec
+    // display/visibility corrects). La cause exacte de cette divergence
+    // offsetParent vs getBoundingClientRect dans ce contexte précis
+    // (accordéon) n'a pas pu être identifiée malgré plusieurs
+    // vérifications ciblées (position, content-visibility, doublon de
+    // nœud, élément détaché — toutes écartées) — remplacé par un test basé
+    // sur getBoundingClientRect().width > 0, seul critère confirmé fiable
+    // dans ce cas par des tests directs en console. offsetParent reste en
+    // repli secondaire (OU logique) pour ne rien casser ailleurs où
+    // l'ancien test fonctionnait déjà correctement.
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
-      console.log('[DIAG-roulette]', idPrefix, 'tentative', tentative, 'conteneurTest existe:', !!conteneurTest, 'offsetParent:', conteneurTest?.offsetParent);
-      if (conteneurTest && conteneurTest.offsetParent !== null) {
-        console.log('[DIAG-roulette]', idPrefix, '-> APPEL initRouletteHMS');
+      const visible = conteneurTest && (conteneurTest.offsetParent !== null || conteneurTest.getBoundingClientRect().width > 0);
+      if (visible) {
         window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
         return;
       }
-      if (tentative > 120) { console.log('[DIAG-roulette]', idPrefix, '-> ABANDON après 120 tentatives'); return; }
+      if (tentative > 120) return; // ~2s, abandon — cas anormal
       setTimeout(() => attendreEtInitialiser((tentative ?? 0) + 1), 16);
     })(0);
 
@@ -9317,20 +9332,15 @@ function renderSettings() {
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
       recordsSection
     ], () => {
-      console.log('[DIAG-accordeon] onOuverture Records appelé, roulettesActivesReglages:', roulettesActivesReglages);
       // Repositionne les roulettes de records à l'ouverture du groupe
       // (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats) —
-      // au moment de la construction de recordsSection, le groupe était
-      // fermé (offsetParent null), donc attendreEtInitialiser a abandonné
-      // sans jamais poser la classe .actif ni positionner le scroll.
-      // roulettesActivesReglages (déjà rempli par initRouletteHMS, cf.
-      // plus haut dans ce fichier) garde une référence vivante à chaque
-      // colonne — on relit sa valeur déjà connue (colApi.valeur(), jamais
-      // perdue même sans positionnement visuel) et on la réapplique
-      // maintenant que le conteneur est réellement visible.
+      // filet de sécurité complémentaire au correctif getBoundingClientRect
+      // dans attendreEtInitialiser (cf. son commentaire) : si jamais une
+      // roulette a malgré tout été positionnée sans classe .actif visible
+      // pour une raison encore différente, cette repasse à l'ouverture
+      // corrige la situation en relisant la valeur déjà connue en mémoire.
       ["5K","10K","Semi","Marathon"].forEach((dist) => {
         const roulette = roulettesActivesReglages["rec-temps-"+dist];
-        console.log('[DIAG-accordeon]', dist, 'roulette trouvée:', !!roulette);
         if (!roulette) return;
         roulette.h?.definirValeur(roulette.h.valeur(), false);
         roulette.m?.definirValeur(roulette.m.valeur(), false);
