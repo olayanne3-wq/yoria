@@ -8439,7 +8439,8 @@ function renderSettings() {
     const inputH = document.getElementById(idPrefix + '-h');
     const inputM = document.getElementById(idPrefix + '-m');
     const inputS = document.getElementById(idPrefix + '-s');
-    if (!inputH || !inputM || !inputS) return; // DOM pas encore attaché, cf. setTimeout appelant
+    console.log('[DIAG2]', idPrefix, 'initRouletteHMS: inputH', !!inputH, 'inputM', !!inputM, 'inputS', !!inputS);
+    if (!inputH || !inputM || !inputS) { console.log('[DIAG2]', idPrefix, '-> RETURN précoce, inputs manquants'); return; } // DOM pas encore attaché, cf. setTimeout appelant
 
     const declencherInput = (input, valeur) => {
       input.value = String(valeur);
@@ -8746,11 +8747,13 @@ function renderSettings() {
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
       const visible = conteneurTest && (conteneurTest.offsetParent !== null || conteneurTest.getBoundingClientRect().width > 0);
+      if (tentative === 0 || tentative === 121) console.log('[DIAG2]', idPrefix, 'tentative', tentative, 'visible:', visible, 'width:', conteneurTest?.getBoundingClientRect().width);
       if (visible) {
+        console.log('[DIAG2]', idPrefix, '-> initRouletteHMS appelée à la tentative', tentative);
         window.initRouletteHMS(idPrefix, h ?? 0, m ?? 0, s ?? 0, heuresMax);
         return;
       }
-      if (tentative > 120) return; // ~2s, abandon — cas anormal
+      if (tentative > 120) { console.log('[DIAG2]', idPrefix, '-> ABANDON'); return; }
       setTimeout(() => attendreEtInitialiser((tentative ?? 0) + 1), 16);
     })(0);
 
