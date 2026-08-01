@@ -127,6 +127,148 @@ function decisionsCard(decisions){
   </article>`;
 }
 
-const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",statistics:"Statistiques"};
+/*
+ * Onglet "Sauvegarde" (01/08/2026) — export global (auto-découverte des
+ * tables), export ciblé par utilisateur, réinjection. Tout passe par
+ * /api/backup, cf. commentaires de conception en tête de ce fichier côté
+ * serveur. Chaque export est téléchargé comme un simple fichier JSON via
+ * un lien <a download> généré à la volée (pas de stockage serveur
+ * additionnel — cf. discussion de conception du 01/08/2026, "pas de
+ * stockage additionnel, téléchargement local suffit").
+ */
+const BACKUP_API = "/api/backup";
+
+async function backupReq(o = {}) {
+  const r = await fetch(BACKUP_API, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...o });
+  let j = {};
+  try { j = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; throw e; }
+  return j;
+}
+
+function telechargerJson(objet, nomFichier) {
+  const blob = new Blob([JSON.stringify(objet, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomFichier;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function afficherStatutBackup(id, classe, texte) {
+  const el = $(id);
+  el.hidden = false;
+  el.className = "notice " + classe;
+  el.textContent = texte;
+}
+
+$("#backup-global-btn").onclick = async () => {
+  const btn = $("#backup-global-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Génération en cours…";
+  $("#backup-global-status").hidden = true;
+  try {
+    const result = await backupReq({ method: "GET" });
+    const nomFichier = `yoria-export-global-${new Date().toISOString().slice(0, 10)}.json`;
+    telechargerJson(result, nomFichier);
+    afficherStatutBackup("#backup-global-status", "", `Export généré : ${result.tables} table(s).${result.erreurs?.length ? " " + result.erreurs.length + " erreur(s), voir le fichier." : ""}`);
+  } catch (e) {
+    afficherStatutBackup("#backup-global-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
+$("#backup-user-btn").onclick = async () => {
+  const email = $("#backup-user-email").value.trim();
+  if (!email) {
+    afficherStatutBackup("#backup-user-status", "error", "Saisis une adresse e-mail.");
+    return;
+  }
+  const btn = $("#backup-user-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Génération en cours…";
+  $("#backup-user-status").hidden = true;
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "export_user", email }) });
+    const nomFichier = `yoria-export-${email.replace(/[^a-z0-9]/gi, "-")}-${new Date().toISOString().slice(0, 10)}.json`;
+    telechargerJson(result, nomFichier);
+    afficherStatutBackup("#backup-user-status", "", `Export généré pour ${result.utilisateur.email}.${result.erreurs?.length ? " " + result.erreurs.length + " erreur(s), voir le fichier." : ""}`);
+  } catch (e) {
+    afficherStatutBackup("#backup-user-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
+let fichierBackupSelectionne = null;
+
+$("#backup-file-input").addEventListener("change", (e) => {
+  const fichier = e.target.files[0];
+  fichierBackupSelectionne = fichier || null;
+  $("#backup-reinject-btn").disabled = !fichier;
+  $("#backup-reinject-status").hidden = true;
+  $("#backup-reinject-report").innerHTML = "";
+});
+
+$("#backup-reinject-btn").onclick = async () => {
+  if (!fichierBackupSelectionne) return;
+
+  let exportData;
+  try {
+    const texte = await fichierBackupSelectionne.text();
+    exportData = JSON.parse(texte);
+  } catch {
+    afficherStatutBackup("#backup-reinject-status", "error", "Le fichier n'est pas un JSON valide.");
+    return;
+  }
+
+  const nbTables = exportData.donnees ? Object.keys(exportData.donnees).length : 0;
+  const cible = exportData.type === "export_utilisateur" ? `l'utilisateur ${exportData.utilisateur?.email || "inconnu"}` : "TOUTES les données de la base";
+  const confirmation = confirm(
+    `Réinjecter ce fichier va écraser (upsert) les lignes existantes pour ${cible}, sur ${nbTables} table(s).\n\nCette action n'est pas réversible facilement.\n\nConfirmer la réinjection ?`,
+  );
+  if (!confirmation) return;
+
+  const btn = $("#backup-reinject-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Réinjection en cours…";
+  $("#backup-reinject-status").hidden = true;
+  $("#backup-reinject-report").innerHTML = "";
+
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "reinject", exportData }) });
+    afficherStatutBackup("#backup-reinject-status", "", "Réinjection terminée.");
+    $("#backup-reinject-report").innerHTML = rapportReinjectionHtml(result.rapport);
+  } catch (e) {
+    afficherStatutBackup("#backup-reinject-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
+function rapportReinjectionHtml(rapport) {
+  if (!rapport) return "";
+  let html = "";
+  if (rapport.recreationCompte) {
+    html += `<p><small>${rapport.recreationCompte.recree ? "✅ Compte auth recréé (l'utilisateur devra réinitialiser son mot de passe)." : "Compte auth déjà existant, non recréé."}</small></p>`;
+  }
+  html += `<div class="table-wrap"><table>
+    <thead><tr><th>Table</th><th>Lignes réinjectées</th><th>Erreur</th></tr></thead>
+    <tbody>${(rapport.tables || []).map((t) => `<tr><td>${esc(t.table)}</td><td>${t.count}</td><td>${t.erreur ? '<small style="color:#c0392b">' + esc(t.erreur) + "</small>" : "—"}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+  return html;
+}
+
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
