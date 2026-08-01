@@ -22,6 +22,21 @@
 // puis SEUL cet utilisateur authentifié est supprimé — jamais un userId
 // fourni séparément dans le corps.
 
+// Tables applicatives à nettoyer explicitement AVANT la suppression du
+// compte auth (31/07/2026, bug signalé par Laurent : "Erreur : Échec de la
+// suppression côté Supabase") — cause confirmée via les logs Vercel :
+// PostgreSQL 23503 (violation de contrainte de clé étrangère) sur
+// decision_events_user_id_fkey, cette table référence user_id SANS
+// ON DELETE CASCADE. Un correctif de schéma (ON DELETE CASCADE) est la
+// vraie solution — cf. fix-cascade-decision-tables.sql — mais cette
+// suppression explicite reste un filet de sécurité : elle fonctionne même
+// si le schéma n'a pas encore été corrigé, et protège contre toute future
+// table introduisant le même piège sans qu'on y pense. Ordre d'exécution
+// sans importance entre elles (aucune ne référence les autres), mais
+// TOUTES doivent réussir avant l'appel Admin API de suppression du compte
+// — un échec silencieux ici recréerait exactement le même blocage.
+const TABLES_A_NETTOYER = ['decision_events', 'decision_outcomes'];
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Méthode non autorisée, utiliser POST.' });
@@ -58,12 +73,37 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Impossible de déterminer l\'utilisateur.' });
     }
 
-    // 2. Supprime le compte via l'Admin API (clé service_role uniquement).
-    //    Les données applicatives (profiles/plans/integrations) sont
-    //    supprimées en cascade si les clés étrangères sont configurées
-    //    avec ON DELETE CASCADE côté schéma Supabase — sinon elles
-    //    resteraient orphelines (non vérifié dans cette route, à contrôler
-    //    séparément si des données persistent après suppression).
+    // 2. Nettoyage explicite des tables applicatives sans cascade connue
+    //    (cf. commentaire de TABLES_A_NETTOYER en haut de fichier) — via
+    //    REST PostgREST plutôt que l'Admin API (ces tables n'ont pas
+    //    d'équivalent Admin API, ce sont de simples tables applicatives).
+    //    Chaque échec est loggé avec le détail complet renvoyé par
+    //    PostgREST (pas juste un message générique), pour faciliter un
+    //    futur diagnostic si une nouvelle table pose le même problème.
+    for (const table of TABLES_A_NETTOYER) {
+      const cleanRes = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+          'apikey': SERVICE_ROLE_KEY,
+          'Prefer': 'return=minimal'
+        }
+      });
+      if (!cleanRes.ok) {
+        const errText = await cleanRes.text();
+        console.error(`[delete-account] Échec nettoyage table ${table}:`, cleanRes.status, errText);
+        return res.status(502).json({ error: `Échec de la préparation à la suppression (table ${table}).` });
+      }
+    }
+
+    // 3. Supprime le compte via l'Admin API (clé service_role uniquement).
+    //    Les données applicatives restantes (profiles/plans/integrations)
+    //    sont supprimées en cascade si les clés étrangères sont
+    //    configurées avec ON DELETE CASCADE côté schéma Supabase — sinon
+    //    elles resteraient orphelines et cette étape échouerait avec la
+    //    même erreur 23503 que decision_events avant ce correctif (à
+    //    surveiller si une nouvelle table applicative est ajoutée sans
+    //    cascade, cf. TABLES_A_NETTOYER ci-dessus à étendre le cas échéant).
     const deleteRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${user.id}`, {
       method: 'DELETE',
       headers: {
