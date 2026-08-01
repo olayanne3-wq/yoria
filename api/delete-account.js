@@ -27,15 +27,23 @@
 // suppression côté Supabase") — cause confirmée via les logs Vercel :
 // PostgreSQL 23503 (violation de contrainte de clé étrangère) sur
 // decision_events_user_id_fkey, cette table référence user_id SANS
-// ON DELETE CASCADE. Un correctif de schéma (ON DELETE CASCADE) est la
-// vraie solution — cf. fix-cascade-decision-tables.sql — mais cette
-// suppression explicite reste un filet de sécurité : elle fonctionne même
-// si le schéma n'a pas encore été corrigé, et protège contre toute future
-// table introduisant le même piège sans qu'on y pense. Ordre d'exécution
-// sans importance entre elles (aucune ne référence les autres), mais
-// TOUTES doivent réussir avant l'appel Admin API de suppression du compte
-// — un échec silencieux ici recréerait exactement le même blocage.
-const TABLES_A_NETTOYER = ['decision_events', 'decision_outcomes'];
+// ON DELETE CASCADE. Un correctif de schéma a depuis été appliqué
+// (cf. fix-cascade-decision-tables.sql, exécuté le 31/07/2026) — les deux
+// tables du chantier "coach adaptatif" sont maintenant en CASCADE
+// (decision_events.user_id -> auth.users, decision_outcomes.
+// decision_event_id -> decision_events.id). Cette suppression explicite
+// reste néanmoins un filet de sécurité utile : elle fonctionne même si le
+// schéma venait à perdre sa cascade, et protège contre toute future table
+// applicative liée à user_id introduite sans qu'on y pense.
+//
+// SEULE decision_events est listée ici, PAS decision_outcomes — première
+// tentative corrigée le 31/07/2026 (erreur 42703 : colonne user_id
+// inexistante sur decision_outcomes, confirmé via information_schema.
+// columns). decision_outcomes n'a pas de lien direct vers l'utilisateur,
+// seulement vers decision_event_id — sa suppression se fait
+// automatiquement en cascade quand ses decision_events parents sont
+// supprimés ci-dessous, pas besoin de la nettoyer séparément.
+const TABLES_A_NETTOYER = ['decision_events'];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
