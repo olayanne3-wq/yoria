@@ -6200,18 +6200,27 @@ function renderWeekDetail(weekNum) {
           fontSize:"13px"
         }}, (statuses[uid]==="❌"?"❌ ":"⚠️ ")+reason));
       }
+      // Icône ✏️ compacte (26/07/2026 pour la carte "Aujourd'hui", étendue
+      // ici le 03/08/2026 à la demande de Laurent) : regroupe désormais
+      // toutes les actions manuelles (saisie/correction, import .fit) dans
+      // un seul popover cohérent, plutôt qu'un gros bloc pleine largeur —
+      // même pattern que renderIconeSaisieManuelle() sur la carte du jour.
+      // Bug trouvé à la relecture avant push : renderIconeSaisieManuelle()
+      // n'a pas de garde interne sur les séances futures (contrairement à
+      // renderStatusRow, cf. son "estFuture") — placée hors du bloc
+      // !estFutureSeance ci-dessous, elle serait apparue à tort sur des
+      // séances à venir. Calculé ici mais l'icône n'est ajoutée qu'après
+      // la vérification de date, plus bas.
       const statusRow=renderStatusRow(uid, s.date);
-      card.appendChild(statusRow);
+      const estFutureSeance = s.date > today();
+      const headerLigneStatut = el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+        el("div",{style:{flex:"1"}}, statusRow),
+        estFutureSeance ? null : renderIconeSaisieManuelle(uid, s, stravaRun)
+      );
+      card.appendChild(headerLigneStatut);
       // Correctif 26/07/2026 (signalé par Laurent) : saisie manuelle et
       // notes n'ont pas de sens pour une séance FUTURE (rien ne s'est
-      // encore passé) — même garde que renderStatusRow (estFuture), qui ne
-      // bloquait jusqu'ici que les boutons de statut, pas ces deux blocs.
-      const estFutureSeance = s.date > today();
       if (!estFutureSeance) {
-        // Saisie/correction manuelle (docs/source-donnees-seances.md) — même
-        // bloc que sur la carte du jour, pour pouvoir corriger une séance
-        // passée depuis le détail de semaine.
-        card.appendChild(renderManualPerfRow(uid, s, stravaRun));
         const noteInput=el("input",{type:"text",id:"note-"+uid,name:"note-"+uid,placeholder:"💬 Note sur cette séance...",style:{marginTop:"8px",background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",padding:"7px 10px",color:"var(--text)",fontSize:"14px",outline:"none",width:"100%"}});
         noteInput.value=sessionNotes[uid]||"";
         noteInput.addEventListener("change",()=>{
