@@ -66,7 +66,49 @@ peut suivre le même principe : une structure d'activité en cache, retraitée �
 
 ## 3. Détection des intervalles — principe et limites
 
-### 3.1 Principe de détection
+### 3.0 Découverte majeure (03/08/2026) : détection de marqueurs natifs en amont
+
+**Avant toute détection par reconnaissance de signal, le module doit vérifier si le
+fichier `.fit` contient déjà des marqueurs structurés exploitables.** Le format FIT
+supporte nativement les workouts structurés (messages `workout`/`workout_step`, et un
+champ `lap_trigger` qui peut valoir autre chose que `'distance'` — ex. `'manual'` ou un
+trigger lié à un segment programmé). Quand ces marqueurs sont présents, les vraies bornes
+de chaque répétition sont connues avec certitude (posées par la montre elle-même en temps
+réel), sans avoir besoin de la détection par signal.
+
+**Constat empirique (calibration du 03/08/2026)** : un fichier `.fit` exporté depuis Zepp
+(montre Amazfit Cheetah), pour une séance **confirmée programmée en entraînement
+structuré sur la montre**, ne contient **aucun marqueur structuré exploitable** —
+`lap_trigger: 'distance'` sur tous les laps (laps fixes tous les 1000m, comme documenté
+ailleurs pour cette marque), `type: 'manual'` sur l'activité, aucun message `workout_step`,
+aucun champ développeur lié à un programme d'entraînement (vérifié : les champs
+développeur présents concernent des métriques de course — SpO2, Leg Spring Stiffness,
+Form Power — rien lié à la structure de la séance). La montre a bien exécuté le programme
+(pilotage en temps réel, bips/affichage des phases), mais **cette information n'est pas
+écrite dans le fichier `.fit` exportable** — limite de l'implémentation Zepp/Amazfit à
+l'export, pas une contrainte du format FIT lui-même.
+
+**Hypothèse à vérifier plus tard, non confirmée à ce stade** : Garmin et Coros, dont
+l'export FIT natif est déjà documenté comme fiable pour l'usage Strava existant (cf.
+inventaire §10-§12, "programmer les intervalles sur la montre" fonctionne avec Strava
+pour ces marques), produisent très probablement des fichiers `.fit` avec de vrais
+marqueurs structurés — cohérent avec le fait que Strava parvient à segmenter précisément
+ces activités (`getLapsAffichage()`, laps distincts par phase). Pas testé directement
+faute d'un fichier `.fit` Garmin/Coros réel disponible à ce stade.
+
+**Conséquence pour la conception** : le module d'import FIT doit suivre une logique en
+deux temps, pas une détection par signal systématique :
+1. **Vérifier la présence de marqueurs structurés natifs** (`lap_trigger` ≠ `'distance'`,
+   messages `workout_step` présents). Si présents : découpage direct et fiable, pas de
+   détection heuristique nécessaire — précision équivalente à ce que Strava obtient
+   aujourd'hui pour une montre bien programmée.
+2. **Repli sur la détection par reconnaissance de signal** (section 3.1 et suivantes) si
+   aucun marqueur natif n'est exploitable — cas déjà rencontré et calibré pour Zepp/
+   Amazfit dans cette phase de test.
+
+---
+
+### 3.1 Principe de détection (repli sans marqueurs natifs)
 
 Segmentation du flux `record` (timestamp, speed, hr) par repérage de plateaux de vitesse
 stable séparés par des ruptures nettes (delta de vitesse au-dessus d'un seuil, sur une
@@ -79,7 +121,51 @@ vitesse accompagnée d'une montée de FC cohérente renforce la confiance dans l
 découpage, cohérent avec le principe déjà appliqué ailleurs dans le moteur de décision
 (RPE comme repli, jamais comme source primaire quand une mesure objective existe).
 
-### 3.2 Cas limites identifiés (non résolus à ce stade, à traiter à l'implémentation)
+### 3.2 Résultats de calibration sur séances réelles (03/08/2026)
+
+Trois séances réelles (montre Amazfit Cheetah, export Zepp, sans marqueurs structurés
+natifs — cf. section 3.0) comparées au détail affiché par Yoria/Strava pour la même
+séance (montre programmée en entraînement structuré côté Strava, donc laps natifs
+fiables côté Strava — référence "vérité terrain" pour cette comparaison) :
+
+| Séance | Répétitions attendues | Répétitions détectées | Précision allure | Précision FC |
+|---|---|---|---|---|
+| Seuil 3×6min (test 1) | 3 | 3/3 ✓ | non comparé à Strava | — |
+| Seuil 3×6min (test 2) | 3 | 3/3 ✓ | **±1-2s** | **±0-1 bpm** |
+| VMA 30-30 (test 1, séance propre) | 5 | 5/5 ✓ | ±5-9s | ±1-2 bpm |
+| VMA 30-30 (test 2, séance irrégulière) | 6 | 6/6 ✓ (une répétition faible détectée après ajustement manuel du seuil) | ±10-15s (max observé) | ±0-3 bpm |
+
+**Constat principal : le nombre de répétitions détecté est fiable dans tous les cas
+testés** (5/5 dans un cas simple, 6/6 dans un cas où une répétition était nettement plus
+faible que les autres et n'a été retrouvée qu'après ajustement manuel du seuil de
+détection — cf. section 3.3 ci-dessous pour la limite associée). C'est le signal le plus
+important pour `SessionAnalyzer` (`analyserRepetitions`, poids 0.35 dans le score de
+réussite, cf. section 2).
+
+**Constat secondaire : la précision de l'allure moyenne par répétition individuelle a une
+limite structurelle sur les efforts courts.** Six méthodes de découpage des bornes ont été
+testées sur le cas VMA irrégulier (bloc complet, 60% central, ≥95% du pic de vitesse local,
+fenêtre fixe centrée sur le pic, fenêtre régulière recalée sur un rythme de 60s supposé
+constant, point d'accélération maximale comme référence de départ) — **aucune n'a réduit
+l'écart de façon cohérente sur l'ensemble des répétitions d'une même séance**, chacune
+améliorant certaines répétitions et en dégradant d'autres. Une tentative de recalcul de la
+vitesse depuis les positions GPS brutes (formule haversine point à point) plutôt que le
+champ `speed` déjà lissé par la montre a même donné un résultat **moins bon** (bruit GPS
+amplifié sur des pas de temps aussi courts). Conclusion retenue : cet écart ne vient
+probablement pas d'un mauvais découpage de notre part, mais d'un traitement propriétaire
+appliqué par Strava en interne (lissage ou recalcul non documenté publiquement) qu'on ne
+peut pas répliquer à l'identique sans accès à sa méthode exacte.
+
+**Décision actée** : accepter une marge d'erreur structurelle plus large sur l'allure
+moyenne des répétitions courtes (VMA 30-30 et similaire, efforts ≤ ~40s) — de l'ordre de
+±10-15s au pire cas observé — plutôt que de continuer à chercher une correction
+algorithmique. Sur les efforts longs (seuil, 6min), la précision observée est largement
+meilleure (±1-2s), cohérente avec un bruit GPS de nature à peu près constante en valeur
+absolue, donc proportionnellement plus faible sur une durée longue. Ne pas fermer la porte
+à une amélioration future si une meilleure méthode est identifiée, mais ne plus la
+considérer comme un prérequis bloquant pour une première version fonctionnelle.
+
+### 3.3 Cas limites identifiés (non résolus à ce stade, à traiter à l'implémentation)
 
 - **Récupération trop courte pour laisser la vitesse redescendre franchement** : risque
   de fusion de deux répétitions distinctes en un seul bloc détecté. Nécessite un seuil de
@@ -97,13 +183,15 @@ découpage, cohérent avec le principe déjà appliqué ailleurs dans le moteur 
   côté Strava (`obtenirActivitesAmbigues`, jamais de validation automatique en cas
   d'ambiguïté, choix laissé au coureur).
 
-### 3.3 Calibration des seuils
+### 3.4 Calibration des seuils — état d'avancement
 
-Aucun seuil numérique n'est arrêté à ce stade. À calibrer sur plusieurs séances réelles
-de Laurent (montre Amazfit Cheetah, plusieurs types de séances qualité — VMA courte,
-seuil, spécifique — pas uniquement le cas 3×6min déjà testé), avant tout codage définitif.
-Cohérent avec le principe de validation empirique déjà appliqué ailleurs dans le projet
-(ex. `POIDS_LONGUE` calibré par simulation exhaustive avant adoption).
+Calibration en cours sur plusieurs séances réelles (montre Amazfit Cheetah, cf. section
+3.2 pour les résultats détaillés). Couvert à ce stade : seuil 3×6min (2 séances), VMA
+30-30 (2 séances, dont une irrégulière). Encore à couvrir : allure spécifique/allure
+course (contraste effort/récup le plus faible, cas le plus à risque, pas encore testé
+faute de séance disponible), VMA plus longue type i-3min (position intermédiaire entre
+30-30 et seuil). Cohérent avec le principe de validation empirique déjà appliqué ailleurs
+dans le projet (ex. `POIDS_LONGUE` calibré par simulation exhaustive avant adoption).
 
 ---
 
@@ -136,7 +224,7 @@ d'un `.fit` doit donc préciser ou déduire la date de la séance concernée.
 
 ## 5. Suppression / réimport (outillage de test)
 
-Besoin identifié pour la phase de calibration (section 3.3) : pouvoir supprimer le
+Besoin identifié pour la phase de calibration (section 3.4) : pouvoir supprimer le
 résultat d'une analyse FIT déjà importée et relancer l'analyse sur le même fichier, sans
 redemander l'upload à chaque itération.
 
@@ -185,24 +273,25 @@ re-parsing ultérieur). Si un vrai besoin de traitement en lot apparaît plus ta
 admin `beta-admin`), réévaluer un déplacement partiel vers une fonction serverless à ce
 moment — pas anticipé maintenant.
 
-### 7.2 Méthode de calibration des seuils (tranché)
+### 7.2 Méthode de calibration des seuils (tranché — méthode ; résultats en section 3.2)
 
 Même principe que la validation empirique déjà appliquée ailleurs dans le projet (cf. §15
 principes transverses, "validation historique avant codage") — appliqué ici à ce nouveau
-chantier plutôt qu'inventé spécifiquement :
+chantier plutôt qu'inventé spécifiquement : constituer un jeu de séances réelles couvrant
+plusieurs profils de contraste effort/récup (VMA courte, seuil long, spécifique — le plus
+difficile), comparer chaque résultat de détection à la réalité connue (vérité terrain, même
+logique de comparaison "résultat généré vs attendu" que `scripts/test-plans-varies.js`),
+ajuster les paramètres de détection sur ce jeu de cas avant tout codage définitif. Premiers
+résultats concrets et enseignements en section 3.2 et 3.4.
 
-- Constituer un jeu de séances réelles couvrant plusieurs profils de contraste
-  effort/récup, pas seulement le cas déjà testé (3×6min, contraste net ~1:20-1:30/km) :
-  VMA courte (30-30, contraste fort), seuil long (contraste modéré), spécifique (contraste
-  le plus faible, allure proche de l'allure course — cas le plus difficile à détecter).
-- Comparer pour chaque séance le résultat de la détection automatique à la réalité connue
-  (vérité terrain, comme Laurent sait ce qu'il a réellement couru) — même logique de
-  comparaison "résultat généré vs attendu" que `scripts/test-plans-varies.js` pour la
-  génération de plans.
-- Ajuster durée minimum de plateau et delta de vitesse minimum sur ce jeu de cas avant
-  tout codage définitif des seuils — pas de valeur figée à ce stade.
+### 7.3 Stockage du brut (confirmé)
 
-### 7.3 Désaccord nombre de blocs détectés ≠ nombre attendu (tranché — Option A)
+Confirmation de la décision de la section 4.1 : le fichier `.fit` brut est conservé en
+Supabase Storage, pas seulement le résultat structuré — coût négligeable à l'usage actuel
+(solo/bêta), permet le re-parsing rétroactif si l'algorithme de détection évolue après la
+phase de calibration (section 7.2). Pas de retour en arrière envisagé sur ce point.
+
+### 7.4 Désaccord nombre de blocs détectés ≠ nombre attendu (tranché — Option A)
 
 **Décision : aucun traitement spécifique ajouté.** Le pipeline existant
 (`analyserRepetitions()`, Module 2 du moteur de décision) gère déjà nativement ce cas —
@@ -224,9 +313,4 @@ ambiguïté pose un vrai problème de confiance pour l'utilisateur, pas par anti
 
 - Export FIT non uniforme selon les marques de montre (Garmin/Coros : direct et simple ;
   Polar : nécessite une conversion JSON→FIT ; Suunto : fiabilité variable selon modèle) —
-  prévoir un repli GPX/TCX pour les cas où l'export FIT natif n'est pas disponible,
-  non conçu à ce stade.
-- Poids relatif du fichier brut stocké en Storage vs conservation uniquement du résultat
-  structuré si le volume d'usage devait un jour poser un vrai problème de coût
-  (aujourd'hui non pertinent, cf. section 4.1) — à réévaluer seulement si le contexte
-  d'usage change significativement (au-delà d'un usage solo/bêta).
+  repli GPX/TCX mis de côté pour l'instant (décision du 02/08/2026), à reprendre plus tard.
