@@ -6160,7 +6160,18 @@ function renderStats() {
     const R = 22, C = 2 * Math.PI * R;
     const offset = C * (1 - nbDebloques / totalBadges);
     return el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"12px",padding:"14px",marginBottom:"16px",display:"flex",alignItems:"center",gap:"12px",cursor:"pointer"},
-      onClick:()=>setView("badges")
+      // CORRECTIF (02/08/2026, bug signalé par Laurent : "il fallait
+      // réactualiser pour que les nouvelles séances soient prises en
+      // compte dans les badges") — le calcul de window.__badgesCache__
+      // ne se déclenchait qu'une seule fois par session (cf. le garde-fou
+      // `typeof window.__badgesCache__ === "undefined"` plus haut dans
+      // render()), jamais rejoué après une simple navigation dans l'app,
+      // même si de nouvelles séances avaient été validées entre-temps.
+      // Réinitialiser le cache à `undefined` juste avant de naviguer vers
+      // la vue badges déclenche à nouveau ce bloc de calcul (même
+      // mécanisme, pas de duplication de logique) — l'utilisateur voit
+      // un état à jour dès l'ouverture de la vue, sans recharger la page.
+      onClick:()=>{ window.__badgesCache__ = undefined; setView("badges"); }
     },
       (() => {
         const svg = `<svg width="40" height="40" viewBox="0 0 64 64">
