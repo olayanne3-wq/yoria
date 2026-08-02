@@ -5597,6 +5597,35 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
   let expanded = !!forceOpen;
   const hasManualNow = () => !!manualPerf[uid];
 
+  // Bouton d'import FIT — ajouté le 03/08/2026, repositionné après un
+  // premier essai raté dans renderBlocRealise() (jamais atteint avant
+  // validation, cf. son garde isDone). Placé ici, dans le composant
+  // atteint par l'auto-ouverture "premier validation sans Strava" (cf.
+  // forceOpen, refonte carte Aujourd'hui du 26/07/2026) — le vrai moment
+  // où l'utilisateur a besoin d'importer sa séance, avant de choisir un
+  // statut ✅/⚠️/❌. Réutilise importerFichierFit(), déjà existante et
+  // inchangée (même mécanisme d'input file caché que la section Import
+  // FIT de Réglages). N'apparaît que si dataSource==="fit" ET qu'aucune
+  // activité n'existe déjà pour cette date (cf. !stravaRun) — cohérent
+  // avec le blocage déjà en place côté importerFichierFit().
+  const wrapperImportFit = el("div",{style:{display: (dataSource === "fit" && !stravaRun) ? "block" : "none", marginBottom:"8px"}});
+  if (dataSource === "fit" && !stravaRun) {
+    const fileInpCarte = document.createElement("input");
+    fileInpCarte.type = "file"; fileInpCarte.accept = ".fit"; fileInpCarte.style.display = "none";
+    fileInpCarte.addEventListener("change", avecRetourTactile((e)=>{
+      const file = e.target.files?.[0];
+      if (file) importerFichierFit(file);
+      fileInpCarte.value = "";
+    }));
+    const importBtn = el("button",{type:"button",style:{
+      width:"100%",background:"rgba(var(--accent-rgb),0.13)",border:"1px solid rgba(var(--accent-rgb),0.33)",
+      borderRadius:"8px",padding:"9px 12px",color:"var(--accent)",fontWeight:"700",fontSize:"14px",cursor:"pointer"
+    }},"📁 Importer le fichier .fit de cette séance");
+    importBtn.addEventListener("click", avecRetourTactile(()=>{ fileInpCarte.click(); }));
+    wrapperImportFit.appendChild(importBtn);
+    wrapperImportFit.appendChild(fileInpCarte);
+  }
+
   const summaryLine = el("div",{style:{
     display:"flex",alignItems:"center",justifyContent:"space-between",
     marginTop:"8px",padding:"9px 12px",
@@ -5761,7 +5790,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
     formWrap.style.display = "block";
   }
 
-  return el("div",{}, summaryLine, formWrap);
+  return el("div",{}, wrapperImportFit, summaryLine, formWrap);
 }
 
 // Bloc "Réalisé" de la carte "Aujourd'hui" (26/07/2026) — affiché dès qu'un
@@ -5837,33 +5866,18 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       window.stravaActivities = stravaActivities;
       save("lk_strava_activities", stravaActivities);
       matchActivitiesToPlan(stravaActivities);
+      // Bug corrigé le 03/08/2026 (signalé par Laurent) : le statut
+      // ✅/⚠️/❌ déjà posé restait affiché après suppression de l'activité,
+      // faisant référence à une donnée qui vient d'être effacée — même
+      // logique que le bouton "✕ Annuler" de la saisie manuelle
+      // (renderManualPerfRow, cf. son commentaire) : repartir d'une page
+      // blanche (statut "—") plutôt que garder un statut orphelin.
+      delete statuses[uid];
+      save(clePourPlan("lk_statuses"), statuses);
+      ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
       render();
     }));
     liensDroite.appendChild(supprimerBtn);
-  } else if (dataSource === "fit") {
-    // Bouton d'import direct dans la carte — ajouté le 03/08/2026, suite à
-    // la remarque de Laurent : passer par Réglages à chaque séance pour
-    // importer un .fit n'est pas naturel comparé à Strava (synchro
-    // automatique). Réutilise importerFichierFit(), déjà existante et
-    // inchangée (même mécanisme d'input file caché que la section Import
-    // FIT de Réglages) — juste un second point d'entrée vers la même
-    // fonction, pas de logique dupliquée. N'apparaît que si aucune
-    // activité n'existe déjà pour cette date (cf. !stravaRun ci-dessus) —
-    // cohérent avec le blocage déjà en place dans importerFichierFit().
-    const fileInpCarte = document.createElement("input");
-    fileInpCarte.type = "file"; fileInpCarte.accept = ".fit"; fileInpCarte.style.display = "none";
-    fileInpCarte.addEventListener("change", avecRetourTactile((e)=>{
-      const file = e.target.files?.[0];
-      if (file) importerFichierFit(file);
-      fileInpCarte.value = "";
-    }));
-    const importBtn = el("a",{href:"#",style:{color:"var(--accent)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:"3px"}},"📁 Importer .fit");
-    importBtn.addEventListener("click", avecRetourTactile((e)=>{
-      e.preventDefault(); e.stopPropagation();
-      fileInpCarte.click();
-    }));
-    liensDroite.appendChild(importBtn);
-    liensDroite.appendChild(fileInpCarte);
   }
   wrap.appendChild(el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
     el("span",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Réalisé"),
