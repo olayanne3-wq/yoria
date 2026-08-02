@@ -27,7 +27,15 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.32", title:"Profil complet dès l'inscription, outils internes de fiabilité", current:true, notes:[
+      { ver:"v2.33", title:"Pass Prévention Santé, choix de la source de données à l'inscription, plans mieux équilibrés", current:true, notes:[
+        "🩺 Nouveau bouton PPS dans l'en-tête : importe ton Pass Prévention Santé FFA (PDF ou photo) et retrouve-le en un tap au retrait de dossard",
+        "📝 L'inscription te demande maintenant comment tu comptes suivre tes séances (Strava ou saisie manuelle), avec une explication si tu choisis Strava",
+        "⚖️ Meilleur équilibre entre séances faciles et sortie longue dans le plan généré, notamment à volume plus serré",
+        "🎚️ Le levier \"Volume\" du wizard applique maintenant vraiment le changement demandé sur les semaines à venir",
+        "📡 Un bandeau apparaît sur le dashboard si Strava est déconnecté, avec un accès direct pour te reconnecter",
+        "🏅 Libellés des badges à paliers clarifiés, badge \"Record battu\" déclenché uniquement par une vraie course validée",
+      ]},
+      { ver:"v2.32", title:"Profil complet dès l'inscription, outils internes de fiabilité", current:false, notes:[
         "📝 L'inscription demande maintenant ton profil complet (prénom, date de naissance, poids, taille, records...) réparti en quelques étapes simples, avec navigation par glissement",
         "🏅 Les records personnels saisis à l'inscription incluent maintenant la date, comme dans Réglages",
         "🔧 Outils internes de fiabilité renforcés (sauvegarde des données, vérification de l'intégrité de la base) — sans impact visible pour toi, mais qui protègent tes données en coulisses",
