@@ -345,10 +345,43 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       // qu'à la sortie immédiate de l'onboarding — un grand débutant qui
       // revient plus tard sur /v2 (ex. pour changer de plan) retombe sur
       // le comportement normal du wizard, pas cette redirection forcée.
+      //
+      // Traitée AVANT la redirection Strava directe (02/08/2026, cf.
+      // ci-dessous) : l'écran dédié grand-débutant a son propre bouton
+      // "Connecter Strava" avec un mécanisme de retour d'OAuth robuste
+      // (sessionStorage, cf. son commentaire dans v2/index.html) — un
+      // grand débutant ayant choisi Strava à la page 4 de l'onboarding
+      // doit atteindre CET écran, pas partir en OAuth directement
+      // court-circuitant ce mécanisme dédié.
       if (profilMisAJour.niveau === 'grand-debutant') {
         window.location.href = '/v2?onboarding=grand-debutant';
         return new Promise(() => {}); // ne résout jamais : on quitte la page
       }
+
+      // Source de données choisie à l'onboarding (02/08/2026, demande de
+      // Laurent : "on demande comment seront collectées les données ?").
+      // clePourPlan() n'est pas encore définie à ce stade (comme pour
+      // save()/profilCoureur, cf. commentaire plus haut) — écriture
+      // directe avec la clé non préfixée, cohérente avec le repli de
+      // clePourPlan() en l'absence de plan (aucun plan n'existe encore
+      // pour un tout nouveau compte à ce stade).
+      if (complement.dataSource) {
+        localStorage.setItem('lk_data_source', complement.dataSource);
+      }
+
+      // Redirection vers la connexion Strava (02/08/2026) — SEULEMENT si
+      // choisi à l'onboarding. Le profil vient d'être sauvegardé
+      // ci-dessus (localStorage + synchro Supabase déjà lancée) : la
+      // redirection OAuth qui suit recharge entièrement la page, mais
+      // rien n'est perdu puisque le profil est déjà persisté avant ce
+      // point. cf. commentaire dans auth.js (terminer()) sur ce choix de
+      // conception — cette redirection reste la responsabilité de
+      // l'appelant, jamais du module d'onboarding lui-même.
+      if (complement.dataSource === 'strava') {
+        window.location.href = '/api/strava/auth';
+        return new Promise(() => {}); // ne résout jamais : on quitte la page
+      }
+      // Grand débutant (v2.8, §17.9) : redirection directe vers l'écran
     }
 
     window.__resoudreAuthPret__(user);
