@@ -4853,7 +4853,33 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     );
   })();
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
+  // Bandeau "Strava déconnecté" sur le dashboard (02/08/2026, demande de
+  // Laurent : "parfois Strava est déconnecté [...] si on ne va pas dans
+  // les paramètres on ne le voit pas") — stravaAuthInvalide (variable
+  // globale, positionnée par syncStrava()/le refresh du token, cf. son
+  // usage existant côté Réglages) n'était visible auparavant que dans
+  // Réglages, jamais sur le dashboard où l'utilisateur passe le plus de
+  // temps. Affiché seulement si dataSource === "strava" (pas de sens
+  // d'alerter quelqu'un qui utilise la saisie manuelle ou l'import FIT) et
+  // hors Mode Forme sans référence (ESTMODEFORME gère son propre flux).
+  // Même lien /api/strava/auth que le bouton équivalent de Réglages —
+  // aucune nouvelle logique de reconnexion, juste un signal plus visible.
+  const stravaDeconnecteEl = (dataSource === "strava" && stravaAuthInvalide)
+    ? el("a",{href:"/api/strava/auth",style:{
+        display:"flex", alignItems:"center", gap:"8px", textDecoration:"none",
+        background:"rgba(var(--warn-rgb),0.13)", border:"1px solid rgba(var(--warn-rgb),0.33)",
+        borderRadius:"10px", padding:"11px 14px", marginBottom:"12px", cursor:"pointer"
+      }},
+        el("span",{style:{fontSize:"16px"}},"⚠️"),
+        el("div",{style:{flex:"1"}},
+          el("div",{style:{color:"var(--warn)",fontWeight:"700",fontSize:"14px"}},"Strava déconnecté"),
+          el("div",{style:{color:"var(--warn)",fontSize:"12px",opacity:"0.85"}},"Tes séances ne se synchronisent plus — appuie ici pour te reconnecter")
+        ),
+        el("span",{style:{color:"var(--warn)",fontSize:"18px"}},"›")
+      )
+    : null;
+
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,stravaDeconnecteEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
