@@ -2933,6 +2933,10 @@ function analyserSeanceQualite(seance) {
   const activite = (stravaActivities || []).find(a => a.start_date_local?.slice(0, 10) === seance.date);
   if (!activite) return null;
 
+  // getLapsAffichage() gère déjà le cas activite.lapsSontDejaEffortSeul en
+  // interne (cf. son commentaire, correctif du 03/08/2026) — pas de
+  // court-circuit local ici, pour ne pas dupliquer cette logique à chacun
+  // des appelants de getLapsAffichage() dans ce fichier.
   const lapsBruts = getLapsAffichage(activite, seance.structureIntervalles);
   if (!lapsBruts.length) return null; // pas de laps d'effort isolables, rien à analyser
 
@@ -3025,7 +3029,27 @@ function economyLabel(score, n) {
 function runByLeaIcon(size, radius) {
   return window._sessionAnalysisModule.runByLeaIcon(size, radius);
 }
+// Bug trouvé le 03/08/2026 (premier test réel, compte de test) : quand
+// activity.laps provient de la détection par signal sur un fichier .fit
+// sans marqueurs structurés natifs (cf. adapterFitVersFormatActivite(),
+// fit-detection.js), ce tableau ne contient QUE des blocs d'effort —
+// jamais de récup entre eux (décision de conception "Chemin B direct",
+// cf. docs/v2-methodologie/import-fit-intervalles.md section 2). Le
+// module getLapsAffichage() (session-analysis.js) fait avancer un
+// CURSEUR dans activity.laps en supposant une alternance effort/récup
+// native (bloc.dureeRecupSec fait avancer le curseur d'un cran
+// supplémentaire pour "sauter" une récup qui, ici, n'existe pas dans le
+// tableau) — avec des laps d'effort seuls, le curseur se désynchronise
+// après la 1ère répétition et ne retrouve qu'une fraction des
+// répétitions réellement détectées (vérifié : 2 laps retrouvés sur 6
+// réellement détectés, aux positions attendues par un curseur déréglé,
+// pas un sous-ensemble filtré par allure).
+// Corrigé une seule fois ici (plutôt que dans chacun des 9+ appelants de
+// ce wrapper dans ce fichier) : quand activity.lapsSontDejaEffortSeul
+// est vrai, on retourne activity.laps tel quel, sans repasser par le
+// curseur du module.
 function getLapsAffichage(activity, structureIntervalles) {
+  if (activity?.lapsSontDejaEffortSeul) return activity.laps || [];
   return window._sessionAnalysisModule.getLapsAffichage(activity, structureIntervalles, ALL_SESSIONS, SESSION_TARGETS);
 }
 // Appelée aussi directement par weightedAvgByEffortDuration() plus loin
@@ -9908,6 +9932,7 @@ async function adapterFitVersFormatActivite(fitParseResult) {
   // session-analysis.js, qui reçoivent tout en paramètre).
   const { possedeMarqueursNatifs, construireLapsDepuisFit } = await chargerFitDetection();
   let laps;
+  let lapsSontDejaEffortSeul = false;
   if (possedeMarqueursNatifs(lapsFit)) {
     laps = lapsFit.map((lapFit, i) => {
       const distance = lapFit.total_distance ?? 0;
@@ -9934,6 +9959,25 @@ async function adapterFitVersFormatActivite(fitParseResult) {
     const seanceDuPlan = ALL_SESSIONS.find(s => s.date === dateActivite);
     const structureAttendue = seanceDuPlan?.structureIntervalles?.blocs?.[0] || null;
     laps = construireLapsDepuisFit(session, structureAttendue);
+    // Bug trouvé le 03/08/2026 (premier test réel, compte de test) :
+    // construireLapsDepuisFit() retourne UNIQUEMENT les blocs d'effort
+    // détectés (jamais de récup entre eux — décision de conception
+    // "Chemin B direct", cf. import-fit-intervalles.md section 2). Or
+    // getLapsAffichage() (session-analysis.js) fait avancer un CURSEUR
+    // dans activity.laps en supposant une alternance effort/récup/effort
+    // native (bloc.dureeRecupSec fait avancer le curseur d'un cran
+    // supplémentaire pour "sauter" une récup qui, ici, n'existe pas dans
+    // le tableau) — avec seulement des laps d'effort, le curseur se
+    // désynchronise après la 1ère répétition et ne retrouve que 2
+    // répétitions sur 6 réellement détectées (vérifié : les 2 laps
+    // conservés correspondent exactement aux positions 2 et 4 attendues
+    // par le curseur déréglé, pas à un sous-ensemble filtré par allure).
+    // Ce marqueur permet à analyserSeanceQualite() de court-circuiter
+    // getLapsAffichage() pour cette activité précise et utiliser
+    // activite.laps directement — cohérent avec la décision initiale de
+    // ne jamais reconstruire les laps de récup (non calibrés, non
+    // nécessaires pour SessionAnalyzer qui ne veut que lapsEffort).
+    lapsSontDejaEffortSeul = true;
   }
 
   const distanceTotale = session.total_distance ?? 0;
@@ -9953,6 +9997,7 @@ async function adapterFitVersFormatActivite(fitParseResult) {
     distance: distanceTotale,
     moving_time: tempsTotal,
     laps,
+    lapsSontDejaEffortSeul, // cf. commentaire ci-dessus — utilisé par analyserSeanceQualite()
     _source: "fit", // marqueur interne, pour distinguer d'une activité Strava si besoin plus tard (ex. badge d'origine dans l'UI)
   };
 }
