@@ -47,7 +47,7 @@ yoria/
 │       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin, cf. §16)
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~10200 lignes)
+│   ├── index.html                 # App principale (dashboard, ~10300 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
@@ -65,6 +65,7 @@ yoria/
 │       └── engine/                # Moteur v2 (modules ES, source de vérité)
 │           ├── plan-generator.js
 │           ├── plan-forme.js
+│           ├── badges.js          # Système de badges (récompenses), extrait le 31/07/2026
 │           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
@@ -112,6 +113,21 @@ jamais en Construction ; Affûtage + décalage ≤1 semaine ne recalcule pas
 (juste la date change) ; décalage ≥8 semaines avertit de créer un nouveau
 plan plutôt que de prolonger.
 
+**Levier Volume — démarrage de la progression à la semaine charnière
+(02/08/2026)** — jusque-là, régénérer le plan avec un nouveau
+`volumeActuel` recalculait toute une nouvelle progression depuis la
+SEMAINE 1 du plan (comportement historique de `generatePlan()`), puis ne
+conservait que les semaines à partir de la charnière (semaine en cours +
+1). Comme `computeVolumeProgression()` fait progresser le volume de
++10%/semaine vers un plafond quasi fixe, cette nouvelle courbe avait
+largement le temps de remonter près du plafond avant d'atteindre la
+charnière — un coureur qui baissait son volume ne voyait quasiment aucun
+effet réel sur ses semaines à venir (bug signalé par Laurent : "je ne
+vois pas d'effet"). `appliquerChangementVolume()` (`v2/index.html`)
+calcule désormais `semaineCharniere` AVANT l'appel à `generatePlan()` et
+la transmet via le nouveau paramètre `semaineDepartVolume` — cf. §7 pour
+le détail complet du fonctionnement côté moteur.
+
 **Navigation du wizard** — `ECRANS_WIZARD` (registre centralisé) +
 `afficherEcranWizard(id)` masque tous les écrans puis affiche seulement
 celui demandé, garantit par construction qu'un seul écran est visible à
@@ -150,8 +166,10 @@ Fonctions de rendu (`render*`) :
 - `renderCourse` — page jour de course (horaires, parcours, résultat, stratégie)
 - `renderHelp` — aide (cf. plus bas)
 - `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
+- `renderBadges` — écran détaillé des badges (cf. §16)
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
+- `ouvrirPpsModale` — modale PPS (cf. plus bas)
 - `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans référence)
 
 **Aide** — contenu réorganisé par intention : Démarrer / Comprendre les
@@ -187,6 +205,20 @@ Sans Strava ni saisie manuelle, le clic sur un statut ouvre automatiquement
 le formulaire de saisie. Statut futur : rangée de boutons masquée
 complètement (pas juste désactivée).
 
+**Bandeau "Strava déconnecté" sur le dashboard (02/08/2026)** — le signal
+de déconnexion (`stravaAuthInvalide` : token présent mais invalide/expiré
+; ou `!stravaToken` : aucun token du tout, jamais connecté ou révoqué au
+point d'être supprimé) n'était visible auparavant que dans Réglages
+(bouton "🔄 Reconnecter Strava") ou via un texte discret en bas du
+dashboard — signalé par Laurent : "si on ne va pas dans les paramètres on
+ne le voit pas". Bandeau `stravaDeconnecteEl` ajouté en haut du dashboard
+(juste après `dashHeaderEl`), affiché seulement si `dataSource ===
+"strava"` ET (`stravaAuthInvalide` OU `!stravaToken`) — lien direct vers
+`/api/strava/auth`, même route que Réglages. Le texte redondant du bas de
+dashboard (nombre d'activités/dernière synchro, `stravaSection` locale à
+`renderDashboard`) a été retiré à la demande de Laurent ("inutile si
+bandeau") — ces infos restent consultables dans Réglages si besoin.
+
 **Onglets Stats et Course — accordéons thématiques (31/07/2026)** —
 `renderGroupeAccordeonStats()` (composant générique malgré son nom,
 réutilisé tel quel pour Course via `renderGroupeAccordeonCourse()`),
@@ -203,6 +235,31 @@ optionnel `onOuverture`, appelé à chaque ouverture du groupe (ajouté le
 construit alors que le groupe est fermé et qui a besoin d'un traitement
 différé une fois réellement visible.
 
+**Bouton "🩺 PPS" (Pass Prévention Santé FFA) — header, toutes vues où
+`appHeaderEl` est rendu (02/08/2026)** — toujours visible, ouvre
+`ouvrirPpsModale()` : import, aperçu, suppression réunis en un seul
+endroit (plus de formulaire séparé dans Réglages, cf. §6). Tout document
+importé (PDF ou photo) est stocké comme une image JPEG compressée
+(`profilCoureur.ppsDocument = {data, type:"image/jpeg", nomFichier}`,
+`profilCoureur.ppsExpiration`), synchronisé via `sauvegarderProfilCoureur()`
+comme le reste du profil. **PDF converti en image dès l'import** (jamais
+stocké tel quel) : rendu de la première page via pdf.js
+(`chargerPdfJs()`, import dynamique jsDelivr, même pattern que
+`chargerFitParser()` pour le FIT) en canvas puis JPEG qualité 0.85,
+échelle jusqu'à 2x plafonnée à 1600px — corrige un rendu PDF non fiable
+via `<iframe>`/`<embed>` sur mobile/TWA Android (pas de lecteur PDF
+intégré contrairement à desktop, testé et confirmé en conditions réelles
+: "PDF grisé + bouton Ouvrir qui ne fait rien"). Compromis assumé : seule
+la première page est conservée (suffisant, le gabarit PPS FFA observé
+tient sur une page). Photo importée : compression identique aux autres
+images de l'app (redimensionnement max 1600px, JPEG 0.82). **Extraction
+automatique de la date d'expiration tentée puis RETIRÉE** (regex `EXPIRE
+LE JJ/MM/AAAA` sur le texte de la page pdf.js) : non fiable en pratique
+sur le gabarit FFA observé (généré via Figma, texte probablement
+vectorisé en tracés plutôt qu'en couche texte réelle) — saisie manuelle
+de la date reste le seul chemin, simple et fiable. Alerte visuelle si
+expiration ≤30 jours.
+
 **Onglet Réglages — 6 groupes accordéon (31/07/2026)** — Compte et
 abonnement / Profil coureur / Records personnels / Intégrations / Export /
 Version, même mécanisme de persistance d'état que Stats/Course. Deux
@@ -210,7 +267,11 @@ sections restent hors accordéon, toujours visibles : la clôture de plan
 Forme (action irréversible) et le thème clair/sombre (bouton icône
 discret, intégré à l'en-tête de l'app plutôt qu'une carte séparée — fond
 blanc fixe derrière ☀️, fond noir fixe derrière 🌙, indépendant du thème
-actif pour un contraste constant).
+actif pour un contraste constant). Le groupe "Profil coureur" affiche
+désormais un simple rappel PPS en lecture seule (statut + date
+d'expiration) — l'import/affichage/suppression du document passent
+exclusivement par le bouton header (cf. ci-dessus), plus de formulaire
+dupliqué ici.
 
 **Records personnels — grille compacte avec validation explicite
 (31/07/2026)** — chaque distance (5K/10K/Semi/Marathon) affiche
@@ -231,7 +292,10 @@ Bouton Effacer : remet la roulette à 0 et marque l'état "effacé"
 faut valider avec ✓ pour que la suppression soit persistée. Même
 composant déployé sur les roulettes du wizard (temps de référence,
 objectif, estimation alternative, volume manuel — cf. §3) et de
-l'onboarding (cf. §12).
+l'onboarding (cf. §12). **Le badge "record_battu" ne se déclenche PLUS
+depuis cette saisie manuelle** (retiré le 02/08/2026, cf. §16) — une
+simple correction de record dans Réglages n'est plus considérée comme un
+événement "célébrable".
 
 **Roulette invisible dans un groupe accordéon fermé au chargement
 (corrigé le 01/08/2026)** — si "Records personnels" est fermé au premier
@@ -255,7 +319,10 @@ Laurent mais reste un vrai correctif utile en soi.
 
 **localStorage (préfixe `lk_`)** — clés globales (profil/config) :
 `lk_profil_coureur`, `lk_strava_token`, `lk_strava_refresh`,
-`lk_strava_expires`, `lk_strava_activities`, `lk_last_sync`.
+`lk_strava_expires`, `lk_strava_activities`, `lk_last_sync`,
+`lk_data_source` (préfixée par plan via `clePourPlan()` une fois un plan
+disponible, repli sur la clé brute avant — cf. §12 pour son écriture
+depuis l'onboarding).
 
 Clés préfixées par plan (via `clePourPlan()`) : `lk_statuses`,
 `lk_hidden_sessions`, `lk_swapped_sessions`, `lk_session_notes`, `lk_notes`,
@@ -273,10 +340,10 @@ déjà un statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`.
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`
-en brut), `abonnements`, `beta_testers`, `signalements` (cf. §11). Sync
-Realtime activée sur `plan_donnees` (anti-écho 3s). File d'attente de
-sync en cas d'échec réseau (`lk_file_attente_sync`, 5 min, abandon après
-10 essais).
+en brut), `abonnements`, `beta_testers`, `signalements`, `badges_debloques`
+(cf. §11, §16). Sync Realtime activée sur `plan_donnees` (anti-écho 3s).
+File d'attente de sync en cas d'échec réseau (`lk_file_attente_sync`, 5
+min, abandon après 10 essais).
 
 **Sauvegarde de plan — Supabase est l'unique mécanisme de persistance.**
 Le système Gist v2 (`gist-sync.js`) a été entièrement retiré des écritures
@@ -394,6 +461,8 @@ supprimer son compte.
 {
   prenom, nom, dateNaissance, anneeNaissance (dérivée), poids, taille,
   fcMax, fcRepos, sexe, pps,
+  ppsDocument: {data (JPEG base64), type:"image/jpeg", nomFichier} | null,
+  ppsExpiration: "YYYY-MM-DD" | null,
   records: { "5K": {temps, date?}, "10K": {...}, "Semi": {...}, "Marathon": {...} }
 }
 ```
@@ -402,6 +471,13 @@ supprimer son compte.
   bascule au 1er septembre), message anniversaire.
 - `fcRepos`/`sexe` : consommés par le moteur de décision (pondération
   TRIMP). Repli sur 'autre' si non renseigné.
+- `pps` : champ texte (numéro de licence/PPS) — **retiré de l'onboarding
+  le 02/08/2026** (remplacé par le module d'import `ppsDocument`, cf. §4).
+  Reste dans la structure pour compatibilité, éditable nulle part dans
+  l'UI actuelle.
+- `ppsDocument`/`ppsExpiration` : gérés exclusivement via la modale du
+  bouton "🩺 PPS" du header (cf. §4) — Réglages n'affiche qu'un rappel en
+  lecture seule (statut + date), aucun formulaire d'import ici.
 - Wizard : `preremplirDepuisProfilCoureur()` auto-remplit à partir du
   profil (record le plus pertinent, repli Riegel sinon).
   `verifierCoherenceRecord()` écarte un record si écart >10% à
@@ -414,6 +490,9 @@ supprimer son compte.
   ne doivent JAMAIS appeler `sauvegarderProfilCoureur()` directement au
   clic — seulement mettre à jour l'état local puis `render()`, sinon un
   profil incomplet écrase Supabase.
+- **Toute donnée binaire volumineuse** (image, PDF converti) doit être
+  compressée côté client avant sauvegarde — cf. §15 pour le principe
+  général et l'incident qui l'a fait acter (PPS).
 - **Un seul compte Supabase Auth par email** — vérifier `Authentication →
   Users` en cas de doute, un profil orphelin peut coexister
   silencieusement avec le vrai profil actif.
@@ -467,17 +546,14 @@ moitié des semaines de Construction ont un EF sous `VOLUME_MIN_EF_KM`
 'VOLUME_JOURS_INCOMPATIBLE', message }` plutôt qu'un plan cassé. Les 3
 points d'appel (`v2/index.html` création/régénération/modif objectif,
 `index.html` plan de repli) gèrent ce retour et affichent le message.
-
-**Ratio longue variable selon le nombre de jours + volume minimum par
-distance** — `RATIO_LONGUE_PAR_JOURS` (table 2j:0.45 → 7j:0.22) remplace
-`RATIO_LONGUE=0.28` fixe dans `repartirVolumeSemaine()`, avec contrainte
-`kmLongue = max(ratio × volume, kmQualiteTotal + 1km)` — la longue ne
-peut jamais être plus courte que le cumul des séances qualité de la
-semaine. Un ratio longue/volume élevé à faible nombre de jours est normal
-(littérature Daniels + sources croisées, jusqu'à 40-50% à 2-3j/semaine),
-pas une anomalie à corriger par un plafond. Paramètre `nbJours` propagé
-dans les 3 points d'appel de `recalculerRepartitionEFLongue`
-(`generatePlan`, `placerSeanceTest`, `appliquerAdaptations`).
+**Correction du 02/08/2026** : les semaines de Construction antérieures à
+`semaineDepart` (cf. paragraphe `computeVolumeProgression` ci-dessous,
+présentes uniquement quand `semaineDepart > 1`) sont désormais exclues
+des statistiques de ce garde-fou (`semaineHorsProgression`) — avant ce
+correctif, elles retombaient systématiquement à volume cible nul,
+déclenchant `VOLUME_JOURS_INCOMPATIBLE` avec un message IDENTIQUE quel
+que soit le volume réellement saisi (bug signalé par Laurent, reproduit
+jusqu'à 100km/semaine).
 
 `VOLUME_MIN_PAR_JOURS` est une table à deux niveaux
 (`[distance][nbJours]`) — un seuil unique calé sur 10K s'est révélé
@@ -505,7 +581,71 @@ d'appel de `Engine.generatePlan()` testent tous `planInvalide` et
 affichent `plan.message`, sans câblage supplémentaire nécessaire.
 `decision-engine-apply.classic.js` n'a aucun lien avec
 `repartirVolumeSemaine` (il réduit des séances déjà générées, jamais leur
-répartition) — rien à y propager.
+répartition) — rien à y propager. **Note (02/08/2026)** : cette table a
+été calibrée uniquement au niveau intermédiaire à sa création — en
+pratique, le vrai seuil praticable (EF non ridicule) varie sensiblement
+par niveau (débutant : la table est déjà confortable ; confirmé : le
+vrai seuil praticable peut être ~8km au-dessus de la table pour 10K/5j,
+cf. simulation du 02/08/2026). La table n'a pas été recalibrée sur les 3
+niveaux — le nouveau système de répartition par poids (ci-dessous)
+absorbe une bonne partie de l'écart en pratique (garantit un EF minimum
+quel que soit le volume), donc la recalibration de cette table reste un
+chantier à part, pas urgent tant que le plancher tient.
+
+**`computeVolumeProgression` — paramètre `semaineDepart` (02/08/2026)** —
+par défaut à 1 (comportement historique, génération initiale d'un plan).
+Permet de faire démarrer la progression du volume (+10%/semaine,
+décharge tous les 4 semaines) à une semaine ultérieure du plan plutôt que
+depuis la semaine 1 — la progression REPART réellement de ce niveau, au
+lieu de recalculer toute la courbe depuis zéro puis n'en garder que la
+fin (cf. §3, levier Volume, pour le bug que ce paramètre corrige). Les
+semaines avant `semaineDepart` ne sont pas produites par cette fonction —
+sans impact, l'appelant ne conserve de toute façon que les semaines
+≥ charnière. Le rythme des décharges reste calculé sur le numéro de
+semaine RÉEL du plan, pas réindexé à 1, pour ne pas se désynchroniser du
+rythme déjà en cours dans les semaines conservées avant la charnière.
+
+**`repartirVolumeSemaine` — partage proportionnel longue/EF par poids
+(02/08/2026, remplace `RATIO_LONGUE_PAR_JOURS` et
+`MARGE_LONGUE_VS_QUALITE_KM`)** — signalé par Laurent après le correctif
+du levier Volume ci-dessus : "on a des EF ridicules". Diagnostic en deux
+temps :
+1. L'ancien système calculait la longue EN PREMIER (ratio par nombre de
+   jours, ou "au moins `kmQualiteTotal + 1km`" si plus grand), les EF
+   récupérant seulement ce qu'il restait, sans plancher symétrique. À
+   volume juste au-dessus du seuil minimum, cette contrainte pouvait à
+   elle seule absorber presque tout le budget restant, laissant des EF à
+   0.4-2km (mesuré en simulation directe, 10K/Semi, 5j, niveau confirmé).
+2. `kmQualiteTotal` utilisé pour cette contrainte incluait à tort
+   l'échauffement/retour au calme des séances qualité (souvent 40-50% du
+   volume affiché de la séance, ~25min fixes à allure EF) — ce "faux
+   volume qualité" gonflait artificiellement la longue sans rapport avec
+   l'intensité réelle du travail effectué.
+
+Nouvelle logique : la longue et chaque EF sont traités comme des "parts"
+d'un même budget (`kmRestant = volumeCibleKm - kmQualiteTotal`, calculé
+sur le volume RÉEL des séances qualité, échauffement inclus — sinon le
+volume hebdo total dépasserait la cible), avec la longue pondérée à
+`POIDS_LONGUE = 1.6` fois un EF individuel :
+`kmLongue = kmRestant × POIDS_LONGUE / (POIDS_LONGUE + nbEF)`,
+`kmParEF = kmRestant / (POIDS_LONGUE + nbEF)`. Garantit PAR CONSTRUCTION
+que `kmLongue >= POIDS_LONGUE × kmParEF`, sans avoir besoin d'un ratio
+empirique par palier ni d'une contrainte séparée sur le cumul qualité (qui
+créait par ailleurs des sauts de ratio incohérents à certains volumes
+précis, ex. un ratio de x3.2 au lieu de x1.6 observé à 7 jours/40km avant
+correction). Valeur 1.6 retenue après simulation exhaustive (4 distances
+× 3 niveaux × 5-6 nombres de jours, au seuil minimum exact de chaque
+combinaison — le point le plus tendu) : aucune violation observée (EF
+toujours ≥ ~3.4km), ratio stable et cohérent partout. Cas particulier à
+**2 jours/semaine** (1 qualité + 1 longue, aucun EF) : tout le budget
+restant va mécaniquement à la longue (`nbEF === 0`), pouvant produire des
+longues déraisonnables à fort volume (jusqu'à 50+ km observé en
+simulation) — `genererContenuLongue()` plafonne déjà la DURÉE affichée
+(`DUREE_MAX_LONGUE_MIN`), mais le kilométrage excédentaire disparaissait
+silencieusement du plan sans que le coureur en soit informé. Nouveau
+warning informatif `VOLUME_LONGUE_EXCESSIVE_2J` (pas un refus, contrairement
+à `VOLUME_JOURS_INCOMPATIBLE`) : détecte ce cas en amont et invite à
+passer à 3 jours ou plus, sans bloquer la génération du plan.
 
 **Records du monde — plancher absolu de temps saisissable** —
 `RECORDS_MONDE_SECONDES` (5K/10K/Semi/Marathon, hommes route), bloque
@@ -538,7 +678,8 @@ Ne vérifie jamais la qualité pédagogique — jugement d'expert qui reste
 celui de Laurent. Trois statuts : OK, REFUSÉ (refus volontaire du
 moteur, attendu), FAIL (à corriger). **À relancer avant tout changement
 dans `plan-generator.js`/`plan-forme.js`** (filet de sécurité rapide,
-quelques secondes).
+quelques secondes) — reste à 5/10 OK + 5/10 REFUSÉ après les correctifs
+du 02/08/2026 (levier Volume, répartition EF/longue), aucune régression.
 
 ## 8. Moteur de décision
 
@@ -706,7 +847,31 @@ toujours depuis distance/temps, jamais `avg_speed` du fichier FIT (peut
 `v2/engine/strava.js`. Sync conditionnelle sur `dataSource === "strava"`.
 Comparaison séance/laps filtrée par allure cible ±15%. Token
 invalide/révoqué détecté explicitement — message + bouton "🔄 Reconnecter
-Strava", affiché sans auto-effacement tant que non résolu.
+Strava" (Réglages) + bandeau dashboard (cf. §4), affichés sans
+auto-effacement tant que non résolu. **Synchro NON multi-device** — les
+tokens (`lk_strava_token`/`lk_strava_refresh`/`lk_strava_expires`) sont
+en `localStorage`, propres à chaque appareil ; se connecter sur un
+appareil ne connecte pas Strava sur un autre (contrairement au profil/
+plan, synchronisés via Supabase). Cohérent avec le principe "aucun outil
+admin ne doit jamais lire ou utiliser les tokens Strava d'un testeur"
+(cf. §15) — les tokens restent volontairement locaux, jamais centralisés
+côté serveur au-delà de l'échange OAuth initial.
+
+**`syncStrava()` — robustesse sans plan existant (02/08/2026)** — le
+calcul de `planStart` (date la plus ancienne entre le début du plan
+actuel et 8 semaines en arrière, pour l'historique ACWR) supposait
+toujours qu'un plan existe (`PLAN[0].sessions[0].date`), ce qui n'avait
+jamais posé problème tant que la connexion Strava se faisait
+nécessairement APRÈS la création d'un premier plan. Le nouveau flux
+d'onboarding (cf. §12) permet de connecter Strava AVANT tout plan — le
+retour d'OAuth sur `/` déclenche `syncStrava(true)` automatiquement
+(`lk_strava_sync_apres_reload`), avec `PLAN` vide/undefined à ce
+stade. `PLAN[0]` levait une `TypeError` qui tombait silencieusement dans
+le `catch` générique de la fonction, affichant à tort "❌ Erreur réseau —
+activités précédentes conservées" alors qu'aucune requête réseau n'avait
+même été tentée. Corrigé par un accès sécurisé
+(`PLAN?.[0]?.sessions?.[0]?.date`) avec repli sur 8 semaines seules si
+aucun plan n'est disponible.
 
 **Météo** — proxy Open-Meteo (`api/weather.js`), gratuit, sans clé.
 `type=forecast|current|historical`. Géolocalisation : dernière activité
@@ -719,6 +884,7 @@ serveur (chantier ouvert, cf. §16).
 
 **Sync multi-device** — Supabase (auth email/mot de passe), seul
 mécanisme. Aucune action au-delà de se connecter avec le même compte.
+Ne couvre PAS Strava (cf. ci-dessus).
 
 **Stripe (abonnements)** — Produit "Yoria Premium" (7€/mois + tarif
 annuel), Checkout hébergé (jamais de formulaire carte natif dans la TWA).
@@ -769,32 +935,72 @@ l'écran de bienvenue si `echecChargementProfil` est vrai — sinon un
 `localStorage` non réhydraté est pris à tort pour "profil jamais
 renseigné" et écrase le vrai profil Supabase.
 
-**Écran d'onboarding (`monterEcranOnboarding`, `auth.js`) — refonte en 4
-pages (01/08/2026)** — collecte désormais l'intégralité du profil
-coureur (pas seulement niveau/FC/année comme avant), réparti en 4 pages
-successives navigables (swipe horizontal + boutons Précédent/Suivant,
-même principe que `ECRANS_WIZARD`/`attacherSwipeEtapes` dans
-`v2/index.html`, porté indépendamment ici) : 1) Toi (prénom*, nom, date
-de naissance*) 2) Ta forme (poids, taille, FC max/repos, sexe, PPS) 3)
-Records personnels 4) Ton niveau* (* = obligatoire, bloque le passage à
-la page suivante/la validation finale). Records personnels saisis via le
-même composant roulette que Réglages (boutons +/-, viewport réduit,
-positionnement initial par condition réelle — cf. §4 pour le détail
-complet de ce composant, y compris son cas particulier accordéon). Champ
-date ajouté par record (manquait avant le 01/08/2026, empêchait tout
-départage de cohérence entre records via `verifierCoherenceRecord`).
-`terminer()` lit les valeurs directement depuis l'API de chaque roulette
-(`colApi.valeur()`) plutôt que les inputs cachés potentiellement pas
-encore synchronisés par le debounce du scroll (120ms) — corrige un bug
-réel où un record scrollé juste avant de cliquer Valider n'était jamais
-enregistré. Porté intégralement en local dans `auth.js`, jamais importé
-depuis `index.html` (contrainte d'indépendance : ce module ne doit jamais
-dépendre de l'ordre de chargement d'`index.html`). Garde-fou record du
-monde appliqué à la validation finale (`terminer()`), avant de résoudre
-la promesse — laisse corriger sans quitter l'écran. `index.html` dérive
-`anneeNaissance` depuis `dateNaissance` au retour de l'onboarding (même
-logique que Réglages) — nécessaire depuis que l'onboarding résout
-`dateNaissance` mais plus `anneeNaissance` directement.
+**Écran d'onboarding (`monterEcranOnboarding`, `auth.js`) — 5 pages
+(refonte du 01/08/2026, page Source de données ajoutée le 02/08/2026)** —
+collecte l'intégralité du profil coureur, réparti en 5 pages successives
+navigables (swipe horizontal + boutons Précédent/Suivant, même principe
+que `ECRANS_WIZARD`/`attacherSwipeEtapes` dans `v2/index.html`, porté
+indépendamment ici) :
+1. Toi (prénom*, nom, date de naissance*)
+2. Ta forme (poids, taille, FC max/repos, sexe, 🩺 PPS — module d'import
+   compact, cf. §4/§6)
+3. Records personnels
+4. Ton niveau*
+5. **Source de données*** — Strava ou Saisie manuelle (02/08/2026,
+   demande de Laurent : l'onboarding ne demandait jamais comment les
+   séances seraient suivies, `dataSource` valait `"strava"` par défaut
+   silencieusement)
+
+(* = obligatoire, bloque le passage à la page suivante/la validation
+finale — prénom, date de naissance, niveau et source de données).
+
+**Page 5 (Source de données)** — choix explicite entre Strava (icône 🔗)
+et Saisie manuelle (icône ✏️), obligatoire. Si Strava est choisi, un
+encart d'avertissement apparaît : Strava seul ne suffit pas pour que
+Yoria analyse le détail d'une séance qualité (fractionné, seuil) —
+nécessité de programmer les intervalles sur la montre (mode
+"entraînement structuré") avant chaque séance qualité. Le bouton final
+devient "Connecter Strava →" plutôt que "Valider" dans ce cas. **Flux de
+connexion** : le profil complet (prénom, records, PPS, niveau...) est
+d'abord sauvegardé en `localStorage` + synchronisé vers Supabase, PUIS
+seulement la redirection vers `/api/strava/auth` est déclenchée — la
+redirection OAuth recharge entièrement la page, donc rien n'est perdu au
+retour puisque tout est déjà persisté avant ce point. Ce choix
+("dernière étape uniquement", pas de sauvegarde/restauration temporaire
+d'un état d'onboarding en cours) a été retenu pour éviter un couplage
+fragile entre `auth.js` (qui ne doit jamais dépendre d'`index.html`) et
+la logique de reprise après un rechargement complet. **Cas grand
+débutant** : traité EN PRIORITÉ, avant toute redirection Strava directe
+— redirige toujours vers l'écran dédié `/v2?onboarding=grand-debutant`,
+qui a son propre bouton "Connecter Strava" avec un mécanisme de retour
+d'OAuth plus robuste (`sessionStorage`, cf. §14) ; un grand débutant
+ayant choisi Strava à la page 5 ne doit jamais partir en OAuth
+directement, ce qui court-circuiterait cet écran dédié. `dataSource`
+écrit en `localStorage` avec la clé non préfixée (`clePourPlan()` n'est
+pas encore disponible à ce stade du chargement, comme pour
+`profilCoureur` — cohérent avec son repli sur la clé brute en l'absence
+de plan). **Bug corrigé le même jour** : ce nouveau flux a révélé un bug
+latent dans `syncStrava()` (cf. §11) — la fonction ne gérait pas
+l'absence de plan lors du tout premier retour d'OAuth.
+
+Records personnels saisis via le même composant roulette que Réglages
+(boutons +/-, viewport réduit, positionnement initial par condition
+réelle — cf. §4 pour le détail complet de ce composant, y compris son
+cas particulier accordéon). Champ date ajouté par record (manquait avant
+le 01/08/2026, empêchait tout départage de cohérence entre records via
+`verifierCoherenceRecord`). `terminer()` lit les valeurs directement
+depuis l'API de chaque roulette (`colApi.valeur()`) plutôt que les inputs
+cachés potentiellement pas encore synchronisés par le debounce du scroll
+(120ms) — corrige un bug réel où un record scrollé juste avant de
+cliquer Valider n'était jamais enregistré. Porté intégralement en local
+dans `auth.js`, jamais importé depuis `index.html` (contrainte
+d'indépendance : ce module ne doit jamais dépendre de l'ordre de
+chargement d'`index.html`). Garde-fou record du monde appliqué à la
+validation finale (`terminer()`), avant de résoudre la promesse — laisse
+corriger sans quitter l'écran. `index.html` dérive `anneeNaissance`
+depuis `dateNaissance` au retour de l'onboarding (même logique que
+Réglages) — nécessaire depuis que l'onboarding résout `dateNaissance`
+mais plus `anneeNaissance` directement.
 
 ## 13. Publication Play Store (TWA Android)
 
@@ -837,6 +1043,18 @@ marche/course puis 7 de CONTINU croissant (5→30min) — structure inspirée
 du "White Plan" de Daniels (walk/run sur ses 9 premières semaines), plus
 progressive que l'ancienne version à 7 paliers qui démarrait directement
 à 5min de course continue.
+
+**Écran dédié grand débutant (`/v2?onboarding=grand-debutant`)** — accès
+direct au wizard (jours + Strava), sans passer par le dashboard ni le
+choix course/forme. Bouton "Connecter Strava" avec mécanisme de retour
+d'OAuth robuste : `history.replaceState()` + `window.location.reload()`
+au retour du flow Strava (contournement d'un bug de rendu viewport en
+TWA/PWA Android), avec un marqueur `sessionStorage` (survit au reload,
+contrairement à un paramètre d'URL une fois nettoyé) retiré seulement une
+fois le plan généré — évite de re-déclencher indéfiniment. Priorité
+absolue sur toute autre redirection Strava (cf. §12, page Source de
+données de l'onboarding) : un grand débutant ne doit jamais partir en
+OAuth directement, seulement via cet écran.
 
 ## 15. Principes transverses à retenir
 
@@ -908,18 +1126,51 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
   lancer occasionnellement (ex. avant une mise en production), pas à
   chaque table ajoutée** — filet de rattrapage, pas remplacement de la
   vérification systématique au moment de créer une table.
+- **Toute donnée binaire volumineuse (image, PDF converti) stockée dans
+  `profilCoureur` doit être compressée côté client avant sauvegarde** —
+  un fichier brut (photo téléphone plusieurs Mo, PDF non converti) fait
+  exploser le payload JSONB envoyé par `sauvegarderProfilCoureur()`, qui
+  échoue en fire-and-forget sans jamais remonter d'erreur ni bloquer
+  l'écriture locale (le document semble "enregistré" en apparence mais
+  n'atteint jamais Supabase). Cf. §4 pour l'implémentation retenue pour
+  le PPS (image plafonnée 1600px, JPEG 0.82-0.85).
+- **Le rendu PDF via `<iframe>`/`<embed>` sur un blob URL n'est pas
+  fiable sur mobile/TWA Android** (pas de lecteur PDF intégré, contrairement
+  à desktop) — pour tout document PDF destiné à un affichage in-app fiable
+  cross-plateforme, convertir en image (canvas + pdf.js) plutôt que
+  tenter un rendu PDF natif. Cf. §4.
+- **Un nouveau flux (ex. connexion Strava depuis l'onboarding, avant tout
+  plan) peut révéler un bug latent dans du code existant qui supposait
+  silencieusement un contexte toujours présent** (ex. `PLAN[0]` sans
+  vérifier que `PLAN` existe) — un changement de flux d'entrée mérite de
+  vérifier les suppositions implicites du code qu'il traverse
+  nouvellement, pas seulement le nouveau code lui-même. Cf. §11,
+  `syncStrava()`.
+- **Une contrainte de calcul ajoutée pour corriger un cas (ex. "la longue
+  doit être ≥ cumul qualité") peut devenir la priorité DOMINANTE dans les
+  cas serrés et écraser un autre besoin tout aussi légitime** (ici, un EF
+  substantiel) si les deux ne sont pas équilibrés dès la conception —
+  préférer un partage proportionnel garanti par construction (poids
+  relatif) à une cascade de contraintes empiriques appliquées dans un
+  ordre fixe. Cf. §7, `repartirVolumeSemaine`.
 
 ## 16. État des chantiers ouverts
 
 | Chantier | Statut |
 |---|---|
-| Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Wizard déjà câblé génériquement — aucun changement nécessaire côté `v2/index.html`. |
-| Système de badges (récompenses) | ✅ Livré. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse, pour éviter l'effet "streak" anxiogène) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge cumulé, pas une série). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. Explicitement écarté : badges de volume/intensité brute, classement ou comparaison sociale. |
+| Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Table pas recalibrée par niveau (calée sur intermédiaire à l'origine) — le nouveau système de répartition par poids (02/08/2026) absorbe une bonne partie de l'écart en pratique. |
+| Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge CUMULÉ, pas une série — `serieActuelle` égale toujours `serieMax`). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus ("6 semaines parfaites" affiché comme un objectif se lisait comme un état déjà acquis) — reformulés avec un verbe d'action explicite ("Réaliser 6 semaines parfaites", "Enchaîner X séances"...) pour les 4 badges à paliers ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé, la notion de série qui casse n'a pas de sens ici) ; (3) badge `record_battu` se déclenchait à tort sur une simple saisie/correction manuelle dans Réglages — déplacé vers le seul déclencheur légitime (validation d'un vrai résultat de course dans `resultatCard`, comparé au record personnel de la distance du plan actif) ; (4) le calcul des badges ne se refaisait qu'une fois par session (`window.__badgesCache__` mis en cache indéfiniment) — recalcul désormais forcé au clic sur la carte "Mes badges" (Stats), sans besoin de recharger la page. **Note résiduelle** : un badge `record_battu` déjà débloqué à tort avant ce correctif doit être retiré manuellement en base (`DELETE FROM badges_debloques WHERE ...`), aucun outil de nettoyage automatique côté app. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). |
-| Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. Incident de test formateur : un `user_id` mal recopié a produit un compte Auth fantôme sans données — corrigé par un garde-fou de cohérence id/données avant toute recréation de compte (§5). Compte réel de Laurent vérifié intact tout au long de l'incident (aucun chemin du code n'écrit hors du `user_id` explicitement ciblé). |
-| Onboarding refondu en 4 pages avec profil complet | ✅ Livré et testé en conditions réelles le 01/08/2026. Détail complet en §12. Bug de saisie de record (lecture roulette directe) et bug d'affichage dans Réglages (roulette jamais construite si accordéon fermé au chargement) identifiés et corrigés au cours du même chantier — cf. §4 et §15 pour le détail du diagnostic. |
-| Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | ✅ Codé et lancé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Cascades de `beta-admin`, fonctions RPC dans `diagnostic-cascades-user-id.sql`). A immédiatement révélé un vrai trou : `plans_actif` — la table la plus importante du projet — n'avait aucune contrainte de clé étrangère du tout, jamais détecté auparavant. Corrigé le jour même (`ON DELETE CASCADE` ajouté, aucune ligne orpheline préexistante). Deuxième passage du diagnostic : aucune table à risque restante. Détail complet en §5. |
+| Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. |
+| Onboarding refondu en 4 puis 5 pages avec profil complet | ✅ Livré et testé en conditions réelles. Détail complet en §12. Page 5 (Source de données, 02/08/2026) ajoutée le même jour que le PPS dans l'onboarding — cf. lignes suivantes. |
+| Diagnostic des tables applicatives sans `ON DELETE CASCADE` vers `auth.users` | ✅ Codé et lancé en conditions réelles le 01/08/2026. Détail complet en §5. |
+| Pass Prévention Santé (PPS) — import/affichage/suppression centralisés | ✅ Codé, poussé et testé en conditions réelles le 02/08/2026. Détail complet en §4/§6. Bouton "🩺 PPS" toujours visible dans le header, modale unique (import + aperçu + suppression), PDF converti en image dès l'import (pdf.js, corrige un rendu non fiable sur mobile/TWA — confirmé en test réel). Extraction automatique de la date d'expiration tentée puis retirée (non fiable en pratique) — saisie manuelle reste le repli normal. |
+| Intégrer la collecte du PPS à l'onboarding | ✅ Livré le 02/08/2026 — module d'import compact intégré à la page 2 ("Ta forme"), remplace l'ancien champ texte `pps`. |
+| Demander la source de collecte des données (Strava/manuel) à l'onboarding | ✅ Livré le 02/08/2026 — nouvelle page 5, cf. §12. Explication de la nécessité de programmer les intervalles sur la montre pour Strava. A révélé et corrigé un bug latent dans `syncStrava()` (absence de gestion du cas "aucun plan encore créé", cf. §11). |
+| Levier Volume (accordéon "Modifier mon plan") sans effet réel | ✅ Corrigé le 02/08/2026 — `semaineDepartVolume` transmis à `generatePlan()`, la progression démarre réellement à la semaine charnière. Détail complet en §3/§7. |
+| EF trop courts par rapport à la sortie longue (répartition du volume hebdo) | ✅ Corrigé le 02/08/2026 — nouveau système de partage par poids relatif (`POIDS_LONGUE=1.6`) dans `repartirVolumeSemaine()`. Détail complet en §7. Cas 2 jours/semaine (longue potentiellement excessive à fort volume) traité par un warning informatif, pas un plafond dur — Laurent : "certains coureurs n'ont pas la possibilité de courir autant de jours par semaine". |
+| Signal de déconnexion Strava peu visible (uniquement dans Réglages) | ✅ Corrigé le 02/08/2026 — bandeau sur le dashboard, cf. §4. Couvre les deux cas de déconnexion (token invalide ET token absent). |
 | Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
 | Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
 | Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
@@ -933,6 +1184,7 @@ progressive que l'ancienne version à 7 paliers qui démarrait directement
 | Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Lié à R-070 : ni accélération après succès répétés, ni lissage de la remontée. Nécessiterait de persister la dernière ampleur appliquée entre séances qualité — pas pire que la situation actuelle, pas priorisé |
 | Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 `analyserAdaptations()`/`appliquerAdaptations()` sont déjà branchées sur le dashboard (`adaptationEl`), mais jamais observées par Laurent car jamais déclenchées sur ses données réelles. Deux cartes restent volontairement séparées (granularités différentes). Reste à coder : garde-fou si les deux cartes ciblent la même semaine (physio prioritaire) + journalisation de collision |
 | Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Le modèle extrapole uniformément le rythme observé, alors qu'il évolue souvent en phase Spécifique/Affûtage. Chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`) pour comparer a posteriori une fois assez de données — pas encore assez de recul pour juger |
+| Recalibrer `VOLUME_MIN_PAR_JOURS` par niveau (pas seulement distance/jours) | 🔜 Identifié le 02/08/2026 lors du diagnostic du bug "EF ridicules" — la table actuelle a été calibrée uniquement au niveau intermédiaire, l'écart réel au niveau confirmé peut atteindre ~8km. Pas urgent : le nouveau système de répartition par poids absorbe l'essentiel du problème en pratique. |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
