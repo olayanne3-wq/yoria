@@ -17,6 +17,38 @@ window.sentryOnLoad = function () {
 };
 </script>
 <script src="https://js-de.sentry-cdn.com/1598be66558d46e63cc4443c635738e7.min.js" crossorigin="anonymous"></script>
+<!-- Import map ajoutée le 03/08/2026 : fit-file-parser@3.0.2 (chargé par
+     chargerFitParser(), plus bas dans ce fichier) déclare une vraie
+     dépendance npm vers le package `buffer` (vérifié dans son
+     package.json publié : "dependencies": {"buffer": "^6.0.3"}), et son
+     fichier dist/binary.js fait `import { Buffer } from 'buffer'`. Le
+     fichier ESM brut servi par cdn.jsdelivr.net/.../dist/fit-parser.js
+     n'est PAS bundlé/polyfillé (contrairement à un service comme
+     esm.run) — un navigateur sans bundler ne sait donc pas résoudre le
+     spécificateur nu "buffer", d'où l'erreur "Failed to resolve module
+     specifier 'buffer'" bloquant tout import FIT (natif comme via le
+     repli fit-detection.js), découverte le 03/08/2026 lors du premier
+     test réel d'upload sur le compte test.
+     Le seul usage réel de Buffer dans binary.js est
+     `Buffer.from(temp).toString('utf-8')` (décodage UTF-8 d'un tableau
+     d'octets, vérifié en inspectant le fichier source réellement
+     publié) — remplacé ici par un TextDecoder natif du navigateur,
+     plutôt que d'importer le vrai polyfill npm `buffer` (bien plus
+     volumineux pour un seul besoin trivial). DOIT rester avant le
+     premier <script type="module"> de ce fichier (ligne ~642) — un
+     import map n'est appliqué que s'il est déjà présent dans le DOM
+     avant qu'un module ne soit évalué, il ne peut pas être ajouté
+     dynamiquement après coup. Non testé en conditions réelles par
+     Claude au moment de l'écriture (limite d'environnement : impossible
+     de simuler un vrai navigateur dans le sandbox utilisé) — à valider
+     sur le compte test avant tout déploiement plus large. -->
+<script type="importmap">
+{
+  "imports": {
+    "buffer": "data:text/javascript,export const Buffer = { from: (arr) => ({ toString: (enc) => new TextDecoder(enc || 'utf-8').decode(new Uint8Array(arr)) }) };"
+  }
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="mobile-web-app-capable" content="yes">
