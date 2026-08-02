@@ -1550,71 +1550,71 @@ function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTot
   return { warnings, kmLongue, kmParEF, nbEF, aLongue };
 }
 
-const RATIO_LONGUE_PAR_JOURS = { 2: 0.45, 3: 0.38, 4: 0.33, 5: 0.28, 6: 0.25, 7: 0.22 };
-const RATIO_LONGUE_DEFAUT = 0.28;
-const MARGE_LONGUE_VS_QUALITE_KM = 1;
-
-// CORRECTIF (02/08/2026, signalé par Laurent — "on a des EF ridicules" une
-// fois le fix du levier Volume déployé, cf. commentaire sur
-// computeVolumeProgression plus haut). Cause structurelle pré-existante,
-// révélée seulement une fois le volume réellement appliqué au lieu d'être
-// masqué par la remontée immédiate du bug : la longue était calculée EN
-// PREMIER (ratio par jours, ou au moins kmQualiteTotal+marge si plus
-// grand), et les EF récupéraient seulement ce qu'il restait — sans aucun
-// plancher symétrique. À volume juste au-dessus du seuil minimum
-// (VOLUME_MIN_PAR_JOURS), la longue + la qualité pouvaient à elles deux
-// absorber presque tout le volume hebdo, laissant des EF à 0.4-2km
-// (mesuré en simulation directe sur 10K/Semi, 5j, niveau confirmé —
-// jamais une "vraie" séance facile).
+// Poids relatif longue/EF (02/08/2026, remplace RATIO_LONGUE_PAR_JOURS +
+// MARGE_LONGUE_VS_QUALITE_KM — cf. discussion complète avec Laurent).
 //
-// Décision actée avec Laurent (discussion du 02/08/2026, sans code
-// intermédiaire) : inverser la priorité. Le plancher EF (VOLUME_MIN_EF_KM,
-// déjà utilisé ailleurs comme seuil de diagnostic a posteriori) devient
-// une réservation ACTIVE avant de calculer la longue, pas un simple
-// contrôle après coup qui refusait tout le plan (VOLUME_JOURS_INCOMPATIBLE)
-// sans jamais ajuster la répartition elle-même. La contrainte "longue ≥
-// cumul qualité" (MARGE_LONGUE_VS_QUALITE_KM, 29/07/2026) reste appliquée
-// mais seulement sur le budget qui reste UNE FOIS le plancher EF réservé
-// — elle redevient un filet secondaire plutôt que la priorité absolue.
-// Si le volume est vraiment trop faible pour satisfaire les deux
-// (plancher EF ET longue ≥ qualité), la longue redescend en dessous de ce
-// plancher théorique plutôt que de vider les EF à rien — un coach réel ne
-// sacrifierait jamais totalement les séances faciles pour gonfler la
-// longue. Signature et valeurs de retour inchangées (kmLongue, kmParEF,
-// warning) : aucun appelant n'a besoin d'être modifié.
+// PROBLÈME IDENTIFIÉ : l'ancien système calculait la longue EN PREMIER
+// (ratio par nombre de jours, ou "au moins kmQualiteTotal + 1km" si plus
+// grand), et les EF récupéraient seulement ce qu'il restait, sans aucun
+// plancher symétrique. Deux défauts concrets observés :
+// 1) À volume juste au-dessus du seuil minimum (VOLUME_MIN_PAR_JOURS),
+//    la contrainte "longue >= qualité+marge" pouvait à elle seule
+//    absorber presque tout le volume restant, laissant des EF à
+//    0.4-2km — jamais une vraie séance facile (signalé par Laurent :
+//    "on a des EF ridicules"). Un plancher EF actif a été ajouté en
+//    amont (kmReservePourEF) pour limiter ce cas, mais le vrai souci
+//    restait la logique de calcul elle-même.
+// 2) kmQualiteTotal utilisé pour cette contrainte incluait à tort
+//    l'échauffement/retour au calme des séances qualité (souvent 40-50%
+//    du volume affiché de la séance, ~25min fixes à allure EF, cf.
+//    genererContenuQualite) — ce "faux volume qualité" gonflait
+//    artificiellement la longue sans rapport avec l'intensité réelle
+//    du travail effectué.
+//
+// NOUVELLE APPROCHE : la longue et chaque EF sont traités comme des
+// "parts" d'un même budget (kmRestant), avec la longue pondérée à
+// POIDS_LONGUE fois un EF individuel — garantit PAR CONSTRUCTION que
+// kmLongue >= POIDS_LONGUE * kmParEF, quel que soit le volume ou le
+// nombre de jours, sans avoir besoin d'un ratio empirique par palier ni
+// d'une contrainte séparée sur le cumul qualité (qui créait par ailleurs
+// des sauts de ratio incohérents à certains volumes précis, ex. un ratio
+// de x3.2 au lieu de x1.6 à 7 jours/40km — cf. session de simulation).
+// Valeur 1.6 retenue après simulation exhaustive sur les 4 distances x 3
+// niveaux x 5-6 nombres de jours (3 à 7j), au seuil minimum exact de
+// chaque combinaison (le point le plus tendu) : aucune violation
+// observée (EF toujours >= ~3.4km), ratio stable et cohérent partout —
+// cf. sessions de simulation du 02/08/2026 pour le détail des tableaux.
+const POIDS_LONGUE = 1.6;
+
 export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours }) {
   const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
   let kmLongue = 0, kmParEF = 0;
 
-  const RATIO_LONGUE = RATIO_LONGUE_PAR_JOURS[nbJours] ?? RATIO_LONGUE_DEFAUT;
-
   if (aLongue) {
-    // Plancher EF réservé AVANT de calculer la longue (02/08/2026) — le
-    // budget disponible pour la longue est désormais kmRestant MOINS ce
-    // plancher, pas kmRestant en entier comme avant. Si nbEF === 0, aucune
-    // réservation (rien à protéger), comportement identique à avant.
-    const kmReservePourEF = nbEF > 0 ? nbEF * VOLUME_MIN_EF_KM : 0;
-    const kmDisponiblePourLongue = Math.max(0, kmRestant - kmReservePourEF);
-
-    const kmLongueRatio = Math.min(volumeCibleKm * RATIO_LONGUE, kmDisponiblePourLongue);
-    const kmLongueMinContrainte = kmQualiteTotal + MARGE_LONGUE_VS_QUALITE_KM;
-    // Le plancher EF a toujours priorité : la contrainte "longue ≥ qualité"
-    // ne peut jamais repousser la longue au-delà de kmDisponiblePourLongue,
-    // même si kmLongueMinContrainte le voudrait — c'est précisément
-    // l'inversion de priorité décidée avec Laurent.
-    kmLongue = Math.min(Math.max(kmLongueRatio, Math.min(kmLongueMinContrainte, kmDisponiblePourLongue)), kmRestant);
-    const kmRestantApresLongue = kmRestant - kmLongue;
-    kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
+    if (nbEF > 0) {
+      // Partage proportionnel : la longue compte pour POIDS_LONGUE
+      // "parts", chaque EF pour 1 part — garantit mathématiquement que
+      // la longue reste toujours POIDS_LONGUE fois plus grande que
+      // chaque EF, sans avoir besoin de contraintes séparées ni de
+      // plancher explicite (le partage par poids suffit à lui seul à
+      // garder les EF substantiels, vérifié en simulation).
+      const nbPartsTotal = POIDS_LONGUE + nbEF;
+      kmLongue = (kmRestant * POIDS_LONGUE) / nbPartsTotal;
+      kmParEF = (kmRestant * 1) / nbPartsTotal;
+    } else {
+      // 2 jours/semaine (1 qualité + 1 longue, aucun EF) : tout le
+      // budget restant va à la longue par construction — cf. le
+      // garde-fou VOLUME_LONGUE_EXCESSIVE_2J dans generatePlan(), qui
+      // avertit séparément si cela produit une longue déraisonnable
+      // (au-delà de DUREE_MAX_LONGUE_MIN converti en distance) plutôt
+      // que de la plafonner silencieusement ici.
+      kmLongue = kmRestant;
+    }
   } else {
     kmParEF = nbEF > 0 ? kmRestant / nbEF : 0;
   }
 
   let warning = null;
-  // Seuil du warning resserré à VOLUME_MIN_EF_KM (3km, au lieu de 2km fixe
-  // avant) — cohérent avec le plancher désormais activement visé
-  // ci-dessus : si on tombe quand même sous ce seuil malgré la
-  // réservation, c'est que même le plancher n'a pas pu être respecté
-  // (volume vraiment trop faible), ce qui mérite le même signal qu'avant.
   const seanceMinKm = Math.min(aLongue ? kmLongue : Infinity, nbEF > 0 ? kmParEF : Infinity);
   if (kmRestant > 0 && seanceMinKm < VOLUME_MIN_EF_KM) {
     warning = {
@@ -1718,6 +1718,7 @@ export function generatePlan(profil, params) {
   const nbApparitionsParSousType = {};
   let nbSemainesConstructionTotal = 0;
   let nbSemainesConstructionSousSeuil = 0;
+  let nbSemainesLongueExcessive2j = 0;
   for (const phase of phasesAvecReacclimatation) {
     for (let i = 0; i < phase.semaines; i++) {
       semaineGlobale++;
@@ -1797,6 +1798,27 @@ export function generatePlan(profil, params) {
         const longueSousSeuil = aLongue && kmLongue < VOLUME_MIN_LONGUE_KM;
         const efSousSeuil = nbEF > 0 && kmParEF < VOLUME_MIN_EF_KM;
         if (longueSousSeuil || efSousSeuil) nbSemainesConstructionSousSeuil++;
+
+        // Suggestion "augmente le nombre de jours" pour les préparations à
+        // 2 jours/semaine (02/08/2026, demande de Laurent). À 2 jours, la
+        // structure est 1 séance qualité + 1 longue, SANS AUCUN EF pour
+        // partager le volume — repartirVolumeSemaine() donne alors tout le
+        // reste à la longue par construction, ce qui peut produire des
+        // longues déraisonnables à fort volume (jusqu'à 50+ km observé en
+        // simulation à haut volume). genererContenuLongue() plafonne déjà
+        // la DURÉE affichée (DUREE_MAX_LONGUE_MIN), mais le kilométrage
+        // excédentaire disparaît alors silencieusement du plan sans que le
+        // coureur en soit informé clairement — ici on détecte ce cas en
+        // amont et on avertit, plutôt que de plafonner sans explication.
+        // Seuil : la longue THÉORIQUE (avant tout plafonnement) dépasse le
+        // plafond de durée converti en distance à allure EF — pas un
+        // pourcentage de volume arbitraire, cohérent avec le plafond déjà
+        // utilisé ailleurs pour cette même distance.
+        if (nbEF === 0 && aLongue) {
+          const dureeMaxLongueMin = DUREE_MAX_LONGUE_MIN[params.distance] ?? 120;
+          const kmLongueMaxRaisonnable = (dureeMaxLongueMin * 60) / allSeconds.E;
+          if (kmLongue > kmLongueMaxRaisonnable) nbSemainesLongueExcessive2j++;
+        }
       }
 
       semaines.push({
@@ -1816,6 +1838,22 @@ export function generatePlan(profil, params) {
       code: 'VOLUME_JOURS_INCOMPATIBLE',
       message: `Le volume de départ (${params.volumeActuel}km/semaine) est trop faible pour ${profil.joursDisponiblesHabituels.length} jours disponibles par semaine : ${nbSemainesConstructionSousSeuil} semaine(s) sur ${nbSemainesConstructionTotal} auraient des séances EF ou une sortie longue sans substance réelle (moins de ${VOLUME_MIN_EF_KM}km / ${VOLUME_MIN_LONGUE_KM}km). Réduis le nombre de jours disponibles ou augmente le volume de départ.`,
     };
+  }
+
+  // Suggestion (pas un refus) pour les préparations à 2 jours/semaine dont
+  // le volume dépasse ce qu'une seule sortie longue peut raisonnablement
+  // absorber (02/08/2026) — cf. commentaire au point de comptage
+  // ci-dessus. Contrairement à VOLUME_JOURS_INCOMPATIBLE, ce cas ne
+  // bloque jamais la génération : le plan reste généré normalement (avec
+  // sa longue plafonnée en durée par genererContenuLongue), mais on
+  // avertit explicitement que le kilométrage réel ne peut pas tout tenir
+  // dans une seule séance, plutôt que de laisser le plafonnage silencieux
+  // faire disparaître du volume sans explication.
+  if (nbSemainesLongueExcessive2j > 0) {
+    warningsSemaines.push({
+      code: 'VOLUME_LONGUE_EXCESSIVE_2J',
+      message: `Avec seulement 2 jours d'entraînement par semaine, ton volume actuel (${params.volumeActuel}km) demanderait une sortie longue très importante en une seule séance — le contenu généré reste plafonné à une durée raisonnable, donc une partie du volume prévu ne peut pas être reflétée. Passer à 3 jours ou plus permettrait de mieux répartir ce volume.`
+    });
   }
 
   const warnings = [
