@@ -9958,7 +9958,25 @@ async function syncStrava(force = false) {
     const huitSemainesAvant = new Date();
     huitSemainesAvant.setDate(huitSemainesAvant.getDate() - 8 * 7);
     const huitSemainesStr = huitSemainesAvant.toISOString().slice(0, 10);
-    const planStart = PLAN[0].sessions[0].date < huitSemainesStr ? PLAN[0].sessions[0].date : huitSemainesStr;
+    // CORRECTIF (02/08/2026, bug signalé par Laurent : "❌ Erreur réseau"
+    // affiché juste après avoir connecté Strava depuis le nouveau flux
+    // d'onboarding, cf. la page Source de données ajoutée le même jour).
+    // Cause : PLAN[0].sessions[0].date suppose qu'un plan existe déjà —
+    // ce qui n'a jamais été le cas jusqu'ici, la connexion Strava se
+    // faisant toujours APRÈS la création d'un premier plan (wizard).
+    // Le nouveau flux d'onboarding permet de connecter Strava avant tout
+    // plan (retour d'OAuth sur "/" qui déclenche syncStrava(true)
+    // automatiquement, cf. lk_strava_sync_apres_reload plus haut dans ce
+    // fichier) — PLAN vaut alors undefined/vide, PLAN[0] lève une
+    // TypeError qui tombait silencieusement dans le catch générique de
+    // cette fonction, affichant à tort "Erreur réseau" alors qu'aucune
+    // requête réseau n'avait même été tentée. Repli sur huitSemainesStr
+    // seul si aucun plan n'est disponible — cohérent avec le besoin ACWR
+    // documenté ci-dessus (8 semaines de recul), simplement sans pouvoir
+    // remonter plus loin que ça en l'absence de date de début de plan.
+    const planStart = (PLAN?.[0]?.sessions?.[0]?.date && PLAN[0].sessions[0].date < huitSemainesStr)
+      ? PLAN[0].sessions[0].date
+      : huitSemainesStr;
     const resp = await fetch(`/api/strava/activities?token=${stravaToken}&interval_dates=${intervalDates}&plan_start=${planStart}`);
     const activities = await resp.json();
     if (Array.isArray(activities)) {
