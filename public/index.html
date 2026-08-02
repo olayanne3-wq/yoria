@@ -4308,21 +4308,12 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   );
 
 
-  const syncAgo = lastSyncTime > 0 ? Math.round((Date.now()-lastSyncTime)/60000) : null;
-  const syncAgoStr = syncAgo === null ? "" :
-    syncAgo < 1 ? " · synchro à l\'instant" :
-    syncAgo < 60 ? " · synchro il y a "+syncAgo+" min" :
-    " · synchro il y a "+(Math.round(syncAgo/60))+"h";
-  const stravaColor = !stravaToken ? "var(--text-muted)" : syncing ? "var(--warn)" : syncMsg.startsWith("❌") ? "var(--warn)" : "var(--accent2)";
-  const stravaText = !stravaToken ? "Strava non connecté" :
-    syncing ? "Strava · synchronisation..." :
-    syncMsg.startsWith("❌") ? "Strava · "+syncMsg :
-    stravaActivities.length>0 ? "Strava · "+stravaActivities.length+" activité"+(stravaActivities.length>1?"s":"")+syncAgoStr :
-    "Strava connecté";
-  const stravaSection=el("div",{style:{display:"flex",alignItems:"center",gap:"8px",paddingBottom:"8px"}},
-    el("div",{style:{width:"7px",height:"7px",borderRadius:"50%",background:stravaColor,flexShrink:"0"}}),
-    el("span",{class:"muted",style:{fontSize:"14px"}},stravaText)
-  );
+  // Bloc Strava du bas de dashboard retiré (02/08/2026, demande de
+  // Laurent) — le bandeau stravaDeconnecteEl (haut du dashboard) couvre
+  // désormais le signal de déconnexion de façon plus visible ; les
+  // informations de connexion normale (nombre d'activités, dernière
+  // synchro) restent consultables dans Réglages si besoin, pas
+  // nécessaires en permanence sur le dashboard.
 
   const isHot = weatherTemp !== null && weatherTemp > 28;
   // Badge météo discret pour intégration dans la carte séance
@@ -4855,16 +4846,24 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
 
   // Bandeau "Strava déconnecté" sur le dashboard (02/08/2026, demande de
   // Laurent : "parfois Strava est déconnecté [...] si on ne va pas dans
-  // les paramètres on ne le voit pas") — stravaAuthInvalide (variable
-  // globale, positionnée par syncStrava()/le refresh du token, cf. son
-  // usage existant côté Réglages) n'était visible auparavant que dans
-  // Réglages, jamais sur le dashboard où l'utilisateur passe le plus de
-  // temps. Affiché seulement si dataSource === "strava" (pas de sens
-  // d'alerter quelqu'un qui utilise la saisie manuelle ou l'import FIT) et
-  // hors Mode Forme sans référence (ESTMODEFORME gère son propre flux).
-  // Même lien /api/strava/auth que le bouton équivalent de Réglages —
-  // aucune nouvelle logique de reconnexion, juste un signal plus visible.
-  const stravaDeconnecteEl = (dataSource === "strava" && stravaAuthInvalide)
+  // les paramètres on ne le voit pas") — couvre les DEUX cas distincts de
+  // déconnexion, jusque-là visibles uniquement via des indicateurs
+  // discrets (Réglages pour stravaAuthInvalide, texte en bas de page pour
+  // !stravaToken) :
+  // 1) stravaAuthInvalide : un token existe mais a été révoqué/a expiré
+  //    (positionné par syncStrava()/le refresh du token) — déjà affiché
+  //    dans Réglages via le bouton "🔄 Reconnecter Strava".
+  // 2) !stravaToken : aucun token du tout (jamais connecté, ou révoqué au
+  //    point d'être entièrement supprimé) — CORRECTIF (même jour, bug
+  //    signalé par Laurent : le bandeau ne s'affichait pas dans ce cas
+  //    précis, seule la condition stravaAuthInvalide était couverte au
+  //    premier jet, alors que c'était justement le cas concerné :
+  //    "Strava non connecté" affiché en bas sans aucun bandeau visible).
+  // Affiché seulement si dataSource === "strava" (pas de sens d'alerter
+  // quelqu'un qui utilise la saisie manuelle ou l'import FIT). Même lien
+  // /api/strava/auth que le bouton équivalent de Réglages — aucune
+  // nouvelle logique de reconnexion, juste un signal plus visible.
+  const stravaDeconnecteEl = (dataSource === "strava" && (stravaAuthInvalide || !stravaToken))
     ? el("a",{href:"/api/strava/auth",style:{
         display:"flex", alignItems:"center", gap:"8px", textDecoration:"none",
         background:"rgba(var(--warn-rgb),0.13)", border:"1px solid rgba(var(--warn-rgb),0.33)",
@@ -4879,7 +4878,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,stravaDeconnecteEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl,stravaSection);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,stravaDeconnecteEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
