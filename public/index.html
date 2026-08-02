@@ -5809,7 +5809,14 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     correctionSlot.style.display = correctionOpen ? "block" : "none";
   }));
   const liensDroite = el("div",{style:{display:"flex",gap:"12px"}}, correctionLink);
-  if (stravaRun) {
+  // Bug trouvé le 03/08/2026 : stravaRun peut être une activité importée
+  // depuis un fichier .fit (_source: "fit", cf. adapterFitVersFormatActivite()) —
+  // elle partage volontairement le même tableau stravaActivities que les
+  // vraies activités Strava (cf. commentaire d'importerFichierFit()), donc
+  // la condition précédente (juste `if (stravaRun)`) affichait à tort un
+  // lien Strava avec un id inexistant (activities/undefined) pour ces
+  // activités. Le lien n'a de sens que pour une vraie activité Strava.
+  if (stravaRun && stravaRun._source !== "fit") {
     liensDroite.appendChild(el("a",{href:"https://www.strava.com/activities/"+stravaRun.id_str,target:"_blank",style:{color:"var(--warn)",fontSize:"12px",fontWeight:"700",textDecoration:"none"}},"Strava 🔗"));
   }
   wrap.appendChild(el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
