@@ -166,15 +166,62 @@ cas).
 
 ---
 
-## 7. Points ouverts / à trancher à l'implémentation
+## 7. Décisions actées le 02/08/2026 (discussion complémentaire)
 
-- Parsing côté client (JS navigateur) vs fonction API serverless dédiée
-  (`api/import-fit.js`, sur le modèle de `api/strava.js`) — non tranché.
-- Seuils de détection (durée minimum de plateau, delta de vitesse minimum) — à calibrer
-  sur plusieurs séances réelles avant tout codage définitif (cf. section 3.3).
-- Comportement exact en cas de nombre de blocs détectés ≠ nombre attendu par le plan
-  (afficher une incertitude, proposer un choix manuel de regroupement/découpage ?) —
-  non tranché, à rapprocher du principe déjà en place pour les activités Strava ambiguës.
+### 7.1 Parsing côté client (tranché)
+
+Parsing et détection des intervalles se font **côté client (JS navigateur)**, pas via une
+fonction API serverless dédiée. Décision motivée par :
+- Cohérence avec `chargerFitParser()`, déjà utilisé côté client pour le calcul de vitesse
+  fiable (cf. §10 inventaire) — même pattern, pas un nouveau silo technique.
+- Alignement avec l'esprit du reste du moteur (prédicteur 10K, moteur de décision), déjà
+  entièrement calculé côté client.
+- Coût nul côté serveur, latence immédiate (pas d'aller-retour réseau pour le fichier).
+
+**Limite acceptée** : pas de point de contrôle centralisé pour le re-parsing en masse (si
+l'algo de détection évolue, chaque relecture doit se faire depuis le client, fichier par
+fichier — cf. section 4.1, fichier brut conservé en Storage précisément pour permettre ce
+re-parsing ultérieur). Si un vrai besoin de traitement en lot apparaît plus tard (ex. outil
+admin `beta-admin`), réévaluer un déplacement partiel vers une fonction serverless à ce
+moment — pas anticipé maintenant.
+
+### 7.2 Méthode de calibration des seuils (tranché)
+
+Même principe que la validation empirique déjà appliquée ailleurs dans le projet (cf. §15
+principes transverses, "validation historique avant codage") — appliqué ici à ce nouveau
+chantier plutôt qu'inventé spécifiquement :
+
+- Constituer un jeu de séances réelles couvrant plusieurs profils de contraste
+  effort/récup, pas seulement le cas déjà testé (3×6min, contraste net ~1:20-1:30/km) :
+  VMA courte (30-30, contraste fort), seuil long (contraste modéré), spécifique (contraste
+  le plus faible, allure proche de l'allure course — cas le plus difficile à détecter).
+- Comparer pour chaque séance le résultat de la détection automatique à la réalité connue
+  (vérité terrain, comme Laurent sait ce qu'il a réellement couru) — même logique de
+  comparaison "résultat généré vs attendu" que `scripts/test-plans-varies.js` pour la
+  génération de plans.
+- Ajuster durée minimum de plateau et delta de vitesse minimum sur ce jeu de cas avant
+  tout codage définitif des seuils — pas de valeur figée à ce stade.
+
+### 7.3 Désaccord nombre de blocs détectés ≠ nombre attendu (tranché — Option A)
+
+**Décision : aucun traitement spécifique ajouté.** Le pipeline existant
+(`analyserRepetitions()`, Module 2 du moteur de décision) gère déjà nativement ce cas —
+le score de réussite se base sur `lapsEffort.length` réellement détecté comparé à
+`targetReps`, avec un message explicite déjà prévu si les deux diffèrent
+(`"(X/Y répétitions détectées)"`). Un nombre de blocs détecté inférieur au nombre attendu
+fait mécaniquement baisser `tauxReussite`/`repRatio`, ce qui correspond à l'interprétation
+la plus probable dans ce cas (abandon en cours de séance) — sans qu'il soit nécessaire de
+distinguer explicitement "abandon réel" de "intervalle raté indétectable dans le signal"
+(cf. section 3.2, angle mort accepté de la méthode de détection).
+
+Aucun signalement d'incertitude supplémentaire n'est ajouté à ce stade (option B envisagée
+puis écartée pour l'instant) — à reconsidérer seulement si l'usage réel montre que cette
+ambiguïté pose un vrai problème de confiance pour l'utilisateur, pas par anticipation.
+
+---
+
+## 8. Points encore ouverts
+
 - Export FIT non uniforme selon les marques de montre (Garmin/Coros : direct et simple ;
   Polar : nécessite une conversion JSON→FIT ; Suunto : fiabilité variable selon modèle) —
   prévoir un repli GPX/TCX pour les cas où l'export FIT natif n'est pas disponible,
