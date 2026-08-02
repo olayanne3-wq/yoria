@@ -9798,6 +9798,21 @@ async function chargerFitParser() {
   return _fitParserModule;
 }
 
+// Chargement à la demande de fit-detection.js — même pattern que
+// chargerFitParser() ci-dessus. Module ajouté le 03/08/2026 : détecte les
+// intervalles par reconnaissance de signal quand le fichier .fit importé
+// ne contient aucun marqueur structuré natif (cas Amazfit/Zepp, vérifié
+// sur plusieurs fichiers réels — cf. docs/v2-methodologie/
+// import-fit-intervalles.md). Chargé dynamiquement plutôt qu'importé en
+// haut de fichier pour ne pas payer ce coût réseau sur les pages qui
+// n'utilisent jamais l'import FIT — même raison que chargerFitParser().
+let _fitDetectionModule = null;
+async function chargerFitDetection() {
+  if (_fitDetectionModule) return _fitDetectionModule;
+  _fitDetectionModule = await import("./v2/engine/fit-detection.js");
+  return _fitDetectionModule;
+}
+
 // Principe central : NE PAS dupliquer la logique d'analyse. Cette fonction
 // traduit uniquement le format de sortie de fit-file-parser vers le même
 // schéma qu'un objet `activity` Strava (type, sport_type, start_date_local,
@@ -9828,27 +9843,66 @@ function vitesseFiable(distance, tempsSec, avgSpeedFit) {
   return avgSpeedFit ?? 0; // repli si distance/temps manquants (ne devrait pas arriver)
 }
 
-function adapterFitVersFormatActivite(fitParseResult) {
+// Rendue asynchrone le 03/08/2026 : chargerFitDetection() est un import()
+// dynamique, cf. son commentaire plus haut. La branche existante
+// (marqueurs natifs présents, Garmin/Coros programmées en structuré)
+// reste inchangée et synchrone en interne — seul l'appel global doit
+// désormais être awaité par importerFichierFit().
+async function adapterFitVersFormatActivite(fitParseResult) {
   const session = fitParseResult?.activity?.sessions?.[0] || fitParseResult?.sessions?.[0];
   if (!session) return null;
 
   const lapsFit = session.laps || [];
-  const laps = lapsFit.map((lapFit, i) => {
-    const distance = lapFit.total_distance ?? 0;
-    const moving_time = lapFit.total_elapsed_time ?? lapFit.total_timer_time ?? 0;
-    return {
-      id: "fit-lap-" + i,
-      lap_index: i,
-      average_speed: vitesseFiable(distance, moving_time, lapFit.avg_speed),
-      average_heartrate: lapFit.avg_heart_rate ?? null,
-      distance,
-      moving_time,
-    };
-  });
-
   const startTime = session.start_time instanceof Date
     ? session.start_time
     : new Date(session.start_time);
+
+  // Branche ajoutée le 03/08/2026 : quand le fichier .fit n'a aucun
+  // marqueur structuré natif exploitable (cas Amazfit/Zepp — cf.
+  // docs/v2-methodologie/import-fit-intervalles.md, section 3.0), les
+  // lapsFit.map(...) ci-dessous ne reflètent que des laps fixes tous les
+  // 1000m, sans aucun rapport avec la structure réelle de la séance. On
+  // reconstruit alors les intervalles par reconnaissance de signal
+  // (fit-detection.js) plutôt que de traduire ces laps distance-trigger
+  // tels quels.
+  //
+  // structureAttendue (dureeEffortSec du premier bloc de la séance du
+  // plan, si elle existe à cette date) affine le réglage de détection —
+  // cf. choisirParametres() dans fit-detection.js pour le détail des
+  // deux profils calibrés (VMA courte vs seuil long). ALL_SESSIONS est
+  // une variable de scope module (déclarée plus haut dans ce fichier),
+  // accessible ici sans paramètre supplémentaire — même pattern que le
+  // reste d'index.html (contrairement aux modules ES séparés comme
+  // session-analysis.js, qui reçoivent tout en paramètre).
+  const { possedeMarqueursNatifs, construireLapsDepuisFit } = await chargerFitDetection();
+  let laps;
+  if (possedeMarqueursNatifs(lapsFit)) {
+    laps = lapsFit.map((lapFit, i) => {
+      const distance = lapFit.total_distance ?? 0;
+      const moving_time = lapFit.total_elapsed_time ?? lapFit.total_timer_time ?? 0;
+      return {
+        id: "fit-lap-" + i,
+        lap_index: i,
+        average_speed: vitesseFiable(distance, moving_time, lapFit.avg_speed),
+        average_heartrate: lapFit.avg_heart_rate ?? null,
+        distance,
+        moving_time,
+      };
+    });
+  } else {
+    // Date en heure LOCALE, pas toISOString().slice(0,10) — même correctif
+    // que today()/demain() (cf. leurs commentaires) : toISOString() convertit
+    // en UTC et peut faire glisser la date d'un jour autour de minuit en
+    // heure d'été française. seance.date (ALL_SESSIONS) est en heure locale,
+    // comparer une date UTC à une date locale aurait fait échouer le
+    // matching à tort sur les activités enregistrées tard le soir ou tôt
+    // le matin — bug potentiel repéré à la relecture avant push, jamais
+    // testé en conditions réelles.
+    const dateActivite = `${startTime.getFullYear()}-${String(startTime.getMonth() + 1).padStart(2, '0')}-${String(startTime.getDate()).padStart(2, '0')}`;
+    const seanceDuPlan = ALL_SESSIONS.find(s => s.date === dateActivite);
+    const structureAttendue = seanceDuPlan?.structureIntervalles?.blocs?.[0] || null;
+    laps = construireLapsDepuisFit(session, structureAttendue);
+  }
 
   const distanceTotale = session.total_distance ?? 0;
   const tempsTotal = session.total_elapsed_time ?? session.total_timer_time ?? 0;
@@ -9887,7 +9941,7 @@ async function importerFichierFit(file) {
     const fitData = await new Promise((resolve, reject) => {
       fitParser.parse(buffer, (error, data) => error ? reject(error) : resolve(data));
     });
-    const activite = adapterFitVersFormatActivite(fitData);
+    const activite = await adapterFitVersFormatActivite(fitData);
     if (!activite) {
       syncMsg = "❌ Fichier .fit illisible ou vide.";
       syncing = false; render();
