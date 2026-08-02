@@ -7617,7 +7617,36 @@ function renderCourse() {
     btn2.style.cssText="background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#F8FAFC;font-size:14px;font-weight:700;cursor:pointer;";
     btn2.addEventListener("click",()=>{
       const parts=inp2.value.split(":");
-      if(parts.length>=2){const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);if(!isNaN(secs)&&secs>0){save(clePourPlan("lk_race_result"),secs);render();}}
+      if(parts.length>=2){
+        const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);
+        if(!isNaN(secs)&&secs>0){
+          save(clePourPlan("lk_race_result"),secs);
+          // Badge "record_battu" (02/08/2026, déplacé ici depuis
+          // sauvegarderUnRecord() — cf. son commentaire pour le détail du
+          // bug corrigé : le badge se déclenchait auparavant sur une
+          // simple saisie/correction manuelle de record dans Réglages,
+          // sans lien avec une vraie course. Ici, seul un VRAI résultat
+          // de course validé (distance du plan actif,
+          // window.__PLAN_BRUT__.distance) comparé au record personnel
+          // déjà connu sur cette distance peut déclencher le badge —
+          // cohérent avec l'intention du système de badges (§16 de
+          // l'inventaire : "record battu" est un badge événementiel lié
+          // à une vraie performance, pas une correction de saisie.
+          try {
+            const distancePlan = window.__PLAN_BRUT__?.distance;
+            const ancienRecord = distancePlan ? profilCoureur.records?.[distancePlan]?.temps : null;
+            const recordBattu = ancienRecord && secs < parseTimeToSeconds(ancienRecord);
+            if (recordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
+              enregistrerBadgeDebloque('record_battu', 1).then(() => {
+                window.__badgesCache__.record_battu = true;
+                window.__badgesNouveauxAAfficher__ = [...(window.__badgesNouveauxAAfficher__ || []), { badgeId: 'record_battu', niveau: 1, seuil: null }];
+                render();
+              }).catch(() => {});
+            }
+          } catch (e) { /* format de record existant invalide, ignoré — non bloquant */ }
+          render();
+        }
+      }
     });
     const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
     row2.appendChild(inp2); row2.appendChild(btn2);
@@ -8976,14 +9005,19 @@ function renderSettings() {
 
   // Auto-sauvegarde d'un record personnel individuel (31/07/2026, demande
   // de Laurent : "les RP devraient être autovalidés dès qu'ils sont
-  // saisis") — même logique de garde-fou record du monde et de badge
-  // "record_battu" que l'ancien handler saveBtn (ci-dessous), mais
-  // appliquée à UNE SEULE distance, appelée à chaque sélection dans la
-  // roulette (event 'input', déjà dispatché par declencherInput à chaque
-  // défilement — cf. initRouletteHMS — donc pas besoin d'un event
-  // supplémentaire ni d'un debounce : chaque sélection de roulette est
-  // déjà un choix ferme, pas une saisie progressive comme du texte) ou de
-  // changement de la date associée (event 'change').
+  // saisis") — même logique de garde-fou record du monde que l'ancien
+  // handler saveBtn (ci-dessous).
+  //
+  // Le badge "record_battu" a été RETIRÉ d'ici le 02/08/2026 (bug signalé
+  // par Laurent : le badge apparaissait alors qu'aucune course n'avait
+  // été validée dans le plan). Il ne se déclenche désormais que lors de
+  // la validation d'un vrai résultat de course (cf. resultatCard,
+  // renderCourse) — une simple saisie/correction manuelle de record
+  // personnel dans Réglages ne doit jamais compter comme "record battu"
+  // au sens du badge, même si techniquement le temps saisi est meilleur
+  // que l'ancien (ça peut être une simple correction d'erreur de saisie,
+  // ou un ancien record retrouvé après coup, pas une performance
+  // "célébrable" au moment de la saisie).
   function sauvegarderUnRecord(dist) {
     profilCoureur.records = profilCoureur.records || {};
     const hInp = document.getElementById("rec-temps-"+dist+"-h");
@@ -9007,14 +9041,6 @@ function renderSettings() {
       } catch (e) { /* format de temps invalide, ignoré ici — non bloquant pour ce garde-fou précis */ }
     }
 
-    let recordBattu = false;
-    try {
-      const ancienTemps = profilCoureur.records[dist]?.temps;
-      if (tempsFormate && ancienTemps && parseTimeToSeconds(tempsFormate) < parseTimeToSeconds(ancienTemps)) {
-        recordBattu = true;
-      }
-    } catch (e) { /* format de temps invalide, ignoré silencieusement ici */ }
-
     if (tempsFormate) {
       profilCoureur.records[dist] = { temps: tempsFormate, date: dateInp?.value || null };
     } else {
@@ -9031,14 +9057,6 @@ function renderSettings() {
     // ce que l'utilisateur navigue ailleurs et revienne, donnant
     // l'impression trompeuse que rien n'avait été enregistré.
     render();
-
-    if (recordBattu && window.__badgesCache__ && !window.__badgesCache__.record_battu) {
-      enregistrerBadgeDebloque('record_battu', 1).then(() => {
-        window.__badgesCache__.record_battu = true;
-        window.__badgesNouveauxAAfficher__ = [...(window.__badgesNouveauxAAfficher__ || []), { badgeId: 'record_battu', niveau: 1, seuil: null }];
-        render();
-      }).catch(() => {});
-    }
   }
 
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
