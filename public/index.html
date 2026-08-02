@@ -4537,16 +4537,17 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
             ),
             el("div",{style:{display:"flex",alignItems:"center",gap:"10px"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
-              // à programmer sur la montre) et ✏️ (saisie manuelle) affichées
-              // UNIQUEMENT tant que la séance n'est pas validée — dès qu'un
-              // statut ✅/⚠️/❌ est posé, plus besoin ni de programmer une
-              // séance déjà courue, ni d'ouvrir la saisie manuelle depuis ici
-              // (elle reste accessible via le lien "Corriger" du bloc Réalisé,
-              // cf. plus bas). manuelDejaSaisie sert aussi à décider de
-              // l'auto-ouverture du formulaire au moment de valider (plus
-              // bas, cf. renderStatusRow/onValidation).
+              // à programmer sur la montre) affichée UNIQUEMENT tant que la
+              // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
+              // posé, plus besoin de programmer une séance déjà courue.
+              // ✏️ (saisie manuelle/import), en revanche, reste visible
+              // même après validation (03/08/2026, cohérence demandée par
+              // Laurent avec le détail Semaine) : donne accès à la
+              // correction/réimport une fois la séance faite, à la saisie
+              // initiale sinon — même popover (renderManualPerfRow) dans
+              // les deux cas.
               (!isRest && !isDone && s.structureIntervalles) ? renderIconeStructureMontre(s.structureIntervalles) : null,
-              (!isRest && !isDone) ? renderIconeSaisieManuelle(uid2, s, stravaRun2) : null,
+              (!isRest) ? renderIconeSaisieManuelle(uid2, s, stravaRun2) : null,
               (()=>{
                 const histTemp = historicalWeatherCache[s.date];
                 if (isDone && histTemp != null) {
@@ -6108,13 +6109,20 @@ function renderWeekDetail(weekNum) {
         badge(effSess.type),
         el("div",{style:{flex:"1"}}),
         // Refonte ergonomique (26/07/2026, cohérente avec la carte
-        // "Aujourd'hui") : icônes ⌚/✏️ compactes affichées uniquement pour
-        // une séance non encore validée ET pas future (mêmes règles que le
-        // bloc saisie manuelle/notes plus bas). Remplacent l'ancien bouton
-        // pleine largeur "📱 À programmer sur ta montre" et la ligne "✏️
-        // Saisir ou corriger manuellement".
+        // "Aujourd'hui") : icône ⌚ compacte affichée uniquement pour
+        // une séance non encore validée ET pas future. L'icône ✏️
+        // (saisie manuelle/import) a été déplacée le 03/08/2026 à côté
+        // des boutons de statut (— ✅ ❌ ⚠️ 😴, plus bas dans la carte) —
+        // remarque de Laurent : séparée du statut dans le header, elle
+        // n'était pas naturelle à trouver.
         (!isDoneSession && s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE" && effSess.structureIntervalles) ? renderIconeStructureMontre(effSess.structureIntervalles) : null,
-        (!isDoneSession && s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE") ? renderIconeSaisieManuelle(uid, s, stravaRun) : null,
+        // Icône ✏️ (03/08/2026, demande de Laurent : "en haut à droite,
+        // juste à gauche du statut validé") — visible avant ET après
+        // validation (contrairement à l'icône ⌚ juste au-dessus, qui
+        // disparaît une fois isDoneSession) : après validation, elle donne
+        // accès à la correction/réimport, avant validation à la saisie
+        // initiale — même popover (renderManualPerfRow) dans les deux cas.
+        (s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE") ? renderIconeSaisieManuelle(uid, s, stravaRun) : null,
         // Badge de statut (22/07/2026) : rond coloré pour ✅/❌/⚠️, icône
         // directe (pas de rond) pour 😴.
         isDoneSession ? (
@@ -6200,24 +6208,12 @@ function renderWeekDetail(weekNum) {
           fontSize:"13px"
         }}, (statuses[uid]==="❌"?"❌ ":"⚠️ ")+reason));
       }
-      // Icône ✏️ compacte (26/07/2026 pour la carte "Aujourd'hui", étendue
-      // ici le 03/08/2026 à la demande de Laurent) : regroupe désormais
-      // toutes les actions manuelles (saisie/correction, import .fit) dans
-      // un seul popover cohérent, plutôt qu'un gros bloc pleine largeur —
-      // même pattern que renderIconeSaisieManuelle() sur la carte du jour.
-      // Bug trouvé à la relecture avant push : renderIconeSaisieManuelle()
-      // n'a pas de garde interne sur les séances futures (contrairement à
-      // renderStatusRow, cf. son "estFuture") — placée hors du bloc
-      // !estFutureSeance ci-dessous, elle serait apparue à tort sur des
-      // séances à venir. Calculé ici mais l'icône n'est ajoutée qu'après
-      // la vérification de date, plus bas.
+      // Icône ✏️ déplacée dans le header (cf. plus haut, à côté du badge de
+      // statut) — 03/08/2026, précision de Laurent après un premier essai
+      // à cet endroit.
       const statusRow=renderStatusRow(uid, s.date);
       const estFutureSeance = s.date > today();
-      const headerLigneStatut = el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-        el("div",{style:{flex:"1"}}, statusRow),
-        estFutureSeance ? null : renderIconeSaisieManuelle(uid, s, stravaRun)
-      );
-      card.appendChild(headerLigneStatut);
+      card.appendChild(statusRow);
       // Correctif 26/07/2026 (signalé par Laurent) : saisie manuelle et
       // notes n'ont pas de sens pour une séance FUTURE (rien ne s'est
       if (!estFutureSeance) {
