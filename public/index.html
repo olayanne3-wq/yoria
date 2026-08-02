@@ -5808,16 +5808,62 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     }
     correctionSlot.style.display = correctionOpen ? "block" : "none";
   }));
-  const liensDroite = el("div",{style:{display:"flex",gap:"12px"}}, correctionLink);
-  // Bug trouvé le 03/08/2026 : stravaRun peut être une activité importée
-  // depuis un fichier .fit (_source: "fit", cf. adapterFitVersFormatActivite()) —
-  // elle partage volontairement le même tableau stravaActivities que les
-  // vraies activités Strava (cf. commentaire d'importerFichierFit()), donc
-  // la condition précédente (juste `if (stravaRun)`) affichait à tort un
-  // lien Strava avec un id inexistant (activities/undefined) pour ces
-  // activités. Le lien n'a de sens que pour une vraie activité Strava.
-  if (stravaRun && stravaRun._source !== "fit") {
-    liensDroite.appendChild(el("a",{href:"https://www.strava.com/activities/"+stravaRun.id_str,target:"_blank",style:{color:"var(--warn)",fontSize:"12px",fontWeight:"700",textDecoration:"none"}},"Strava 🔗"));
+  const liensDroite = el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}}, correctionLink);
+  // Badge de source + bouton de suppression — ajoutés le 03/08/2026, suite
+  // à la demande de Laurent de pouvoir voir la provenance d'une activité
+  // déjà importée (Strava/FIT) et la retirer explicitement. Nécessaire
+  // depuis que syncStrava() protège la première activité importée sur une
+  // date (cf. son commentaire, même date) : sans un moyen de suppression,
+  // il n'y aurait plus AUCUN moyen de remplacer une activité une fois
+  // importée, quelle que soit sa source.
+  if (stravaRun) {
+    const estFit = stravaRun._source === "fit";
+    liensDroite.appendChild(el("span",{
+      title: estFit ? "Importé depuis un fichier .fit" : "Synchronisé depuis Strava",
+      style:{fontSize:"12px",color:"var(--text-muted)",display:"flex",alignItems:"center",gap:"3px"}
+    }, estFit ? "📁 FIT" : "🟠 Strava"));
+
+    // Lien Strava réel — uniquement si stravaRun est une vraie activité
+    // Strava (cf. commentaire précédent, bug id_str undefined sinon).
+    if (!estFit) {
+      liensDroite.appendChild(el("a",{href:"https://www.strava.com/activities/"+stravaRun.id_str,target:"_blank",style:{color:"var(--warn)",fontSize:"12px",fontWeight:"700",textDecoration:"none"}},"🔗"));
+    }
+
+    const supprimerBtn = el("a",{href:"#",title:"Supprimer cette activité importée",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🗑️");
+    supprimerBtn.addEventListener("click", avecRetourTactile((e)=>{
+      e.preventDefault(); e.stopPropagation();
+      if (!confirm("Supprimer cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Cette action ne peut pas être annulée — il faudra réimporter ou resynchroniser.")) return;
+      stravaActivities = (stravaActivities || []).filter(a => a.start_date_local?.slice(0,10) !== s.date);
+      window.stravaActivities = stravaActivities;
+      save("lk_strava_activities", stravaActivities);
+      matchActivitiesToPlan(stravaActivities);
+      render();
+    }));
+    liensDroite.appendChild(supprimerBtn);
+  } else if (dataSource === "fit") {
+    // Bouton d'import direct dans la carte — ajouté le 03/08/2026, suite à
+    // la remarque de Laurent : passer par Réglages à chaque séance pour
+    // importer un .fit n'est pas naturel comparé à Strava (synchro
+    // automatique). Réutilise importerFichierFit(), déjà existante et
+    // inchangée (même mécanisme d'input file caché que la section Import
+    // FIT de Réglages) — juste un second point d'entrée vers la même
+    // fonction, pas de logique dupliquée. N'apparaît que si aucune
+    // activité n'existe déjà pour cette date (cf. !stravaRun ci-dessus) —
+    // cohérent avec le blocage déjà en place dans importerFichierFit().
+    const fileInpCarte = document.createElement("input");
+    fileInpCarte.type = "file"; fileInpCarte.accept = ".fit"; fileInpCarte.style.display = "none";
+    fileInpCarte.addEventListener("change", avecRetourTactile((e)=>{
+      const file = e.target.files?.[0];
+      if (file) importerFichierFit(file);
+      fileInpCarte.value = "";
+    }));
+    const importBtn = el("a",{href:"#",style:{color:"var(--accent)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:"3px"}},"📁 Importer .fit");
+    importBtn.addEventListener("click", avecRetourTactile((e)=>{
+      e.preventDefault(); e.stopPropagation();
+      fileInpCarte.click();
+    }));
+    liensDroite.appendChild(importBtn);
+    liensDroite.appendChild(fileInpCarte);
   }
   wrap.appendChild(el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}},
     el("span",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px"}},"Réalisé"),
@@ -10032,7 +10078,23 @@ async function importerFichierFit(file) {
       return;
     }
     const dateActivite = activite.start_date_local.slice(0, 10);
-    stravaActivities = stravaActivities.filter(a => a.start_date_local?.slice(0,10) !== dateActivite || a._source !== "fit");
+    // Correctif du 03/08/2026 (demande explicite de Laurent) : la
+    // première activité importée sur une date reste en place, peu importe
+    // sa source — cohérent avec le même principe appliqué à syncStrava()
+    // (cf. son commentaire). Avant ce correctif, un réimport FIT sur la
+    // même date remplaçait silencieusement l'ancien import FIT (et une
+    // activité Strava existante à cette date n'était même pas détectée,
+    // menant à un doublon plutôt qu'un remplacement). Bloque désormais
+    // l'import dans tous les cas si une activité existe déjà — l'utilisateur
+    // doit d'abord la supprimer explicitement (bouton 🗑️ sur la carte de
+    // la séance) pour libérer la date.
+    const activiteExistante = (stravaActivities || []).find(a => a.start_date_local?.slice(0,10) === dateActivite);
+    if (activiteExistante) {
+      const source = activiteExistante._source === "fit" ? "FIT" : "Strava";
+      syncMsg = "❌ Une activité (" + source + ") existe déjà pour le " + dateActivite + " — supprime-la d'abord (🗑️ sur la carte de la séance) pour en importer une nouvelle.";
+      syncing = false; render();
+      return;
+    }
     stravaActivities.push(activite);
     window.stravaActivities = stravaActivities;
     save("lk_strava_activities", stravaActivities);
@@ -10119,8 +10181,26 @@ async function syncStrava(force = false) {
     const activities = await resp.json();
     if (Array.isArray(activities)) {
       const runs = activities.filter(a => a.type === "Run" || a.sport_type === "Run");
-      stravaActivities=runs; window.stravaActivities=runs; save("lk_strava_activities",runs);
-      matchActivitiesToPlan(activities);
+      // Correctif du 03/08/2026 (demande explicite de Laurent) : la
+      // première activité importée sur une date donnée, peu importe sa
+      // source (Strava, FIT, ou une future source), reste en place —
+      // aucune resynchronisation Strava ne doit l'écraser silencieusement.
+      // Avant ce correctif, `stravaActivities = runs` remplaçait TOUT le
+      // tableau à chaque synchro, y compris les activités importées
+      // manuellement via .fit sur d'autres dates (perte totale, pas
+      // seulement sur la date en conflit). Seule une suppression manuelle
+      // explicite (cf. bouton 🗑️ Supprimer sur la carte de la séance)
+      // permet de libérer une date pour qu'une nouvelle source s'y
+      // attache.
+      const datesExistantes = new Set(
+        (stravaActivities || []).map(a => a.start_date_local?.slice(0, 10)).filter(Boolean)
+      );
+      const nouvellesActivitesSeulement = runs.filter(
+        a => !datesExistantes.has(a.start_date_local?.slice(0, 10))
+      );
+      const merged = [...(stravaActivities || []), ...nouvellesActivitesSeulement];
+      stravaActivities = merged; window.stravaActivities = merged; save("lk_strava_activities", merged);
+      matchActivitiesToPlan(merged);
       lastSyncTime = Date.now();
 
       save("lk_last_sync", lastSyncTime);
