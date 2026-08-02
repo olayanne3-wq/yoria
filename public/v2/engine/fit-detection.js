@@ -160,11 +160,22 @@ function detecterSegments(records, params) {
   return segments.filter(([d, f]) => (f - d + 1) >= params.dureeMinBlocSec);
 }
 
-// Calcule les stats d'un bloc effort (allure moyenne, FC moyenne) à
-// partir des records bruts entre deux indices — moyenne des vitesses
-// instantanées, cohérent avec la méthode utilisée pendant la calibration
-// (deux méthodes de calcul testées en Python, résultats quasi
-// identiques sur les cas testés, cf. doc section "premier test seuil").
+// Calcule les stats d'un bloc effort (allure moyenne, FC moyenne,
+// cadence) à partir des records bruts entre deux indices — moyenne des
+// vitesses instantanées, cohérent avec la méthode utilisée pendant la
+// calibration (deux méthodes de calcul testées en Python, résultats
+// quasi identiques sur les cas testés, cf. doc section "premier test
+// seuil").
+//
+// Cadence ajoutée le 03/08/2026 (bug trouvé au test réel : spm absent de
+// l'affichage). Convention : average_cadence stocké en pas PAR JAMBE par
+// minute — même convention que le reste de index.html, qui multiplie
+// toujours par 2 à l'affichage pour obtenir le spm total (cf. ses deux
+// seuls usages, ligne ~2618/6508 : `average_cadence*2`). Le champ
+// `cadence` du flux FIT brut (fourni par fit-file-parser) est déjà dans
+// cette même convention par jambe — vérifié sur les fichiers de
+// calibration (valeurs ~58-90, cohérentes avec une cadence par jambe,
+// pas un spm total qui serait ~160-190).
 function statsBloc(records, debut, fin) {
   const tranche = records.slice(debut, fin + 1).filter(r => r.speed > 0.3);
   if (tranche.length === 0) return null;
@@ -172,9 +183,12 @@ function statsBloc(records, debut, fin) {
   const distance = tranche.reduce((a, r) => a + r.speed, 0); // ~1 échantillon/s
   const fcValeurs = tranche.map(r => r.hr).filter(hr => hr != null);
   const fcMoyenne = fcValeurs.length ? fcValeurs.reduce((a, b) => a + b, 0) / fcValeurs.length : null;
+  const cadenceValeurs = tranche.map(r => r.cadence).filter(c => c != null);
+  const cadenceMoyenne = cadenceValeurs.length ? cadenceValeurs.reduce((a, b) => a + b, 0) / cadenceValeurs.length : null;
   return {
     average_speed: vitesseMoyenne,
     average_heartrate: fcMoyenne,
+    average_cadence: cadenceMoyenne,
     distance,
     moving_time: records[fin].t - records[debut].t,
   };
@@ -200,6 +214,7 @@ export function detecterIntervallesParSignal(records, structureAttendue = null) 
     lap_index: i,
     average_speed: b.average_speed,
     average_heartrate: b.average_heartrate,
+    average_cadence: b.average_cadence,
     distance: b.distance,
     moving_time: b.moving_time,
   }));
@@ -241,6 +256,7 @@ export function construireLapsDepuisFit(session, structureAttendue = null) {
         t: (new Date(r.timestamp) - new Date(t0)) / 1000,
         speed: r.speed ?? r.enhanced_speed ?? 0,
         hr: r.heart_rate ?? null,
+        cadence: r.cadence ?? null,
       });
     }
   }
