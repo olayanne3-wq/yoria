@@ -49,12 +49,25 @@ export const DEFINITIONS_BADGES = {
 
 // Libellés affichés — nom générique + libellé par palier pour les badges
 // progressifs (affiché dans le bandeau de notification et l'écran détaillé).
+//
+// CORRECTIF (02/08/2026, bug signalé par Laurent : le libellé de palier
+// affiché sous un badge non encore débloqué — ex. "6 semaines parfaites"
+// — se lisait comme un état déjà acquis, alors que c'est le PROCHAIN
+// palier à atteindre. Reformulés avec un verbe d'action explicite
+// ("Enchaîner X", "Réaliser X", "Maîtriser X sur Y") pour ne plus jamais
+// être ambigus entre "voici ce que tu as" et "voici ce qu'il te reste à
+// faire" — s'applique aux 4 badges à paliers (seances_affilees,
+// semaines_completes, fc_ef_maitrisee, semaine_parfaite). Le nom
+// générique (`nom`) reste inchangé, seuls les libellés `paliers[]`
+// changent — l'affichage du sous-libellé dans renderBadges() (index.html)
+// utilise déjà `libelle.paliers[niveauActuel]` sans modification
+// nécessaire côté appelant.
 export const LIBELLES_BADGES = {
-  seances_affilees:    { nom: "Séances validées d'affilée", paliers: ["5 séances d'affilée", "10 séances d'affilée", "20 séances d'affilée", "40 séances d'affilée"] },
-  semaines_completes:  { nom: "Semaines complètes d'affilée", paliers: ["2 semaines complètes", "4 semaines complètes", "8 semaines complètes", "16 semaines complètes"] },
-  fc_ef_maitrisee:     { nom: "FC EF maîtrisée", paliers: ["2 semaines dans la zone EF", "4 semaines dans la zone EF", "8 semaines dans la zone EF"] },
+  seances_affilees:    { nom: "Séances validées d'affilée", paliers: ["Enchaîner 5 séances", "Enchaîner 10 séances", "Enchaîner 20 séances", "Enchaîner 40 séances"] },
+  semaines_completes:  { nom: "Semaines complètes d'affilée", paliers: ["Enchaîner 2 semaines complètes", "Enchaîner 4 semaines complètes", "Enchaîner 8 semaines complètes", "Enchaîner 16 semaines complètes"] },
+  fc_ef_maitrisee:     { nom: "FC EF maîtrisée", paliers: ["Maîtriser sa FC EF sur 2 semaines", "Maîtriser sa FC EF sur 4 semaines", "Maîtriser sa FC EF sur 8 semaines"] },
   retour_reussi:       { nom: "Retour réussi" },
-  semaine_parfaite:    { nom: "Semaines parfaites", paliers: ["3 semaines parfaites", "6 semaines parfaites", "12 semaines parfaites", "20 semaines parfaites"] },
+  semaine_parfaite:    { nom: "Semaines parfaites", paliers: ["Réaliser 3 semaines parfaites", "Réaliser 6 semaines parfaites", "Réaliser 12 semaines parfaites", "Réaliser 20 semaines parfaites"] },
   nouvelle_estimation: { nom: "Nouvelle estimation" },
   record_battu:        { nom: "Record personnel battu" },
   test_semi_cooper:    { nom: "Test semi-Cooper validé" },
@@ -150,10 +163,23 @@ export function renderAnneauBadge(badgeId, forceDebloqueSimple, taille, badgesCa
       dashOffset = C * (1 - fraction);
       texteAuCentre = String(serieBrute);
       if (niveau > 0) niveauPastille = niveau;
-      if (record > 0) {
-        legendeSousBadge = "série active<br>record " + record;
-      } else if (serieBrute > 0) {
-        legendeSousBadge = "série active";
+      // CORRECTIF (02/08/2026, bug signalé par Laurent : la légende
+      // "série active / record X" affichée pour semaine_parfaite n'a pas
+      // de sens — ce badge est un COMPTEUR CUMULÉ (cf. commentaire de
+      // compterSemainesParfaites() plus bas : "jamais de notion de
+      // cassée"), où serieActuelle et serieMax sont TOUJOURS égaux par
+      // construction. Afficher "série active" à côté d'un "record"
+      // identique suggère à tort qu'une série pourrait casser, ce qui
+      // n'arrive jamais pour ce badge précis. Aucune légende n'est
+      // affichée pour semaine_parfaite — le chiffre au centre de
+      // l'anneau (déjà affiché via texteAuCentre) suffit à représenter
+      // le cumul, sans texte trompeur en dessous.
+      if (badgeId !== 'semaine_parfaite') {
+        if (record > 0) {
+          legendeSousBadge = "série active<br>record " + record;
+        } else if (serieBrute > 0) {
+          legendeSousBadge = "série active";
+        }
       }
     }
   } else {
