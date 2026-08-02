@@ -411,6 +411,14 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     ];
     let niveauChoisi = profilExistant.niveau || null;
     let sexeChoisi = profilExistant.sexe || null;
+    // Source de données (02/08/2026, demande de Laurent : l'onboarding ne
+    // demandait jamais comment les séances seraient suivies — dataSource
+    // valait "strava" par défaut, silencieusement, sans jamais inviter au
+    // choix). Défaut à null (pas de pré-sélection) : contrairement à
+    // niveau/sexe, ce choix engage une action potentiellement lourde
+    // (connexion OAuth Strava) — on préfère laisser la personne choisir
+    // explicitement plutôt que présélectionner une option.
+    let sourceChoisie = profilExistant.dataSource || null;
 
     const SEXES = [
       { val: 'homme', label: 'Homme' },
@@ -701,6 +709,23 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       #ecran-onboarding .onb-erreur {
         color: var(--warn); font-size: 0.78rem; margin: -10px 0 14px; min-height: 1.1em;
       }
+      /* ── Page Source de données (02/08/2026) — même style de carte
+         cliquable que .niveau-opt, réutilisé pour cohérence visuelle. ──── */
+      #ecran-onboarding .source-opt {
+        display: flex; align-items: center; gap: 10px; padding: 14px;
+        border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
+        cursor: pointer; transition: border-color 0.15s, background 0.15s;
+      }
+      #ecran-onboarding .source-opt.actif { border-color: var(--accent); background: rgba(var(--accent-rgb),0.08); }
+      #ecran-onboarding .source-opt .icone { font-size: 1.4rem; flex-shrink: 0; }
+      #ecran-onboarding .source-opt .titre { font-weight: 700; font-size: 0.9rem; }
+      #ecran-onboarding .source-opt .desc { font-size: 0.78rem; color: var(--text-muted); }
+      #ecran-onboarding .onb-strava-explication {
+        background: rgba(var(--warn-rgb),0.1); border: 1px solid rgba(var(--warn-rgb),0.3);
+        border-radius: 10px; padding: 12px 14px; margin-top: 4px; margin-bottom: 14px;
+        font-size: 0.82rem; line-height: 1.5; color: var(--text);
+      }
+      #ecran-onboarding .onb-strava-explication strong { color: var(--warn); }
       /* ── Roulette de saisie de temps (31/07/2026) — mêmes dimensions que
          Réglages (index.html), portée séparément ici (cf. commentaire sur
          creerColonneRouletteOnboarding plus haut). Chiffres non-actifs
@@ -777,6 +802,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             <span class="onb-point" data-page="1"></span>
             <span class="onb-point" data-page="2"></span>
             <span class="onb-point" data-page="3"></span>
+            <span class="onb-point" data-page="4"></span>
           </div>
 
           <div class="onb-page" id="onb-page-0" data-page="0">
@@ -815,6 +841,15 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             <div class="onb-erreur" id="onb-erreur-3"></div>
           </div>
 
+          <div class="onb-page" id="onb-page-4" data-page="4">
+            <label>Comment tes séances seront-elles suivies<span class="obligatoire">*</span> ?</label>
+            <div id="onb-sources"></div>
+            <div id="onb-strava-explication" class="onb-strava-explication" style="display:none;">
+              <strong>⚠️ Important :</strong> Strava seul ne suffit pas pour que Yoria analyse le détail d'une séance qualité (fractionné, seuil...). Programme tes intervalles directement sur ta montre (mode "entraînement structuré"/"intervalles") avant chaque séance qualité — Yoria pourra alors lire chaque répétition individuellement une fois l'activité synchronisée.
+            </div>
+            <div class="onb-erreur" id="onb-erreur-4"></div>
+          </div>
+
           <div class="onb-nav">
             <button class="btn-secondaire" id="onb-precedent" style="display:none;">← Précédent</button>
             <button class="btn-principal" id="onb-suivant">Suivant</button>
@@ -829,7 +864,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     const validerBtn = hote.querySelector('#onb-valider');
     const suivantBtn = hote.querySelector('#onb-suivant');
     const precedentBtn = hote.querySelector('#onb-precedent');
-    const NB_PAGES = 4;
+    const NB_PAGES = 5;
     let pageActuelle = 0;
 
     // ── Module PPS (02/08/2026, remplace l'ancien champ texte "PPS /
@@ -1040,6 +1075,47 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
     }
     rafraichirSexes();
 
+    // Rendu des options de source de données (02/08/2026) — OBLIGATOIRE
+    // contrairement à sexe (validerPage4 bloque si sourceChoisie est
+    // null, cf. plus bas). Affiche/masque l'avertissement Strava
+    // (programmer les intervalles sur la montre) selon le choix courant.
+    const SOURCES = [
+      { val: 'strava', icone: '🔗', titre: 'Strava', desc: "Synchronisation automatique de tes séances via l'application Strava" },
+      { val: 'manuel', icone: '✏️', titre: 'Saisie manuelle', desc: "Tu renseignes toi-même la durée/allure de chaque séance après coup" },
+    ];
+    const sourcesHost = hote.querySelector('#onb-sources');
+    const stravaExplicationEl = hote.querySelector('#onb-strava-explication');
+    function rafraichirSources() {
+      sourcesHost.innerHTML = '';
+      SOURCES.forEach((s) => {
+        const opt = document.createElement('div');
+        opt.className = 'source-opt' + (sourceChoisie === s.val ? ' actif' : '');
+        opt.innerHTML = `<span class="icone">${s.icone}</span><div><div class="titre">${s.titre}</div><div class="desc">${s.desc}</div></div>`;
+        opt.addEventListener('click', () => {
+          sourceChoisie = s.val;
+          rafraichirSources();
+          if (stravaExplicationEl) stravaExplicationEl.style.display = sourceChoisie === 'strava' ? 'block' : 'none';
+          const erreurEl = hote.querySelector('#onb-erreur-4');
+          if (erreurEl) erreurEl.textContent = '';
+          mettreAJourLibelleValider();
+        });
+        sourcesHost.appendChild(opt);
+      });
+    }
+    rafraichirSources();
+    if (stravaExplicationEl) stravaExplicationEl.style.display = sourceChoisie === 'strava' ? 'block' : 'none';
+
+    // Le libellé du bouton final change selon la source choisie (02/08/2026)
+    // — "Connecter Strava" (lance l'OAuth, quitte l'onboarding) si Strava
+    // est sélectionné, "Valider" sinon (termine l'onboarding normalement).
+    // Défini ici car référencé par rafraichirSources() ci-dessus, mais le
+    // vrai câblage du comportement du bouton se fait plus bas (après la
+    // définition de validerBtn et de terminer()).
+    function mettreAJourLibelleValider() {
+      if (!validerBtn) return;
+      validerBtn.textContent = sourceChoisie === 'strava' ? 'Connecter Strava →' : 'Valider';
+    }
+
     // ── Navigation entre les 4 pages (01/08/2026) — même principe que
     // ECRANS_WIZARD/afficherEcranWizard/attacherSwipeEtapes dans
     // v2/index.html, porté ici indépendamment (même contrainte d'absence
@@ -1063,7 +1139,11 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       if (!niveauChoisi) return 'Choisis ton niveau pour continuer.';
       return null;
     }
-    const VALIDATEURS_PAGE = { 0: validerPage0, 3: validerPage3 };
+    function validerPage4() {
+      if (!sourceChoisie) return 'Choisis comment tes séances seront suivies pour continuer.';
+      return null;
+    }
+    const VALIDATEURS_PAGE = { 0: validerPage0, 3: validerPage3, 4: validerPage4 };
 
     function afficherPage(index) {
       pageActuelle = index;
@@ -1076,6 +1156,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
       precedentBtn.style.display = index === 0 ? 'none' : 'block';
       suivantBtn.style.display = index === NB_PAGES - 1 ? 'none' : 'block';
       validerBtn.style.display = index === NB_PAGES - 1 ? 'block' : 'none';
+      if (index === NB_PAGES - 1) mettreAJourLibelleValider();
       const erreurEl = hote.querySelector(`#onb-erreur-${index}`);
       if (erreurEl) erreurEl.textContent = '';
     }
@@ -1254,13 +1335,26 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
           niveau: niveauChoisi,
           records,
           ppsDocument: ppsDocumentState,
+          dataSource: sourceChoisie,
         });
       }
 
+      // CORRECTIF (02/08/2026) — ce handler validait auparavant
+      // validerPage3() (niveau), qui était la dernière page avant l'ajout
+      // de la page 4 (source de données). Valide désormais validerPage4()
+      // (source obligatoire). La redirection OAuth Strava proprement dite
+      // N'EST PAS déclenchée ici : ce module ne doit jamais dépendre d'un
+      // comportement de navigation qui appartient à l'appelant (même
+      // contrainte d'indépendance que le reste de ce fichier). resolve()
+      // rend la main à index.html avec dataSource: 'strava' dans le
+      // résultat — c'est à l'appelant de sauvegarder le profil PUIS de
+      // rediriger vers /api/strava/auth si dataSource === 'strava', afin
+      // que le profil déjà complété ne soit jamais perdu au retour de
+      // l'OAuth (qui recharge entièrement la page).
       validerBtn.addEventListener('click', () => {
-        const erreur = validerPage3();
+        const erreur = validerPage4();
         if (erreur) {
-          const erreurEl = hote.querySelector('#onb-erreur-3');
+          const erreurEl = hote.querySelector('#onb-erreur-4');
           if (erreurEl) erreurEl.textContent = erreur;
           return;
         }
