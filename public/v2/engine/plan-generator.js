@@ -1554,6 +1554,34 @@ const RATIO_LONGUE_PAR_JOURS = { 2: 0.45, 3: 0.38, 4: 0.33, 5: 0.28, 6: 0.25, 7:
 const RATIO_LONGUE_DEFAUT = 0.28;
 const MARGE_LONGUE_VS_QUALITE_KM = 1;
 
+// CORRECTIF (02/08/2026, signalé par Laurent — "on a des EF ridicules" une
+// fois le fix du levier Volume déployé, cf. commentaire sur
+// computeVolumeProgression plus haut). Cause structurelle pré-existante,
+// révélée seulement une fois le volume réellement appliqué au lieu d'être
+// masqué par la remontée immédiate du bug : la longue était calculée EN
+// PREMIER (ratio par jours, ou au moins kmQualiteTotal+marge si plus
+// grand), et les EF récupéraient seulement ce qu'il restait — sans aucun
+// plancher symétrique. À volume juste au-dessus du seuil minimum
+// (VOLUME_MIN_PAR_JOURS), la longue + la qualité pouvaient à elles deux
+// absorber presque tout le volume hebdo, laissant des EF à 0.4-2km
+// (mesuré en simulation directe sur 10K/Semi, 5j, niveau confirmé —
+// jamais une "vraie" séance facile).
+//
+// Décision actée avec Laurent (discussion du 02/08/2026, sans code
+// intermédiaire) : inverser la priorité. Le plancher EF (VOLUME_MIN_EF_KM,
+// déjà utilisé ailleurs comme seuil de diagnostic a posteriori) devient
+// une réservation ACTIVE avant de calculer la longue, pas un simple
+// contrôle après coup qui refusait tout le plan (VOLUME_JOURS_INCOMPATIBLE)
+// sans jamais ajuster la répartition elle-même. La contrainte "longue ≥
+// cumul qualité" (MARGE_LONGUE_VS_QUALITE_KM, 29/07/2026) reste appliquée
+// mais seulement sur le budget qui reste UNE FOIS le plancher EF réservé
+// — elle redevient un filet secondaire plutôt que la priorité absolue.
+// Si le volume est vraiment trop faible pour satisfaire les deux
+// (plancher EF ET longue ≥ qualité), la longue redescend en dessous de ce
+// plancher théorique plutôt que de vider les EF à rien — un coach réel ne
+// sacrifierait jamais totalement les séances faciles pour gonfler la
+// longue. Signature et valeurs de retour inchangées (kmLongue, kmParEF,
+// warning) : aucun appelant n'a besoin d'être modifié.
 export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours }) {
   const kmRestant = Math.max(0, volumeCibleKm - kmQualiteTotal);
   let kmLongue = 0, kmParEF = 0;
@@ -1561,9 +1589,20 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
   const RATIO_LONGUE = RATIO_LONGUE_PAR_JOURS[nbJours] ?? RATIO_LONGUE_DEFAUT;
 
   if (aLongue) {
-    const kmLongueRatio = Math.min(volumeCibleKm * RATIO_LONGUE, kmRestant);
+    // Plancher EF réservé AVANT de calculer la longue (02/08/2026) — le
+    // budget disponible pour la longue est désormais kmRestant MOINS ce
+    // plancher, pas kmRestant en entier comme avant. Si nbEF === 0, aucune
+    // réservation (rien à protéger), comportement identique à avant.
+    const kmReservePourEF = nbEF > 0 ? nbEF * VOLUME_MIN_EF_KM : 0;
+    const kmDisponiblePourLongue = Math.max(0, kmRestant - kmReservePourEF);
+
+    const kmLongueRatio = Math.min(volumeCibleKm * RATIO_LONGUE, kmDisponiblePourLongue);
     const kmLongueMinContrainte = kmQualiteTotal + MARGE_LONGUE_VS_QUALITE_KM;
-    kmLongue = Math.min(Math.max(kmLongueRatio, kmLongueMinContrainte), kmRestant);
+    // Le plancher EF a toujours priorité : la contrainte "longue ≥ qualité"
+    // ne peut jamais repousser la longue au-delà de kmDisponiblePourLongue,
+    // même si kmLongueMinContrainte le voudrait — c'est précisément
+    // l'inversion de priorité décidée avec Laurent.
+    kmLongue = Math.min(Math.max(kmLongueRatio, Math.min(kmLongueMinContrainte, kmDisponiblePourLongue)), kmRestant);
     const kmRestantApresLongue = kmRestant - kmLongue;
     kmParEF = nbEF > 0 ? kmRestantApresLongue / nbEF : 0;
   } else {
@@ -1571,8 +1610,13 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
   }
 
   let warning = null;
+  // Seuil du warning resserré à VOLUME_MIN_EF_KM (3km, au lieu de 2km fixe
+  // avant) — cohérent avec le plancher désormais activement visé
+  // ci-dessus : si on tombe quand même sous ce seuil malgré la
+  // réservation, c'est que même le plancher n'a pas pu être respecté
+  // (volume vraiment trop faible), ce qui mérite le même signal qu'avant.
   const seanceMinKm = Math.min(aLongue ? kmLongue : Infinity, nbEF > 0 ? kmParEF : Infinity);
-  if (kmRestant > 0 && seanceMinKm < 2) {
+  if (kmRestant > 0 && seanceMinKm < VOLUME_MIN_EF_KM) {
     warning = {
       code: 'VOLUME_HEBDO_TROP_FAIBLE_POUR_REPARTITION',
       message: `Volume hebdo restant (${Math.round(kmRestant * 10) / 10}km) trop faible pour des séances EF/longue substantielles.`
