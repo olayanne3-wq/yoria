@@ -87,7 +87,14 @@ limite** : ±1-2s sur efforts longs, jusqu'à ±10-15s sur efforts courts (≤40
 bloquant pour cette version.
 
 ### Cas limites non résolus
-- Récup trop courte → risque de fusion de deux répétitions.
+- Récup trop courte → risque de fusion de deux répétitions. Investigué le 03/08/2026 :
+  une tolérance dérivée de la récup prescrite (`dureeRecupSec`) a été testée puis
+  retirée — aucune valeur du moteur (`plan-generator.js`) n'est jamais sous 30s, et les
+  récups réellement observées dans les séances de calibration restent ≥20s, largement
+  au-dessus de la tolérance actuelle (4s). Pas de signe concret de ce problème dans les
+  données disponibles — à recalibrer si un vrai cas est un jour rencontré (nouvelle
+  séance à récup courte, ou coureur qui récupère plus vite que prescrit), pas par
+  anticipation.
 - Intervalle raté au point de ne plus se distinguer de la récup → indétectable, angle
   mort de la méthode (contrairement à un marqueur natif).
 - Nombre détecté ≠ attendu : traité nativement par `analyserRepetitions()` en aval (le
