@@ -117,6 +117,18 @@ function choisirParametres(structureAttendue) {
   return { seuilVitesseMs: 3.05, toleranceCreuxSec: 10, dureeMinBlocSec: 20 };
 }
 
+// Cas limite examiné le 03/08/2026 (récup trop courte pour laisser la
+// vitesse redescendre franchement, risque de fusion de deux
+// répétitions) : une tolérance dérivée de structureAttendue.dureeRecupSec
+// a été testée, puis retirée après vérification — aucune valeur de
+// dureeRecupSec du moteur (plan-generator.js) n'est jamais sous 30s, et
+// les récups réellement observées dans les 2 séances VMA de calibration
+// restent ≥20s, largement au-dessus de la tolérance actuelle (4s). Pas
+// de signe concret de ce problème dans les données disponibles à ce
+// jour — à recalibrer si un vrai cas est un jour rencontré (nouvelle
+// séance à récup courte, ou exécution réelle très rapprochée), pas par
+// anticipation. Cf. docs/v2-methodologie/import-fit-intervalles.md.
+
 function lisser(valeurs, fenetre = FENETRE_LISSAGE_SEC) {
   const demi = Math.floor(fenetre / 2);
   return valeurs.map((_, i) => {
