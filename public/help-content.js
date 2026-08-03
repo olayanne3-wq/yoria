@@ -14,6 +14,13 @@
 // noeud texte brut par l'appelant (jamais de innerHTML sur du contenu
 // utilisateur ou de tiers, ce contenu est le nôtre mais autant garder la
 // même discipline que le reste de l'app).
+//
+// Champ optionnel `tuto` (03/08/2026) : un item peut porter en plus un
+// mini-tuto dépliable — { id, steps: [{title, text}] }. `id` doit être
+// stable et unique dans tout le fichier (utilisé pour l'état ouvert/fermé,
+// cf. renderHelp() et le lien "Comment ça marche ?" qui peut cibler ce tuto
+// directement depuis un autre écran). Un item sans `tuto` s'affiche comme
+// avant, sans rien de plus.
 // ----------------------------------------------------------------------------
 
 export const introText =
@@ -115,7 +122,21 @@ export const HELP_SECTIONS = [
       { title: "Strava",
         text: "La plus simple si tu es déjà connecté (synchro automatique)." },
       { title: "Import FIT",
-        text: "Pour les autres montres. Allure, distance et FC bien récupérées ; le détail effort/récupération d'une séance qualité dépend du modèle." },
+        text: "Pour les autres montres. Allure, distance et FC bien récupérées ; le détail effort/récupération d'une séance qualité dépend du modèle.",
+        tuto: {
+          id: "import-fit",
+          steps: [
+            { title: "Ouvre la carte de la séance",
+              text: "Sur la carte du jour, repère l'icône ✏️ en haut à droite, à côté du badge de statut." },
+            { title: "Touche l'icône ✏️",
+              text: "Un menu s'ouvre avec le bouton « Importer le fichier .fit de cette séance » tout en haut, si aucune activité n'existe déjà pour cette date." },
+            { title: "Choisis le fichier exporté par ta montre",
+              text: "Yoria analyse le fichier et détecte les répétitions automatiquement, même sans marqueurs natifs — précision de l'allure de l'ordre de la seconde sur les efforts longs." },
+            { title: "Séance importée",
+              text: "Le détail apparaît sur la carte, avec un badge indiquant la source. Une suppression (icône 🗑️) est possible si besoin de réimporter." },
+          ]
+        }
+      },
       { title: "Saisie manuelle",
         text: "Contrôle total, la plus fiable si tu préfères saisir toi-même." },
       { title: "Multi-appareils",
