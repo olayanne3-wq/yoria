@@ -44,10 +44,11 @@ yoria/
 │   └── v2-methodologie/
 │       ├── inventaire-application.md   # CE FICHIER
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
+│       ├── import-fit-intervalles.md   # Conception + implémentation import .fit (cf. §10)
 │       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin, cf. §16)
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~10300 lignes)
+│   ├── index.html                 # App principale (dashboard, ~11000 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
@@ -66,6 +67,7 @@ yoria/
 │           ├── plan-generator.js
 │           ├── plan-forme.js
 │           ├── badges.js          # Système de badges (récompenses), extrait le 31/07/2026
+│           ├── fit-detection.js   # Détection d'intervalles depuis un .fit sans marqueurs natifs (cf. §10)
 │           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
@@ -197,13 +199,25 @@ render. `setView()` scrolle en haut AVANT `render()`.
 **`predict10K()` calculé à la demande** — seulement pour
 `dashboard`/`stats`/`course` (`VUES_AVEC_PRED`), pas à chaque `render()`.
 
-**Carte du jour et vue Semaine** — principe "rien à ouvrir" : icônes ⌚/✏️
-affichées uniquement tant que non validée, allures/FC cibles directement
-visibles. Une fois validée, résumé chiffré automatique + lien "Corriger",
-seules les répétitions individuelles restent repliées derrière "▼ détail".
-Sans Strava ni saisie manuelle, le clic sur un statut ouvre automatiquement
-le formulaire de saisie. Statut futur : rangée de boutons masquée
-complètement (pas juste désactivée).
+**Carte du jour et vue Semaine** — principe "rien à ouvrir" : icône ⌚
+affichée uniquement tant que la séance n'est pas encore validée, allures/
+FC cibles directement visibles. Une fois validée, résumé chiffré
+automatique + lien "Corriger", seules les répétitions individuelles
+restent repliées derrière "▼ détail". Statut futur : rangée de boutons
+masquée complètement (pas juste désactivée).
+
+**Icône ✏️ unifiée (saisie manuelle + import FIT)** — regroupe la saisie
+allure/FC et l'import `.fit` derrière une seule icône
+(`renderIconeSaisieManuelle()`), dans le header de la carte, juste avant
+le badge de statut — identique sur la carte "Aujourd'hui" et le détail
+Semaine. Visible avant ET après validation (contrairement à l'icône ⌚
+voisine). Le popover contient le bouton d'import `.fit` (si
+`dataSource === "fit"` et aucune activité déjà présente) puis la saisie
+manuelle, repliée par défaut. Auto-ouverture du popover (jamais du
+sous-formulaire) après un clic manuel sur ✅/⚠️/❌ sans activité
+existante — jamais sur validation automatique via synchro. Implémenté
+via une variable transitoire de scope module
+(`uidAOuvrirPopoverSaisie`), consommée au montage.
 
 **Bandeau "Strava déconnecté" sur le dashboard (02/08/2026)** — le signal
 de déconnexion (`stravaAuthInvalide` : token présent mais invalide/expiré
@@ -692,7 +706,10 @@ du 02/08/2026 (levier Volume, répartition EF/longue), aucune régression.
    `FC_REPOS_DEFAUT=60bpm` si `fcReposReference` absent — sans ce repli,
    le calcul bascule silencieusement vers sRPE (échelle très différente).
 2. **SessionAnalyzer** — score de réussite d'une séance (FC, allure,
-   répétitions dans zone `okPace`).
+   répétitions dans zone `okPace`). Agnostique de la source de la
+   séance réalisée (Strava, saisie manuelle, import FIT — cf. §10) :
+   attend uniquement `seanceRealisee`/`ciblesSeance`, sans jamais
+   référencer Strava directement.
 3. **WeekAnalyzer** — bilan hebdomadaire (volume, séances, charge,
    récupération estimée).
 4. **TrendAnalyzer** — 5 détecteurs de signaux sur plusieurs semaines
@@ -798,7 +815,8 @@ méthode de diagnostic la plus fiable pour un bug profond.
 
 **Saisie manuelle** : bouton "Annuler" (réinitialise + relance sync
 Strava), champ "durée totale" pour séances de qualité, exclusion Strava
-complète quand saisie manuelle existe.
+complète quand saisie manuelle existe. Accessible via l'icône ✏️ unifiée
+(cf. §4) — regroupe saisie manuelle et import FIT dans un seul popover.
 
 **RPE** : source unique `sessionRpe[uid]`, sélecteur 5 niveaux
 (🙂😐😓😣🥵) mappés CR-10, visible dès qu'un statut est posé, pondération
@@ -806,7 +824,9 @@ TRIMP +12% si RPE ≥ 8.
 
 **Statuts de séance** (`SOPTS`) : `—`/`✅`/`❌`/`⚠️`/`😴`, indexés par
 `uid`. Une séance ne peut plus être supprimée du plan — seul un statut
-la caractérise.
+la caractérise. Un statut est automatiquement remis à `—` si l'activité
+(Strava ou FIT) qui lui était associée est supprimée manuellement (cf.
+§10) — évite un badge orphelin faisant référence à une donnée effacée.
 
 **`statutEffectif`** — calculé centralement dans `recalculerAllSessions()`,
 disponible sur chaque objet `ALL_SESSIONS` : égal au vrai statut saisi
@@ -834,12 +854,54 @@ nouvelle activité apparaît après resynchro. Sans lien avec le calcul de
 charge/fatigue (`RunnerStateCalculator` lit `stravaActivities` en entier,
 indépendamment du matching).
 
+**Protection des activités importées** — la première activité sur une
+date (Strava ou FIT) ne peut plus être écrasée silencieusement par une
+resynchronisation ; distinct de l'ambiguïté Strava ci-dessus (gérée
+avant qu'une activité soit retenue). Détail complet en §10.
+
 ## 10. Import FIT
 
-`adapterFitVersFormatActivite()`, `chargerFitParser()` (import ESM
-dynamique jsDelivr), `importerFichierFit()`. `vitesseFiable()` calcule
-toujours depuis distance/temps, jamais `avg_speed` du fichier FIT (peut
-être faux sur Amazfit/Zepp).
+`adapterFitVersFormatActivite()` traduit le résultat de
+`fit-file-parser` (`chargerFitParser()`, import ESM dynamique jsDelivr)
+vers le même format qu'une activité Strava, pour traverser le même
+pipeline (`getLapsAffichage()`, `SessionAnalyzer`, prédicteur).
+`vitesseFiable()` calcule toujours depuis distance/temps, jamais
+`avg_speed` du fichier FIT (peut être faux sur Amazfit/Zepp).
+
+**Détection d'intervalles sans marqueurs structurés natifs** — de
+nombreuses montres (Amazfit/Zepp, Suunto confirmés) n'écrivent aucun
+marqueur de segment structuré dans le fichier exporté, même pour une
+séance programmée en entraînement structuré. Repli sur
+`fit-detection.js` (`public/v2/engine/`) : reconstruction par
+reconnaissance de signal sur le flux `record` brut (segments continus
+au-dessus d'un seuil de vitesse, deux profils de paramètres selon le
+type de séance). Calibré sur 4 séances réelles — nombre de répétitions
+fiable, précision de l'allure ±1-2s sur efforts longs, ±10-15s au pire
+sur efforts courts (limite structurelle acceptée). Détail complet :
+`docs/v2-methodologie/import-fit-intervalles.md`.
+
+Un flag `lapsSontDejaEffortSeul` (posé par `adapterFitVersFormatActivite()`)
+court-circuite le curseur de `getLapsAffichage()` (suppose une
+alternance effort/récup native, absente pour cette source) — corrigé une
+seule fois dans le wrapper, pas dans chacun de ses 9+ appelants.
+
+**Protection des activités importées — "premier arrivé, reste"** — la
+première activité sur une date (Strava ou FIT) ne peut plus être écrasée
+silencieusement par une resynchronisation ; seule une suppression
+manuelle explicite (badge de source + bouton 🗑️ sur la carte de séance)
+libère la date. `syncStrava()` merge plutôt qu'écrase, `importerFichierFit()`
+bloque l'import si une activité existe déjà. Effet de bord assumé : une
+activité Strava corrigée a posteriori sur Strava.com n'est plus
+re-synchronisée tant que l'ancienne n'est pas supprimée.
+
+**Pas de stockage du fichier `.fit` brut** — seul le résultat de la
+détection est conservé (dans `stravaActivities`, `_source: "fit"`) ; pas
+de re-parsing rétroactif possible si l'algorithme évolue.
+
+**Point de vigilance non spécifique au FIT** : `fit-file-parser@3.0.2`
+dépend de `buffer`, non polyfillé par le fichier ESM brut jsDelivr —
+bloquait tout import FIT. Corrigé via import map (polyfill minimal,
+`TextDecoder` natif) en tête du `<head>` d'`index.html`.
 
 ## 11. Intégrations externes
 
@@ -855,7 +917,11 @@ appareil ne connecte pas Strava sur un autre (contrairement au profil/
 plan, synchronisés via Supabase). Cohérent avec le principe "aucun outil
 admin ne doit jamais lire ou utiliser les tokens Strava d'un testeur"
 (cf. §15) — les tokens restent volontairement locaux, jamais centralisés
-côté serveur au-delà de l'échange OAuth initial.
+côté serveur au-delà de l'échange OAuth initial. **Ne remplace plus
+jamais silencieusement une activité déjà présente sur une date** (cf.
+§10, principe "premier arrivé, reste" — s'applique aussi bien à une
+resynchro Strava face à une activité FIT qu'entre deux resynchros
+Strava successives).
 
 **`syncStrava()` — robustesse sans plan existant (02/08/2026)** — le
 calcul de `planStart` (date la plus ancienne entre le début du plan
@@ -1153,12 +1219,26 @@ OAuth directement, seulement via cet écran.
   préférer un partage proportionnel garanti par construction (poids
   relatif) à une cascade de contraintes empiriques appliquées dans un
   ordre fixe. Cf. §7, `repartirVolumeSemaine`.
+- **Une fonction utilitaire générique appelée par de nombreux points
+  d'appel dans un même fichier (ex. `getLapsAffichage()`, 9+ appelants)
+  doit être corrigée UNE SEULE FOIS, à la source, plutôt que patchée
+  individuellement à chaque site d'appel** — un correctif dispersé sur
+  chaque appelant est fragile (facile d'en oublier un) et duplique la
+  logique. Cf. §10, correctif `lapsSontDejaEffortSeul`.
+- **Avant de croire qu'un mécanisme existe déjà dans le code (ex. une
+  auto-ouverture, un callback), vérifier positivement sa présence
+  (recherche du déclenchement réel) plutôt que de se fier à un
+  commentaire qui décrit une intention** — un commentaire peut décrire
+  un comportement jamais complètement implémenté, ou retiré depuis sans
+  mise à jour du commentaire. Cf. §4/§10, mécanisme d'auto-ouverture du
+  popover ✏️, dont le déclenchement réel n'existait pas malgré un
+  commentaire l'affirmant.
 
 ## 16. État des chantiers ouverts
 
 | Chantier | Statut |
 |---|---|
-| Volume minimum par distance/jours | ✅ Codé, poussé le 29/07/2026 (`plan-generator.js`). Détail complet en §7. Table pas recalibrée par niveau (calée sur intermédiaire à l'origine) — le nouveau système de répartition par poids (02/08/2026) absorbe une bonne partie de l'écart en pratique. |
+| Import `.fit` avec détail par répétition (détection sans marqueurs natifs, protection des activités importées, icône ✏️ unifiée) | ✅ Codé, poussé et testé en conditions réelles le 03/08/2026. Détail en §4/§9/§10 et `docs/v2-methodologie/import-fit-intervalles.md`. |
 | Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge CUMULÉ, pas une série — `serieActuelle` égale toujours `serieMax`). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus ("6 semaines parfaites" affiché comme un objectif se lisait comme un état déjà acquis) — reformulés avec un verbe d'action explicite ("Réaliser 6 semaines parfaites", "Enchaîner X séances"...) pour les 4 badges à paliers ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé, la notion de série qui casse n'a pas de sens ici) ; (3) badge `record_battu` se déclenchait à tort sur une simple saisie/correction manuelle dans Réglages — déplacé vers le seul déclencheur légitime (validation d'un vrai résultat de course dans `resultatCard`, comparé au record personnel de la distance du plan actif) ; (4) le calcul des badges ne se refaisait qu'une fois par session (`window.__badgesCache__` mis en cache indéfiniment) — recalcul désormais forcé au clic sur la carte "Mes badges" (Stats), sans besoin de recharger la page. **Note résiduelle** : un badge `record_battu` déjà débloqué à tort avant ce correctif doit être retiré manuellement en base (`DELETE FROM badges_debloques WHERE ...`), aucun outil de nettoyage automatique côté app. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). |
@@ -1185,7 +1265,10 @@ OAuth directement, seulement via cet écran.
 | Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 `analyserAdaptations()`/`appliquerAdaptations()` sont déjà branchées sur le dashboard (`adaptationEl`), mais jamais observées par Laurent car jamais déclenchées sur ses données réelles. Deux cartes restent volontairement séparées (granularités différentes). Reste à coder : garde-fou si les deux cartes ciblent la même semaine (physio prioritaire) + journalisation de collision |
 | Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Le modèle extrapole uniformément le rythme observé, alors qu'il évolue souvent en phase Spécifique/Affûtage. Chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`) pour comparer a posteriori une fois assez de données — pas encore assez de recul pour juger |
 | Recalibrer `VOLUME_MIN_PAR_JOURS` par niveau (pas seulement distance/jours) | 🔜 Identifié le 02/08/2026 lors du diagnostic du bug "EF ridicules" — la table actuelle a été calibrée uniquement au niveau intermédiaire, l'écart réel au niveau confirmé peut atteindre ~8km. Pas urgent : le nouveau système de répartition par poids absorbe l'essentiel du problème en pratique. |
+| Repli GPX/TCX pour les montres sans export FIT fiable (Polar, certains modèles Suunto) | 🔜 Mis de côté le 02/08/2026 (cf. `import-fit-intervalles.md` §8), à reprendre plus tard. |
+| Calibrer la détection d'intervalles FIT sur allure spécifique/allure course | 🔜 Contraste effort/récup le plus faible, cas le plus à risque pour la détection par signal — pas encore de séance réelle disponible pour tester. |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
-`bibliotheque-seances.md`.
+`bibliotheque-seances.md`. Pour le détail de la conception et de
+l'implémentation de l'import FIT, voir `import-fit-intervalles.md`.
