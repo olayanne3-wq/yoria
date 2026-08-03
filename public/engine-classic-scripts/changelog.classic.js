@@ -27,7 +27,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.33", title:"Pass Prévention Santé, choix de la source de données à l'inscription, plans mieux équilibrés", current:true, notes:[
+      { ver:"v2.34", title:"Import .fit avec détail par répétition, protection de tes données importées", current:true, notes:[
+        "📁 L'import d'un fichier .fit détecte maintenant automatiquement chaque répétition d'une séance qualité, même sur les montres qui n'enregistrent pas la structure de l'entraînement (Amazfit/Zepp notamment)",
+        "✏️ Un seul crayon regroupe désormais l'import .fit et la saisie manuelle, placé à côté du statut de chaque séance — sur la carte du jour comme dans le détail de la semaine",
+        "🔒 Une activité déjà importée (Strava ou .fit) n'est plus jamais écrasée par une resynchronisation — supprime-la d'abord si tu veux la remplacer",
+        "🗑️ Nouveau bouton pour supprimer une activité importée, avec un badge qui indique sa provenance (Strava ou .fit)",
+      ]},
+      { ver:"v2.33", title:"Pass Prévention Santé, choix de la source de données à l'inscription, plans mieux équilibrés", current:false, notes:[
         "🩺 Nouveau bouton PPS dans l'en-tête : importe ton Pass Prévention Santé FFA (PDF ou photo) et retrouve-le en un tap au retrait de dossard",
         "📝 L'inscription te demande maintenant comment tu comptes suivre tes séances (Strava ou saisie manuelle), avec une explication si tu choisis Strava",
         "⚖️ Meilleur équilibre entre séances faciles et sortie longue dans le plan généré, notamment à volume plus serré",
