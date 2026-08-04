@@ -10765,15 +10765,17 @@ function setView(v) {
 // soit visible — le problème est la RÉPÉTITION rapprochée, pas le
 // changement lui-même). renderDiffere() regroupe ces mises à jour
 // automatiques dans une seule frame de rendu si elles arrivent à moins
-// de 250ms d'écart, réduisant deux flashs distincts à un seul dans le
-// cas courant (badges + coach msg arrivent souvent proches l'un de
-// l'autre au chargement). Réservé aux mises à jour AUTOMATIQUES/
-// asynchrones (pas de retour utilisateur immédiat attendu) — toute
-// action explicite de l'utilisateur (clic, saisie) continue d'appeler
-// render() directement, pour rester instantanée.
+// de 50ms d'écart. Réduit de 250ms à 50ms le 04/08/2026 (retour de
+// Laurent : "encore plus lents" — à 250ms, les événements de son cas
+// réel n'étaient pas assez proches pour se regrouper, le délai ne
+// faisait donc que RETARDER chaque flash individuellement sans jamais
+// les fusionner, perçu comme un ralentissement pur). Réservé aux mises
+// à jour AUTOMATIQUES/asynchrones (pas de retour utilisateur immédiat
+// attendu) — toute action explicite de l'utilisateur (clic, saisie)
+// continue d'appeler render() directement, pour rester instantanée.
 function renderDiffere() {
   clearTimeout(_renderDiffereTimer);
-  _renderDiffereTimer = setTimeout(render, 250);
+  _renderDiffereTimer = setTimeout(render, 50);
 }
 
 function render() {
