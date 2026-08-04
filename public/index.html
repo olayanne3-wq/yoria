@@ -77,7 +77,26 @@ window.sentryOnLoad = function () {
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>Yoria</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- CORRECTIF (04/08/2026, suite de la recherche sur le clignotement à
+     l'ouverture — confirmé par Laurent : un flash BLANC, identique sur
+     mobile et desktop) — ce <link> stylesheet classique vers Google
+     Fonts est bloquant par défaut pour le rendu : le navigateur doit
+     attendre la fin de cette requête réseau vers un domaine tiers avant
+     de continuer à parser/appliquer le <style> qui suit juste après
+     (lequel définit --bg et les couleurs de fond). Pendant cette attente
+     réseau, rien n'a de couleur de fond appliquée — le navigateur peut
+     peindre une frame blanche. Rendu non-bloquant ici via la technique
+     standard media="print" (le navigateur charge la feuille sans
+     bloquer le rendu, car "print" ne s'applique pas à l'écran) puis
+     onload bascule media="all" une fois chargée — un <noscript> de
+     repli couvre le cas (rarissime ici) où JS serait désactivé. Cause
+     probable du flash BLANC (distincte de la balise theme-color déjà
+     corrigée juste avant, qui visait la barre de statut système/PWA —
+     insuffisante seule, confirmé par Laurent, d'où cette recherche plus
+     large sur tout ce qui peut bloquer le premier paint dans le head). -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" as="style">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
 <style>
 :root {
   --bg-rgb: 248,250,252;
