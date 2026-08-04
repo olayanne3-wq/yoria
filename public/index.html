@@ -8380,6 +8380,7 @@ let _helpContentCache = null;
 let _helpSectionsOuvertes = new Set(); // ids de sections dépliées, remis à zéro à chaque montage de l'écran (cf. setView("help"))
 let _helpRecherche = "";
 let _helpTutoOuvert = null; // id du tuto affiché en vue détail (section "tutos" uniquement), null = grille de tuiles
+let _helpOngletActif = "aide"; // "aide" (sections classiques) | "tutos" (grille de tuiles / vue détail) — sélecteur ajouté le 04/08/2026
 
 function renderHelp() {
   const conteneur = el("div",{style:{padding:"0 16px 100px"}}, el("div",{style:{marginTop:"8px"}}));
@@ -8550,7 +8551,7 @@ function renderHelp() {
                   display:"flex", flexDirection:"column", justifyContent:"space-between", minHeight:"78px"
                 },
                 feedback:true,
-                onClick: () => { _helpTutoOuvert = it.id; render(); }
+                onClick: () => { _helpTutoOuvert = it.id; _helpOngletActif = "tutos"; render(); }
               },
                 el("div",{style:{color:"var(--text)", fontSize:"14px", fontWeight:"600", lineHeight:"1.35"}}, it.title),
                 el("div",{class:"muted", style:{fontSize:"12px", marginTop:"8px"}}, "Lire →")
@@ -8568,11 +8569,43 @@ function renderHelp() {
 
   const enVueDetailTuto = !requete && !!_helpTutoOuvert;
 
+  // ── Sélecteur d'onglets Aide / Tutos ───────────────────────────────────
+  // Ajouté le 04/08/2026 (demande Laurent) : sections classiques et tutos
+  // par action ne s'affichent plus l'un à la suite de l'autre en continu,
+  // l'un OU l'autre selon l'onglet choisi. Masqué pendant une recherche
+  // (résultats transversaux affichés ensemble, comme avant) et en vue
+  // détail d'un tuto (le bouton retour du header suffit, cf. backBtn).
+  const selecteurOnglets = (requete || enVueDetailTuto) ? null : el("div",{style:{
+      display:"flex", gap:"4px", background:"var(--border-soft)", borderRadius:"10px", padding:"3px", marginBottom:"16px"
+    }},
+    ...[
+      { id:"aide", label:"Aide" },
+      { id:"tutos", label:"Tutos" },
+    ].map(onglet => el("button",{style:{
+        flex:"1", border:"none", borderRadius:"8px", padding:"9px", cursor:"pointer",
+        fontSize:"14px", fontWeight:"700",
+        background: _helpOngletActif===onglet.id ? "var(--bg)" : "transparent",
+        color: _helpOngletActif===onglet.id ? "var(--text)" : "var(--text-muted)",
+        boxShadow: _helpOngletActif===onglet.id ? "0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)" : "none",
+      },
+      feedback:true,
+      onClick: () => { _helpOngletActif = onglet.id; render(); }
+    }, onglet.label))
+  );
+
   if (!enVueDetailTuto) conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
   if (!enVueDetailTuto) conteneur.appendChild(champRecherche);
+  if (selecteurOnglets) conteneur.appendChild(selecteurOnglets);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
-  if (blocTutos) conteneur.appendChild(blocTutos);
-  sectionsRendues.forEach(s => conteneur.appendChild(s));
+
+  // Hors recherche : un seul des deux blocs s'affiche, selon l'onglet actif.
+  // Pendant une recherche : les deux s'affichent ensemble (transversal),
+  // comportement inchangé par rapport à avant l'ajout des onglets.
+  const afficherTutos = requete ? !!blocTutos : (_helpOngletActif === "tutos");
+  const afficherAide = requete ? sectionsRendues.length > 0 : (_helpOngletActif === "aide");
+
+  if (afficherTutos && blocTutos) conteneur.appendChild(blocTutos);
+  if (afficherAide) sectionsRendues.forEach(s => conteneur.appendChild(s));
 
   return conteneur;
 }
@@ -10671,7 +10704,7 @@ function setView(v) {
   // chaque nouvelle ouverture de cet écran (30/07/2026, refonte aide) —
   // un utilisateur qui rouvre l'aide plus tard ne doit pas retrouver une
   // recherche ou des sections restées ouvertes d'une visite précédente.
-  if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; _helpTutoOuvert = null; }
+  if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; _helpTutoOuvert = null; _helpOngletActif = "aide"; }
   view=v; render();
   // Fetcher les météos historiques manquantes pour les séances avec Strava
   if (v==="weekDetail") {
