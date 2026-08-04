@@ -85,6 +85,94 @@ export const HELP_SECTIONS = [
           { type: "p", text: "Dans les deux cas, rien ne change dans ton plan sans que tu appuies sur Appliquer. Et si tu préfères ignorer la proposition, elle disparaît simplement — tu peux continuer ton plan comme prévu." },
         ]
       },
+      { id: "programmer-montre", title: "Programmer une séance structurée sur ta montre",
+        text: "Pour une séance avec intervalles, une icône ⌚ apparaît sur la carte Aujourd'hui : elle détaille échauffement, répétitions (durée/allure/récup) et retour au calme, à recopier dans l'entraînement libre ou fractionné de ta montre avant de partir courir.",
+        blocks: [
+          { type: "p", text: "Dès qu'une séance du jour comporte des intervalles (VMA, seuil en cruise, etc.), une petite icône ⌚ apparaît à côté du titre sur la carte \"Aujourd'hui\". Un tap dessus ouvre un encart qui détaille précisément la structure à reproduire : la durée et l'allure de l'échauffement, chaque répétition avec sa durée (ou distance) et son allure, le temps de récupération entre elles, et enfin le retour au calme." },
+          { type: "p", text: "L'idée est de recopier cette structure dans le mode entraînement fractionné (ou \"intervalles\") de ta montre avant de partir courir, plutôt que de improviser en cours de route. La plupart des montres GPS (Garmin, Coros, Polar...) permettent de créer ce type de séance structurée directement depuis l'app du fabricant." },
+          { type: "p", text: "Ce même détail est aussi accessible depuis l'écran Semaines, sur la fiche de la séance concernée, via le bouton \"📱 À programmer sur ta montre\" — pratique si tu préfères t'organiser la veille plutôt que le matin même." },
+          { type: "p", text: "Petit rappel utile : c'est justement cette structure programmée sur la montre (avec de vrais laps manuels pour échauffement / effort / récupération) qui permet à Yoria de bien découper ta séance après coup, que ce soit via Strava ou un import .fit." },
+        ]
+      },
+      { id: "readiness-rpe", title: "Dire comment tu te sens (readiness et RPE)",
+        text: "Avant une séance qualité, indique ton état du jour (🪫🔗😐🔋). Après avoir validé une séance, note ton ressenti (🙂 à 🥵). Les deux affinent la façon dont Yoria ajuste ton plan, sans jamais rien modifier automatiquement sans ton accord.",
+        blocks: [
+          { type: "p", text: "Deux moments différents, deux questions différentes — l'une avant l'effort, l'autre après." },
+          { type: "h", text: "Avant : comment tu te sens" },
+          { type: "p", text: "Le jour d'une séance qualité (VMA, seuil, allure spécifique), un encart \"Comment te sens-tu avant la séance d'aujourd'hui ?\" apparaît sur la carte, avec trois choix : 🪫 Fatigué, 😐 Normal, 🔋 En forme. \"Normal\" est déjà sélectionné par défaut si tu ne touches à rien. Si tu indiques \"Fatigué\" alors qu'un allègement est déjà en cours sur ta séance, il peut être renforcé un cran de plus. S'il n'y a pas d'allègement en cours, tu reçois simplement une invitation à la prudence — rien n'est modifié tout seul dans le plan." },
+          { type: "h", text: "Après : ton ressenti (RPE)" },
+          { type: "p", text: "Une fois que tu as marqué une séance ✅, ⚠️ ou ❌, un second sélecteur apparaît pour noter comment tu l'as vécue, sur une échelle à 5 niveaux : 🙂 Facile, 😐 Modéré, 😓 Difficile, 😣 Très difficile, 🥵 Maximal. Ce ressenti complète ce que ta montre mesure objectivement (allure, FC) par ce que ton corps a vraiment ressenti pendant l'effort — deux séances à la même allure peuvent être vécues très différemment selon la fatigue accumulée, et Yoria en tient compte." },
+        ]
+      },
+      { id: "echanger-seance", title: "Échanger deux séances",
+        text: "Depuis l'écran Semaines, un appui long (~0,6 sec) sur une séance ouvre un menu avec l'option \"Déplacer cette séance\" — qui propose en réalité un échange avec un autre jour de la semaine, jamais un vrai déplacement vers du vide.",
+        blocks: [
+          { type: "p", text: "Sur l'écran Semaines, un appui un peu long sur une carte de séance (environ une demi-seconde) ouvre un menu en bas de l'écran. Si la séance n'a pas encore été faite ni notée d'une façon ou d'une autre, tu y trouves \"Déplacer cette séance\"." },
+          { type: "p", text: "En réalité, il s'agit toujours d'un échange : Yoria te propose la liste des autres jours de la semaine (repos ou séances actives), et en choisir un permet aux deux contenus de permuter — ta séance prend la place du jour choisi, et inversement. Rien ne disparaît jamais dans le vide : le plan garde toujours le même nombre de séances." },
+          { type: "p", text: "Si tu changes d'avis, ouvre à nouveau le menu sur l'une des deux séances échangées : l'option devient \"Annuler le déplacement\", et tout revient à sa place d'origine." },
+          { type: "p", text: "Une séance déjà validée, notée, ou dont le jour est passé sans saisie ne peut plus être échangée — logique, puisqu'un effort réel y est déjà associé." },
+        ]
+      },
+      { id: "modifier-plan", title: "Modifier son plan (objectif, jours, volume, date)",
+        text: "Sur l'écran de résumé de ton plan, la section \"Modifier mon plan\" propose 4 leviers indépendants (Objectif, Jours, Volume, Date de course), chacun avec une simulation en direct de l'impact avant de cliquer sur Appliquer.",
+        blocks: [
+          { type: "p", text: "Sur l'écran de résumé de ton plan (accessible depuis le configurateur), une section \"Modifier mon plan\" regroupe 4 leviers en accordéon : 🎯 Objectif de temps, les jours d'entraînement, le volume hebdomadaire, et la date de course. Un seul levier s'ouvre à la fois." },
+          { type: "p", text: "Chacun fonctionne sur le même principe : tu ajustes la valeur, une simulation s'affiche immédiatement pour te montrer l'impact estimé sur ton objectif — et rien n'est appliqué au plan tant que tu n'as pas cliqué sur le bouton Appliquer dédié à ce levier. Tu peux donc essayer plusieurs valeurs sans risque avant de valider." },
+          { type: "p", text: "Le choix de garder les leviers séparés plutôt que combinés est volontaire : cumuler plusieurs simulations en même temps aurait rendu l'estimation encore moins fiable que chacune prise isolément." },
+          { type: "p", text: "À côté, le bouton \"🔄 Analyser les résultats et adapter le plan\" fait autre chose : il regarde tes séances réellement faites récemment et propose une réduction automatique de la semaine suivante si plusieurs séances dures ont été ratées ou adaptées d'affilée — jamais sur une séance isolée, jamais un changement d'objectif." },
+        ]
+      },
+      { id: "estimation-performance", title: "Lire ton estimation de temps",
+        text: "Yoria affiche une estimation de ton temps probable sur ta distance visée, calculée à partir de tes séances VMA, seuil et allure spécifique. Elle se resserre au fil des semaines à mesure que tu accumules des séances de qualité.",
+        blocks: [
+          { type: "p", text: "Sur le dashboard et sur l'écran Stats, Yoria affiche une estimation de ton temps probable le jour de la course. Elle n'est jamais figée : elle se recalcule à partir de tes séances de qualité réellement faites — VMA, seuil, allure spécifique — en particulier celles où tu as tenu les allures demandées." },
+          { type: "p", text: "En tout début de plan, cette estimation reste assez large : peu de données, donc peu de certitude. Plus tu avances et plus tu accumules de séances qualité validées, plus la fourchette se resserre autour d'une valeur qui reflète ta forme réelle plutôt qu'une simple extrapolation théorique." },
+          { type: "p", text: "Ce n'est pas un jugement sur ta progression : une estimation qui stagne ou recule temporairement après une semaine difficile (fatigue, séance ratée) est normal et fait partie du calcul — elle reflète ton état du moment, pas une note définitive." },
+        ]
+      },
+      { id: "lire-stats", title: "Naviguer l'écran Stats",
+        text: "L'écran Stats regroupe ta progression vers l'objectif, tes badges débloqués, et des graphiques par séance pour l'Indice d'Économie et la cadence — pratique pour repérer une tendance sur plusieurs semaines plutôt qu'une seule séance isolée.",
+        blocks: [
+          { type: "p", text: "En haut de l'écran Stats, une carte \"Mes badges\" affiche ta progression globale (un cercle qui se remplit à mesure que tu débloques des badges) — un tap dessus t'amène au détail de tous les badges disponibles et de ceux déjà obtenus." },
+          { type: "p", text: "En dessous, tu retrouves ta progression vers l'objectif de temps, puis deux graphiques qui tracent l'évolution séance par séance : l'Indice d'Économie (IE) et ta cadence. L'intérêt de ces courbes est de repérer une tendance sur plusieurs semaines — une séance isolée peut toujours être un mauvais jour, mais une courbe qui progresse (ou stagne) sur la durée est un signal plus fiable." },
+          { type: "p", text: "Un référentiel complet de tes allures d'entraînement et de tes zones de FC est aussi disponible sur cet écran, pratique si tu veux vérifier une valeur sans attendre la prochaine séance qui l'utilise." },
+        ]
+      },
+      { id: "jour-course", title: "Préparer ton jour de course",
+        text: "L'écran Course regroupe deux accordéons : Préparation pratique (horaires, checklist équipement, parcours) et Stratégie (allures de passage, conseil du coach). Absent en Mode Forme, qui n'a pas de date de course.",
+        blocks: [
+          { type: "p", text: "L'écran Course rassemble tout ce dont tu as besoin pour le jour J, organisé en deux blocs repliables." },
+          { type: "h", text: "Préparation pratique" },
+          { type: "p", text: "Tu peux renseigner tes horaires personnels (retrait des dossards, départ, etc.), cocher au fur et à mesure ta checklist d'équipement, et consulter les infos de parcours si tu les as ajoutées en créant ton plan." },
+          { type: "h", text: "Stratégie" },
+          { type: "p", text: "Cette section te donne les allures de passage à viser selon ton objectif, ainsi qu'un conseil du coach pensé spécifiquement pour l'approche de course — gestion du stress, logistique des derniers jours, ou point sur l'écart entre ton estimation actuelle et ton objectif." },
+          { type: "p", text: "En haut de l'écran, un compte à rebours et un résumé (objectif, allure cible) restent toujours visibles, quel que soit le bloc que tu consultes. Cet écran n'existe que pour un plan Objectif course : en Mode Forme, il n'y a pas de date de course à préparer." },
+        ]
+      },
+      { id: "gerer-strava", title: "Connecter ou reconnecter Strava",
+        text: "Dans Réglages, section Intégrations, connecte Strava pour une synchro automatique de tes séances. Si le bandeau \"Strava déconnecté\" apparaît (token expiré ou absent), un bouton \"Reconnecter Strava\" règle le problème en un tap.",
+        blocks: [
+          { type: "p", text: "Dans Réglages, la section Intégrations propose un bouton \"🔗 Connecter Strava\" si ce n'est pas encore fait. Une fois connecté, tes activités se synchronisent automatiquement et alimentent directement tes séances sur la carte \"Aujourd'hui\"." },
+          { type: "p", text: "Si la connexion expire ou se rompt (ça arrive, notamment après un certain temps sans ouvrir l'app), un bandeau \"Strava déconnecté\" peut apparaître sur le dashboard, avec un bouton \"🔄 Reconnecter Strava\" — un tap suffit à relancer l'autorisation. Depuis Réglages, tu as aussi un bouton \"🔄 Synchroniser avec Strava\" pour forcer une resynchronisation manuelle à tout moment." },
+          { type: "p", text: "Et si tu veux couper le lien complètement, \"🔓 Déconnecter Strava\" est disponible tout en bas de cette section." },
+        ]
+      },
+      { id: "gerer-pps", title: "Gérer ton Pass Prévention Santé (PPS)",
+        text: "Le bouton 🩺 PPS en haut de l'écran ouvre une fenêtre pour importer ton document (PDF ou photo) et sa date d'expiration. Une alerte apparaît automatiquement dans le mois qui précède l'échéance.",
+        blocks: [
+          { type: "p", text: "Le Pass Prévention Santé se gère depuis le bouton 🩺 en haut de l'écran, accessible depuis n'importe quel onglet. Un tap dessus ouvre une fenêtre dédiée." },
+          { type: "p", text: "Si tu n'as encore rien enregistré, tu peux importer ton document — PDF ou simple photo — et indiquer sa date d'expiration. Une fois fait, la fenêtre affiche un aperçu de ton PPS et sa date d'échéance à chaque ouverture. Réglages garde aussi un rappel discret de cet état (enregistré ou non, expire quand)." },
+          { type: "p", text: "Dans le mois qui précède l'expiration, cette date s'affiche en orange pour attirer ton attention — et si elle est dépassée, un message d'alerte explicite le signale. Tu peux remplacer le document existant ou le supprimer complètement à tout moment depuis cette même fenêtre." },
+        ]
+      },
+      { id: "gerer-abonnement", title: "Gérer ton abonnement",
+        text: "Dans Réglages, section Compte et abonnement, souscris à Yoria pour 7€/mois (ou moins cher à l'année). Le statut de ton abonnement (Actif, Paiement en retard, Annulé) s'affiche directement dans cette section.",
+        blocks: [
+          { type: "p", text: "Dans Réglages, la section Compte et abonnement affiche ton statut actuel — soit \"✅ Actif\", \"⚠️ Paiement en retard\", \"Abonnement annulé\", soit \"Aucun abonnement actif\" si tu n'as encore rien souscrit." },
+          { type: "p", text: "Si tu n'es pas encore abonné, un bouton te propose de t'abonner au tarif mensuel (7€/mois), avec un lien juste en dessous pour basculer sur le tarif annuel, moins cher sur la durée. Le paiement passe par une page Stripe sécurisée, ouverte dans ton navigateur." },
+          { type: "p", text: "Une fois abonné, cette section se limite à l'affichage de ton statut — pas d'action supplémentaire nécessaire tant que tout est en ordre." },
+        ]
+      },
     ]
   },
   {
@@ -95,7 +183,7 @@ export const HELP_SECTIONS = [
       { title: "⚡ Dashboard",
         text: "Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Yoria selon ta progression." },
       { title: "📅 Semaines",
-        text: "Le détail de chaque semaine. Tape sur une séance pour la valider. Appui long (~1 sec) pour la déplacer vers un autre jour ou l'échanger avec une autre — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
+        text: "Le détail de chaque semaine. Tape sur une séance pour la valider. Appui long (~1 sec) pour l'échanger avec une autre séance de la semaine — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
       { title: "📊 Stats",
         text: "Ta progression vers l'objectif, ton Indice d'Économie (IE), ta cadence, et un référentiel complet des allures et zones FC." },
       { title: "🏁 Course",
@@ -215,8 +303,8 @@ export const HELP_SECTIONS = [
 // ----------------------------------------------------------------------------
 export const TUTOS_GROUPES = [
   { label: "Démarrer", icon: "🚀", itemIds: ["creer-plan", "test-cooper", "source-donnees"] },
-  { label: "Au quotidien", icon: "🏃", itemIds: ["carte-aujourdhui", "import-fit"] },
-  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement"] },
-  { label: "Suivi", icon: "📈", itemIds: [] },
-  { label: "Compte", icon: "⚙️", itemIds: [] },
+  { label: "Au quotidien", icon: "🏃", itemIds: ["carte-aujourdhui", "import-fit", "programmer-montre", "readiness-rpe"] },
+  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement", "echanger-seance", "modifier-plan"] },
+  { label: "Suivi", icon: "📈", itemIds: ["estimation-performance", "lire-stats", "jour-course"] },
+  { label: "Compte", icon: "⚙️", itemIds: ["gerer-strava", "gerer-pps", "gerer-abonnement"] },
 ];
