@@ -8566,8 +8566,10 @@ function renderHelp() {
     ? el("div",{class:"muted",style:{fontSize:"14px",textAlign:"center",padding:"30px 0"}},"Aucun résultat pour \""+_helpRecherche+"\"")
     : null;
 
-  conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
-  conteneur.appendChild(champRecherche);
+  const enVueDetailTuto = !requete && !!_helpTutoOuvert;
+
+  if (!enVueDetailTuto) conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
+  if (!enVueDetailTuto) conteneur.appendChild(champRecherche);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
   if (blocTutos) conteneur.appendChild(blocTutos);
   sectionsRendues.forEach(s => conteneur.appendChild(s));
