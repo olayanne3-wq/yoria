@@ -8379,6 +8379,7 @@ function exportPdfResultats() {
 let _helpContentCache = null;
 let _helpSectionsOuvertes = new Set(); // ids de sections dépliées, remis à zéro à chaque montage de l'écran (cf. setView("help"))
 let _helpRecherche = "";
+let _helpTutoOuvert = null; // id du tuto affiché en vue détail (section "tutos" uniquement), null = grille de tuiles
 
 function renderHelp() {
   const conteneur = el("div",{style:{padding:"0 16px 100px"}}, el("div",{style:{marginTop:"8px"}}));
@@ -8394,7 +8395,7 @@ function renderHelp() {
     return conteneur;
   }
 
-  const { introText, HELP_SECTIONS } = _helpContentCache;
+  const { introText, HELP_SECTIONS, TUTOS_GROUPES } = _helpContentCache;
 
   // ── Recherche ────────────────────────────────────────────────────────
   const champRecherche = el("input",{type:"text", id:"help-search", name:"help-search",
@@ -8420,8 +8421,32 @@ function renderHelp() {
 
   const requete = _helpRecherche.trim().toLowerCase();
 
-  // ── Sections en accordéon ───────────────────────────────────────────
-  const sectionsRendues = HELP_SECTIONS.map(section => {
+  // Section "tutos" traitée à part (tuiles + vue détail) — le reste des
+  // sections garde l'accordéon existant, inchangé (04/08/2026).
+  const sectionTutos = HELP_SECTIONS.find(s => s.id === "tutos");
+  const sectionsClassiques = HELP_SECTIONS.filter(s => s.id !== "tutos");
+
+  // Rendu d'un item d'aide : la plupart n'ont qu'un texte simple (it.text),
+  // rendu tel quel. Les tutos par action peuvent fournir it.blocks — une
+  // suite de segments typés (paragraphe, sous-titre, liste, image) — pour
+  // une vraie mise en page. it.text reste toujours fourni en parallèle
+  // (résumé pour la recherche), donc aucune régression si blocks est
+  // absent : fallback intégral sur l'ancien rendu texte brut (04/08/2026).
+  const rendreBlocsItem = (blocks) => blocks.map(b => {
+    if (b.type === "h") return el("div",{style:{color:"var(--text)",fontSize:"13px",fontWeight:"700",marginTop:"14px",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.02em"}}, b.text);
+    if (b.type === "img") return el("div",{style:{margin:"4px 0 14px"}},
+      el("img",{src:b.src, alt:b.alt||"", style:{display:"block",maxWidth:"260px",width:"100%",borderRadius:"12px",border:"1px solid var(--border)",margin:"0 auto"}}),
+      b.caption ? el("div",{class:"muted",style:{fontSize:"12px",textAlign:"center",marginTop:"6px"}}, b.caption) : null
+    );
+    if (b.type === "list") return el(b.ordered?"ol":"ul",{style:{margin:"0 0 10px",paddingLeft:"20px",display:"flex",flexDirection:"column",gap:"6px"}},
+      ...b.items.map(li => el("li",{class:"muted",style:{fontSize:"14px",lineHeight:"1.5"}}, li))
+    );
+    // "p" par défaut
+    return el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"10px"}}, b.text);
+  });
+
+  // ── Sections classiques en accordéon (comportement inchangé) ──────────
+  const sectionsRendues = sectionsClassiques.map(section => {
     let itemsAffiches = section.items;
     let sectionMatche = false;
 
@@ -8453,26 +8478,6 @@ function renderHelp() {
       requete ? null : el("span",{class:"muted", style:{fontSize:"14px", transform: estOuverte ? "rotate(90deg)" : "none", transition:"transform 0.15s"}}, "›")
     );
 
-    // Rendu d'un item d'aide : la plupart n'ont qu'un texte simple (it.text),
-    // rendu tel quel comme avant. Les tutos par action (section "tutos")
-    // peuvent fournir it.blocks — une suite de segments typés (paragraphe,
-    // sous-titre, liste, image) — pour une vraie mise en page au lieu d'un
-    // pavé de texte compact. it.text reste toujours fourni en parallèle
-    // (résumé pour la recherche), donc aucune régression si blocks est
-    // absent : fallback intégral sur l'ancien rendu texte brut (04/08/2026).
-    const rendreBlocsItem = (blocks) => blocks.map(b => {
-      if (b.type === "h") return el("div",{style:{color:"var(--text)",fontSize:"13px",fontWeight:"700",marginTop:"14px",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.02em"}}, b.text);
-      if (b.type === "img") return el("div",{style:{margin:"4px 0 14px"}},
-        el("img",{src:b.src, alt:b.alt||"", style:{display:"block",maxWidth:"260px",width:"100%",borderRadius:"12px",border:"1px solid var(--border)",margin:"0 auto"}}),
-        b.caption ? el("div",{class:"muted",style:{fontSize:"12px",textAlign:"center",marginTop:"6px"}}, b.caption) : null
-      );
-      if (b.type === "list") return el(b.ordered?"ol":"ul",{style:{margin:"0 0 10px",paddingLeft:"20px",display:"flex",flexDirection:"column",gap:"6px"}},
-        ...b.items.map(li => el("li",{class:"muted",style:{fontSize:"14px",lineHeight:"1.5"}}, li))
-      );
-      // "p" par défaut
-      return el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"10px"}}, b.text);
-    });
-
     const corps = estOuverte ? el("div",{style:{marginBottom:"8px"}}, card(
       ...itemsAffiches.map(it => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
         el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},it.title),
@@ -8485,13 +8490,86 @@ function renderHelp() {
     return el("div",{style:{borderBottom: estOuverte ? "none" : "1px solid var(--border)"}}, enTete, corps);
   }).filter(Boolean);
 
-  const resultatsVides = requete && sectionsRendues.length === 0
+  // ── Section "tutos" : tuiles groupées, vue détail au clic ─────────────
+  // Pendant une recherche, les tutos matchés s'affichent en résultats plats
+  // (même traitement que les sections classiques) — la navigation en
+  // tuiles n'a de sens que hors recherche, où l'utilisateur explore plutôt
+  // qu'il ne cherche un mot précis (04/08/2026).
+  let blocTutos = null;
+  if (sectionTutos) {
+    if (requete) {
+      const itemsMatches = sectionTutos.items.filter(it =>
+        it.title.toLowerCase().includes(requete) || it.text.toLowerCase().includes(requete)
+      );
+      if (itemsMatches.length > 0) {
+        const enTete = el("div",{style:{display:"flex", alignItems:"center", gap:"8px", padding:"12px 4px", fontSize:"15px", fontWeight:"700", color:"var(--text)"}},
+          sectionTutos.icon, sectionTutos.title,
+          el("span",{class:"muted", style:{fontSize:"12px", fontWeight:"500"}}, "("+itemsMatches.length+")")
+        );
+        const corps = el("div",{style:{marginBottom:"8px"}}, card(
+          ...itemsMatches.map(it => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
+            el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},it.title),
+            it.blocks
+              ? el("div",{}, ...rendreBlocsItem(it.blocks))
+              : el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
+          ))
+        ));
+        blocTutos = el("div",{}, enTete, corps);
+      }
+    } else if (_helpTutoOuvert) {
+      // ── Vue détail d'un tuto ──────────────────────────────────────────
+      const it = sectionTutos.items.find(i => i.id === _helpTutoOuvert);
+      if (it) {
+        const boutonRetour = el("div",{style:{display:"flex", alignItems:"center", gap:"6px", padding:"12px 4px", cursor:"pointer", color:"var(--accent)", fontSize:"14px", fontWeight:"600"},
+          onClick: () => { _helpTutoOuvert = null; render(); }
+        }, "‹ Tous les tutos");
+        const corps = card(
+          el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",marginBottom:"10px"}}, it.title),
+          it.blocks
+            ? el("div",{}, ...rendreBlocsItem(it.blocks))
+            : el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
+        );
+        blocTutos = el("div",{style:{marginBottom:"8px"}}, boutonRetour, corps);
+      }
+    } else {
+      // ── Grille de tuiles groupées par thème ────────────────────────────
+      const itemsParId = Object.fromEntries(sectionTutos.items.map(it => [it.id, it]));
+      const groupesRendus = (TUTOS_GROUPES || [])
+        .map(groupe => {
+          const itemsDuGroupe = groupe.itemIds.map(id => itemsParId[id]).filter(Boolean);
+          if (itemsDuGroupe.length === 0) return null; // groupe pas encore alimenté, pas de tuile morte
+          return el("div",{style:{marginBottom:"18px"}},
+            el("div",{class:"muted", style:{fontSize:"13px", fontWeight:"700", textTransform:"uppercase", letterSpacing:"0.02em", marginBottom:"8px", display:"flex", alignItems:"center", gap:"6px"}},
+              groupe.icon, groupe.label
+            ),
+            el("div",{style:{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px"}},
+              ...itemsDuGroupe.map(it => el("div",{style:{
+                  background:"var(--bg)", border:"1px solid var(--border)", borderRadius:"12px",
+                  padding:"14px 12px", cursor:"pointer",
+                  boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",
+                  display:"flex", flexDirection:"column", justifyContent:"space-between", minHeight:"78px"
+                },
+                feedback:true,
+                onClick: () => { _helpTutoOuvert = it.id; render(); }
+              },
+                el("div",{style:{color:"var(--text)", fontSize:"14px", fontWeight:"600", lineHeight:"1.35"}}, it.title),
+                el("div",{class:"muted", style:{fontSize:"12px", marginTop:"8px"}}, "Lire →")
+              ))
+            )
+          );
+        }).filter(Boolean);
+      blocTutos = el("div",{style:{marginBottom:"8px"}}, ...groupesRendus);
+    }
+  }
+
+  const resultatsVides = requete && sectionsRendues.length === 0 && !blocTutos
     ? el("div",{class:"muted",style:{fontSize:"14px",textAlign:"center",padding:"30px 0"}},"Aucun résultat pour \""+_helpRecherche+"\"")
     : null;
 
   conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
   conteneur.appendChild(champRecherche);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
+  if (blocTutos) conteneur.appendChild(blocTutos);
   sectionsRendues.forEach(s => conteneur.appendChild(s));
 
   return conteneur;
@@ -10591,7 +10669,7 @@ function setView(v) {
   // chaque nouvelle ouverture de cet écran (30/07/2026, refonte aide) —
   // un utilisateur qui rouvre l'aide plus tard ne doit pas retrouver une
   // recherche ou des sections restées ouvertes d'une visite précédente.
-  if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; }
+  if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; _helpTutoOuvert = null; }
   view=v; render();
   // Fetcher les météos historiques manquantes pour les séances avec Strava
   if (v==="weekDetail") {
