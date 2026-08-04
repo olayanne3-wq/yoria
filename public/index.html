@@ -8518,18 +8518,18 @@ function renderHelp() {
       }
     } else if (_helpTutoOuvert) {
       // ── Vue détail d'un tuto ──────────────────────────────────────────
+      // Pas de bouton retour ici : le header sticky de l'écran Aide (cf.
+      // backBtn plus bas, "‹") ramène déjà à la liste des tuiles quand un
+      // tuto est ouvert, et affiche le titre du tuto — évite un second
+      // bouton retour perdu dans le contenu (04/08/2026).
       const it = sectionTutos.items.find(i => i.id === _helpTutoOuvert);
       if (it) {
-        const boutonRetour = el("div",{style:{display:"flex", alignItems:"center", gap:"6px", padding:"12px 4px", cursor:"pointer", color:"var(--accent)", fontSize:"14px", fontWeight:"600"},
-          onClick: () => { _helpTutoOuvert = null; render(); }
-        }, "‹ Tous les tutos");
         const corps = card(
-          el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",marginBottom:"10px"}}, it.title),
           it.blocks
             ? el("div",{}, ...rendreBlocsItem(it.blocks))
             : el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
         );
-        blocTutos = el("div",{style:{marginBottom:"8px"}}, boutonRetour, corps);
+        blocTutos = el("div",{style:{marginBottom:"8px"}}, corps);
       }
     } else {
       // ── Grille de tuiles groupées par thème ────────────────────────────
@@ -10741,17 +10741,25 @@ function render() {
   const backBtn=vueEffective==="weekDetail"
     ?el("button",{style:{background:"none",border:"none",color:"var(--accent)",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("weeks")},"‹")
     :vueEffective==="help"
-    ?el("button",{style:{background:"none",border:"none",color:"var(--accent)",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("dashboard")},"‹")
+    ?el("button",{style:{background:"none",border:"none",color:"var(--accent)",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>{ if (_helpTutoOuvert) { _helpTutoOuvert = null; render(); } else { setView("dashboard"); } }},"‹")
     :vueEffective==="badges"
     ?el("button",{style:{background:"none",border:"none",color:"var(--accent)",fontSize:"22px",cursor:"pointer",padding:"0",lineHeight:"1",marginRight:"4px"},onClick:()=>setView("stats")},"‹")
     :null;
 
   const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",badges:"Mes badges",settings:"Paramètres",course:"Course",help:"Aide"};
+  // Le titre de l'écran Aide devient le titre du tuto quand un tuto est
+  // ouvert en vue détail (04/08/2026) — cohérent avec le comportement de
+  // backBtn ci-dessus, qui ramène alors à la liste des tuiles plutôt
+  // qu'au dashboard. _helpContentCache peut être null au tout premier
+  // render (import async pas encore résolu) : repli sur "Aide" dans ce cas.
+  const titreHelp = vueEffective==="help" && _helpTutoOuvert && _helpContentCache
+    ? (_helpContentCache.HELP_SECTIONS.find(s=>s.id==="tutos")?.items.find(i=>i.id===_helpTutoOuvert)?.title || "Aide")
+    : titles.help;
   const hdr = vueEffective==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(var(--bg-rgb),0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid var(--border)",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
     backBtn||"",
     runByLeaIcon(24, 6),
     el("div",{style:{flex:"1"}},
-      el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",lineHeight:"1"}},titles[vueEffective]||""),
+      el("div",{style:{color:"var(--text)",fontSize:"17px",fontWeight:"700",lineHeight:"1"}}, vueEffective==="help" ? titreHelp : (titles[vueEffective]||"")),
       vueEffective==="weekDetail"?el("div",{class:"muted",style:{fontSize:"13px",marginTop:"1px"}},phaseOf(selectedWeek).label):null
     ),
     boutonSignalerProbleme(),
