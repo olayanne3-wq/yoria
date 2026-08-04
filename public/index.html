@@ -673,6 +673,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
 <script type="module">
 (async () => {
+// Déclarée ici, tout en tête de cette IIFE (04/08/2026) — utilisée par
+// renderDiffere()/render() définies bien plus bas dans ce même script,
+// mais DOIT être initialisée avant tout appel possible à render(), y
+// compris depuis du code exécuté tôt dans cette IIFE (ex.
+// rebuildPredHistory() au chargement) : contrairement à `function
+// render()`/`function renderDiffere()` (hoisted, utilisables dès le
+// début du scope), une déclaration `let` reste en zone morte temporelle
+// (TDZ) jusqu'à sa ligne d'exécution — la placer ici évite toute
+// ReferenceError, peu importe d'où render() est appelée dans ce fichier.
+let _renderDiffereTimer = null;
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
 
@@ -3145,7 +3155,14 @@ function nbSaisiesManuelles() {
 
 function rebuildPredHistory() {
   if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
-  isRebuilding = true; render();
+  isRebuilding = true;
+  // renderDiffere() plutôt que render() ici (04/08/2026) — ce premier
+  // rendu ne sert qu'à afficher un état "recalcul en cours" si jamais le
+  // calcul qui suit est long ; s'il est rapide (cas courant), ce rendu
+  // intermédiaire n'a pas besoin d'être peint du tout avant que le second
+  // render() ci-dessous (résultat final) ne le remplace — évite un flash
+  // à vide suivi immédiatement d'un second flash avec le vrai contenu.
+  renderDiffere();
   // Générer une entrée par jour depuis le début du plan jusqu'à aujourd'hui,
   // via la reconstruction séquentielle (convergence progressive + bornes).
   const startDate = PLAN[0].sessions[0].date;
@@ -10754,13 +10771,19 @@ function setView(v) {
 // asynchrones (pas de retour utilisateur immédiat attendu) — toute
 // action explicite de l'utilisateur (clic, saisie) continue d'appeler
 // render() directement, pour rester instantanée.
-let _renderDiffereTimer = null;
 function renderDiffere() {
   clearTimeout(_renderDiffereTimer);
   _renderDiffereTimer = setTimeout(render, 250);
 }
 
 function render() {
+  // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
+  // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
+  // juste après reconstruirait inutilement le même contenu (double flash).
+  // Cas concret : rebuildPredHistory() appelle renderDiffere() puis,
+  // quelques lignes plus loin dans la même exécution synchrone, render()
+  // directement une fois le calcul terminé.
+  clearTimeout(_renderDiffereTimer);
   const app=document.getElementById("app");
   // CORRECTIF FLASH (04/08/2026, demande de Laurent — "clignotement de
   // tout l'écran à l'ouverture") — app.innerHTML="" était exécuté ICI, en
