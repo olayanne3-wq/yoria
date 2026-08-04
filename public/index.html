@@ -53,7 +53,27 @@ window.sentryOnLoad = function () {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="var(--bg)">
+<!-- CORRECTIF (04/08/2026, recherche de la cause du clignotement à
+     l'ouverture signalé par Laurent) — cette balise contenait
+     `content="var(--bg)"`, qui N'EST PAS une valeur valide pour un
+     attribut HTML : les variables CSS ne se résolvent que dans un
+     contexte de style, jamais dans un attribut de balise <meta> lu tel
+     quel par le navigateur/l'OS pour colorer la barre de statut. Cette
+     valeur invalide n'a jamais été corrigée dynamiquement nulle part
+     dans ce fichier (vérifié : aucun script ne met à jour cette balise).
+     Remplacée par la vraie couleur hexadécimale résolue de --bg en
+     thème clair (#F8FAFC, cf. --bg-rgb: 248,250,252 dans :root plus bas
+     — même valeur que background_color dans manifest.json), pour que le
+     navigateur/l'OS applique dès le départ la bonne couleur à la barre
+     de statut plutôt que de retomber sur une valeur par défaut
+     potentiellement différente. Cause probable (à confirmer) du
+     clignotement observé : une couleur de barre de statut par défaut
+     différente du fond réel de l'app produit un flash visible au tout
+     premier paint, avant que quoi que ce soit côté JS/CSS applicatif
+     n'ait eu la moindre chance de s'exécuter — expliquerait pourquoi
+     aucun correctif JS (render/replaceChildren/renderDiffere) n'a
+     résolu le problème jusqu'ici : ce bug est en amont de tout ça. -->
+<meta name="theme-color" content="#F8FAFC">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>Yoria</title>
@@ -185,6 +205,16 @@ input[type=text], input[type=number], input[type=password] {
 (function() {
   const saved = localStorage.getItem('lk_theme') || 'light';
   document.documentElement.setAttribute('data-theme', saved);
+  // Synchronise la balise <meta name="theme-color"> avec le thème réel
+  // (04/08/2026) — cf. commentaire détaillé sur cette balise plus haut
+  // dans le <head> : son contenu ne peut jamais être une variable CSS
+  // (var(--bg)), donc mise à jour ici avec la vraie couleur hex
+  // correspondant au thème résolu à cet instant, dans ce même script
+  // synchrone qui s'exécute avant tout paint (évite tout flash de la
+  // barre de statut/chrome du navigateur, y compris pour un utilisateur
+  // en thème sombre — pas seulement le thème clair par défaut).
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute('content', saved === 'dark' ? '#0D1117' : '#F8FAFC');
 })();
 </script>
 
@@ -8688,6 +8718,11 @@ function renderSettings() {
     const nouveauTheme = themeActuel === "light" ? "dark" : "light";
     localStorage.setItem('lk_theme', nouveauTheme);
     document.documentElement.setAttribute('data-theme', nouveauTheme);
+    // Cohérent avec le script synchrone de chargement initial (cf. son
+    // commentaire, tout en tête du <head>) — la bascule manuelle du
+    // thème doit aussi maintenir cette balise à jour.
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', nouveauTheme === 'dark' ? '#0D1117' : '#F8FAFC');
     render();
   }}, iconeThemeAffichee);
 
