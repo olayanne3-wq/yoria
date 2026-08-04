@@ -8593,9 +8593,6 @@ function renderHelp() {
     }, onglet.label))
   );
 
-  const afficherIntroEtRecherche = !enVueDetailTuto && (requete || _helpOngletActif === "aide");
-
-  if (afficherIntroEtRecherche) conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
   if (!enVueDetailTuto) conteneur.appendChild(champRecherche);
   if (selecteurOnglets) conteneur.appendChild(selecteurOnglets);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
