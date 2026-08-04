@@ -263,14 +263,46 @@ input[type=text], input[type=number], input[type=password] {
      point le plus délicat car window.__AUTH_PRET__ lui-même dépend de ces
      deux modules). Remplacés par import() dynamique dans le script juste
      en dessous, avant toute utilisation de LkAuth/LkSync. -->
-<script src="/engine-classic-scripts/decision-engine-adapter.classic.js"></script>  
-<script src="/engine-classic-scripts/decision-engine-runner-state.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-engagement.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-session-analysis.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-week-analysis.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-trend-analysis.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-rules.classic.js"></script>
-<script src="/engine-classic-scripts/decision-engine-apply.classic.js"></script>
+<!-- CORRECTIF (04/08/2026, recherche approfondie sur le clignotement à
+     l'ouverture signalé par Laurent) — ces 8 scripts étaient chargés en
+     <script src> classique bloquant : le navigateur doit finir de
+     TÉLÉCHARGER ET EXÉCUTER chacun avant de passer au suivant, en série,
+     avant même de pouvoir continuer à parser le reste du <head>. Mesuré
+     dans le Network de Laurent : ~150-250ms chacun, potentiellement
+     jusqu'à ~1.5-2s cumulés avant que le script principal (plus bas) ne
+     démarre — cohérent avec le ~1.8s observé avant le premier affichage
+     réel (test Performance avec Screenshots, page blanche de ~750ms à
+     1.8s). Passé à `defer` : le navigateur télécharge les 8 fichiers en
+     PARALLÈLE, mais garde leur ordre d'EXÉCUTION relatif entre eux (spec
+     HTML).
+     AUDIT COMPLET effectué avant ce changement (risque identifié puis
+     vérifié, pas juste supposé) : `defer` change l'ordre d'exécution
+     relatif entre CES scripts et tout script INLINE classique placé
+     après eux dans le document (les scripts inline ne peuvent jamais
+     être defer, ils s'exécutent toujours immédiatement dans l'ordre du
+     parsing — donc avec defer sur les scripts src, un script inline
+     placé juste après s'exécute maintenant AVANT que ces derniers aient
+     fini de charger, alors qu'avant c'était l'inverse). Vérifié
+     ligne par ligne : le script inline juste après (génération du plan +
+     auth, lignes ~274-546) et le suivant (lignes ~548-722) n'utilisent
+     AUCUN DES DEUX DecisionEngine* ni CHANGELOG — grep confirmé, aucune
+     occurrence hors commentaires. Le seul vrai consommateur de
+     DecisionEngine* est le script principal (`type="module"`, plus bas),
+     qui s'exécute de toute façon après le parsing HTML complet (comportement
+     natif des modules ES, équivalent à defer) ET attend lui-même deux
+     `await` réseau (__PLAN_PRET__, __AUTH_PRET__) avant tout usage réel de
+     ces globals — largement plus de marge que le délai introduit par
+     `defer` sur ces 8 fichiers. Non testé en conditions réelles par Claude
+     (limite d'environnement) — à valider par Laurent avant de considérer
+     ce correctif définitivement acquis. -->
+<script defer src="/engine-classic-scripts/decision-engine-adapter.classic.js"></script>  
+<script defer src="/engine-classic-scripts/decision-engine-runner-state.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-engagement.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-session-analysis.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-week-analysis.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-trend-analysis.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-rules.classic.js"></script>
+<script defer src="/engine-classic-scripts/decision-engine-apply.classic.js"></script>
 <script>
 // window.__AUTH_PRET__ créée ici, de façon SYNCHRONE, avant même l'IIFE
 // async ci-dessous — corrige une race condition découverte le 21/07/2026
@@ -544,7 +576,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
      dans verifierMeteoSeanceDemain(). Ne pas régénérer ce fichier si
      weather.js évolue — c'est justement le but de ce chantier de
      l'éliminer. -->
-<script src="/engine-classic-scripts/changelog.classic.js"></script>
+<!-- CORRECTIF (04/08/2026, même recherche que pour les 8 scripts
+     DecisionEngine* plus haut) — audit confirmé : ce fichier ne fait que
+     définir la constante VERSIONS en portée globale, sans aucun effet de
+     bord DOM. Elle n'est lue que dans renderSettings() (grep confirmé,
+     seule occurrence de VERSIONS dans tout ce fichier), qui ne s'exécute
+     qu'au clic sur l'onglet Réglages — jamais au chargement initial.
+     `defer` est donc sûr, sans la réserve nécessaire pour les 8 scripts
+     DecisionEngine* (dont un usage, même protégé, existe dans le flux
+     principal). -->
+<script defer src="/engine-classic-scripts/changelog.classic.js"></script>
 <script>
   // Charge (ou génère par défaut) le plan à afficher — chantier convergence
   // v1/v2, section 7 (sélection de plan depuis v1). Async car chargerPlans()
