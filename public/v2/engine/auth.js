@@ -37,11 +37,50 @@ export const supabaseReady = fetch('/api/config')
 // conteneur DOM fourni. Résout la promesse retournée avec
 // l'utilisateur connecté dès qu'une session est active (existante
 // au chargement, ou obtenue via le formulaire).
+//
+// CORRECTIF (04/08/2026, demande de Laurent : "l'écran de connexion ne
+// doit pas s'afficher brièvement quand la session est déjà en cache") —
+// avant, le HTML complet du formulaire était TOUJOURS injecté dans le
+// DOM en premier, puis masqué (display:none) une fois getUser() résolu
+// (cf. debloquer() plus bas) : sur une session déjà valide, ça produisait
+// un flash visible du formulaire de connexion le temps de l'aller-retour
+// réseau réel que fait Supabase pour valider la session (getUser()
+// n'est PAS une simple lecture de cache local, même avec une session
+// déjà "connue" côté client). Corrigé en sortant la vérification de
+// session dans verifierSessionExistante(), appelée AVANT toute
+// construction du HTML : si un utilisateur valide est trouvé (hors cas
+// recovery, qui doit au contraire forcer l'affichage du formulaire de
+// réinitialisation), on résout directement sans jamais insérer le
+// moindre élément de formulaire dans le DOM — zéro flash, pas seulement
+// un flash raccourci.
 // ------------------------------------------------------------
 export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
   await supabaseReady; // garantit que `supabase` est bien créé avant usage
   const hote = document.getElementById(conteneurId);
   if (!hote) throw new Error(`monterEcranAuth: conteneur #${conteneurId} introuvable`);
+
+  // Session déjà active au chargement (retour utilisateur) : on résout
+  // directement, SANS jamais construire/insérer le HTML du formulaire —
+  // cf. commentaire ci-dessus. SAUF si l'URL contient un token de
+  // recovery (#access_token=...&type=recovery), auquel cas on laisse le
+  // flux normal plus bas construire l'écran et gérer PASSWORD_RECOVERY
+  // (même raison qu'avant ce correctif : getUser() peut se résoudre plus
+  // vite que le SDK ne traite le fragment d'URL, cf. bug PWA installée
+  // du 13 juillet 2026).
+  const estRetourRecovery = window.location.hash.includes('type=recovery');
+  if (!estRetourRecovery) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const dernierUserId = localStorage.getItem('lk_dernier_user_id');
+      if (dernierUserId && dernierUserId !== user.id) {
+        const theme = localStorage.getItem('lk_theme');
+        localStorage.clear();
+        if (theme) localStorage.setItem('lk_theme', theme);
+      }
+      localStorage.setItem('lk_dernier_user_id', user.id);
+      return user;
+    }
+  }
 
   hote.innerHTML = `
     <style>
@@ -283,22 +322,6 @@ export async function monterEcranAuth(conteneurId = 'ecran-auth-hote') {
         submitBtn.disabled = false;
       }
     });
-
-    // Session déjà active au chargement (retour utilisateur) : on
-    // saute directement l'écran, sans attendre d'action. SAUF si l'URL
-    // contient un token de recovery (#access_token=...&type=recovery) —
-    // dans ce cas, on laisse le listener PASSWORD_RECOVERY ci-dessous
-    // gérer l'affichage du formulaire de nouveau mot de passe, plutôt
-    // que de débloquer directement sur une session déjà active (bug
-    // découvert en PWA installée le 13 juillet 2026 : getUser() se
-    // résolvait plus vite que le SDK ne traite le fragment d'URL,
-    // débloquant sur le dashboard sans jamais montrer le formulaire).
-    const estRetourRecovery = window.location.hash.includes('type=recovery');
-    if (!estRetourRecovery) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) debloquer(user);
-      });
-    }
 
     // Retour depuis le lien "mot de passe oublié" — Supabase déclenche
     // PASSWORD_RECOVERY plutôt qu'une session normale. Ajouté le 13
