@@ -2566,7 +2566,7 @@ let coachRaceStratSig = load(clePourPlan("lk_coach_race_strat_sig"), null);
 // récent est appliquée, les autres sont silencieusement ignorées.
 let coachRequestId = 0;
 
-async function fetchCoachMsg() {
+async function fetchCoachMsg(differe = false) {
   const t = today();
   if (coachDate === t && coachMsg) return; // déjà fetché aujourd'hui
   const monTicket = ++coachRequestId;
@@ -2767,7 +2767,7 @@ Réponds uniquement avec le message, sans guillemets.`;
       coachDate = t;
       save(clePourPlan("lk_coach_msg"), coachMsg);
       save(clePourPlan("lk_coach_date"), coachDate);
-      render();
+      differe ? renderDiffere() : render();
     }
   } catch(e) {
     console.warn("Coach indisponible:", e.message);
@@ -2776,14 +2776,19 @@ Réponds uniquement avec le message, sans guillemets.`;
       // Message de secours si jamais aucun message n\'a pu être chargé
       coachMsg = "🤖 Yoria fait une pause — réessaie dans quelques instants.";
       coachDate = t;
-      render();
+      differe ? renderDiffere() : render();
     }
   }
 }
 
-// Fetcher le message coach au démarrage
+// Fetcher le message coach au démarrage — differe=true (04/08/2026) : se
+// regroupe avec le render() du chargement des badges s'ils arrivent à
+// moins de 250ms d'écart (cf. définition de renderDiffere()), pour éviter
+// deux flashs distincts au chargement. Les autres appels de fetchCoachMsg
+// (ex. après validation d'une séance) gardent le comportement immédiat
+// par défaut (differe=false) — un retour rapide y est attendu.
 if (!coachMsg || coachDate !== today()) {
-  setTimeout(fetchCoachMsg, 2000);
+  setTimeout(() => fetchCoachMsg(true), 2000);
 }
 
 // Conseil de Yoria dédié à la course — vraie valeur ajoutée par rapport aux
@@ -10733,6 +10738,28 @@ function setView(v) {
   }
 }
 
+// CORRECTIF FLASH (04/08/2026, suite du correctif replaceChildren) —
+// plusieurs mises à jour automatiques et indépendantes se produisent
+// juste après le premier rendu (badges débloqués, message du coach), à
+// des délais différents selon la latence réseau de chacune. Chacune
+// appelait render() séparément, produisant un flash bien distinct à
+// chaque fois même après le passage à replaceChildren (le contenu
+// change réellement d'une fois à l'autre, donc il est normal que ce
+// soit visible — le problème est la RÉPÉTITION rapprochée, pas le
+// changement lui-même). renderDiffere() regroupe ces mises à jour
+// automatiques dans une seule frame de rendu si elles arrivent à moins
+// de 250ms d'écart, réduisant deux flashs distincts à un seul dans le
+// cas courant (badges + coach msg arrivent souvent proches l'un de
+// l'autre au chargement). Réservé aux mises à jour AUTOMATIQUES/
+// asynchrones (pas de retour utilisateur immédiat attendu) — toute
+// action explicite de l'utilisateur (clic, saisie) continue d'appeler
+// render() directement, pour rester instantanée.
+let _renderDiffereTimer = null;
+function renderDiffere() {
+  clearTimeout(_renderDiffereTimer);
+  _renderDiffereTimer = setTimeout(render, 250);
+}
+
 function render() {
   const app=document.getElementById("app");
   // CORRECTIF FLASH (04/08/2026, demande de Laurent — "clignotement de
@@ -10781,7 +10808,7 @@ function render() {
       }
       window.__badgesCache__ = badgesDejaEnregistres;
       window.__badgesNouveauxAAfficher__ = nouveaux;
-      render();
+      renderDiffere(); // cf. définition de renderDiffere() : regroupe avec d'autres mises à jour auto proches (04/08/2026)
     })();
   }
 
