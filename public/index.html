@@ -8462,7 +8462,10 @@ function renderHelp() {
     // absent : fallback intégral sur l'ancien rendu texte brut (04/08/2026).
     const rendreBlocsItem = (blocks) => blocks.map(b => {
       if (b.type === "h") return el("div",{style:{color:"var(--text)",fontSize:"13px",fontWeight:"700",marginTop:"14px",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.02em"}}, b.text);
-      if (b.type === "img") return el("img",{src:b.src, alt:b.alt||"", style:{display:"block",maxWidth:"260px",width:"100%",borderRadius:"12px",border:"1px solid var(--border)",margin:"4px auto 14px"}});
+      if (b.type === "img") return el("div",{style:{margin:"4px 0 14px"}},
+        el("img",{src:b.src, alt:b.alt||"", style:{display:"block",maxWidth:"260px",width:"100%",borderRadius:"12px",border:"1px solid var(--border)",margin:"0 auto"}}),
+        b.caption ? el("div",{class:"muted",style:{fontSize:"12px",textAlign:"center",marginTop:"6px"}}, b.caption) : null
+      );
       if (b.type === "list") return el(b.ordered?"ol":"ul",{style:{margin:"0 0 10px",paddingLeft:"20px",display:"flex",flexDirection:"column",gap:"6px"}},
         ...b.items.map(li => el("li",{class:"muted",style:{fontSize:"14px",lineHeight:"1.5"}}, li))
       );
