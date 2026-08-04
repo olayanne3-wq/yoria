@@ -4988,13 +4988,14 @@ const TYPE_SEANCE_COULEUR = {
   SEUIL: "var(--warn)",
   SPEC: "var(--warn)",
   RACE: "var(--warn)",
+  TEST: "var(--warn)",
   REPOS: "var(--border-soft)"
 };
 // SPEC (allure-course dans le moteur v2) affiché "Spécifique" en toutes
 // lettres dans la grille (demande explicite de Laurent), pas juste le
 // code court utilisé ailleurs dans l'app.
 const TYPE_SEANCE_LABEL = {
-  EF: "EF", LONGUE: "Longue", VMA: "VMA", SEUIL: "Seuil", SPEC: "Spécifique", RACE: "Course"
+  EF: "EF", LONGUE: "Longue", VMA: "VMA", SEUIL: "Seuil", SPEC: "Spécifique", RACE: "Course", TEST: "Test"
 };
 const JOURS_LABEL_COURT = ["L","M","M","J","V","S","D"];
 
@@ -5638,7 +5639,6 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
     summaryLine.style.border = `1px solid ${manual ? "var(--accent)" : "rgba(var(--accent-rgb),0.33)"}`;
     summaryLine.innerHTML = "";
     summaryLine.appendChild(el("span",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"14px",fontWeight:"700",color:"var(--accent)"}},
-      el("span",{style:{fontSize:"15px"}},"✏️"),
       manual
         ? "Saisie manuelle · "+fmtPace(manualPerf[uid].average_speed)+"/km"+(stravaRun?" (prime sur Strava)":"")
         : "Saisir ou corriger manuellement"
