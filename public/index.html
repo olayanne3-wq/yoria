@@ -8593,7 +8593,9 @@ function renderHelp() {
     }, onglet.label))
   );
 
-  if (!enVueDetailTuto) conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
+  const afficherIntroEtRecherche = !enVueDetailTuto && (requete || _helpOngletActif === "aide");
+
+  if (afficherIntroEtRecherche) conteneur.appendChild(el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"16px"}}, introText));
   if (!enVueDetailTuto) conteneur.appendChild(champRecherche);
   if (selecteurOnglets) conteneur.appendChild(selecteurOnglets);
   if (resultatsVides) conteneur.appendChild(resultatsVides);
@@ -10782,13 +10784,16 @@ function render() {
     :null;
 
   const titles={weeks:"Semaines",weekDetail:"Semaine "+selectedWeek,stats:"Stats",badges:"Mes badges",settings:"Paramètres",course:"Course",help:"Aide"};
-  // Le titre de l'écran Aide devient le titre du tuto quand un tuto est
-  // ouvert en vue détail (04/08/2026) — cohérent avec le comportement de
-  // backBtn ci-dessus, qui ramène alors à la liste des tuiles plutôt
-  // qu'au dashboard. _helpContentCache peut être null au tout premier
-  // render (import async pas encore résolu) : repli sur "Aide" dans ce cas.
+  // Le titre de l'écran Aide reflète l'onglet actif (04/08/2026) : "Tutos"
+  // sur la grille de tuiles, le titre du tuto en vue détail, "Aide" sinon
+  // — cohérent avec le comportement de backBtn ci-dessus, qui ramène à la
+  // liste des tuiles (vue détail) ou au dashboard (grille/aide classique).
+  // _helpContentCache peut être null au tout premier render (import async
+  // pas encore résolu) : repli sur "Aide" dans ce cas.
   const titreHelp = vueEffective==="help" && _helpTutoOuvert && _helpContentCache
     ? (_helpContentCache.HELP_SECTIONS.find(s=>s.id==="tutos")?.items.find(i=>i.id===_helpTutoOuvert)?.title || "Aide")
+    : vueEffective==="help" && _helpOngletActif === "tutos"
+    ? "Tutos"
     : titles.help;
   const hdr = vueEffective==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(var(--bg-rgb),0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid var(--border)",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
     backBtn||"",
