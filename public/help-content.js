@@ -26,11 +26,80 @@ export const HELP_SECTIONS = [
     title: "Tutos par action",
     items: [
       { title: "Comprendre la carte \"Aujourd'hui\"",
-        text: "C'est la carte principale du dashboard : elle affiche la séance prévue pour le jour même.\n\nAVANT DE FAIRE LA SÉANCE\n• Badge coloré (ex. \"EF\") : type de séance.\n• Titre : durée, allure cible et distance estimée.\n• ✏️ : ouvre un panneau pour saisir ou corriger la séance à la main (allure, durée, FC), ou importer un fichier .fit si tu utilises ce mode.\n• ⌚ (si la séance a une structure d'intervalles) : à programmer sur ta montre avant de courir — disparaît une fois la séance validée.\n• Météo : température actuelle, avec 🔥 si chaleur (>28°C, l'allure EF est alors ajustée automatiquement).\n• 💡 : rappel ponctuel sur la phase d'entraînement en cours.\n• Allures cibles / FC cible : la fourchette à viser pour cette séance.\n• Rangée de boutons — ✅ ❌ ⚠️ 😴 — pour indiquer comment s'est passée la séance, ou qu'elle a été volontairement sautée.\n• Message du coach 🤖, avec un bouton 🔄 pour le régénérer.\n\nLE BOUTON ✏️\n1. Import .fit (uniquement si ta source de données est \"montre/fichier\" et qu'aucune activité n'est déjà enregistrée ce jour-là) — bouton \"📁 Importer le fichier .fit de cette séance\".\n2. Saisie manuelle : allure (par pas de 5 sec/km avec des boutons +/-), durée totale réelle si la séance a des intervalles, et FC moyenne (facultative). Un repère \"cible plan\" est affiché pour comparer.\n3. ✓ Enregistrer sauvegarde la saisie ; elle prime automatiquement sur une éventuelle donnée Strava du même jour.\n4. ✕ Annuler efface la saisie et remet le statut de la séance à \"—\".\n\nUNE FOIS LA SÉANCE VALIDÉE\nLe bouton ✏️ reste visible (pour corriger), mais ⌚ disparaît. Un bloc \"Réalisé\" apparaît à la place des allures/FC cibles :\n• Résumé chiffré : distance, durée, allure et FC (issus de Strava/FIT si disponible, sinon de ta saisie manuelle).\n• Badge de source : 🟠 Strava ou 📁 FIT, avec un lien 🔗 vers Strava si pertinent.\n• 🗑️ : supprime l'activité importée (utile pour en réimporter une autre).\n• ▼ détail : déplie le détail répétition par répétition si la séance avait des intervalles, avec le nombre de répétitions dans la cible.\n• ✏️ Corriger : rouvre le formulaire de saisie manuelle pour ajuster.\n\nSi aucune donnée n'existe du tout pour la séance, un simple lien \"✏️ Aucune donnée — saisir\" apparaît à la place." },
+        text: "C'est la carte principale du dashboard : elle affiche la séance prévue pour le jour même. Badge type de séance, titre (durée/allure/distance), icônes ✏️ et ⌚, météo, allures et FC cibles, boutons de statut, message du coach. Le bouton ✏️ permet de saisir manuellement ou d'importer un .fit. Après validation, un bloc Réalisé remplace les cibles.",
+        blocks: [
+          { type: "img", src: "/help-assets/carte-aujourdhui.png", alt: "Carte Aujourd'hui avant validation" },
+          { type: "p", text: "C'est la carte principale du dashboard : elle affiche la séance prévue pour le jour même." },
+          { type: "h", text: "Avant de faire la séance" },
+          { type: "list", items: [
+            "Badge coloré (ex. \"EF\") : type de séance.",
+            "Titre : durée, allure cible et distance estimée.",
+            "✏️ : ouvre un panneau pour saisir ou corriger la séance à la main (allure, durée, FC), ou importer un fichier .fit si tu utilises ce mode.",
+            "⌚ (si la séance a une structure d'intervalles) : à programmer sur ta montre avant de courir — disparaît une fois la séance validée.",
+            "Météo : température actuelle, avec 🔥 si chaleur (>28°C, l'allure EF est alors ajustée automatiquement).",
+            "💡 : rappel ponctuel sur la phase d'entraînement en cours.",
+            "Allures cibles / FC cible : la fourchette à viser pour cette séance.",
+            "Rangée de boutons — ✅ ❌ ⚠️ 😴 — pour indiquer comment s'est passée la séance, ou qu'elle a été volontairement sautée.",
+            "Message du coach 🤖, avec un bouton 🔄 pour le régénérer.",
+          ]},
+          { type: "h", text: "Le bouton ✏️" },
+          { type: "list", ordered: true, items: [
+            "Import .fit (uniquement si ta source de données est \"montre/fichier\" et qu'aucune activité n'est déjà enregistrée ce jour-là) — bouton \"📁 Importer le fichier .fit de cette séance\".",
+            "Saisie manuelle : allure (par pas de 5 sec/km avec des boutons +/-), durée totale réelle si la séance a des intervalles, et FC moyenne (facultative). Un repère \"cible plan\" est affiché pour comparer.",
+            "✓ Enregistrer sauvegarde la saisie ; elle prime automatiquement sur une éventuelle donnée Strava du même jour.",
+            "✕ Annuler efface la saisie et remet le statut de la séance à \"—\".",
+          ]},
+          { type: "h", text: "Une fois la séance validée" },
+          { type: "p", text: "Le bouton ✏️ reste visible (pour corriger), mais ⌚ disparaît. Un bloc \"Réalisé\" apparaît à la place des allures/FC cibles :" },
+          { type: "list", items: [
+            "Résumé chiffré : distance, durée, allure et FC (issus de Strava/FIT si disponible, sinon de ta saisie manuelle).",
+            "Badge de source : 🟠 Strava ou 📁 FIT, avec un lien 🔗 vers Strava si pertinent.",
+            "🗑️ : supprime l'activité importée (utile pour en réimporter une autre).",
+            "▼ détail : déplie le détail répétition par répétition si la séance avait des intervalles, avec le nombre de répétitions dans la cible.",
+            "✏️ Corriger : rouvre le formulaire de saisie manuelle pour ajuster.",
+          ]},
+          { type: "p", text: "Si aucune donnée n'existe du tout pour la séance, un simple lien \"✏️ Aucune donnée — saisir\" apparaît à la place." },
+        ]
+      },
       { title: "Créer un plan",
-        text: "Depuis l'écran d'accueil du configurateur (bouton \"🏁 Configurer un plan\" sur le dashboard), choisis ton objectif : Objectif course (préparer une date précise : 5K, 10K, semi, marathon), Mode forme (entretenir sa forme, sans date de course, par blocs de 4 semaines), ou Reprise en douceur (après une pause ou une blessure, indépendant de ton niveau habituel).\n\nOBJECTIF COURSE — 8 étapes\n1. Distance visée (5K, 10K, semi, marathon).\n2. Point de départ : ton chrono actuel sur cette distance, ou un temps équivalent sur une autre distance si tu n'as pas couru celle-ci récemment.\n3. Objectif : le chrono que tu vises.\n4. C'est pour quand : date de début du plan et jour de la course (+ infos facultatives : nom, lieu, lien de la course).\n5. Contraintes à connaître : blessure en cours/récente, douleur chronique, reprise après une longue pause — pour adapter la prudence du plan.\n6. Jours disponibles pour courir dans la semaine.\n7. Récapitulatif (distance, niveau, temps actuel, objectif, durée du plan) avant validation.\n\nMODE FORME — 4 étapes, plus court : niveau, volume, jours disponibles, accent (le type d'effort que tu veux privilégier).\n\nSi tu n'as pas de référence chronométrée récente, un test semi-Cooper (6 minutes à allure maximale soutenable) peut être proposé pour estimer ton niveau avant de générer la suite du plan.\n\nUne fois le plan généré, tu peux revenir à tout moment sur le configurateur pour consulter tes autres plans sauvegardés ou en créer un nouveau." },
+        text: "Depuis le configurateur, choisis ton objectif (Objectif course, Mode forme ou Reprise en douceur). Le plan Objectif course se construit en 8 étapes (distance, point de départ, objectif, dates, contraintes, jours disponibles, récapitulatif). Le Mode forme tient en 4 étapes.",
+        blocks: [
+          { type: "p", text: "Depuis l'écran d'accueil du configurateur (bouton \"🏁 Configurer un plan\" sur le dashboard), choisis ton objectif :" },
+          { type: "list", items: [
+            "🏁 Objectif course — préparer une date précise (5K, 10K, semi, marathon).",
+            "💓 Mode forme — entretenir sa forme, sans date de course, par blocs de 4 semaines.",
+            "🌱 Reprise en douceur — après une pause ou une blessure, indépendant de ton niveau habituel.",
+          ]},
+          { type: "h", text: "Objectif course — 8 étapes" },
+          { type: "list", ordered: true, items: [
+            "Distance visée (5K, 10K, semi, marathon).",
+            "Point de départ : ton chrono actuel sur cette distance, ou un temps équivalent sur une autre distance si tu n'as pas couru celle-ci récemment.",
+            "Objectif : le chrono que tu vises.",
+            "C'est pour quand : date de début du plan et jour de la course (+ infos facultatives : nom, lieu, lien de la course).",
+            "Contraintes à connaître : blessure en cours/récente, douleur chronique, reprise après une longue pause — pour adapter la prudence du plan.",
+            "Jours disponibles pour courir dans la semaine.",
+            "Récapitulatif (distance, niveau, temps actuel, objectif, durée du plan) avant validation.",
+          ]},
+          { type: "h", text: "Mode forme — 4 étapes" },
+          { type: "p", text: "Plus court : niveau, volume, jours disponibles, accent (le type d'effort que tu veux privilégier)." },
+          { type: "p", text: "Si tu n'as pas de référence chronométrée récente, un test semi-Cooper (6 minutes à allure maximale soutenable) peut être proposé pour estimer ton niveau avant de générer la suite du plan." },
+          { type: "p", text: "Une fois le plan généré, tu peux revenir à tout moment sur le configurateur pour consulter tes autres plans sauvegardés ou en créer un nouveau." },
+        ]
+      },
       { title: "Importer un fichier .fit",
-        text: "Depuis la carte \"Aujourd'hui\" du dashboard, ouvre le bouton ✏️ de la séance du jour. Si ta source de données est réglée sur \"montre/fichier\" et qu'aucune activité n'est déjà enregistrée pour cette date, un bouton \"📁 Importer le fichier .fit de cette séance\" apparaît en haut du panneau.\n\nExporte d'abord le fichier .fit de ta séance depuis ta montre ou son application (Garmin Connect, Coros, Suunto app, etc. — une Apple Watch nécessite systématiquement une app tierce, Apple Fitness natif ne le permet pas), puis choisis ce fichier via le bouton.\n\nÀ SAVOIR AVANT D'IMPORTER\nAllure, distance et FC sont toujours récupérées correctement — largement suffisant pour une sortie EF ou longue. Pour une séance qualité (fractionné), la précision du découpage effort/récupération dépend de ta montre : certaines (Zepp/Amazfit notamment) n'incluent pas cette structure dans le fichier exporté, même si la séance a été suivie fidèlement sur la montre. Si le découpage semble faux après import, ce n'est pas forcément une erreur d'import — vérifie manuellement si besoin.\n\nUne fois importée, l'activité reste protégée : une resynchronisation ne l'écrasera pas silencieusement. Pour la remplacer, supprime-la d'abord via le 🗑️ du bloc \"Réalisé\" de la carte." },
+        text: "Depuis la carte Aujourd'hui, ouvre le bouton ✏️ puis choisis ton fichier .fit exporté de ta montre. Allure, distance et FC sont toujours bien récupérées ; le détail effort/récupération d'une séance qualité dépend du modèle de montre.",
+        blocks: [
+          { type: "p", text: "Depuis la carte \"Aujourd'hui\" du dashboard, ouvre le bouton ✏️ de la séance du jour. Si ta source de données est réglée sur \"montre/fichier\" et qu'aucune activité n'est déjà enregistrée pour cette date, un bouton \"📁 Importer le fichier .fit de cette séance\" apparaît en haut du panneau." },
+          { type: "p", text: "Exporte d'abord le fichier .fit de ta séance depuis ta montre ou son application (Garmin Connect, Coros, Suunto app, etc. — une Apple Watch nécessite systématiquement une app tierce, Apple Fitness natif ne le permet pas), puis choisis ce fichier via le bouton." },
+          { type: "h", text: "À savoir avant d'importer" },
+          { type: "list", items: [
+            "Allure, distance et FC sont toujours récupérées correctement — largement suffisant pour une sortie EF ou longue.",
+            "Pour une séance qualité (fractionné), la précision du découpage effort/récupération dépend de ta montre : certaines (Zepp/Amazfit notamment) n'incluent pas cette structure dans le fichier exporté, même si la séance a été suivie fidèlement.",
+            "Si le découpage semble faux après import, ce n'est pas forcément une erreur d'import — vérifie manuellement si besoin.",
+          ]},
+          { type: "p", text: "Une fois importée, l'activité reste protégée : une resynchronisation ne l'écrasera pas silencieusement. Pour la remplacer, supprime-la d'abord via le 🗑️ du bloc \"Réalisé\" de la carte." },
+        ]
+      },
     ]
   },
   {
