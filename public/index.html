@@ -1891,7 +1891,7 @@ async function fetchWeather() {
     if (!data.disponible) return;
     weatherTemp = data.temperatureC;
     weatherDesc = data.emoji;
-    render();
+    renderDiffere(); // cf. définition de renderDiffere() : évite un flash isolé au chargement (04/08/2026)
   } catch(e) {
     console.warn("Météo indisponible:", e.message);
   }
@@ -1943,7 +1943,7 @@ async function verifierMeteoSeanceDemain() {
         window.__PLAN_GENERE__ = traduirePlanVersFormatV1(plan);
         PLAN = window.__PLAN_GENERE__;
         ALL_SESSIONS = recalculerAllSessions();
-        render();
+        renderDiffere(); // cf. définition de renderDiffere() : évite un flash isolé au chargement (04/08/2026)
         return; // une seule séance concernée par jour dans l'immense
         // majorité des cas — pas la peine de continuer à parcourir
       }
