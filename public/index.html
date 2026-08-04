@@ -8453,10 +8453,29 @@ function renderHelp() {
       requete ? null : el("span",{class:"muted", style:{fontSize:"14px", transform: estOuverte ? "rotate(90deg)" : "none", transition:"transform 0.15s"}}, "›")
     );
 
+    // Rendu d'un item d'aide : la plupart n'ont qu'un texte simple (it.text),
+    // rendu tel quel comme avant. Les tutos par action (section "tutos")
+    // peuvent fournir it.blocks — une suite de segments typés (paragraphe,
+    // sous-titre, liste, image) — pour une vraie mise en page au lieu d'un
+    // pavé de texte compact. it.text reste toujours fourni en parallèle
+    // (résumé pour la recherche), donc aucune régression si blocks est
+    // absent : fallback intégral sur l'ancien rendu texte brut (04/08/2026).
+    const rendreBlocsItem = (blocks) => blocks.map(b => {
+      if (b.type === "h") return el("div",{style:{color:"var(--text)",fontSize:"13px",fontWeight:"700",marginTop:"14px",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.02em"}}, b.text);
+      if (b.type === "img") return el("img",{src:b.src, alt:b.alt||"", style:{display:"block",maxWidth:"260px",width:"100%",borderRadius:"12px",border:"1px solid var(--border)",margin:"4px auto 14px"}});
+      if (b.type === "list") return el(b.ordered?"ol":"ul",{style:{margin:"0 0 10px",paddingLeft:"20px",display:"flex",flexDirection:"column",gap:"6px"}},
+        ...b.items.map(li => el("li",{class:"muted",style:{fontSize:"14px",lineHeight:"1.5"}}, li))
+      );
+      // "p" par défaut
+      return el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6",marginBottom:"10px"}}, b.text);
+    });
+
     const corps = estOuverte ? el("div",{style:{marginBottom:"8px"}}, card(
       ...itemsAffiches.map(it => el("div",{style:{marginBottom:"12px",paddingBottom:"12px",borderBottom:"1px solid var(--border)"}},
         el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},it.title),
-        el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
+        it.blocks
+          ? el("div",{}, ...rendreBlocsItem(it.blocks))
+          : el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.6"}},it.text)
       ))
     )) : null;
 
