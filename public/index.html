@@ -10735,7 +10735,21 @@ function setView(v) {
 
 function render() {
   const app=document.getElementById("app");
-  app.innerHTML="";
+  // CORRECTIF FLASH (04/08/2026, demande de Laurent — "clignotement de
+  // tout l'écran à l'ouverture") — app.innerHTML="" était exécuté ICI, en
+  // tout début de fonction, AVANT même que hdr/content ne soient
+  // construits : le navigateur pouvait peindre une frame avec #app
+  // totalement vide, puis une autre une fois le nouveau contenu prêt —
+  // visible comme un flash, en particulier quand render() est rappelée
+  // peu après le premier rendu (ex. cache badges résolu de façon
+  // asynchrone, cf. plus bas dans cette fonction). Même diagnostic et
+  // même principe de correctif que celui déjà appliqué à la nav le
+  // 24/07/2026 (cf. commentaire sur nav-root/replaceChildren plus bas) :
+  // le vidage de #app est repoussé à la toute fin de la fonction, où
+  // hdr/content sont remplacés en une seule opération atomique
+  // (replaceChildren) plutôt qu'un innerHTML="" suivi d'un appendChild
+  // séparé — plus aucune frame intermédiaire vide n'est peinte.
+
 
   // Garde-fou global — aucun plan réel pour ce compte (estPlanRepli) :
   // toute vue qui afficherait le contenu du plan factice (semaines, stats,
@@ -10853,8 +10867,10 @@ function render() {
     })
   );
 
-  if (hdr) app.appendChild(hdr);
-  app.appendChild(content);
+  // Remplacement atomique — cf. commentaire en tête de render() : plus de
+  // app.innerHTML="" séparé en amont, ce replaceChildren() est la SEULE
+  // opération qui touche réellement le DOM affiché, en une fois.
+  app.replaceChildren(...(hdr ? [hdr] : []), content);
 
   // Centrage automatique sur la semaine actuelle à l'ouverture de l'onglet
   // Semaines (31/07/2026, demande de Laurent) — instantané, cohérent avec
