@@ -803,7 +803,24 @@ if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
   // (statuses, notes, etc.) avant de redemander un rendu. Pas de retry
   // ni de gestion d'erreur poussée ici — un échec silencieux n'est pas
   // grave, le prochain rechargement de page rattrapera de toute façon.
-  await LkSync.activerRealtime(window.__PLAN_BRUT__.id, async () => {
+  //
+  // CORRECTIF (04/08/2026, recherche approfondie sur le clignotement à
+  // l'ouverture signalé par Laurent, confirmé par test Performance +
+  // Screenshots : vraie page blanche de ~750ms à ~1.85s avant le premier
+  // affichage) — ce `await` bloquait le render() final juste après (plus
+  // bas dans ce script) : établir un canal WebSocket (activerRealtime
+  // appelle supabase.channel(...).subscribe()) est structurellement plus
+  // lent qu'un simple fetch REST (handshake de connexion), et la synchro
+  // temps réel entre appareils est un BONUS — utile si un autre appareil
+  // modifie quelque chose pendant que cette session est ouverte, mais
+  // absolument pas un prérequis pour afficher le dashboard une première
+  // fois avec les données déjà préchargées par le await precharger()
+  // juste au-dessus. Retiré ce await : le canal continue de s'établir en
+  // arrière-plan (fire-and-forget), sans plus retarder le premier
+  // render(). Non testé en conditions réelles par Claude (limite
+  // d'environnement) — à valider par Laurent avant de considérer ce
+  // correctif acquis.
+  LkSync.activerRealtime(window.__PLAN_BRUT__.id, async () => {
     await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
     statuses = load(clePourPlan("lk_statuses"), {});
     hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {});
