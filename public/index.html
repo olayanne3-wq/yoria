@@ -777,33 +777,6 @@ let _renderDiffereTimer = null;
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
 
-// Relecture stravaToken/stravaRefresh/stravaExpires/stravaActivities depuis
-// localStorage — 05/08/2026, bug signalé par Laurent (deux symptômes liés :
-// pas de synchro auto à l'ouverture, et "perte" de la synchro après un F5).
-// Cause : ces variables sont lues UNE SEULE FOIS à leur déclaration (ligne
-// ~1147), donc AVANT ce await — sur un appareil/session où le token n'était
-// pas encore en localStorage à cet instant précis (rechargement complet,
-// nouvel appareil, cache navigateur vidé...), elles restent figées à leur
-// valeur initiale (null/vide) pour tout le reste de l'exécution, même après
-// que le préchargement Supabase ci-dessus ait fini d'écrire le vrai token
-// en localStorage. autoSync() (plus bas dans ce fichier) teste alors
-// `if (stravaToken && ...)` sur une variable qui ne reflète jamais la
-// réalité fraîchement rechargée, et ne déclenche donc jamais la synchro
-// automatique attendue. Correctif : relire explicitement depuis
-// localStorage à cet instant, une fois qu'on est sûr que le préchargement
-// est terminé — avant que autoSync()/tout autre code plus bas ne lise ces
-// variables.
-if (!stravaToken) {
-  stravaToken = load("lk_strava_token", null);
-  stravaRefresh = load("lk_strava_refresh", null);
-  stravaExpires = load("lk_strava_expires", 0);
-  if (stravaToken && (!stravaActivities || stravaActivities.length === 0)) {
-    stravaActivities = load("lk_strava_activities", []);
-    window.stravaActivities = stravaActivities;
-  }
-}
-
-
 // Deuxième passe de préchargement, cette fois avec le planId maintenant
 // connu (window.__PLAN_BRUT__.id) — remplit localStorage avec les
 // données préfixées par plan (lk_statuses_xxx, lk_notes_xxx, etc.) AVANT
@@ -1176,6 +1149,35 @@ let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
 let stravaActivities = load("lk_strava_activities", []);
 window.stravaActivities = stravaActivities; // exposition pour scripts externes (moteur de décision)
+
+// Relecture explicite — 05/08/2026, bug signalé par Laurent (synchro Strava
+// absente à l'ouverture, "perdue" après un F5). Les déclarations ci-dessus
+// s'exécutent APRÈS `await window.__AUTH_PRET__` (ligne ~778, plus haut
+// dans ce même script) dans l'ordre séquentiel du fichier, donc load() lit
+// déjà en principe un localStorage rempli par le préchargement Supabase.
+//
+// CORRECTIF DU 05/08/2026 (1ère tentative) : un bloc de relecture avait été
+// placé juste après `await window.__AUTH_PRET__` (ligne ~778), AVANT cette
+// déclaration `let stravaToken` — cassait immédiatement toute la page en
+// écran blanc (ReferenceError: Cannot access 'stravaToken' before
+// initialization, TDZ). Déplacé ici, après la déclaration, comme il
+// aurait dû l'être dès le départ.
+//
+// Cette relecture reste utile ici (pas juste redondante avec les lignes
+// ci-dessus) : si un jour ce bloc de déclarations est déplacé avant
+// le await (refactor futur), ou si load() est appelée dans un contexte où
+// le préchargement n'a pas fini d'écrire synchroniquement, cette passe de
+// contrôle explicite retente une lecture fraîche avant qu'autoSync() (plus
+// bas dans ce fichier) ne teste `if (stravaToken && ...)`.
+if (!stravaToken) {
+  stravaToken = load("lk_strava_token", null);
+  stravaRefresh = load("lk_strava_refresh", null);
+  stravaExpires = load("lk_strava_expires", 0);
+  if (stravaToken && (!stravaActivities || stravaActivities.length === 0)) {
+    stravaActivities = load("lk_strava_activities", []);
+    window.stravaActivities = stravaActivities;
+  }
+}
 
 // ── Source de vérité unifiée pour l'ACWR (§9.3 doc intégration moteur) ──────
 // Remplace calculerACWR()/kmParJour() (plan-generator.classic.js, retirées
