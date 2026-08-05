@@ -1134,6 +1134,16 @@ let sessionRpe = load(clePourPlan("lk_session_rpe"), {}); // {uid: 1|2|3}
 // historique conservé au-delà de la valeur du jour — pas d'usage identifié
 // pour un historique pour l'instant (cf. mémoire de session 23/07/2026).
 let sessionReadiness = load(clePourPlan("lk_session_readiness"), {}); // {uid: "fatigue"|"normal"|"forme"}
+
+// Registre des km déjà comptabilisés dans profilCoureur.kmCumulesTotal,
+// par uid de séance — 05/08/2026, badge "km cumulés" (chantier avec
+// Laurent, cf. inventaire §16). Nécessaire pour que le cumul reste
+// IDEMPOTENT : un statut peut être changé plusieurs fois (✅ puis
+// corrigé, ou même valeur reposée par erreur) sans jamais compter deux
+// fois la même séance ni "oublier" de retirer ses km si le statut
+// redevient —/❌/😴. Préfixé par plan comme le reste des données de
+// séance (clePourPlan) — un uid de séance n'a de sens que dans son plan.
+let kmComptesParUid = load(clePourPlan("lk_km_comptes_par_uid"), {}); // {uid: kmDejaComptes}
 let stravaToken = load("lk_strava_token", null);
 let stravaRefresh = load("lk_strava_refresh", null);
 let stravaExpires = load("lk_strava_expires", 0);
@@ -5595,6 +5605,13 @@ function renderStatusRow(uid, dateSeance) {
       // immédiat ici, avant tout render(), pour que statutEffectif reflète
       // toujours le tout dernier clic.
       ALL_SESSIONS = recalculerAllSessions();
+      // Cumul km total (badge "km cumulés", 05/08/2026) — ajusté à CHAQUE
+      // changement de statut, y compris un retour à "—"/"❌"/"😴" (retire
+      // alors les km déjà comptés pour cette séance). Volontairement après
+      // recalculerAllSessions() mais avant tout render() : ne dépend que de
+      // statuses[uid]/manualPerf[uid]/stravaActivities, déjà à jour à ce
+      // point, et n'a pas besoin d'attendre le rendu pour s'exécuter.
+      recalculerKmComptesPourUid(uid, dateSeance);
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
       // cette carte (render() reconstruit toute la vue). Corrigé : met à
@@ -6142,6 +6159,45 @@ function getStravaRunSiPasManuel(date, uid, activites) {
   if (uid && manualPerf[uid]) return null;
   const source = activites || stravaActivities;
   return source.find(a => a.start_date_local?.slice(0,10) === date) || null;
+}
+
+// Ajuste profilCoureur.kmCumulesTotal pour UNE séance (uid), de façon
+// idempotente — 05/08/2026, badge "km cumulés" (cumul TOTAL tous plans
+// confondus, décision actée avec Laurent). Appelée à chaque changement de
+// statut (renderStatusRow). Ne recalcule jamais tout le cumul depuis zéro
+// (coûteux, nécessiterait de reparcourir tous les plans) — ajuste
+// seulement la différence entre ce qui était déjà compté pour CETTE
+// séance (kmComptesParUid[uid], 0 si jamais comptée) et ce qui devrait
+// l'être maintenant (km réels si statut ✅/⚠️, 0 sinon pour ❌/😴/—).
+//
+// Source des km réels : même hiérarchie que le reste de l'app
+// (getStravaRunSiPasManuel — manualPerf prime sur Strava/FIT pour ce uid
+// si présent, cf. son commentaire). distance Strava en mètres, convertie
+// en km ; manualPerf[uid].distance déjà en km.
+function recalculerKmComptesPourUid(uid, dateSeance) {
+  const statutActuel = statuses[uid] || "—";
+  const compteMaintenant = (statutActuel === "✅" || statutActuel === "⚠️");
+  let kmReels = 0;
+  if (compteMaintenant) {
+    if (manualPerf[uid]?.distance) {
+      kmReels = manualPerf[uid].distance;
+    } else {
+      const run = getStravaRunSiPasManuel(dateSeance, uid);
+      if (run?.distance) kmReels = run.distance / 1000;
+    }
+  }
+  const kmDejaComptes = kmComptesParUid[uid] || 0;
+  const diff = kmReels - kmDejaComptes;
+  if (diff === 0) return; // rien à ajuster (cas fréquent : re-clic sur le même statut)
+
+  profilCoureur.kmCumulesTotal = Math.max(0, (profilCoureur.kmCumulesTotal || 0) + diff);
+  if (kmReels > 0) {
+    kmComptesParUid[uid] = kmReels;
+  } else {
+    delete kmComptesParUid[uid]; // séance non comptée : pas la peine de garder une entrée à 0
+  }
+  save(clePourPlan("lk_km_comptes_par_uid"), kmComptesParUid);
+  sauvegarderProfilCoureur();
 }
 
 function distanceEffortStructure(structureIntervalles) {
