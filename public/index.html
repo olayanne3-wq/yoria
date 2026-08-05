@@ -5982,7 +5982,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       // par un clic sur le statut lui-même — sans cet appel, le cumul restait
       // figé sur l'ancienne valeur (0 si jamais compté, ou une distance
       // périmée si la saisie est corrigée après un premier enregistrement).
-      recalculerKmComptesPourUid(uid, dateSeance);
+      recalculerKmComptesPourUid(uid, s.date);
       rebuildPredHistory();
       expanded = false;
       formWrap.style.display = "none";
@@ -6009,7 +6009,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       // cumul si elle l'était. Appelé APRÈS la suppression de statuses[uid]
       // pour que recalculerKmComptesPourUid() lise bien le nouvel état (—)
       // et retire les km déjà enregistrés dans kmComptesParUid[uid].
-      recalculerKmComptesPourUid(uid, dateSeance);
+      recalculerKmComptesPourUid(uid, s.date);
       if (avaitAllure) rebuildPredHistory(); // ré-agréger sans cette saisie (Strava reprend la main s'il existe)
       expanded = false;
       formWrap.style.display = "none";
