@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+successfully downloaded text file (SHA: 21c91dd588888781133992a22d73869f505db0e2)<!DOCTYPE html>
 <html lang="fr">
 <head>
 <!-- Sentry (suivi d'erreurs, ajouté le 20/07/2026 pour les beta testeurs).
@@ -352,6 +352,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     cloturerPlanSupabase: syncModule.cloturerPlanSupabase,
     mettreAJourPlanSupabase: syncModule.mettreAJourPlanSupabase,
     chargerPlansSupabase: syncModule.chargerPlansSupabase,
+    chargerResultatsCoursesSupabase: syncModule.chargerResultatsCoursesSupabase,
     rejouerFileSync: syncModule.rejouerFileSync,
     activerRealtime: syncModule.activerRealtime
   };
@@ -6455,6 +6456,62 @@ function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements, o
   );
 }
 
+// "🏅 Mes courses" (05/08/2026) — historique des résultats de course
+// saisis sur TOUS les plans du compte, pas seulement le plan actif
+// chargé en mémoire (cf. resultatCard, onglet Course). Nécessite une
+// lecture Supabase multi-plans (LkSync.chargerResultatsCoursesSupabase),
+// donc chargement ASYNCHRONE — contrairement à tous les autres groupes
+// accordéon de Stats qui lisent des données déjà en mémoire de façon
+// synchrone. Cache module-level (même pattern que window.__badgesCache__)
+// pour ne relancer la requête qu'une fois par session, pas à chaque
+// ouverture/fermeture du groupe.
+let mesCoursesCache = null; // null = jamais chargé, [] = chargé mais vide, [...] = résultats
+let mesCoursesEnCours = false;
+
+function renderMesCoursesEl(conteneur) {
+  conteneur.innerHTML = "";
+  if (mesCoursesEnCours) {
+    conteneur.appendChild(el("div",{class:"muted",style:{textAlign:"center",padding:"16px 0",fontSize:"13px",fontStyle:"italic"}},"Chargement de tes courses…"));
+    return;
+  }
+  if (mesCoursesCache === null) {
+    conteneur.appendChild(el("div",{class:"muted",style:{textAlign:"center",padding:"16px 0",fontSize:"13px",fontStyle:"italic"}},"Ouvre cette section pour charger tes résultats"));
+    return;
+  }
+  if (mesCoursesCache.length === 0) {
+    conteneur.appendChild(el("div",{class:"muted",style:{textAlign:"center",padding:"16px 0",fontSize:"13px",fontStyle:"italic"}},"Aucun résultat de course enregistré pour l'instant"));
+    return;
+  }
+  mesCoursesCache.forEach(r => {
+    const dateAff = r.dateCourse ? new Date(r.dateCourse+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}) : "";
+    const titre = r.raceName || r.nom || (r.distance ? r.distance : "Course");
+    const lignes = [];
+    if (r.details?.rpe) {
+      const opt = RPE_OPTIONS.find(o=>o.v===r.details.rpe);
+      if (opt) lignes.push(el("div",{style:{fontSize:"13px",color:"var(--text2)"}}, opt.e+" "+opt.label));
+    }
+    if (r.details?.classementGeneral?.place) {
+      lignes.push(el("div",{style:{fontSize:"13px",color:"var(--text2)"}},
+        "🏁 "+r.details.classementGeneral.place+(r.details.classementGeneral.total?"/"+r.details.classementGeneral.total:"")+" au général"));
+    }
+    if (r.details?.classementCategorie?.place) {
+      lignes.push(el("div",{style:{fontSize:"13px",color:"var(--text2)"}},
+        "👤 "+r.details.classementCategorie.place+(r.details.classementCategorie.total?"/"+r.details.classementCategorie.total:"")+" en catégorie"));
+    }
+    if (r.details?.commentaire) {
+      lignes.push(el("div",{style:{fontSize:"13px",color:"var(--text-muted)",fontStyle:"italic",marginTop:"2px"}}, "💬 "+r.details.commentaire));
+    }
+    conteneur.appendChild(el("div",{style:{background:"var(--border-soft)",borderRadius:"10px",padding:"12px",marginBottom:"8px"}},
+      el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"4px"}},
+        el("div",{style:{fontSize:"14px",fontWeight:"700",color:"var(--text)"}}, titre),
+        el("div",{style:{fontSize:"16px",fontWeight:"800",color:"var(--accent)"}}, fmtTime(r.tempsSecondes))
+      ),
+      dateAff ? el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginBottom:lignes.length?"6px":"0"}}, dateAff) : null,
+      ...lignes
+    ));
+  });
+}
+
 function renderStats() {
   const pred = currentPred||predict10K();
 
@@ -7455,6 +7512,42 @@ function renderStats() {
       infoEl
     ]),
 
+    // "🏅 Mes courses" (05/08/2026) — historique multi-plans, cf.
+    // renderMesCoursesEl ci-dessus. mesCoursesConteneur est construit une
+    // fois ici, réutilisé par onOuverture (pas de reconstruction complète
+    // du DOM à chaque ouverture/fermeture, seul son contenu interne
+    // change) — mesCoursesConteneur.innerHTML="" + reconstruction est géré
+    // DANS renderMesCoursesEl, pas ici.
+    (()=>{
+      const mesCoursesConteneur = el("div",{});
+      renderMesCoursesEl(mesCoursesConteneur); // état initial (cache déjà chargé, ou message d'invite)
+      return renderGroupeAccordeonStats("🏅","Mes courses","var(--accent2)", [
+        mesCoursesConteneur
+      ], () => {
+        // onOuverture : ne relance la requête Supabase qu'une fois par
+        // session (cache déjà chargé) — sinon lance le chargement et
+        // rafraîchit CE conteneur seul une fois la réponse arrivée,
+        // sans passer par un render() complet (cohérent avec le principe
+        // "pas de reconstruction inutile de tout l'écran" déjà appliqué
+        // ailleurs dans Stats/Réglages).
+        if (mesCoursesCache !== null || mesCoursesEnCours) return;
+        if (!window.__UTILISATEUR__?.id || !window.LkSync?.chargerResultatsCoursesSupabase) {
+          mesCoursesCache = [];
+          renderMesCoursesEl(mesCoursesConteneur);
+          return;
+        }
+        mesCoursesEnCours = true;
+        renderMesCoursesEl(mesCoursesConteneur);
+        window.LkSync.chargerResultatsCoursesSupabase(window.__UTILISATEUR__.id)
+          .then(resultats => { mesCoursesCache = resultats || []; })
+          .catch(() => { mesCoursesCache = []; })
+          .finally(() => {
+            mesCoursesEnCours = false;
+            renderMesCoursesEl(mesCoursesConteneur);
+          });
+      });
+    })(),
+
     // Section "Tests" (31/07/2026) — remise en place sur demande de
     // Laurent après un premier retrait complet le même jour : finalement
     // conservée, mais séparée des 4 groupes utilisateur ci-dessus plutôt
@@ -7931,6 +8024,27 @@ function renderCourse() {
   const resultatCard = (()=>{
     if (today() < DATE_COURSE_REFERENCE) return null;
     const existingResult = load(clePourPlan("lk_race_result"), null);
+    // Détails enrichis (05/08/2026, demande de Laurent) : ressenti (RPE,
+    // même échelle que RPE_OPTIONS/renderStatusRow — réutilisée telle
+    // quelle plutôt qu'une nouvelle échelle dédiée course), commentaire
+    // libre, classement général et classement catégorie (place/total
+    // chacun). Stockés dans une clé SÉPARÉE (lk_race_result_details)
+    // plutôt que de changer le format de lk_race_result lui-même — ce
+    // dernier reste un simple nombre de secondes, lu tel quel par 3
+    // autres points d'appel (bannière post-course dashboard, export PDF,
+    // check hasRes des Réglages) qui font tous des calculs arithmétiques
+    // directs dessus (raceResult - raceGoalTime, etc.) ; changer son
+    // format aurait cassé ces 3 usages sans les toucher un par un. Aucune
+    // migration nécessaire : un résultat déjà saisi avant ce chantier
+    // reste valide, ses détails sont simplement absents (null) jusqu'à
+    // ce que le coureur les renseigne.
+    const existingDetails = load(clePourPlan("lk_race_result_details"), null);
+    let rpeVal = existingDetails?.rpe || null;
+    let classementGeneralPlace = existingDetails?.classementGeneral?.place ?? "";
+    let classementGeneralTotal = existingDetails?.classementGeneral?.total ?? "";
+    let classementCategoriePlace = existingDetails?.classementCategorie?.place ?? "";
+    let classementCategorieTotal = existingDetails?.classementCategorie?.total ?? "";
+
     const inp2 = document.createElement("input");
     inp2.type="time"; inp2.step="1";
     inp2.style.cssText="flex:1;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:16px;";
@@ -7938,15 +8052,93 @@ function renderCourse() {
       const hh=Math.floor(existingResult/3600), mm=Math.floor((existingResult%3600)/60), ss3=existingResult%60;
       inp2.value=hh.toString().padStart(2,"0")+":"+mm.toString().padStart(2,"0")+":"+ss3.toString().padStart(2,"0");
     }
+
+    // Ressenti (RPE) — même rendu visuel que renderStatusRow (5 boutons
+    // emoji, libellé CR-10 sous la rangée), câblé sur une variable locale
+    // rpeVal plutôt que sessionRpe[uid] (aucun uid de séance pertinent
+    // ici : le résultat de course n'est pas rattaché à une séance du
+    // plan, seulement à DATE_COURSE_REFERENCE).
+    const rpeRow = el("div",{style:{display:"flex",gap:"6px",width:"100%",flexWrap:"nowrap",marginTop:"6px"}});
+    const rpeLabel = el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px",minHeight:"16px"}});
+    const rebuildRpe = () => {
+      rpeRow.innerHTML = "";
+      const optionActuelle = RPE_OPTIONS.find(o=>o.v===rpeVal);
+      rpeLabel.textContent = optionActuelle ? optionActuelle.label : "";
+      RPE_OPTIONS.forEach(o=>{
+        const rb = el("button",{title:o.label,type:"button",style:{
+          flex:"1",padding:"10px 0",fontSize:"18px",cursor:"pointer",
+          background:rpeVal===o.v?"var(--warn)":"var(--border-soft)",
+          border:`1px solid ${rpeVal===o.v?"var(--warn)":"var(--border)"}`,borderRadius:"8px"
+        }}, o.e);
+        rb.addEventListener("click", avecRetourTactile((e)=>{
+          e.preventDefault(); e.stopPropagation();
+          rpeVal = rpeVal===o.v ? null : o.v;
+          rebuildRpe();
+        }));
+        rpeRow.appendChild(rb);
+      });
+    };
+    rebuildRpe();
+
+    const commentInp = document.createElement("textarea");
+    commentInp.value = existingDetails?.commentaire || "";
+    commentInp.placeholder = "Un souvenir de cette course ? (facultatif)";
+    commentInp.rows = 2;
+    commentInp.style.cssText = "width:100%;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:14px;margin-top:8px;resize:vertical;box-sizing:border-box;font-family:inherit;";
+
+    // Classements — 2 champs numériques par classement (place/total),
+    // simples volontairement (pas de temps intermédiaires ni d'écart au
+    // premier — jugé disproportionné pour ce module, décision du
+    // 05/08/2026 avec Laurent).
+    const champClassement = (placeholder, valeurInitiale) => {
+      const i = document.createElement("input");
+      i.type = "number"; i.min = "1"; i.inputMode = "numeric";
+      i.placeholder = placeholder;
+      i.value = valeurInitiale === "" ? "" : String(valeurInitiale);
+      i.style.cssText = "width:100%;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:14px;box-sizing:border-box;";
+      return i;
+    };
+    const inpClGeneralPlace = champClassement("Place", classementGeneralPlace);
+    const inpClGeneralTotal = champClassement("Total participants", classementGeneralTotal);
+    const inpClCategoriePlace = champClassement("Place", classementCategoriePlace);
+    const inpClCategorieTotal = champClassement("Total participants", classementCategorieTotal);
+
+    const ligneClassement = (labelTxt, inpPlace, inpTotal) => el("div",{style:{marginTop:"8px"}},
+      el("div",{style:{fontSize:"12px",color:"var(--text2)",marginBottom:"4px"}},labelTxt),
+      el("div",{style:{display:"flex",gap:"8px",alignItems:"center"}},
+        inpPlace,
+        el("span",{style:{color:"var(--text-muted)",fontSize:"14px"}},"/"),
+        inpTotal
+      )
+    );
+
     const btn2=document.createElement("button");
     btn2.textContent=existingResult?"Modifier":"Enregistrer";
-    btn2.style.cssText="background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#F8FAFC;font-size:14px;font-weight:700;cursor:pointer;";
+    btn2.style.cssText="background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#F8FAFC;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:12px;";
     btn2.addEventListener("click",()=>{
       const parts=inp2.value.split(":");
       if(parts.length>=2){
         const secs=parseInt(parts[0])*3600+parseInt(parts[1])*60+(parseInt(parts[2])||0);
         if(!isNaN(secs)&&secs>0){
           save(clePourPlan("lk_race_result"),secs);
+
+          // Détails enrichis — un champ vide/non renseigné n'est jamais
+          // forcé à 0 (parseInt("") est NaN) : reste undefined, absent
+          // de l'objet sauvegardé plutôt qu'une fausse valeur "0".
+          const parsePositif = (v) => { const n = parseInt(v, 10); return (!isNaN(n) && n > 0) ? n : undefined; };
+          const clGeneralPlace = parsePositif(inpClGeneralPlace.value);
+          const clGeneralTotal = parsePositif(inpClGeneralTotal.value);
+          const clCategoriePlace = parsePositif(inpClCategoriePlace.value);
+          const clCategorieTotal = parsePositif(inpClCategorieTotal.value);
+          const commentaireTxt = commentInp.value.trim();
+          const details = {
+            rpe: rpeVal || null,
+            commentaire: commentaireTxt || null,
+            classementGeneral: (clGeneralPlace || clGeneralTotal) ? { place: clGeneralPlace ?? null, total: clGeneralTotal ?? null } : null,
+            classementCategorie: (clCategoriePlace || clCategorieTotal) ? { place: clCategoriePlace ?? null, total: clCategorieTotal ?? null } : null,
+          };
+          save(clePourPlan("lk_race_result_details"), details);
+
           // Badge "record_battu" (02/08/2026, déplacé ici depuis
           // sauvegarderUnRecord() — cf. son commentaire pour le détail du
           // bug corrigé : le badge se déclenchait auparavant sur une
@@ -7975,14 +8167,22 @@ function renderCourse() {
       }
     });
     const row2=document.createElement("div"); row2.style.cssText="display:flex;gap:8px;margin-top:8px;";
-    row2.appendChild(inp2); row2.appendChild(btn2);
+    row2.appendChild(inp2);
     const card2=el("div",{style:{marginBottom:"16px"}},
       el("div",{class:"label"},"🏅 Mon résultat officiel"),
       card(
         el("div",{style:{color:"var(--text-muted)",fontSize:"13px"}},existingResult?"Résultat : "+fmtTime(existingResult):"Saisis ton temps après la course")
       )
     );
-    card2.querySelector("div:last-child").appendChild(row2);
+    const zoneSaisie = card2.querySelector("div:last-child");
+    zoneSaisie.appendChild(row2);
+    zoneSaisie.appendChild(el("div",{style:{fontSize:"11px",color:"var(--text2)",marginTop:"10px"}},"Ressenti"));
+    zoneSaisie.appendChild(rpeRow);
+    zoneSaisie.appendChild(rpeLabel);
+    zoneSaisie.appendChild(commentInp);
+    zoneSaisie.appendChild(ligneClassement("Classement général", inpClGeneralPlace, inpClGeneralTotal));
+    zoneSaisie.appendChild(ligneClassement("Classement catégorie", inpClCategoriePlace, inpClCategorieTotal));
+    zoneSaisie.appendChild(btn2);
     return card2;
   })();
 
