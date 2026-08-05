@@ -153,7 +153,32 @@ export function weightedAvgByEffortDuration(sessionType, runs, dateDebutPlan, ct
 
   manualSessions.forEach(sess => {
     const mp = manualPerf[sess.uid];
-    const distance = mp.distance || distanceEffortStructureFn(sess.structureIntervalles) || 0;
+    // CORRECTIF (05/08/2026, bug signalé par Laurent : "modifier la durée
+    // totale de la séance change l'estimation, alors que seule l'allure
+    // des intervalles devrait compter"). AVANT ce correctif, cette ligne
+    // utilisait `mp.distance` en priorité — qui est la distance TOTALE de
+    // la séance (échauffement + effort + récup + retour au calme, cf.
+    // distanceTotaleAvecRecup côté index.html) quand une durée totale a
+    // été saisie. Le "lap virtuel" ci-dessous prétendait alors que TOUTE
+    // cette distance avait été courue à `mp.average_speed` (l'allure des
+    // INTERVALLES uniquement, saisie via le stepper) — gonflant
+    // artificiellement effortDuration (donc le poids de cette séance dans
+    // la moyenne pondérée) proportionnellement à la durée d'échauffement/
+    // récup saisie, qui n'a pourtant AUCUN rapport avec la performance
+    // VMA/SEUIL réelle. Plus l'échauffement saisi était long, plus
+    // l'estimation se déplaçait — comportement illogique.
+    //
+    // Fix : utilise TOUJOURS distanceEffortStructureFn (distance d'EFFORT
+    // SEUL, sans échauffement/récup/retour au calme), jamais mp.distance.
+    // distanceEffortStructureFn accepte un second paramètre optionnel
+    // (allure de repli) côté index.html depuis ce même 05/08/2026 — passé
+    // ici via mp.average_speed converti en secondes/km, pour rester
+    // cohérent avec le repli déjà en place à la sauvegarde de la saisie
+    // (distanceEffortStructure(structureIntervalles, paceSec) — même
+    // valeur, recalculée ici pour ne pas dépendre d'un état supplémentaire
+    // à stocker sur mp).
+    const allureReplixSecParKm = mp.average_speed > 0 ? Math.round(1000 / mp.average_speed) : null;
+    const distance = distanceEffortStructureFn(sess.structureIntervalles, allureReplixSecParKm) || 0;
     if (!distance) return; // pas de distance connue : lap virtuel impossible à pondérer, ignoré plutôt que fausser le calcul
     const effortDuration = distance / mp.average_speed;
     weightedSpeed += mp.average_speed * effortDuration;
