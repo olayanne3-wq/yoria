@@ -6193,11 +6193,13 @@ function getStravaRunSiPasManuel(date, uid, activites) {
 // Ajuste profilCoureur.kmCumulesTotal pour UNE séance (uid), de façon
 // idempotente — 05/08/2026, badge "km cumulés" (cumul TOTAL tous plans
 // confondus, décision actée avec Laurent). Appelée à chaque changement de
-// statut (renderStatusRow). Ne recalcule jamais tout le cumul depuis zéro
-// (coûteux, nécessiterait de reparcourir tous les plans) — ajuste
-// seulement la différence entre ce qui était déjà compté pour CETTE
-// séance (kmComptesParUid[uid], 0 si jamais comptée) et ce qui devrait
-// l'être maintenant (km réels si statut ✅/⚠️, 0 sinon pour ❌/😴/—).
+// statut (renderStatusRow, et depuis le 05/08/2026 aussi les deux points
+// d'auto-validation après import Strava). Ne recalcule jamais tout le
+// cumul depuis zéro (coûteux, nécessiterait de reparcourir tous les plans)
+// — ajuste seulement la différence entre ce qui était déjà compté pour
+// CETTE séance (kmComptesParUid[uid], 0 si jamais comptée) et ce qui
+// devrait l'être maintenant (km réels si statut ✅/⚠️/❌, 0 sinon pour
+// 😴/—, cf. plus bas).
 //
 // Source des km réels : même hiérarchie que le reste de l'app
 // (getStravaRunSiPasManuel — manualPerf prime sur Strava/FIT pour ce uid
@@ -6205,7 +6207,12 @@ function getStravaRunSiPasManuel(date, uid, activites) {
 // en km ; manualPerf[uid].distance déjà en km.
 function recalculerKmComptesPourUid(uid, dateSeance) {
   const statutActuel = statuses[uid] || "—";
-  const compteMaintenant = (statutActuel === "✅" || statutActuel === "⚠️");
+  // ❌ inclus depuis le 05/08/2026 (décision de Laurent) : une séance
+  // marquée ❌ (faite mais non conforme au plan — mauvaise allure, écourtée,
+  // etc.) a quand même été courue, ses km sont réels et comptent pour le
+  // cumul total au même titre que ✅/⚠️. Seuls 😴 (non faite) et — (statut
+  // non posé) restent exclus.
+  const compteMaintenant = (statutActuel === "✅" || statutActuel === "⚠️" || statutActuel === "❌");
   let kmReels = 0;
   if (compteMaintenant) {
     if (manualPerf[uid]?.distance) {
@@ -8455,6 +8462,12 @@ function showSessionMenu(week, slotIdx) {
             if (auto) statuses[uid] = auto;
             save(clePourPlan("lk_statuses"), statuses);
             ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
+            // Cumul km (badge "km cumulés", 05/08/2026) — même correctif que
+            // pour l'auto-validation en masse (ligne ~10982) : ce second
+            // chemin (choix explicite d'une activité ambiguë) pose aussi un
+            // statut hors du clic normal dans renderStatusRow(), donc sans
+            // ce recalcul ses km ne seraient jamais comptés non plus.
+            if (auto && sessionPourValidation.date) recalculerKmComptesPourUid(uid, sessionPourValidation.date);
           }
           overlay.remove();
           render();
@@ -10983,6 +10996,17 @@ function matchActivitiesToPlan(activities) {
         if (auto) {
           statuses[s.uid] = auto;
           if (s.date === aujourdhui) statutDuJourChange = true;
+          // Cumul km (badge "km cumulés", 05/08/2026) — bug signalé par
+          // Laurent : une séance auto-validée par la synchro Strava (cas le
+          // plus fréquent en pratique, cf. commentaire ci-dessous) ne
+          // passait jamais par recalculerKmComptesPourUid(), qui n'était
+          // appelée que depuis le clic manuel dans renderStatusRow(). Ses km
+          // n'étaient donc jamais ajoutés au cumul tant que l'utilisateur ne
+          // recliquait pas manuellement sur un statut déjà posé (ce qui ne
+          // change rien : diff=0, cf. le early-return de la fonction).
+          // Appelé ici, juste après avoir posé le statut, pour ce cas
+          // précis d'auto-validation en masse.
+          if (typeof recalculerKmComptesPourUid === 'function') recalculerKmComptesPourUid(s.uid, s.date);
         }
       }
     }
