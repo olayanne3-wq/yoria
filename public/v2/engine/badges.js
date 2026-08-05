@@ -39,6 +39,7 @@ export const DEFINITIONS_BADGES = {
   nouvelle_estimation:   { categorie: 'progression', paliers: [] },
   record_battu:          { categorie: 'progression', paliers: [] },
   test_semi_cooper:      { categorie: 'progression', paliers: [] },
+  km_cumules:            { categorie: 'progression', paliers: [50, 100, 250, 500, 1000, 1500, 2000] },
   repos_ecoute:          { categorie: 'corps',        paliers: [] },
   semaine_equilibree:    { categorie: 'corps',        paliers: [] },
   premier_plan:          { categorie: 'etapes',       paliers: [] },
