@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+successfully downloaded text file (SHA: 3ea7d38ee4d1dc2ff1064326aa3a23aa88fc515d)<!DOCTYPE html>
 <html lang="fr">
 <head>
 <!-- Sentry (suivi d'erreurs, ajouté le 20/07/2026 pour les beta testeurs).
@@ -776,6 +776,33 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 let _renderDiffereTimer = null;
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
+
+// Relecture stravaToken/stravaRefresh/stravaExpires/stravaActivities depuis
+// localStorage — 05/08/2026, bug signalé par Laurent (deux symptômes liés :
+// pas de synchro auto à l'ouverture, et "perte" de la synchro après un F5).
+// Cause : ces variables sont lues UNE SEULE FOIS à leur déclaration (ligne
+// ~1147), donc AVANT ce await — sur un appareil/session où le token n'était
+// pas encore en localStorage à cet instant précis (rechargement complet,
+// nouvel appareil, cache navigateur vidé...), elles restent figées à leur
+// valeur initiale (null/vide) pour tout le reste de l'exécution, même après
+// que le préchargement Supabase ci-dessus ait fini d'écrire le vrai token
+// en localStorage. autoSync() (plus bas dans ce fichier) teste alors
+// `if (stravaToken && ...)` sur une variable qui ne reflète jamais la
+// réalité fraîchement rechargée, et ne déclenche donc jamais la synchro
+// automatique attendue. Correctif : relire explicitement depuis
+// localStorage à cet instant, une fois qu'on est sûr que le préchargement
+// est terminé — avant que autoSync()/tout autre code plus bas ne lise ces
+// variables.
+if (!stravaToken) {
+  stravaToken = load("lk_strava_token", null);
+  stravaRefresh = load("lk_strava_refresh", null);
+  stravaExpires = load("lk_strava_expires", 0);
+  if (stravaToken && (!stravaActivities || stravaActivities.length === 0)) {
+    stravaActivities = load("lk_strava_activities", []);
+    window.stravaActivities = stravaActivities;
+  }
+}
+
 
 // Deuxième passe de préchargement, cette fois avec le planId maintenant
 // connu (window.__PLAN_BRUT__.id) — remplit localStorage avec les
