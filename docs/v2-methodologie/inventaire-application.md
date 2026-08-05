@@ -94,7 +94,12 @@ début de script, avant tout `await import(...)` — un pattern différé
 laisse une fenêtre où `if (window.__AUTH_PRET__)` échoue silencieusement
 (JS résout immédiatement une valeur non-promise). Piège déjà rencontré
 dans les deux fichiers principaux : toujours vérifier ce point avant
-d'introduire une nouvelle promesse globale équivalente.
+d'introduire une nouvelle promesse globale équivalente. **Même règle
+appliquée le 04/08/2026** à `_renderDiffereTimer` (cf. §4, mécanisme de
+regroupement des rendus automatiques) — une simple variable `let`, pas
+une promesse, mais soumise au même risque de zone morte temporelle (TDZ)
+si elle est lue avant sa ligne de déclaration depuis du code exécuté tôt
+dans le script.
 
 **Écran "Consulter un plan" — accordéon "Modifier mon plan"
 (`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
@@ -174,23 +179,79 @@ Fonctions de rendu (`render*`) :
 - `ouvrirPpsModale` — modale PPS (cf. plus bas)
 - `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans référence)
 
-**Aide** — contenu réorganisé par intention : Démarrer / Comprendre les
-écrans / Comprendre les séances / Pour aller plus loin (règles du plan) /
-Comprendre le moteur Yoria / Types de plan / Sources de données / FAQ.
-Accès via `boutonAide()`, visible sur chaque onglet.
+**Aide — tutos par action en tuiles, en coexistence avec les sections
+thématiques (04/08/2026)** — nouvelle section "🛠️ Tutos par action" dans
+`HELP_SECTIONS`, distincte des 7 sections thématiques existantes
+(Démarrer / Comprendre les écrans / Comprendre les séances / Pour aller
+plus loin / Comprendre le moteur Yoria / Types de plan / Sources de
+données / FAQ), qui gardent leur rendu en accordéon inchangé. Un
+sélecteur à deux onglets segmentés ("Aide" / "Tutos", style pilule) est
+affiché en haut de l'écran — l'onglet Tutos affiche une grille de tuiles
+(2 colonnes, hauteur fixe 112px, icône + titre) regroupées par thème
+(`TUTOS_GROUPES` : Démarrer / Au quotidien / Gérer son plan / Suivi /
+Compte), un clic ouvre le tuto en vue détail (titre affiché dans le
+header sticky de l'app, bouton retour ‹ qui ramène à la grille plutôt
+qu'au dashboard). 16 tutos rédigés au 04/08/2026 : Créer un plan, Test
+semi-Cooper, Choisir sa source de données, Carte "Aujourd'hui", Import
+.fit, Programmer sur montre, Readiness/RPE, Répondre à une proposition
+d'ajustement, Échanger deux séances, Modifier son plan, Estimation de
+performance, Lire les Stats, Jour de course, Strava, PPS, Abonnement.
+Chaque tuto porte `id`/`icon`/`title`/`text` (résumé pour la recherche)
+et `blocks` (paragraphes/titres/liste/image) pour un rendu riche —
+`text` reste le seul champ utilisé par les 7 sections thématiques
+classiques (fallback texte brut si `blocks` absent, zéro régression). La
+recherche (`_helpRecherche`) reste transversale aux deux onglets :
+pendant une recherche active, les onglets sont masqués et les résultats
+des tutos + sections classiques s'affichent ensemble en liste plate,
+comme avant l'ajout des tuiles. `renderDiffere()`/`_helpTutoOuvert`/
+`_helpOngletActif` réinitialisés à chaque montage de l'écran (`setView("help")`).
+**Remplace le chantier "mini-tuto import FIT" du 03/08/2026**, testé
+puis explicitement retiré le même jour (jugé insuffisant — visible
+seulement en mode FIT, structure thématique inadaptée à l'usage voulu).
+Reste ouvert : 0 des 16 tutos n'a encore d'image (le premier jet du tuto
+"Carte Aujourd'hui" avait une capture légendée intégrée au texte, retirée
+lors d'une réécriture du ton — Laurent prévoit de fournir des captures au
+fil de l'eau, le format `blocks` supporte déjà `{type:"img", src, alt,
+caption}` sans changement de code nécessaire).
 
 **Architecture** : contenu extrait dans `public/help-content.js` (module
 de données pur, aucun DOM), importé dynamiquement au premier affichage,
 mis en cache (`_helpContentCache`) — éditer un texte d'aide ne touche
-plus jamais `index.html`. Accordéon replié par défaut
-(`_helpSectionsOuvertes`, réinitialisé à chaque ouverture de l'écran).
-Recherche texte (`_helpRecherche`) qui filtre en direct et déplie
-automatiquement les sections matchées — combine accordéon (parcours
-calme) et recherche (accès direct).
+plus jamais `index.html`, SAUF pour ajouter un nouveau type de bloc au
+renderer `rendreBlocsItem()` (cf. ci-dessus, tutos). Accordéon replié par
+défaut sur les sections classiques (`_helpSectionsOuvertes`, réinitialisé
+à chaque ouverture de l'écran). Recherche texte qui filtre en direct et
+déplie automatiquement les sections/tutos matchés.
 
 **Barre de navigation** — montée dans `#nav-root`, conteneur distinct de
 `#app` (via `replaceChildren`), pour éviter le flash de la barre à chaque
 render. `setView()` scrolle en haut AVANT `render()`.
+
+**`render()` — remplacement atomique du contenu (04/08/2026)** —
+`app.innerHTML=""` n'est plus exécuté en tout début de fonction (avant
+même que le nouveau contenu ne soit construit) : le nouveau
+header/contenu est entièrement construit d'abord, puis substitué à
+l'ancien en une seule opération (`app.replaceChildren(...)`) à la toute
+fin de la fonction — plus aucune frame intermédiaire avec `#app` vide
+n'est peinte par le navigateur. Même principe que le correctif déjà
+appliqué à `#nav-root` le 24/07/2026 (cf. ci-dessus), étendu au
+conteneur principal. Voir le chantier "clignotement au chargement" (§16)
+pour le contexte complet de cette recherche et ses limites.
+
+**`renderDiffere()` — regroupement des rendus automatiques (04/08/2026)**
+— plusieurs mises à jour asynchrones se produisent automatiquement après
+le premier rendu (badges débloqués, message du coach, météo actuelle,
+notes météo J+1, reconstruction de l'historique de prédiction) : chacune
+appelait `render()` séparément, produisant un flash distinct à chaque
+fois. `renderDiffere()` (debounce 50ms, `_renderDiffereTimer` déclarée
+tout en tête du script principal — cf. §3) regroupe ces mises à jour
+automatiques en un seul rendu si elles arrivent à moins de 50ms d'écart.
+Réservé aux mises à jour SANS retour utilisateur immédiat attendu — toute
+action explicite (clic, saisie) continue d'appeler `render()` directement.
+`render()` annule systématiquement tout timer `renderDiffere()` en
+attente à chaque exécution (immédiate ou différée), pour ne jamais
+produire un rendu redondant. N'a pas éliminé la perception du
+clignotement au chargement observée par Laurent — cf. §16.
 
 **Swipe horizontal entre onglets** — actif sur les vues de `NAV` (pas
 `weekDetail`/`help`), détection par direction dominante du geste, seuil
@@ -217,7 +278,21 @@ manuelle, repliée par défaut. Auto-ouverture du popover (jamais du
 sous-formulaire) après un clic manuel sur ✅/⚠️/❌ sans activité
 existante — jamais sur validation automatique via synchro. Implémenté
 via une variable transitoire de scope module
-(`uidAOuvrirPopoverSaisie`), consommée au montage.
+(`uidAOuvrirPopoverSaisie`), consommée au montage. **Doublon visuel du
+crayon corrigé le 04/08/2026** : le popover affichait un second crayon
+(✏️) en résumé de sa propre ligne "Saisir ou corriger manuellement",
+redondant avec le crayon du header qui vient d'être cliqué pour ouvrir ce
+même popover — retiré.
+
+**Mini-frise semaine (vue Semaine, `L M M J V S D`) — couleur du type
+TEST manquante, corrigée le 04/08/2026** — cette mini-frise utilise deux
+dictionnaires locaux dupliqués (`TYPE_SEANCE_COULEUR`, `TYPE_SEANCE_LABEL`),
+distincts du dictionnaire global `STYPES` utilisé partout ailleurs dans
+l'app — ni l'un ni l'autre ne couvraient le type `TEST` (ajouté plus tard
+pour le test semi-Cooper, cf. §7/§14), affichant la séance test sans
+couleur de fond. Les deux dictionnaires locaux ont été complétés
+(`TEST: "var(--warn)"`, libellé "Test") plutôt que remplacés par
+`STYPES` — pas de refactorisation plus large entreprise.
 
 **Bandeau "Strava déconnecté" sur le dashboard (02/08/2026)** — le signal
 de déconnexion (`stravaAuthInvalide` : token présent mais invalide/expiré
@@ -355,9 +430,13 @@ déjà un statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`.
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`
 en brut), `abonnements`, `beta_testers`, `signalements`, `badges_debloques`
-(cf. §11, §16). Sync Realtime activée sur `plan_donnees` (anti-écho 3s).
-File d'attente de sync en cas d'échec réseau (`lk_file_attente_sync`, 5
-min, abandon après 10 essais).
+(cf. §11, §16). Sync Realtime activée sur `plan_donnees` (anti-écho 3s) —
+**établissement du canal WebSocket non-bloquant depuis le 04/08/2026**
+(cf. §16, chantier clignotement au chargement) : `activerRealtime()`
+n'est plus `await`-é avant le premier `render()`, le canal continue de
+s'établir en arrière-plan (fire-and-forget). File d'attente de sync en
+cas d'échec réseau (`lk_file_attente_sync`, 5 min, abandon après 10
+essais).
 
 **Sauvegarde de plan — Supabase est l'unique mécanisme de persistance.**
 Le système Gist v2 (`gist-sync.js`) a été entièrement retiré des écritures
@@ -791,7 +870,13 @@ des 5 modules mais lit les mêmes données. Deux couches :
   `rebuildPredHistorySequentielle()` applique la convergence jour par
   jour depuis le début du plan. `PREDICTOR_VERSION` (actuellement 12)
   déclenche la reconstruction si incrémentée — geste manuel requis à
-  chaque changement de formule.
+  chaque changement de formule. **Premier rendu différé depuis le
+  04/08/2026** (cf. §4/§16) : quand une reconstruction est nécessaire au
+  chargement, `rebuildPredHistory()` affiche un état intermédiaire
+  "recalcul en cours" via `renderDiffere()` plutôt que `render()`
+  immédiat — n'est peint que si le calcul qui suit dépasse 50ms, absorbé
+  sinon par le second `render()` (résultat final) qui suit dans la même
+  exécution synchrone.
 - Formule Daniels-Gilbert (VDOT) pour SEUIL — remplace Riegel,
   structurellement pessimiste sur un effort sous-maximal (chapitre 5 du
   livre Daniels absent du fichier projet, formule reconstruite par
@@ -944,9 +1029,19 @@ aucun plan n'est disponible.
 Strava GPS pour actuelle/passée, position navigateur pour prévision J+1.
 Heure réelle de séance extraite de `start_date_local` pour la météo
 passée (repli 18h si absente). `timezone: "Europe/Paris"` fixe côté
-serveur (chantier ouvert, cf. §16).
+serveur (chantier ouvert, cf. §16). **`fetchWeather()`/
+`verifierMeteoSeanceDemain()` en rendu différé depuis le 04/08/2026**
+(cf. §4/§16) : ces deux fonctions s'exécutent immédiatement au
+chargement (fire-and-forget, jamais `await`-ées), leur `render()` de fin
+pointe désormais vers `renderDiffere()` plutôt qu'un rendu immédiat.
 
 **Coach (messages courts)** — `api/coach.js`, proxy Claude Haiku 4.5.
+**`fetchCoachMsg()` accepte un paramètre `differe`** (04/08/2026, cf.
+§16) : `true` uniquement pour l'appel de démarrage
+(`setTimeout(() => fetchCoachMsg(true), 2000)`), pour se regrouper avec
+d'autres mises à jour automatiques proches — les autres appels (après
+validation d'une séance, etc.) gardent `differe=false` par défaut, rendu
+immédiat.
 
 **Sync multi-device** — Supabase (auth email/mot de passe), seul
 mécanisme. Aucune action au-delà de se connecter avec le même compte.
@@ -1000,6 +1095,21 @@ résolve — retourne `{ok, echecChargementProfil}`, jamais de throw.
 l'écran de bienvenue si `echecChargementProfil` est vrai — sinon un
 `localStorage` non réhydraté est pris à tort pour "profil jamais
 renseigné" et écrase le vrai profil Supabase.
+
+**`monterEcranAuth()` — vérification de session AVANT construction du
+HTML (04/08/2026)** — jusqu'ici, le formulaire de connexion était
+TOUJOURS inséré dans le DOM en premier, puis masqué (`display:none`) une
+fois `getUser()` résolu positivement : sur une session déjà valide, ça
+produisait un flash visible du formulaire le temps de l'aller-retour
+réseau réel que fait Supabase pour valider la session (`getUser()` n'est
+pas une simple lecture de cache local, même avec une session déjà
+"connue" côté client). Corrigé en sortant la vérification de session
+dans une étape préalable, AVANT toute construction du HTML : si un
+utilisateur valide est trouvé (hors cas retour "mot de passe oublié",
+identifié via `window.location.hash.includes('type=recovery')`, qui
+force toujours la construction de l'écran), la fonction résout
+directement sans jamais insérer le moindre élément de formulaire dans le
+DOM.
 
 **Écran d'onboarding (`monterEcranOnboarding`, `auth.js`) — 5 pages
 (refonte du 01/08/2026, page Source de données ajoutée le 02/08/2026)** —
@@ -1140,7 +1250,9 @@ OAuth directement, seulement via cet écran.
 - **Cache client async : bien distinguer `undefined` (jamais initialisé)
   de `null`/valeur connue**
 - **Toute promesse globale attendue ailleurs doit être créée de façon
-  synchrone, avant tout `await`**
+  synchrone, avant tout `await`** — même règle pour une simple variable
+  `let` lue par une fonction hoisted appelable tôt dans l'exécution du
+  script (cf. §3, `_renderDiffereTimer`).
 - **Toute fonction de traduction entre formats (`v1-bridge.js` et
   équivalents) doit être mise à jour à chaque nouveau champ personnalisé**
 - **Toute fonction qui modifie/supprime un plan doit traiter Supabase
@@ -1182,7 +1294,16 @@ OAuth directement, seulement via cet écran.
   exposées) plutôt que par relecture répétée du code — plusieurs
   correctifs pertinents mais non prouvés ont été poussés avant qu'un
   diagnostic en direct ne confirme la vraie cause (01/08/2026,
-  roulette de records invisible dans un groupe accordéon).
+  roulette de records invisible dans un groupe accordéon). **Même
+  principe rappelé le 04/08/2026** sur le chantier "clignotement au
+  chargement" (cf. §16) : plusieurs corrections structurellement
+  correctes (thème, police, replaceChildren, defer, WebSocket non
+  bloquant) ont été poussées sans confirmation visuelle préalable,
+  avant qu'un test DevTools Performance + Screenshots (filmstrip) ne
+  révèle la vraie nature du symptôme (page blanche prolongée, pas un
+  double-rendu) — un outil de mesure réel (Network, Performance,
+  Console) aurait dû être mobilisé dès le premier signalement plutôt
+  qu'après plusieurs itérations de correctifs non concluants.
 - **Toute nouvelle table sensible (tokens, secrets) doit être ajoutée
   explicitement à la liste noire d'exclusion de `api/backup.js`
   (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
@@ -1232,7 +1353,24 @@ OAuth directement, seulement via cet écran.
   un comportement jamais complètement implémenté, ou retiré depuis sans
   mise à jour du commentaire. Cf. §4/§10, mécanisme d'auto-ouverture du
   popover ✏️, dont le déclenchement réel n'existait pas malgré un
-  commentaire l'affirmant.
+  commentaire l'affirmant. **Cas similaire rencontré le 04/08/2026** :
+  un commentaire affirmant que `VERSIONS[0].ver` était utilisée dans le
+  header du dashboard (`dashHeaderEl`) s'est révélé faux à la
+  vérification — seule `renderSettings()`/`buildVersionSection()` l'utilise
+  réellement, ce qui a évité à tort d'écarter un changement (`defer` sur
+  `changelog.classic.js`) qui semblait risqué sur la base de ce
+  commentaire seul.
+- **Avant de conclure qu'un enchaînement de `<script src>` bloquants est
+  sûr à paralléliser (`defer`), vérifier explicitement tout script INLINE
+  placé entre eux et leur premier point de consommation réelle** — `defer`
+  change l'ordre d'exécution relatif entre les scripts `src` qui le
+  portent et tout script inline classique placé après eux dans le
+  document (un script inline s'exécute toujours immédiatement au
+  parsing, jamais différé, contrairement aux scripts `src` avec `defer`)
+  — un simple grep d'usage direct du global exporté ne suffit pas à
+  écarter ce risque, il faut vérifier l'ordre relatif réel. Cf. §16,
+  chantier clignotement au chargement (script `type="module"` non
+  concerné, déjà différé nativement par la spec).
 
 ## 16. État des chantiers ouverts
 
@@ -1251,24 +1389,9 @@ OAuth directement, seulement via cet écran.
 | Levier Volume (accordéon "Modifier mon plan") sans effet réel | ✅ Corrigé le 02/08/2026 — `semaineDepartVolume` transmis à `generatePlan()`, la progression démarre réellement à la semaine charnière. Détail complet en §3/§7. |
 | EF trop courts par rapport à la sortie longue (répartition du volume hebdo) | ✅ Corrigé le 02/08/2026 — nouveau système de partage par poids relatif (`POIDS_LONGUE=1.6`) dans `repartirVolumeSemaine()`. Détail complet en §7. Cas 2 jours/semaine (longue potentiellement excessive à fort volume) traité par un warning informatif, pas un plafond dur — Laurent : "certains coureurs n'ont pas la possibilité de courir autant de jours par semaine". |
 | Signal de déconnexion Strava peu visible (uniquement dans Réglages) | ✅ Corrigé le 02/08/2026 — bandeau sur le dashboard, cf. §4. Couvre les deux cas de déconnexion (token invalide ET token absent). |
-| Saisir un plaisir par séance (PACES-S) | 🔜 Reporté |
-| Republier la piste "V2" sur Play Console | 🔜 Pas urgent, Alpha suffit pour Laurent |
-| Passer Stripe en clés live | 🔜 Quand prêt à lancer publiquement |
-| Courir un vrai test demi-Cooper pour valider la prédiction 10K | 🔜 `RATIO_VMA_VERS_10K` (0.90) et `PACE_RATIOS.E` (1.225) calibrés sur base théorique faute de vraies données — à comparer au premier vrai test couru par Laurent |
-| Réécrire le swap directement dans `plan_actif` | 🔜 Suggestion de Laurent, pas commencé. Complexité identifiée : annulation, régénérations, séparation `plans_actif`/`plans_original`, interaction avec `reduire_charge` |
-| Publier une app iOS (Capacitor) | 🔜 Piste identifiée, pas de code. Pas urgent tant qu'aucun besoin iOS confirmé |
-| Passer le repo GitHub en privé | 🔜 Prévu juste avant la commercialisation. Reste public pendant le développement solo/bêta (économise des tokens Claude) |
-| Surveiller la convergence progressive et le fix VDOT SEUIL en conditions réelles | 🔜 En production, pas encore éprouvés sur plusieurs semaines |
-| Faire évoluer le moteur de décision vers un coach adaptatif à mémoire par coureur | 🔜 Étape 1 (collecte pure, cf. §5) codée et déployée. Reste non engagé : `athlete_profiles`, `learned_parameters`, personnalisation du `RuleEngine` — conditions de déclenchement toujours d'actualité (moteur stable sur plusieurs mois, plusieurs utilisateurs réels) — cf. `vision-coach-adaptatif.md` |
-| Résoudre le chooser "Ouvrir avec Chrome" systématique sur Xiaomi/HyperOS | 🔜 Diagnostiqué sur un Xiaomi 11 Lite 5G (HyperOS) : `assetlinks.json` correct, toutes les causes standards Android éliminées. Cause probable : particularité de la surcouche Xiaomi. Migration Capacitor écartée pour l'instant (casserait le workflow de déploiement direct). À réévaluer si le problème se confirme répandu |
-| Concevoir la gestion du rebond après un allègement de séance qualité | 🔜 Lié à R-070 : ni accélération après succès répétés, ni lissage de la remontée. Nécessiterait de persister la dernière ampleur appliquée entre séances qualité — pas pire que la situation actuelle, pas priorisé |
-| Garde-fou d'exclusion entre la carte d'adaptation comportementale et le moteur de décision physiologique | 🔜 `analyserAdaptations()`/`appliquerAdaptations()` sont déjà branchées sur le dashboard (`adaptationEl`), mais jamais observées par Laurent car jamais déclenchées sur ses données réelles. Deux cartes restent volontairement séparées (granularités différentes). Reste à coder : garde-fou si les deux cartes ciblent la même semaine (physio prioritaire) + journalisation de collision |
-| Pondérer différemment les semaines à venir dans la Projection au jour J | 🔜 Le modèle extrapole uniformément le rythme observé, alors qu'il évolue souvent en phase Spécifique/Affûtage. Chaque entrée `predHistory` porte désormais un champ `phase` (`phaseAtDate()`) pour comparer a posteriori une fois assez de données — pas encore assez de recul pour juger |
-| Recalibrer `VOLUME_MIN_PAR_JOURS` par niveau (pas seulement distance/jours) | 🔜 Identifié le 02/08/2026 lors du diagnostic du bug "EF ridicules" — la table actuelle a été calibrée uniquement au niveau intermédiaire, l'écart réel au niveau confirmé peut atteindre ~8km. Pas urgent : le nouveau système de répartition par poids absorbe l'essentiel du problème en pratique. |
-| Repli GPX/TCX pour les montres sans export FIT fiable (Polar, certains modèles Suunto) | 🔜 Mis de côté le 02/08/2026 (cf. `import-fit-intervalles.md` §8), à reprendre plus tard. |
-| Calibrer la détection d'intervalles FIT sur allure spécifique/allure course | 🔜 Contraste effort/récup le plus faible, cas le plus à risque pour la détection par signal — pas encore de séance réelle disponible pour tester. |
-| Étudier un suivi GPS via le téléphone (sans montre) | 🔜 Étudié le 03/08/2026 : non viable en PWA pour un usage réel (course longue, écran verrouillé/poche). `watchPosition` coupe en arrière-plan sur iOS (pas d'équivalent background natif en PWA) ; comportement Android fragmenté par fabricant/version (limitations depuis Oreo, cas Samsung/Knox rapportés). Alternative retenue : l'import Strava reste la voie "sans montre". Si ce chantier est engagé malgré tout, il remettrait sur la table une app native (au-delà de la TWA actuelle) — un vrai suivi background nécessite du code natif Android/iOS, hors périmètre PWA. |
-| Refondre l'aide en tutos d'action par fonctionnalité | 🔜 Identifié le 03/08/2026 — Laurent souhaite remplacer/compléter les sections thématiques actuelles (`help-content.js`) par des tutos organisés par ACTION concrète (ex. "Comment créer un plan ?", "Comment valider une séance ?"), plutôt que par thème. Une première version ciblée (mini-tuto dépliable pour l'import .fit uniquement, avec lien "Comment ça marche ?" depuis le popover ✏️) a été codée, testée puis explicitement retirée le 03/08/2026 (revert complet, cf. `changelog.classic.js`) — jugée insuffisante en l'état : le lien n'apparaissait que si `dataSource === "fit"`, invisible pour les utilisateurs Strava, et surtout la structure thématique de l'aide elle-même ne convient pas à l'usage voulu. Périmètre et structure cible à redéfinir entièrement en session dédiée (quelle liste d'actions couvrir, remplacement complet ou coexistence avec les sections actuelles, où les tutos s'affichent). |
+| Refondre l'aide en tutos d'action par fonctionnalité | ✅ Livré le 04/08/2026 — section "Tutos par action" en tuiles, sélecteur d'onglets Aide/Tutos, 16 tutos rédigés couvrant Démarrer/Au quotidien/Gérer son plan/Suivi/Compte. Détail complet en §4. Reste ouvert : aucune image intégrée pour l'instant (Laurent prévoit de fournir des captures au fil de l'eau, le format le supporte déjà). |
+| Couleur manquante pour le type de séance TEST dans la mini-frise semaine + crayon affiché en double dans le popover de saisie | ✅ Corrigés le 04/08/2026, dans la même session que le chantier Aide ci-dessus. Détail en §4. |
+| Clignotement de l'écran au chargement de l'app | 🔶 Investigation approfondie menée le 04/08/2026, PARTIELLEMENT résolue — plusieurs correctifs structurellement corrects ont été appliqués (remplacement atomique du DOM via `replaceChildren` au lieu d'un `innerHTML=""` prématuré, regroupement des rendus automatiques différés via `renderDiffere()`, connexion WebSocket Realtime non-bloquante, chargement `defer` de 9 scripts classic bloquants, correction d'une balise `<meta name="theme-color">` invalide), mais Laurent rapporte que le clignotement persiste après chacun d'eux. Un test DevTools Performance + Screenshots (filmstrip) a confirmé la vraie nature du symptôme : une page BLANCHE réelle d'environ 750ms à 1.85s avant le premier affichage (pas un double-rendu répété comme supposé initialement) — probablement causée par un enchaînement structurel d'au moins 2-3 allers-retours réseau séquentiels et nécessaires vers Supabase (`getUser()` → `migrerDonneesExistantes()` → `precharger()`) avant que la donnée ne soit prête pour le premier rendu, chacun avec sa propre latence de connexion. Écarté comme non concluant : différer l'écriture concurrente de `migrerDonneesExistantes()`/`precharger()` (ordre nécessaire, la seconde lit ce que la première vient d'écrire). Piste non engagée par prudence : afficher un premier rendu depuis le cache localStorage local avant confirmation serveur, avec re-render silencieux une fois confirmé — chantier plus large sur un flux d'authentification déjà marqué par plusieurs bugs sensibles, nécessiterait une session dédiée avec validation explicite avant de s'y engager. |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
