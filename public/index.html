@@ -5895,6 +5895,64 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
         el("div",{style:{fontSize:"11px",color:"var(--text2)",marginBottom:"4px"}},"Durée totale de la séance (min)"),dureeInput
       ));
     }
+
+    // Détail des intervalles (réussi/raté) — 05/08/2026, demande de
+    // Laurent. Uniquement pour les séances avec structureIntervalles
+    // (VMA/seuil) — une EF ou une LONGUE n'a pas d'intervalles à noter
+    // individuellement. Volontairement réussi/raté seul, pas d'allure par
+    // intervalle : pour du Strava/FIT l'allure par lap vient automatiquement
+    // du GPS, jamais saisie à la main — demander une allure par répétition
+    // en saisie manuelle serait une charge disproportionnée (potentiellement
+    // 6 à 10+ saisies) pour un niveau de détail qu'analyserSeanceQualite()
+    // n'exploite de toute façon qu'au niveau réussi/raté, pas à l'allure
+    // précise. Stocké dans manualPerf[uid].intervalles, tableau de
+    // booléens (true=réussi) indexé dans l'ordre des répétitions.
+    if (s.structureIntervalles?.blocs?.length) {
+      const nbSeries = s.structureIntervalles.nbSeries || 1;
+      // Nombre total de répétitions attendues, tous blocs et séries
+      // confondus — même calcul que dureePrevueSec ci-dessus
+      // (repetitions × nbSeries par bloc, sommé sur tous les blocs).
+      let nbIntervallesTotal = 0;
+      s.structureIntervalles.blocs.forEach(b => { nbIntervallesTotal += (b.repetitions || 1) * nbSeries; });
+
+      if (nbIntervallesTotal > 0) {
+        const intervallesActuels = cur.intervalles || new Array(nbIntervallesTotal).fill(true); // réussi par défaut, ajustable
+        const intervallesState = intervallesActuels.slice(0, nbIntervallesTotal);
+        while (intervallesState.length < nbIntervallesTotal) intervallesState.push(true); // séance modifiée depuis (plus de reps qu'avant) : complète à "réussi"
+
+        const intervallesGrid = el("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px",marginTop:"6px"}});
+        const rebuildIntervallesGrid = () => {
+          intervallesGrid.innerHTML = "";
+          intervallesState.forEach((reussi, i) => {
+            const btn = el("button",{type:"button",title:"Répétition "+(i+1)+" : "+(reussi?"réussie":"ratée"),style:{
+              width:"34px",height:"34px",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer",
+              background:reussi?"rgba(var(--accent2-rgb),0.15)":"rgba(var(--warn-rgb),0.13)",
+              border:`1px solid ${reussi?"rgba(var(--accent2-rgb),0.4)":"rgba(var(--warn-rgb),0.35)"}`,
+              color:reussi?"var(--accent2)":"var(--warn)",
+            }}, reussi?"✓":"✕");
+            btn.addEventListener("click", avecRetourTactile((e)=>{
+              e.preventDefault(); e.stopPropagation();
+              intervallesState[i] = !intervallesState[i];
+              rebuildIntervallesGrid();
+            }));
+            intervallesGrid.appendChild(btn);
+          });
+        };
+        rebuildIntervallesGrid();
+
+        formWrap.appendChild(el("div",{style:{marginTop:"12px"}},
+          el("div",{style:{fontSize:"11px",color:"var(--text2)",marginBottom:"4px"}},"Détail des intervalles ("+nbIntervallesTotal+")"),
+          intervallesGrid
+        ));
+
+        // Exposé sur formWrap pour être lu par le handler "Enregistrer"
+        // (rebuildForm() est ré-appelée à chaque ouverture, formWrap reste
+        // le même élément DOM entre les deux — cf. son initialisation plus
+        // haut dans cette fonction).
+        formWrap._intervallesState = intervallesState;
+      }
+    }
+
     formWrap.appendChild(el("div",{style:{marginTop:"12px"}},
       el("div",{style:{fontSize:"11px",color:"var(--text2)",marginBottom:"4px"}},"FC moyenne (optionnel)"),hrInput
     ));
@@ -5916,7 +5974,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       const distance = dureeSaisieMin
         ? distanceTotaleAvecRecup(s.structureIntervalles, dureeSaisieMin*60, window.__PLAN_BRUT__?.allures?.E)
         : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null);
-      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null };
+      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null, intervalles: formWrap._intervallesState || null };
       save(clePourPlan("lk_manual_perf"), manualPerf);
       // Cumul km (badge "km cumulés", 05/08/2026) — la saisie manuelle peut
       // changer la distance d'une séance DÉJÀ validée (✅/⚠️/❌ déjà posé
@@ -6122,6 +6180,22 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     }));
     wrap.appendChild(summaryRow);
     wrap.appendChild(detailLaps);
+  }
+
+  // Répétitions (saisie manuelle) : même pattern visuel que le résumé
+  // Strava/FIT ci-dessus (summaryRow + compteur "X/N réussies"), mais sans
+  // détail dépliable — pas de laps réels à afficher pour une saisie
+  // manuelle, juste la grille réussi/raté déjà saisie. Uniquement si
+  // manuelExistant et pas de stravaRun (une activité Strava/FIT prime,
+  // cf. le reste de cette fonction — son détail passe par la branche
+  // effortLaps ci-dessus).
+  if (!stravaRun && manuelExistant?.intervalles?.length > 0) {
+    const nbReussies = manuelExistant.intervalles.filter(Boolean).length;
+    const nbTotal = manuelExistant.intervalles.length;
+    wrap.appendChild(el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--border-soft)",borderRadius:"8px",padding:"8px 10px",marginTop:"4px"}},
+      el("span",{style:{color:"var(--text2)",fontSize:"13px"}},nbTotal+" répétition"+(nbTotal>1?"s":"")),
+      el("span",{style:{color:nbReussies===nbTotal?"var(--accent2)":"var(--warn)",fontSize:"13px",fontWeight:"700"}},nbReussies+"/"+nbTotal+" réussies")
+    ));
   }
 
   wrap.appendChild(correctionSlot);
