@@ -5550,6 +5550,19 @@ function renderTestSemiCooperRow(uid, seance, stravaRun) {
     statuses[uid] = "✅";
     save(clePourPlan("lk_statuses"), statuses);
     ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
+    // Cumul km (badge "km cumulés", 05/08/2026) — le test semi-Cooper est
+    // une vraie course de 6 minutes, ses km doivent compter dans le cumul
+    // total au même titre que toute autre séance validée. Ce point pose
+    // statuses[uid] directement (pas via renderStatusRow), donc sans cet
+    // appel explicite ses km n'étaient jamais comptés. Pas de distance
+    // Strava/manuelle structurée ici — distanceMetres (déjà validée ci-
+    // dessus, 200-3000m) sert directement via une entrée manualPerf
+    // minimale, seule connue pour ce type de séance.
+    if (!manualPerf[uid]) {
+      manualPerf[uid] = { average_speed: null, distance: distanceMetres/1000, average_heartrate: null, dureeSaisieMin: 6 };
+      save(clePourPlan("lk_manual_perf"), manualPerf);
+    }
+    recalculerKmComptesPourUid(uid, seance.date);
     render();
   };
 
@@ -8593,7 +8606,15 @@ function showSessionMenu(week, slotIdx) {
             // chemin (choix explicite d'une activité ambiguë) pose aussi un
             // statut hors du clic normal dans renderStatusRow(), donc sans
             // ce recalcul ses km ne seraient jamais comptés non plus.
-            if (auto && sessionPourValidation.date) recalculerKmComptesPourUid(uid, sessionPourValidation.date);
+            if (auto && sessionPourValidation.date) {
+              recalculerKmComptesPourUid(uid, sessionPourValidation.date);
+              // Estimation 10K (05/08/2026) — même trou que l'auto-validation
+              // en masse (cf. son commentaire) : ce chemin pose aussi un
+              // statut hors clic manuel, donc sans cet appel l'estimation
+              // restait figée si l'activité choisie ici était une séance
+              // SEUIL/VMA/SPEC.
+              rebuildPredHistory();
+            }
           }
           overlay.remove();
           render();
@@ -11088,6 +11109,10 @@ function matchActivitiesToPlan(activities) {
   // soit le plan affiché.
   const aujourdhui = today();
   let statutDuJourChange = false; // 18/07/2026 (demande de Laurent) : le coach doit se rafraîchir aussi sur un changement de statut AUTOMATIQUE (pas seulement un clic manuel, cf. gestionnaire de renderStatusRow), pour ne jamais garder un message "pas encore fait" après une synchro Strava qui valide la séance du jour toute seule.
+  // 05/08/2026 — même esprit que statutDuJourChange, mais couvre TOUTE
+  // auto-validation (pas seulement celle du jour même) : sert à savoir si
+  // rebuildPredHistory() doit être appelée après la boucle, cf. plus bas.
+  let auMoinsUneAutoValidation = false;
   ALL_SESSIONS.forEach(s => {
     if (s.type==="REPOS"||s.type==="RACE") return;
     if (s.date > aujourdhui) return; // jamais de validation automatique sur une séance future
@@ -11133,6 +11158,7 @@ function matchActivitiesToPlan(activities) {
           // Appelé ici, juste après avoir posé le statut, pour ce cas
           // précis d'auto-validation en masse.
           if (typeof recalculerKmComptesPourUid === 'function') recalculerKmComptesPourUid(s.uid, s.date);
+          auMoinsUneAutoValidation = true;
         }
       }
     }
@@ -11146,6 +11172,19 @@ function matchActivitiesToPlan(activities) {
   // auto-inféré pour une séance passée) même après une auto-validation
   // réussie. Recalcul systématique ici, avant tout render().
   ALL_SESSIONS = recalculerAllSessions();
+  // Estimation 10K (05/08/2026) — même bug que celui corrigé plus tôt sur
+  // renderStatusRow()/renderBlocRealise() (cf. leurs commentaires) : ce
+  // point d'auto-validation en masse après synchro Strava — "le cas le
+  // plus fréquent en pratique" selon le commentaire ci-dessus — ne
+  // recalculait jamais rebuildPredHistory() après avoir posé de nouveaux
+  // statuts. Une séance SEUIL/VMA/SPEC auto-validée par la synchro (sans
+  // aucun clic manuel de l'utilisateur, le chemin le plus courant en usage
+  // réel) restait donc invisible pour l'estimation affichée tant qu'un
+  // clic manuel ultérieur sur un AUTRE statut ne redéclenchait pas le
+  // recalcul par ailleurs. Appel groupé une seule fois après la boucle
+  // (pas par séance) — un seul recalcul complet même si plusieurs séances
+  // sont auto-validées d'un coup lors d'une même synchro.
+  if (auMoinsUneAutoValidation) rebuildPredHistory();
   if (statutDuJourChange) {
     coachMsg = null; coachDate = "";
     save(clePourPlan("lk_coach_msg"), null);
