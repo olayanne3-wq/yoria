@@ -191,6 +191,27 @@ Fonctions de rendu (`render*`) :
 - `ouvrirPpsModale` — modale PPS (cf. plus bas)
 - `renderTestSemiCooperRow` — carte du jour, cf. §14 (Mode Forme sans référence)
 
+**Refonte carte "Aujourd'hui" (todayEl, 26/07/2026)** — conçue et livrée
+le même jour, principe "rien à ouvrir". Header carte : icône ⌚
+(`renderIconeStructureMontre`, structure à programmer sur montre)
+affichée uniquement si la séance n'est pas encore validée ; icône ✏️
+(`renderIconeSaisieManuelle`) toujours visible, avant et après validation
+(cf. plus bas, icône unifiée). Allures cibles (`PACE_REFS`) et FC cibles
+(`FC_ZONES`) affichées directement sous la séance, sans repli, seulement
+si la séance n'est pas encore validée. Dès qu'un statut ✅/⚠️/❌ est posé,
+le bloc "Réalisé" (`renderBlocRealise`) prend le relais : résumé chiffré
++ ligne "X répétitions · Y/Z dans la cible · ▼ détail" qui déplie les
+laps individuels au clic, + lien "✏️ Corriger" qui rouvre le formulaire
+manuel. Stylo ✏️ coloré (fond `var(--accent)` plein, texte blanc) quand
+une saisie manuelle existe (`manualPerf[uid]`), gris neutre sinon —
+condition sur l'existence de la saisie, pas sur la validation. Cas sans
+Strava ET sans saisie manuelle existante : le clic sur ✅/⚠️/❌ ouvre
+automatiquement le formulaire de saisie manuelle une seule fois
+(`uidAOuvrirPopoverSaisie`, variable transitoire de scope module). Idée
+explorée puis écartée le même jour : signal visuel warn sur "Corriger" si
+le score réel est incohérent avec le statut cliqué — pas de critère
+validé, non codée.
+
 **Aide — tutos par action en tuiles, en coexistence avec les sections
 thématiques (04/08/2026)** — nouvelle section "🛠️ Tutos par action" dans
 `HELP_SECTIONS`, distincte des 7 sections thématiques existantes
@@ -1573,7 +1594,14 @@ Stats (cf. §4/§5, tous plans confondus).
   vérification — seule `renderSettings()`/`buildVersionSection()` l'utilise
   réellement, ce qui a évité à tort d'écarter un changement (`defer` sur
   `changelog.classic.js`) qui semblait risqué sur la base de ce
-  commentaire seul.
+  commentaire seul. **Cas similaire rencontré le 06/08/2026** : la
+  refonte carte "Aujourd'hui" (26/07/2026) était notée comme "conçue,
+  pas encore codée" en mémoire de session, alors qu'une vérification
+  directe du code d'`index.html` a confirmé qu'elle était intégralement
+  livrée le jour même de sa conception — l'inventaire et le changelog
+  n'en gardaient simplement pas trace explicite. Une mémoire de session
+  qui affirme un statut "non codé" doit être revérifiée sur le code réel
+  avant d'être répétée, surtout après plusieurs jours.
 - **Avant de conclure qu'un enchaînement de `<script src>` bloquants est
   sûr à paralléliser (`defer`), vérifier explicitement tout script INLINE
   placé entre eux et leur premier point de consommation réelle** — `defer`
@@ -1601,6 +1629,7 @@ Stats (cf. §4/§5, tous plans confondus).
 | Chantier | Statut |
 |---|---|
 | Import `.fit` avec détail par répétition (détection sans marqueurs natifs, protection des activités importées, icône ✏️ unifiée) | ✅ Codé, poussé et testé en conditions réelles le 03/08/2026. Détail en §4/§9/§10 et `docs/v2-methodologie/import-fit-intervalles.md`. |
+| Refonte carte "Aujourd'hui" (rien à ouvrir, icônes conditionnelles, bloc "Réalisé" dépliable, stylo coloré) | ✅ Conçue et livrée le 26/07/2026, absence de trace dans ce tableau corrigée le 06/08/2026 après vérification directe du code. Détail complet en §4. |
 | Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 15 badges en 4 catégories (dont "Km cumulés", ajouté le 05/08/2026, cf. ligne dédiée ci-dessous), consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (badge CUMULÉ, pas une série), km cumulés (idem, cumulé). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus reformulés avec un verbe d'action explicite ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé) ; (3) badge `record_battu` déplacé vers le seul déclencheur légitime (validation d'un résultat de course, cf. `resultatCard`) ; (4) recalcul forcé au clic sur "Mes badges", plus de cache indéfini. |
 | **Badge "Km cumulés" (nouveau, 05/08/2026)** | ✅ Codé et poussé. 7 paliers (50/100/250/500/1000/1500/2000 km), catégorie progression. Cumul TOTAL tous plans confondus (pas seulement le plan actif), sur toute séance validée ✅/⚠️/❌ — décision explicite de Laurent d'inclure ❌ (une séance ratée/non conforme a quand même été courue). Alimenté par `profilCoureur.kmCumulesTotal` (cf. §6), ajusté de façon idempotente à chaque changement de statut via `recalculerKmComptesPourUid()` (cf. §5, registre `lk_km_comptes_par_uid`). **6 points d'écriture de statut audités et corrigés** pour appeler ce recalcul : clic manuel (`renderStatusRow`), saisie manuelle Enregistrer/Annuler, suppression d'une activité, auto-validation en masse après synchro (le chemin le plus fréquent), choix d'activité ambiguë, test semi-Cooper. Rattrapage de l'historique déjà validé avant ce chantier : script ponctuel fourni une fois à Laurent (non versionné dans le repo), à relancer si besoin (idempotent, recalcule depuis zéro à chaque exécution). |
 | **Résultat de course enrichi + section "Mes courses" (nouveau, 05/08/2026)** | ✅ Codé et poussé. `resultatCard` (jour de course) accepte désormais ressenti (RPE), commentaire, classement général et classement catégorie (place/total chacun) — stockés dans `lk_race_result_details` (cf. §5/§14bis), séparée de `lk_race_result` pour zéro impact sur les usages existants. Nouvelle fonction `chargerResultatsCoursesSupabase()` (`sync-storage.js`, cf. §5) pour lire ces résultats sur tous les plans du compte. Nouveau groupe accordéon "🏅 Mes courses" dans Stats (cf. §4), chargement asynchrone à la première ouverture. |
