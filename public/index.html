@@ -5918,6 +5918,13 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
         : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null);
       manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null };
       save(clePourPlan("lk_manual_perf"), manualPerf);
+      // Cumul km (badge "km cumulés", 05/08/2026) — la saisie manuelle peut
+      // changer la distance d'une séance DÉJÀ validée (✅/⚠️/❌ déjà posé
+      // avant cette saisie, ou re-modifiée après coup) sans jamais repasser
+      // par un clic sur le statut lui-même — sans cet appel, le cumul restait
+      // figé sur l'ancienne valeur (0 si jamais compté, ou une distance
+      // périmée si la saisie est corrigée après un premier enregistrement).
+      recalculerKmComptesPourUid(uid, dateSeance);
       rebuildPredHistory();
       expanded = false;
       formWrap.style.display = "none";
@@ -5939,6 +5946,12 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       delete statuses[uid];
       save(clePourPlan("lk_statuses"), statuses);
       ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
+      // Cumul km (badge "km cumulés", 05/08/2026) — le statut repasse à —
+      // (supprimé ci-dessus), donc cette séance ne doit plus compter dans le
+      // cumul si elle l'était. Appelé APRÈS la suppression de statuses[uid]
+      // pour que recalculerKmComptesPourUid() lise bien le nouvel état (—)
+      // et retire les km déjà enregistrés dans kmComptesParUid[uid].
+      recalculerKmComptesPourUid(uid, dateSeance);
       if (avaitAllure) rebuildPredHistory(); // ré-agréger sans cette saisie (Strava reprend la main s'il existe)
       expanded = false;
       formWrap.style.display = "none";
