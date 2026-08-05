@@ -27,7 +27,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.35", title:"Aide réorganisée en tutos par action, quelques corrections visuelles", current:true, notes:[
+      { ver:"v2.36", title:"Nouveau badge kilomètres cumulés, résultat de course enrichi, détail des intervalles en saisie manuelle", current:true, notes:[
+        "🏅 Nouveau badge \"Km cumulés\" : 7 paliers de 50 à 2000 km, sur l'ensemble de tes séances validées, tous plans confondus",
+        "🏁 Le résultat de course peut maintenant inclure ton ressenti, un commentaire, et tes classements général et par catégorie",
+        "📖 Nouvelle section \"Mes courses\" dans Stats, pour retrouver l'historique de tous tes résultats",
+        "✅ En saisie manuelle, tu peux maintenant indiquer la réussite de chaque répétition d'une séance de qualité",
+        "🎯 Correctifs de fiabilité sur l'estimation 10K et le cumul de kilomètres : plusieurs cas où une séance validée automatiquement (synchro Strava, import .fit) n'était pas prise en compte ont été corrigés",
+      ]},
+      { ver:"v2.35", title:"Aide réorganisée en tutos par action, quelques corrections visuelles", current:false, notes:[
         "🛠️ Nouvel onglet \"Tutos\" dans l'aide : 16 guides organisés par action concrète (créer un plan, importer un .fit, échanger une séance...), affichés en tuiles par thème",
         "📋 Chaque tuto s'ouvre en vue détaillée avec un vrai bouton retour, séparé des sections d'aide classiques qui restent accessibles via l'onglet \"Aide\"",
         "🎨 La séance de test (semi-Cooper) affiche maintenant sa couleur dans la vue Semaine, comme les autres types de séance",
