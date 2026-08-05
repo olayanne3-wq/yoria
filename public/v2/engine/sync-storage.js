@@ -543,6 +543,70 @@ export async function chargerPlansSupabase(userId) {
 }
 
 // ------------------------------------------------------------
+// Liste les résultats de course déjà saisis, sur TOUS les plans course
+// (mode !== 'forme') d'un utilisateur — ajouté le 05/08/2026, pour la
+// section "🏅 Mes courses" de Stats (docs/v2-methodologie/
+// inventaire-application.md §16). Jusqu'ici, aucune fonction ne
+// permettait de lire plan_donnees pour plusieurs plans à la fois :
+// precharger() ne cible qu'un seul plan_id (celui actif en mémoire côté
+// client), donc les résultats des plans PASSÉS restaient invisibles une
+// fois qu'un plan plus récent devenait le plan actif chargé par
+// index.html (changer de plan force un location.reload() complet,
+// cf. renderSelecteurPlan). Requête en N+1 (une lecture plan_donnees par
+// plan) plutôt qu'un IN(...) groupé — volume attendu faible (quelques
+// plans par utilisateur), pas justifié d'optimiser davantage pour
+// l'instant.
+//
+// Ne retourne que les plans ayant réellement un lk_race_result enregistré
+// (résultat chrono saisi) — un plan course sans résultat n'apparaît pas
+// ici, cohérent avec l'esprit de resultatCard (rien à afficher tant que
+// rien n'a été saisi). lk_race_result_details (RPE/commentaire/
+// classements, cf. resultatCard) est optionnelle et peut être absente
+// pour un résultat saisi avant l'ajout de ces champs enrichis (05/08/2026)
+// — l'appelant doit gérer cette absence sans erreur.
+// ------------------------------------------------------------
+export async function chargerResultatsCoursesSupabase(userId) {
+  await supabaseReady;
+  if (!userId) return [];
+  try {
+    const plans = await chargerPlansSupabase(userId);
+    const plansCourse = plans.filter(p => p.mode !== 'forme' && p.id);
+    if (plansCourse.length === 0) return [];
+
+    const resultats = await Promise.all(plansCourse.map(async (plan) => {
+      try {
+        const { data, error } = await supabase
+          .from('plan_donnees')
+          .select('data')
+          .eq('plan_id', plan.id)
+          .maybeSingle();
+        if (error || !data?.data) return null;
+        const tempsSecondes = data.data.lk_race_result;
+        if (typeof tempsSecondes !== 'number' || tempsSecondes <= 0) return null;
+        return {
+          planId: plan.id,
+          nom: plan.nom,
+          distance: plan.distance,
+          raceName: plan.raceName,
+          dateCourse: plan.dateCourse,
+          tempsSecondes,
+          details: data.data.lk_race_result_details || null,
+        };
+      } catch (e) {
+        return null; // un plan dont la lecture échoue ne doit pas faire échouer les autres
+      }
+    }));
+
+    return resultats
+      .filter(Boolean)
+      .sort((a, b) => (a.dateCourse < b.dateCourse ? 1 : -1)); // plus récent en premier
+  } catch (err) {
+    console.warn('chargerResultatsCoursesSupabase a échoué :', err.message);
+    return [];
+  }
+}
+
+// ------------------------------------------------------------
 // Met à jour un plan Forme déjà existant côté Supabase — v2.8, 15/07/2026.
 // assurerPlanExiste() ne fait jamais de mise à jour (juste "créer si
 // absent"), donc insuffisant pour modifier un plan déjà en base (clôture,
