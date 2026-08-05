@@ -5641,6 +5641,18 @@ function renderStatusRow(uid, dateSeance) {
       // statuses[uid]/manualPerf[uid]/stravaActivities, déjà à jour à ce
       // point, et n'a pas besoin d'attendre le rendu pour s'exécuter.
       recalculerKmComptesPourUid(uid, dateSeance);
+      // Recalcul de predHistory (estimation 10K) — 05/08/2026, bug signalé
+      // par Laurent : l'estimation affichée restait figée sur une ancienne
+      // valeur de convergence après qu'une séance SEUIL/VMA/SPEC ait perdu
+      // son statut (ex. clic sur ✅ puis retour à —), car aucun point
+      // d'appel de renderStatusRow() ne redéclenchait rebuildPredHistory()
+      // — contrairement à la saisie manuelle (Enregistrer/Annuler, cf.
+      // leurs commentaires), qui elle le fait déjà. predHistory gardait
+      // alors les valeurs calculées à l'époque où ces séances comptaient
+      // encore, sans jamais refléter leur retrait. Systématique à chaque
+      // clic (décision de Laurent) plutôt que ciblé aux seuls types
+      // SEUIL/VMA/SPEC — plus simple, coût de recalcul jugé acceptable.
+      rebuildPredHistory();
       // Bug corrigé le 8 juillet 2026 : setTimeout(render, 2500) gelait
       // TOUT l'affichage de l'app pendant 2.5s, pas seulement le repli de
       // cette carte (render() reconstruit toute la vue). Corrigé : met à
@@ -6123,6 +6135,14 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       delete statuses[uid];
       save(clePourPlan("lk_statuses"), statuses);
       ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
+      // Cumul km + estimation 10K (05/08/2026) — même bug que
+      // renderStatusRow (cf. son commentaire) : la suppression d'une
+      // activité qui avait un statut ✅/⚠️/❌ posé retire le statut
+      // (ci-dessus) sans jamais ajuster le cumul km ni recalculer
+      // predHistory, qui restaient figés sur les anciennes valeurs
+      // incluant cette activité désormais supprimée.
+      recalculerKmComptesPourUid(uid, s.date);
+      rebuildPredHistory();
       render();
     }));
     liensDroite.appendChild(supprimerBtn);
