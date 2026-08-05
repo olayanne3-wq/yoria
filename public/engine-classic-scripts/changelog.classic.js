@@ -27,7 +27,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.34", title:"Import .fit avec détail par répétition, protection de tes données importées", current:true, notes:[
+      { ver:"v2.35", title:"Aide réorganisée en tutos par action, quelques corrections visuelles", current:true, notes:[
+        "🛠️ Nouvel onglet \"Tutos\" dans l'aide : 16 guides organisés par action concrète (créer un plan, importer un .fit, échanger une séance...), affichés en tuiles par thème",
+        "📋 Chaque tuto s'ouvre en vue détaillée avec un vrai bouton retour, séparé des sections d'aide classiques qui restent accessibles via l'onglet \"Aide\"",
+        "🎨 La séance de test (semi-Cooper) affiche maintenant sa couleur dans la vue Semaine, comme les autres types de séance",
+        "✏️ Le crayon de saisie manuelle ne s'affiche plus en double dans son propre panneau",
+      ]},
+      { ver:"v2.34", title:"Import .fit avec détail par répétition, protection de tes données importées", current:false, notes:[
         "📁 L'import d'un fichier .fit détecte maintenant automatiquement chaque répétition d'une séance qualité, même sur les montres qui n'enregistrent pas la structure de l'entraînement (Amazfit/Zepp notamment)",
         "✏️ Un seul crayon regroupe désormais l'import .fit et la saisie manuelle, placé à côté du statut de chaque séance — sur la carte du jour comme dans le détail de la semaine",
         "🔒 Une activité déjà importée (Strava ou .fit) n'est plus jamais écrasée par une resynchronisation — supprime-la d'abord si tu veux la remplacer",
