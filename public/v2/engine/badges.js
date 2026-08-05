@@ -71,6 +71,7 @@ export const LIBELLES_BADGES = {
   nouvelle_estimation: { nom: "Nouvelle estimation" },
   record_battu:        { nom: "Record personnel battu" },
   test_semi_cooper:    { nom: "Test semi-Cooper validé" },
+  km_cumules:          { nom: "Km cumulés", paliers: ["Atteindre 50 km cumulés", "Atteindre 100 km cumulés", "Atteindre 250 km cumulés", "Atteindre 500 km cumulés", "Atteindre 1000 km cumulés", "Atteindre 1500 km cumulés", "Atteindre 2000 km cumulés"] },
   repos_ecoute:        { nom: "Repos écouté" },
   semaine_equilibree:  { nom: "Semaine équilibrée" },
   premier_plan:        { nom: "Premier plan lancé" },
@@ -104,6 +105,7 @@ export const ICONES_BADGES = {
   nouvelle_estimation: 'M-6,5 L-1,-3.5 L3.5,1 L6.5,-6',
   record_battu:        'CERCLE_CROIX',
   test_semi_cooper:    'CHRONOMETRE',
+  km_cumules:          'M-8,6 C-8,6 -4,-2 0,2 C4,6 8,-6 8,-6',
   repos_ecoute:        'M0,-7 C3.5,-7 6,-4.5 6,-1 C6,3.5 0,8 0,8 C0,8 -6,3.5 -6,-1 C-6,-4.5 -3.5,-7 0,-7 Z',
   semaine_equilibree:  'BALANCE',
   premier_plan:        'M-6,7 L-6,-3 L0,-9 L6,-3 L6,7 Z',
@@ -420,6 +422,19 @@ export function calculerEtatBadgesActuel(ctx) {
   const totalSemainesParfaites = compterSemainesParfaites(ctx.currentWeekNum, ctx.weeklyReportFn);
   badgesSeriesBrutes.semaine_parfaite = { serieMax: totalSemainesParfaites, serieActuelle: totalSemainesParfaites };
   etat.semaine_parfaite = DEFINITIONS_BADGES.semaine_parfaite.paliers.filter(p => totalSemainesParfaites >= p).length;
+
+  // Km cumulés (05/08/2026) — même principe que semaine_parfaite : compteur
+  // qui ne redescend jamais (serieActuelle === serieMax), mais SOURCE
+  // différente : profilCoureur.kmCumulesTotal, déjà tenu à jour par
+  // index.html (recalculerKmComptesPourUid, à chaque changement de statut
+  // de séance) plutôt que recalculé ici depuis ALL_SESSIONS/weeklyReport.
+  // Cumul TOTAL tous plans confondus (décision actée avec Laurent) — c'est
+  // précisément pourquoi ce cumul ne peut pas être recalculé depuis
+  // ctx.allSessions (qui ne couvre que le plan ACTIF) ; profilCoureur est
+  // une donnée globale au compte, cohérente avec ce besoin.
+  const kmCumulesTotal = Math.round((ctx.profilCoureur?.kmCumulesTotal || 0));
+  badgesSeriesBrutes.km_cumules = { serieMax: kmCumulesTotal, serieActuelle: kmCumulesTotal };
+  etat.km_cumules = DEFINITIONS_BADGES.km_cumules.paliers.filter(p => kmCumulesTotal >= p).length;
 
   etat.retour_reussi = detecterRetourReussi(ctx.planBrut, ctx.statuses, ctx.currentWeekNum, ctx.weeklyReportFn, ctx.analyserAdaptationsFn);
   etat.semaine_equilibree = detecterSemaineEquilibree(ctx.decisionEngineRunnerState, ctx.stravaActivities, ctx.profilCoureur, ctx.adapterHistoriqueAvecRpeFn);
