@@ -48,7 +48,7 @@ yoria/
 │       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin, cf. §16)
 │       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~11000 lignes)
+│   ├── index.html                 # App principale (dashboard, ~11700 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Page candidature bêta publique
@@ -67,6 +67,7 @@ yoria/
 │           ├── plan-generator.js
 │           ├── plan-forme.js
 │           ├── badges.js          # Système de badges (récompenses), extrait le 31/07/2026
+│           ├── predictor.js       # Prédicteur 10K, extrait le 31/07/2026
 │           ├── fit-detection.js   # Détection d'intervalles depuis un .fit sans marqueurs natifs (cf. §10)
 │           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
 │           ├── strava.js, weather.js, gist-sync.js
@@ -99,7 +100,18 @@ appliquée le 04/08/2026** à `_renderDiffereTimer` (cf. §4, mécanisme de
 regroupement des rendus automatiques) — une simple variable `let`, pas
 une promesse, mais soumise au même risque de zone morte temporelle (TDZ)
 si elle est lue avant sa ligne de déclaration depuis du code exécuté tôt
-dans le script.
+dans le script. **Piège identique rencontré le 05/08/2026** sur un
+correctif de la synchro Strava (cf. §11) : un bloc de relecture de
+`stravaToken`/`stravaRefresh`/`stravaExpires`/`stravaActivities`, destiné
+à s'exécuter juste après `await window.__AUTH_PRET__`, avait été placé
+AVANT la déclaration `let stravaToken` elle-même (plus loin dans le même
+script) — a cassé toute la page en écran blanc
+(`ReferenceError: Cannot access 'stravaToken' before initialization`).
+Toute variable `let`/`const` lue par du code exécuté tôt doit être
+positionnée APRÈS sa propre déclaration, jamais avant, même si la
+déclaration se trouve techniquement "plus loin dans le fichier" — un
+`typeof` ne protège pas non plus de ce cas (cf. §9 pour la règle
+équivalente déjà documentée sur `statutEffectif`).
 
 **Écran "Consulter un plan" — accordéon "Modifier mon plan"
 (`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
@@ -169,8 +181,8 @@ Fonctions de rendu (`render*`) :
 - `renderDashboard` — écran d'accueil, résumé de la semaine
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances
-- `renderStats` — statistiques (ACWR, monotonie de charge, etc.)
-- `renderCourse` — page jour de course (horaires, parcours, résultat, stratégie)
+- `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
+- `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
 - `renderHelp` — aide (cf. plus bas)
 - `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
 - `renderBadges` — écran détaillé des badges (cf. §16)
@@ -284,6 +296,20 @@ crayon corrigé le 04/08/2026** : le popover affichait un second crayon
 redondant avec le crayon du header qui vient d'être cliqué pour ouvrir ce
 même popover — retiré.
 
+**Saisie manuelle — détail des intervalles réussi/raté (05/08/2026)** —
+pour toute séance avec `structureIntervalles` (VMA/SEUIL/SPEC), le
+formulaire de saisie manuelle affiche une grille de boutons ✓/✕, un par
+répétition attendue (calculée depuis `blocs[].repetitions × nbSeries`),
+pré-cochée "réussi" par défaut. Volontairement réussi/raté seul, pas
+d'allure par intervalle (charge de saisie disproportionnée, et
+`analyserSeanceQualite()` n'exploite de toute façon ce niveau de détail
+que sous cette forme). Stocké dans `manualPerf[uid].intervalles` (tableau
+de booléens). Affiché dans le bloc "Réalisé" sous forme d'un résumé "N
+répétitions · X/N réussies", même pattern visuel que le résumé
+Strava/FIT existant (sans détail dépliable — pas de laps réels à
+afficher pour une saisie manuelle). N'entre PAS dans le calcul du
+prédicteur (cf. §7bis) — seule l'allure moyenne globale saisie compte.
+
 **Mini-frise semaine (vue Semaine, `L M M J V S D`) — couleur du type
 TEST manquante, corrigée le 04/08/2026** — cette mini-frise utilise deux
 dictionnaires locaux dupliqués (`TYPE_SEANCE_COULEUR`, `TYPE_SEANCE_LABEL`),
@@ -315,14 +341,25 @@ repliés par défaut. État ouvert/fermé persistant entre les `render()`
 successifs via un registre au niveau module (`etatGroupesAccordeon`,
 indexé par titre de groupe — les titres doivent rester uniques tous
 onglets confondus pour éviter une collision dans ce registre partagé).
-Stats : 5 groupes (Objectif et progression / Charge et récupération /
-Performance technique / Référence / Tests). Course : 2 groupes
-(Préparation pratique / Stratégie) — Météo et Résumé de préparation
-restent hors accordéon (une seule carte chacun). Accepte un callback
-optionnel `onOuverture`, appelé à chaque ouverture du groupe (ajouté le
-01/08/2026 — cf. plus bas, records personnels) : utile pour tout contenu
-construit alors que le groupe est fermé et qui a besoin d'un traitement
-différé une fois réellement visible.
+Stats : 6 groupes (Objectif et progression / Charge et récupération /
+Performance technique / Référence / **Mes courses** / Tests). Course : 2
+groupes (Préparation pratique / Stratégie) — Météo et Résumé de
+préparation restent hors accordéon (une seule carte chacun). Accepte un
+callback optionnel `onOuverture`, appelé à chaque ouverture du groupe
+(ajouté le 01/08/2026 — cf. plus bas, records personnels) : utile pour
+tout contenu construit alors que le groupe est fermé et qui a besoin
+d'un traitement différé une fois réellement visible.
+
+**"🏅 Mes courses" (Stats, 05/08/2026)** — nouveau groupe accordéon,
+liste l'historique des résultats de course saisis sur TOUS les plans du
+compte (pas seulement le plan actif chargé en mémoire), triés du plus
+récent au plus ancien : date, distance/nom de course, temps, ressenti,
+classements général/catégorie, commentaire. Chargement ASYNCHRONE à la
+première ouverture du groupe (`onOuverture`), résultat mis en cache pour
+le reste de la session (`mesCoursesCache`, module-level) — contrairement
+aux autres groupes de Stats qui lisent des données déjà en mémoire de
+façon synchrone, celui-ci nécessite une lecture Supabase multi-plans
+(`LkSync.chargerResultatsCoursesSupabase`, cf. §5/§11).
 
 **Bouton "🩺 PPS" (Pass Prévention Santé FFA) — header, toutes vues où
 `appHeaderEl` est rendu (02/08/2026)** — toujours visible, ouvre
@@ -417,8 +454,36 @@ Clés préfixées par plan (via `clePourPlan()`) : `lk_statuses`,
 `lk_hidden_sessions`, `lk_swapped_sessions`, `lk_session_notes`, `lk_notes`,
 `lk_checklist`, `lk_adaptations_ignorees`, `lk_last_rebuild`,
 `lk_pred_history`, `lk_race_goal`, `lk_race_horaires`, `lk_race_parcours`,
-`lk_race_result`, `lk_weather_cache`, `lk_coach_msg`, `lk_coach_date`,
-`lk_coach_race_msg`, `lk_resultat_test_forme`.
+`lk_race_result`, `lk_race_result_details`, `lk_weather_cache`,
+`lk_coach_msg`, `lk_coach_date`, `lk_coach_race_msg`,
+`lk_resultat_test_forme`, `lk_manual_perf`, `lk_km_comptes_par_uid`.
+
+**`lk_race_result_details`** (05/08/2026) — détail enrichi du résultat de
+course : `{rpe, commentaire, classementGeneral:{place,total},
+classementCategorie:{place,total}}`. Volontairement une clé SÉPARÉE de
+`lk_race_result` (qui reste un simple nombre de secondes) plutôt qu'un
+changement de format de cette dernière — 4 points d'appel existants
+(bandeau dashboard, export PDF, check `hasRes` Réglages) font des calculs
+arithmétiques directs sur `lk_race_result`, changer son format les aurait
+tous cassés silencieusement. Un résultat saisi avant ce chantier reste
+valide, ses détails sont simplement absents (`null`).
+
+**`lk_manual_perf`** — objet `{uid: {average_speed, distance,
+average_heartrate, dureeSaisieMin, intervalles}}`. `distance` est la
+distance TOTALE de la séance (échauffement + effort + récup + retour au
+calme si une durée totale a été saisie, cf. `distanceTotaleAvecRecup()`)
+— **jamais** utilisée telle quelle par le prédicteur (cf. §7bis, qui
+recalcule une distance d'effort seul). `intervalles` : tableau de
+booléens réussi/raté par répétition (cf. §4, saisie manuelle).
+
+**`lk_km_comptes_par_uid`** (05/08/2026) — registre `{uid:
+kmDejaComptes}`, sert exclusivement à rendre idempotent l'ajustement du
+cumul global `profilCoureur.kmCumulesTotal` (badge "km cumulés", cf.
+§16) : mémorise, par séance, combien de km ont déjà été ajoutés au total
+global, pour ajuster la différence à chaque changement de statut sans
+jamais compter deux fois la même séance. Local au plan (comme le reste),
+contrairement à `kmCumulesTotal` lui-même qui est un champ GLOBAL du
+profil coureur (cumul total tous plans confondus).
 
 **Principe** : toute donnée propre à un plan doit être préfixée — une clé
 globale non préfixée est un risque de contamination inter-plans.
@@ -426,6 +491,18 @@ globale non préfixée est un risque de contamination inter-plans.
 **Convention `statuses[uid]`** : peut valoir `'—'` explicitement, pas
 seulement `undefined`/absent — tout code qui teste "cette séance a-t-elle
 déjà un statut" doit vérifier `statuses[uid] && statuses[uid] !== '—'`.
+
+**Tout point qui écrit ou efface un statut (`statuses[uid]`) ou une
+saisie manuelle (`manualPerf[uid]`) doit répercuter le changement sur le
+cumul km (`recalculerKmComptesPourUid`) et, si le type de séance est
+SEUIL/VMA/SPEC, sur l'historique de prédiction (`rebuildPredHistory()`)**
+— principe explicité le 05/08/2026 après plusieurs trous trouvés un par
+un (clic manuel de statut, auto-validation en masse après synchro,
+choix d'activité ambiguë, test semi-Cooper, saisie manuelle
+Enregistrer/Annuler, suppression d'une activité). Tout NOUVEAU point
+d'écriture de ces deux structures doit être vérifié contre cette liste
+avant d'être considéré complet — cf. §16 pour le détail de chaque trou
+corrigé.
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id`
@@ -444,6 +521,17 @@ Le système Gist v2 (`gist-sync.js`) a été entièrement retiré des écritures
 anti-chevauchement de dates, fonction pure indépendante de la persistance).
 Un plan Forme clôturé (`dateCloture` posée) ne peut plus être écrasé via
 `mettreAJourPlanSupabase()`.
+
+**`chargerResultatsCoursesSupabase(userId)` (`sync-storage.js`,
+05/08/2026)** — liste les résultats de course déjà saisis sur TOUS les
+plans course d'un utilisateur (mode ≠ 'forme'), pour la section "🏅 Mes
+courses" (cf. §4). Requête en N+1 (une lecture `plan_donnees` par plan
+via `chargerPlansSupabase()` puis une lecture par plan trouvé) plutôt
+qu'un `IN(...)` groupé — volume attendu faible, pas justifié d'optimiser
+davantage pour l'instant. Ne retourne que les plans ayant réellement un
+`lk_race_result` enregistré ; `lk_race_result_details` est optionnelle
+et peut être absente sans erreur (résultat saisi avant l'ajout de ces
+champs enrichis).
 
 **Sauvegarde/restauration de la base (`api/backup.js`, cf. §16)** — le
 projet Supabase est en plan **Free**, qui n'inclut ni Daily Backups ni
@@ -556,7 +644,8 @@ supprimer son compte.
   fcMax, fcRepos, sexe, pps,
   ppsDocument: {data (JPEG base64), type:"image/jpeg", nomFichier} | null,
   ppsExpiration: "YYYY-MM-DD" | null,
-  records: { "5K": {temps, date?}, "10K": {...}, "Semi": {...}, "Marathon": {...} }
+  records: { "5K": {temps, date?}, "10K": {...}, "Semi": {...}, "Marathon": {...} },
+  kmCumulesTotal: nombre (cumul GLOBAL, tous plans confondus)
 }
 ```
 
@@ -571,6 +660,16 @@ supprimer son compte.
 - `ppsDocument`/`ppsExpiration` : gérés exclusivement via la modale du
   bouton "🩺 PPS" du header (cf. §4) — Réglages n'affiche qu'un rappel en
   lecture seule (statut + date), aucun formulaire d'import ici.
+- `kmCumulesTotal` (05/08/2026) : cumul de km sur toutes les séances
+  validées (✅/⚠️/❌), tous plans confondus — alimente le badge "km
+  cumulés" (cf. §16). Champ GLOBAL (contrairement à la quasi-totalité du
+  reste de ce profil, qui est aussi global par nature — mais à
+  distinguer explicitement de `lk_km_comptes_par_uid`, lui local au
+  plan, cf. §5). Ajusté de façon idempotente à chaque changement de
+  statut via `recalculerKmComptesPourUid()`. Un script de rattrapage
+  ponctuel (non versionné dans le repo, fourni une fois à Laurent) permet
+  d'initialiser ce total depuis l'historique déjà validé avant la mise en
+  place de ce champ.
 - Wizard : `preremplirDepuisProfilCoureur()` auto-remplit à partir du
   profil (record le plus pertinent, repli Riegel sinon).
   `verifierCoherenceRecord()` écarte un record si écart >10% à
@@ -630,7 +729,12 @@ mais la suite du plan dépend de `dateCourse` :
 `PACE_RATIOS.I` (calibré sur du VMA classique, pas un effort continu).
 Le test est placé sur le premier jour *utile* de la semaine (date réelle
 ≥ `dateDebut`). Jour "🏁 Jour J" ne doit jamais s'afficher tant que
-`enAttenteTest`.
+`enAttenteTest`. **Validation du test (`renderTestSemiCooperRow`,
+05/08/2026)** : compte désormais aussi pour le badge "km cumulés" (cf.
+§16) — pose une entrée `manualPerf[uid]` minimale (distance connue,
+allure/FC absentes) puisque ce point d'écriture de statut ne passait pas
+par les mécanismes habituels (cf. §5, principe transverse sur les points
+d'écriture de statut).
 
 **Refus si volume incompatible avec le nombre de jours** — si plus de la
 moitié des semaines de Construction ont un EF sous `VOLUME_MIN_EF_KM`
@@ -761,6 +865,21 @@ visible ("📈 Allures mises à jour"). Indépendant d'`appliquerAdaptations()`
 (réagit à des semaines ratées, sur clic explicite). **Non testé en
 conditions réelles au-delà de la fin d'un premier cycle S2.**
 
+**`distanceEffortStructure(structureIntervalles, allureReplixSecParKm)`
+(`index.html`) — repli sur une allure fournie par l'appelant
+(05/08/2026)** — calcule la distance d'EFFORT SEUL d'une structure
+d'intervalles (jamais l'échauffement/récup/retour au calme, distinct de
+`distanceTotaleAvecRecup()`). Second paramètre optionnel ajouté : quand
+un bloc n'a NI `distanceM` NI `allure` prédéfinie dans le plan (blocs
+définis uniquement en durée, ex. "4×3min"), et qu'aucune durée totale
+n'a été saisie en repli côté saisie manuelle, la fonction retournait
+`null` pour ce bloc — la séance manuelle entière se retrouvait alors
+sans distance calculable du tout, invisible pour le prédicteur (cf.
+§7bis) malgré un statut ✅/⚠️ bien posé. `allureReplixSecParKm` (l'allure
+que le coureur vient de saisir dans le formulaire) sert de repli dans ce
+cas précis. N'affecte aucun appelant existant sans ce second paramètre
+(comportement inchangé, `undefined` par défaut).
+
 **Script de test de génération de plans variés**
 (`scripts/test-plans-varies.js`, `node scripts/test-plans-varies.js`) —
 10 profils prédéfinis couvrant les cas sensibles connus (grand débutant,
@@ -773,6 +892,89 @@ moteur, attendu), FAIL (à corriger). **À relancer avant tout changement
 dans `plan-generator.js`/`plan-forme.js`** (filet de sécurité rapide,
 quelques secondes) — reste à 5/10 OK + 5/10 REFUSÉ après les correctifs
 du 02/08/2026 (levier Volume, répartition EF/longue), aucune régression.
+
+## 7bis. Prédicteur d'estimation 10K (`v2/engine/predictor.js`)
+
+Extrait de `index.html` le 31/07/2026 dans un module ES dédié — fonctions
+pures, aucune ne mute directement l'état global ni n'appelle Supabase
+(sauf `predict10K()` qui mute `predHistory` EN PLACE et déclenche sa
+sauvegarde via `saveFn`, reçu en paramètre). Distinct des 5 modules du
+moteur de décision (§8) mais lit les mêmes données.
+
+Deux couches :
+- **Borne brute** (`borneBrute`, `calculerBorneBruteAtDate()`) : mesure
+  physio pure — moyenne pondérée SPEC (0.45), VMA (0.35, vitesse×0.87),
+  SEUIL (0.10, formule Daniels-Gilbert/VDOT — contribue à partir de 3
+  séances), combinée à `BASE_TIME_REFERENCE` via `lavendouWeight`
+  (décroît 90%→10% sur 8 semaines, garde-fou 50% si pas de séance
+  intensive récente). Source écartée si écart >20% vs référence.
+- **Estimation affichée** (`predict10K()`) : converge par petits pas
+  (`PAS_CONVERGENCE_BASE=0.15`, modulé par `fiabilitePlanPonderee()`)
+  depuis `BASE_TIME_REFERENCE` vers `borneBrute`, jamais un saut direct —
+  ne peut jamais dépasser ce que les séances mesurent réellement.
+
+`fiabilitePlanPonderee(dateStr)` : taux de réussite sur TOUTES les
+séances, pondéré par récence (demi-vie 21j). Recalcule `statutEffectif`
+localement PAR RAPPORT À `dateStr` (pas un champ figé) — nécessaire pour
+la reconstruction rétroactive.
+
+**`weightedAvgByEffortDuration()` — distance d'effort seul pour les
+saisies manuelles, jamais la distance totale (corrigé le 05/08/2026,
+bug signalé par Laurent : "modifier la durée totale de la séance change
+l'estimation, alors que seule l'allure des intervalles devrait
+compter")** — avant ce correctif, le "lap virtuel" construit pour chaque
+séance saisie manuellement utilisait `manualPerf[uid].distance` en
+priorité, qui est la distance TOTALE de la séance (échauffement compris)
+quand une durée totale a été saisie côté formulaire. Le calcul prétendait
+alors que TOUTE cette distance avait été courue à l'allure des
+INTERVALLES — gonflant artificiellement le poids de cette séance dans la
+moyenne pondérée proportionnellement à la durée d'échauffement/récup
+saisie, sans aucun rapport avec la performance réelle. Utilise désormais
+systématiquement `distanceEffortStructureFn` (distance d'effort seul,
+cf. §7), avec l'allure de la séance en repli si le plan n'a pas prédéfini
+d'allure de bloc (cf. §7, second paramètre de `distanceEffortStructure`).
+
+**Historique rejoué rétroactivement** : `rebuildPredHistorySequentielle()`
+applique la convergence jour par jour depuis le début du plan.
+`PREDICTOR_VERSION` (actuellement 12) déclenche la reconstruction si
+incrémentée — geste manuel requis à chaque changement de formule.
+**Premier rendu différé depuis le 04/08/2026** (cf. §4/§16) : quand une
+reconstruction est nécessaire au chargement, `rebuildPredHistory()`
+(wrapper resté dans `index.html`, cf. en-tête de `predictor.js`) affiche
+un état intermédiaire "recalcul en cours" via `renderDiffere()` plutôt
+que `render()` immédiat.
+
+**`rebuildPredHistory()` doit être appelée à chaque point qui pose ou
+retire un statut de séance SEUIL/VMA/SPEC, pas seulement au clic manuel
+(05/08/2026)** — plusieurs points d'écriture de statut posaient un
+✅/⚠️/❌ sans jamais redéclencher ce recalcul, laissant l'estimation
+affichée figée sur une ancienne valeur de convergence qui ne
+correspondait plus à l'état réel du plan : l'auto-validation en masse
+après synchro Strava/import FIT (`matchActivitiesToPlan()` — le chemin
+le PLUS FRÉQUENT en usage réel, pas un cas marginal), le choix explicite
+d'une activité ambiguë, et la suppression d'une activité déjà validée
+(bouton 🗑️). Corrigés en ajoutant l'appel à ces 3 points, en plus des
+points déjà couverts (clic manuel `renderStatusRow`, saisie manuelle
+Enregistrer/Annuler). Cf. §5 pour le principe transverse qui en découle.
+
+Formule Daniels-Gilbert (VDOT) pour SEUIL — remplace Riegel,
+structurellement pessimiste sur un effort sous-maximal (chapitre 5 du
+livre Daniels absent du fichier projet, formule reconstruite par
+recherche web, cohérente avec les % VO2max confirmés au chapitre 4).
+Filtres d'activités : `a.type === "Run" || a.sport_type === "Run"`
+(repli sport_type pour montres tierces). Convergence n'avance que sur
+nouvelle donnée de qualité du JOUR (`aDesNouvellesDonneesQualite`), pas à
+chaque simple chargement.
+
+**Non couvert / reporté** : PACES-S (plaisir par séance) ;
+R-062/R-070/R-080 jamais observées sur données réelles de Laurent —
+surveiller ; rythme de convergence (`PAS_CONVERGENCE_BASE=0.15`) à
+éprouver sur plusieurs semaines ; formule VDOT reconstruite par recherche
+web, pas garantie identique aux tables publiées ; aucune variable interne
+(`ALL_SESSIONS`, `statuses`, `PLAN`...) exposée sur `window` pour debug —
+seuls `__PLAN_BRUT__`/`__PLAN_GENERE__`/`stravaActivities`/`localStorage`
+accessibles ; instrumentation directe (logs temporaires en prod) reste la
+méthode de diagnostic la plus fiable pour un bug profond.
 
 ## 8. Moteur de décision
 
@@ -850,62 +1052,18 @@ variable). Coach IA lit `RunnerState`/`EngineDecision`, ne recalcule
 jamais un ratio séparé, peut commenter mais jamais produire une décision
 différente.
 
-**Prédicteur d'estimation 10K** (`predict10K()`, `index.html`) — distinct
-des 5 modules mais lit les mêmes données. Deux couches :
-- **Borne brute** (`borneBrute`) : mesure physio pure — moyenne pondérée
-  SPEC (0.45), VMA (0.35, vitesse×0.87), SEUIL (0.10, formule
-  Daniels-Gilbert/VDOT — contribue à partir de 3 séances), combinée à
-  `BASE_TIME_REFERENCE` via `lavendouWeight` (décroît 90%→10% sur 8
-  semaines, garde-fou 50% si pas de séance intensive récente). Source
-  écartée si écart >20% vs référence.
-- **Estimation affichée** : converge par petits pas
-  (`PAS_CONVERGENCE_BASE=0.15`, modulé par `fiabilitePlanPonderee()`)
-  depuis `BASE_TIME_REFERENCE` vers `borneBrute`, jamais un saut direct —
-  ne peut jamais dépasser ce que les séances mesurent réellement.
-- `fiabilitePlanPonderee(dateStr)` : taux de réussite sur TOUTES les
-  séances, pondéré par récence (demi-vie 21j). Recalcule `statutEffectif`
-  localement PAR RAPPORT À `dateStr` (pas un champ figé) — nécessaire pour
-  la reconstruction rétroactive.
-- **Historique rejoué rétroactivement** :
-  `rebuildPredHistorySequentielle()` applique la convergence jour par
-  jour depuis le début du plan. `PREDICTOR_VERSION` (actuellement 12)
-  déclenche la reconstruction si incrémentée — geste manuel requis à
-  chaque changement de formule. **Premier rendu différé depuis le
-  04/08/2026** (cf. §4/§16) : quand une reconstruction est nécessaire au
-  chargement, `rebuildPredHistory()` affiche un état intermédiaire
-  "recalcul en cours" via `renderDiffere()` plutôt que `render()`
-  immédiat — n'est peint que si le calcul qui suit dépasse 50ms, absorbé
-  sinon par le second `render()` (résultat final) qui suit dans la même
-  exécution synchrone.
-- Formule Daniels-Gilbert (VDOT) pour SEUIL — remplace Riegel,
-  structurellement pessimiste sur un effort sous-maximal (chapitre 5 du
-  livre Daniels absent du fichier projet, formule reconstruite par
-  recherche web, cohérente avec les % VO2max confirmés au chapitre 4).
-- Filtres d'activités : `a.type === "Run" || a.sport_type === "Run"`
-  (repli sport_type pour montres tierces).
-- Convergence n'avance que sur nouvelle donnée de qualité du JOUR
-  (`aDesNouvellesDonneesQualite`), pas à chaque simple chargement.
-
-**Non couvert / reporté** : PACES-S (plaisir par séance) ;
-R-062/R-070/R-080 jamais observées sur données réelles de Laurent —
-surveiller ; rythme de convergence (`PAS_CONVERGENCE_BASE=0.15`) à
-éprouver sur plusieurs semaines ; formule VDOT reconstruite par recherche
-web, pas garantie identique aux tables publiées ; aucune variable interne
-(`ALL_SESSIONS`, `statuses`, `PLAN`...) exposée sur `window` pour debug —
-seuls `__PLAN_BRUT__`/`__PLAN_GENERE__`/`stravaActivities`/`localStorage`
-accessibles ; instrumentation directe (logs temporaires en prod) reste la
-méthode de diagnostic la plus fiable pour un bug profond.
-
 ## 9. Saisie manuelle, RPE et statuts de séance
 
 **Saisie manuelle** : bouton "Annuler" (réinitialise + relance sync
 Strava), champ "durée totale" pour séances de qualité, exclusion Strava
-complète quand saisie manuelle existe. Accessible via l'icône ✏️ unifiée
+complète quand saisie manuelle existe, grille réussi/raté par intervalle
+pour les séances qualité (cf. §4). Accessible via l'icône ✏️ unifiée
 (cf. §4) — regroupe saisie manuelle et import FIT dans un seul popover.
 
 **RPE** : source unique `sessionRpe[uid]`, sélecteur 5 niveaux
 (🙂😐😓😣🥵) mappés CR-10, visible dès qu'un statut est posé, pondération
-TRIMP +12% si RPE ≥ 8.
+TRIMP +12% si RPE ≥ 8. Même échelle réutilisée pour le ressenti du
+résultat de course (cf. §14bis).
 
 **Statuts de séance** (`SOPTS`) : `—`/`✅`/`❌`/`⚠️`/`😴`, indexés par
 `uid`. Une séance ne peut plus être supprimée du plan — seul un statut
@@ -918,7 +1076,8 @@ disponible sur chaque objet `ALL_SESSIONS` : égal au vrai statut saisi
 s'il existe, sinon `"😴"` automatiquement pour tout jour DÉJÀ PASSÉ
 (jamais le jour même) sans saisie. Jamais écrit dans `statuses[uid]`
 lui-même — purement un calcul d'affichage. Accès protégé par try/catch
-(pas `typeof`, ne protège pas la temporal dead zone).
+(pas `typeof`, ne protège pas la temporal dead zone — cf. §3 pour un cas
+similaire rencontré sur une variable `let` plutôt qu'un accès à un objet).
 
 **Convention à respecter partout** : lire `statutEffectif` (pas
 `statuses[uid]` brut) pour tout calcul qui doit tenir compte des séances
@@ -937,7 +1096,9 @@ pastille visuelle + menu. Choix mémorisé (`lk_choix_activite_ambigue`)
 tant que le nombre de candidats ne change pas — redéclenché si une
 nouvelle activité apparaît après resynchro. Sans lien avec le calcul de
 charge/fatigue (`RunnerStateCalculator` lit `stravaActivities` en entier,
-indépendamment du matching).
+indépendamment du matching). **Point d'auto-validation également couvert
+par le cumul km et le recalcul d'estimation** (cf. §5/§7bis) depuis le
+05/08/2026.
 
 **Protection des activités importées** — la première activité sur une
 date (Strava ou FIT) ne peut plus être écrasée silencieusement par une
@@ -977,7 +1138,11 @@ manuelle explicite (badge de source + bouton 🗑️ sur la carte de séance)
 libère la date. `syncStrava()` merge plutôt qu'écrase, `importerFichierFit()`
 bloque l'import si une activité existe déjà. Effet de bord assumé : une
 activité Strava corrigée a posteriori sur Strava.com n'est plus
-re-synchronisée tant que l'ancienne n'est pas supprimée.
+re-synchronisée tant que l'ancienne n'est pas supprimée. `matchActivitiesToPlan()`
+étant appelée par les 3 chemins d'entrée (synchro Strava, import FIT,
+choix d'activité ambiguë), un correctif appliqué à cette fonction (cf.
+§5/§7bis, cumul km et estimation) bénéficie automatiquement aux 3 sans
+duplication.
 
 **Pas de stockage du fichier `.fit` brut** — seul le résultat de la
 détection est conservé (dans `stravaActivities`, `_source: "fit"`) ; pas
@@ -1023,6 +1188,24 @@ activités précédentes conservées" alors qu'aucune requête réseau n'avait
 même été tentée. Corrigé par un accès sécurisé
 (`PLAN?.[0]?.sessions?.[0]?.date`) avec repli sur 8 semaines seules si
 aucun plan n'est disponible.
+
+**Relecture de `stravaToken`/`stravaRefresh`/`stravaExpires`/
+`stravaActivities` après le préchargement Supabase (05/08/2026, bug
+signalé par Laurent : synchro absente à l'ouverture, "perdue" après un
+F5)** — ces 4 variables sont lues UNE SEULE FOIS à leur déclaration
+(`let x = load("lk_...", défaut)`), sur un appareil où le token n'était
+pas encore en `localStorage` à cet instant précis (rechargement complet,
+nouvel appareil), elles restaient figées à `null`/vide pour tout le
+reste de l'exécution — même après que le préchargement Supabase ait fini
+d'écrire le vrai token en `localStorage` un instant plus tard.
+`autoSync()` testait alors `if (stravaToken && ...)` sur une variable qui
+ne reflétait jamais la réalité fraîchement rechargée, et ne déclenchait
+donc jamais la synchro automatique attendue. Corrigé par une relecture
+explicite (`if (!stravaToken) { stravaToken = load(...); ... }`), placée
+**après** la déclaration `let stravaToken` elle-même (cf. §3 pour
+l'erreur de TDZ commise puis corrigée lors de la première tentative de ce
+correctif — la relecture avait d'abord été placée trop tôt dans le
+fichier, avant la déclaration).
 
 **Météo** — proxy Open-Meteo (`api/weather.js`), gratuit, sans clé.
 `type=forecast|current|historical`. Géolocalisation : dernière activité
@@ -1232,6 +1415,24 @@ absolue sur toute autre redirection Strava (cf. §12, page Source de
 données de l'onboarding) : un grand débutant ne doit jamais partir en
 OAuth directement, seulement via cet écran.
 
+## 14bis. Jour de course (`renderCourse`)
+
+Écran dédié : météo, horaires, parcours, stratégie de course (cf. §7),
+et résultat officiel une fois la course passée (`resultatCard`,
+`DATE_COURSE_REFERENCE`).
+
+**`resultatCard` — résultat enrichi (05/08/2026, demande de Laurent)** —
+au-delà du temps chrono (`lk_race_result`, seul champ historique), le
+formulaire propose désormais : ressenti (RPE, échelle réutilisée telle
+quelle, cf. §9), commentaire libre, classement général (place/total) et
+classement catégorie (place/total). Stockés dans `lk_race_result_details`
+(cf. §5) — clé séparée, `lk_race_result` reste inchangée pour ne pas
+casser les 4 usages existants qui en dépendent (bandeau dashboard, export
+PDF, check `hasRes`). Le badge "record_battu" (cf. §16) reste déclenché
+uniquement par la sauvegarde du temps chrono, indépendamment des champs
+enrichis. Consultable a posteriori depuis la section "🏅 Mes courses" de
+Stats (cf. §4/§5, tous plans confondus).
+
 ## 15. Principes transverses à retenir
 
 - **Inventaire à jour à chaque push structurel** (pas pour un simple fix)
@@ -1252,7 +1453,9 @@ OAuth directement, seulement via cet écran.
 - **Toute promesse globale attendue ailleurs doit être créée de façon
   synchrone, avant tout `await`** — même règle pour une simple variable
   `let` lue par une fonction hoisted appelable tôt dans l'exécution du
-  script (cf. §3, `_renderDiffereTimer`).
+  script (cf. §3, `_renderDiffereTimer`), ou par tout code placé après le
+  `await` mais AVANT la déclaration `let` elle-même si celle-ci se trouve
+  plus loin dans le fichier (cf. §3/§11, relecture `stravaToken`).
 - **Toute fonction de traduction entre formats (`v1-bridge.js` et
   équivalents) doit être mise à jour à chaque nouveau champ personnalisé**
 - **Toute fonction qui modifie/supprime un plan doit traiter Supabase
@@ -1303,7 +1506,16 @@ OAuth directement, seulement via cet écran.
   révèle la vraie nature du symptôme (page blanche prolongée, pas un
   double-rendu) — un outil de mesure réel (Network, Performance,
   Console) aurait dû être mobilisé dès le premier signalement plutôt
-  qu'après plusieurs itérations de correctifs non concluants.
+  qu'après plusieurs itérations de correctifs non concluants. **Rappel
+  du 05/08/2026** : une hypothèse plausible mais non vérifiée
+  (accusation portée à tort sur un cache CDN/navigateur) a fait perdre
+  du temps sur le diagnostic d'un badge cassé — la vraie cause était une
+  simple omission de code (`km_cumules` absent de `DEFINITIONS_BADGES`,
+  ajouté partout ailleurs sauf à cet endroit précis), révélée seulement
+  en relisant attentivement le fichier local plutôt qu'en cherchant une
+  explication externe. Toujours épuiser l'hypothèse "erreur dans le code
+  qu'on vient d'écrire" avant d'accuser un mécanisme externe (cache,
+  déploiement, CDN).
 - **Toute nouvelle table sensible (tokens, secrets) doit être ajoutée
   explicitement à la liste noire d'exclusion de `api/backup.js`
   (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
@@ -1341,11 +1553,13 @@ OAuth directement, seulement via cet écran.
   relatif) à une cascade de contraintes empiriques appliquées dans un
   ordre fixe. Cf. §7, `repartirVolumeSemaine`.
 - **Une fonction utilitaire générique appelée par de nombreux points
-  d'appel dans un même fichier (ex. `getLapsAffichage()`, 9+ appelants)
-  doit être corrigée UNE SEULE FOIS, à la source, plutôt que patchée
-  individuellement à chaque site d'appel** — un correctif dispersé sur
-  chaque appelant est fragile (facile d'en oublier un) et duplique la
-  logique. Cf. §10, correctif `lapsSontDejaEffortSeul`.
+  d'appel dans un même fichier (ex. `getLapsAffichage()`, 9+ appelants,
+  ou `matchActivitiesToPlan()`, 3 chemins d'entrée) doit être corrigée
+  UNE SEULE FOIS, à la source, plutôt que patchée individuellement à
+  chaque site d'appel** — un correctif dispersé sur chaque appelant est
+  fragile (facile d'en oublier un) et duplique la logique. Cf. §10,
+  correctif `lapsSontDejaEffortSeul` ; cf. §7bis pour le même principe
+  appliqué au correctif de distance d'effort dans le prédicteur.
 - **Avant de croire qu'un mécanisme existe déjà dans le code (ex. une
   auto-ouverture, un callback), vérifier positivement sa présence
   (recherche du déclenchement réel) plutôt que de se fier à un
@@ -1371,13 +1585,28 @@ OAuth directement, seulement via cet écran.
   écarter ce risque, il faut vérifier l'ordre relatif réel. Cf. §16,
   chantier clignotement au chargement (script `type="module"` non
   concerné, déjà différé nativement par la spec).
+- **Tout point qui pose ou retire un statut de séance, ou une saisie de
+  performance, doit être audité contre la liste complète des effets de
+  bord attendus (cumul km, recalcul d'estimation)** — un nouveau point
+  d'écriture de `statuses[uid]`/`manualPerf[uid]` (ex. le test
+  semi-Cooper, une fonctionnalité indépendante des flux habituels) est
+  facile à oublier lors d'un audit ciblé sur "les points connus" plutôt
+  que sur "toute occurrence du motif d'écriture" — un `grep` exhaustif
+  du motif d'écriture reste plus fiable qu'une liste mentale de points
+  déjà identifiés. Cf. §5/§7bis/§9, chantier badge km cumulés + fix
+  estimation du 05/08/2026.
 
 ## 16. État des chantiers ouverts
 
 | Chantier | Statut |
 |---|---|
 | Import `.fit` avec détail par répétition (détection sans marqueurs natifs, protection des activités importées, icône ✏️ unifiée) | ✅ Codé, poussé et testé en conditions réelles le 03/08/2026. Détail en §4/§9/§10 et `docs/v2-methodologie/import-fit-intervalles.md`. |
-| Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 14 badges en 4 catégories, consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (seul badge CUMULÉ, pas une série — `serieActuelle` égale toujours `serieMax`). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus ("6 semaines parfaites" affiché comme un objectif se lisait comme un état déjà acquis) — reformulés avec un verbe d'action explicite ("Réaliser 6 semaines parfaites", "Enchaîner X séances"...) pour les 4 badges à paliers ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé, la notion de série qui casse n'a pas de sens ici) ; (3) badge `record_battu` se déclenchait à tort sur une simple saisie/correction manuelle dans Réglages — déplacé vers le seul déclencheur légitime (validation d'un vrai résultat de course dans `resultatCard`, comparé au record personnel de la distance du plan actif) ; (4) le calcul des badges ne se refaisait qu'une fois par session (`window.__badgesCache__` mis en cache indéfiniment) — recalcul désormais forcé au clic sur la carte "Mes badges" (Stats), sans besoin de recharger la page. **Note résiduelle** : un badge `record_battu` déjà débloqué à tort avant ce correctif doit être retiré manuellement en base (`DELETE FROM badges_debloques WHERE ...`), aucun outil de nettoyage automatique côté app. |
+| Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 15 badges en 4 catégories (dont "Km cumulés", ajouté le 05/08/2026, cf. ligne dédiée ci-dessous), consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (badge CUMULÉ, pas une série), km cumulés (idem, cumulé). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus reformulés avec un verbe d'action explicite ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé) ; (3) badge `record_battu` déplacé vers le seul déclencheur légitime (validation d'un résultat de course, cf. `resultatCard`) ; (4) recalcul forcé au clic sur "Mes badges", plus de cache indéfini. |
+| **Badge "Km cumulés" (nouveau, 05/08/2026)** | ✅ Codé et poussé. 7 paliers (50/100/250/500/1000/1500/2000 km), catégorie progression. Cumul TOTAL tous plans confondus (pas seulement le plan actif), sur toute séance validée ✅/⚠️/❌ — décision explicite de Laurent d'inclure ❌ (une séance ratée/non conforme a quand même été courue). Alimenté par `profilCoureur.kmCumulesTotal` (cf. §6), ajusté de façon idempotente à chaque changement de statut via `recalculerKmComptesPourUid()` (cf. §5, registre `lk_km_comptes_par_uid`). **6 points d'écriture de statut audités et corrigés** pour appeler ce recalcul : clic manuel (`renderStatusRow`), saisie manuelle Enregistrer/Annuler, suppression d'une activité, auto-validation en masse après synchro (le chemin le plus fréquent), choix d'activité ambiguë, test semi-Cooper. Rattrapage de l'historique déjà validé avant ce chantier : script ponctuel fourni une fois à Laurent (non versionné dans le repo), à relancer si besoin (idempotent, recalcule depuis zéro à chaque exécution). |
+| **Résultat de course enrichi + section "Mes courses" (nouveau, 05/08/2026)** | ✅ Codé et poussé. `resultatCard` (jour de course) accepte désormais ressenti (RPE), commentaire, classement général et classement catégorie (place/total chacun) — stockés dans `lk_race_result_details` (cf. §5/§14bis), séparée de `lk_race_result` pour zéro impact sur les usages existants. Nouvelle fonction `chargerResultatsCoursesSupabase()` (`sync-storage.js`, cf. §5) pour lire ces résultats sur tous les plans du compte. Nouveau groupe accordéon "🏅 Mes courses" dans Stats (cf. §4), chargement asynchrone à la première ouverture. |
+| **Détail des intervalles réussi/raté en saisie manuelle (nouveau, 05/08/2026)** | ✅ Codé et poussé. Pour toute séance avec `structureIntervalles`, grille de boutons ✓/✕ par répétition dans le formulaire de saisie manuelle — cf. §4/§9. Volontairement réussi/raté seul (pas d'allure par intervalle). N'entre pas dans le calcul du prédicteur. |
+| **Fix estimation 10K faussée par la durée totale saisie manuellement (05/08/2026)** | ✅ Corrigé. `weightedAvgByEffortDuration()` (`predictor.js`) utilisait la distance TOTALE de la séance manuelle (échauffement/récup compris) au lieu de la distance d'effort seul pour calculer le poids d'une séance dans l'estimation — modifier la durée d'échauffement saisie faisait bouger l'estimation, sans rapport avec la performance réelle. Corrigé en utilisant systématiquement `distanceEffortStructure()` (avec repli sur l'allure saisie si le plan n'a pas d'allure de bloc prédéfinie, cf. §7). Détail complet en §7bis. |
+| **Fix "premier arrivé" hors saisie manuelle — estimation figée après retrait/ajout automatique d'un statut qualité (05/08/2026)** | ✅ Corrigé. `rebuildPredHistory()` n'était appelée qu'au clic manuel de statut et à la saisie manuelle — pas à l'auto-validation en masse après synchro Strava/FIT (le chemin le plus fréquent), ni au choix d'activité ambiguë, ni à la suppression d'une activité. Une séance SEUIL/VMA/SPEC auto-validée sans clic manuel restait invisible pour l'estimation affichée. 3 points corrigés, cf. §7bis. |
 | Permettre de changer la date de course d'un plan actif | ✅ Livré. 4e levier de l'accordéon "Modifier mon plan" (cf. §3), régénération complète avec règles de phase. Cycle de décharge peut se désynchroniser légèrement après un changement de date — limite mineure acceptée. Non testé en conditions réelles au-delà des cas simulés. |
 | Réorganiser Réglages/Stats/Course en sections repliables + améliorer les roulettes de saisie | ✅ Livré le 31/07/2026. Détail complet en §4 (Réglages, Stats, Course, records personnels) et §3 (roulettes du wizard). |
 | Sauvegarde/réinjection de données (plan Supabase Free, aucune sauvegarde automatique incluse) | ✅ Codé et testé en conditions réelles le 01/08/2026 (`api/backup.js` + onglet Sauvegarde de `beta-admin`), détail complet en §5. |
@@ -1392,6 +1621,7 @@ OAuth directement, seulement via cet écran.
 | Refondre l'aide en tutos d'action par fonctionnalité | ✅ Livré le 04/08/2026 — section "Tutos par action" en tuiles, sélecteur d'onglets Aide/Tutos, 16 tutos rédigés couvrant Démarrer/Au quotidien/Gérer son plan/Suivi/Compte. Détail complet en §4. Reste ouvert : aucune image intégrée pour l'instant (Laurent prévoit de fournir des captures au fil de l'eau, le format le supporte déjà). |
 | Couleur manquante pour le type de séance TEST dans la mini-frise semaine + crayon affiché en double dans le popover de saisie | ✅ Corrigés le 04/08/2026, dans la même session que le chantier Aide ci-dessus. Détail en §4. |
 | Clignotement de l'écran au chargement de l'app | 🔶 Investigation approfondie menée le 04/08/2026, PARTIELLEMENT résolue — plusieurs correctifs structurellement corrects ont été appliqués (remplacement atomique du DOM via `replaceChildren` au lieu d'un `innerHTML=""` prématuré, regroupement des rendus automatiques différés via `renderDiffere()`, connexion WebSocket Realtime non-bloquante, chargement `defer` de 9 scripts classic bloquants, correction d'une balise `<meta name="theme-color">` invalide), mais Laurent rapporte que le clignotement persiste après chacun d'eux. Un test DevTools Performance + Screenshots (filmstrip) a confirmé la vraie nature du symptôme : une page BLANCHE réelle d'environ 750ms à 1.85s avant le premier affichage (pas un double-rendu répété comme supposé initialement) — probablement causée par un enchaînement structurel d'au moins 2-3 allers-retours réseau séquentiels et nécessaires vers Supabase (`getUser()` → `migrerDonneesExistantes()` → `precharger()`) avant que la donnée ne soit prête pour le premier rendu, chacun avec sa propre latence de connexion. Écarté comme non concluant : différer l'écriture concurrente de `migrerDonneesExistantes()`/`precharger()` (ordre nécessaire, la seconde lit ce que la première vient d'écrire). Piste non engagée par prudence : afficher un premier rendu depuis le cache localStorage local avant confirmation serveur, avec re-render silencieux une fois confirmé — chantier plus large sur un flux d'authentification déjà marqué par plusieurs bugs sensibles, nécessiterait une session dédiée avec validation explicite avant de s'y engager. |
+| **Unifier les saisies manuelles avec le format Strava/FIT (`stravaActivities`)** | 🔶 Discuté avec Laurent le 05/08/2026, PAS engagé — jugé techniquement possible mais structurellement plus lourd qu'un ajustement ponctuel. Points à trancher avant de coder : représentation de l'absence de laps réels (piste retenue à discuter : un lap synthétique unique couvrant toute la distance/durée saisie, cohérent avec le détail réussi/raté par intervalle ajouté le même jour, cf. ligne ci-dessus) ; principe actuel de priorité manuelle (`getStravaRunSiPasManuel` retourne `null` si une saisie manuelle existe) à repenser en un tableau unifié avec un marqueur de priorité, répercuté sur plusieurs dizaines de points d'usage de `stravaActivities.find(...)` ; indexation différente (`manualPerf` par `uid` de séance, `stravaActivities` par date) ; portée de persistance différente (`manualPerf` préfixé par plan, `stravaActivities` global au compte). Nécessiterait une session dédiée avec audit exhaustif des points d'usage avant tout codage. |
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
