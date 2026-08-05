@@ -5985,7 +5985,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       // ni récup ni RAC) si le coureur laisse le champ durée vide.
       const distance = dureeSaisieMin
         ? distanceTotaleAvecRecup(s.structureIntervalles, dureeSaisieMin*60, window.__PLAN_BRUT__?.allures?.E)
-        : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles) : null);
+        : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles, paceSec) : null);
       manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null, intervalles: formWrap._intervallesState || null };
       save(clePourPlan("lk_manual_perf"), manualPerf);
       // Cumul km (badge "km cumulés", 05/08/2026) — la saisie manuelle peut
@@ -6343,7 +6343,20 @@ function recalculerKmComptesPourUid(uid, dateSeance) {
   sauvegarderProfilCoureur();
 }
 
-function distanceEffortStructure(structureIntervalles) {
+// allureReplixSecParKm (05/08/2026, demande de Laurent) : quand un bloc n'a
+// NI distanceM NI allure prédéfinie dans le plan (cas des blocs VMA/SEUIL
+// définis uniquement en durée, ex. "4×3min"), cette fonction retournait
+// null pour ce bloc — sans durée totale saisie en repli (dureeSaisieMin
+// vide côté renderManualPerfRow), la séance manuelle entière se
+// retrouvait sans distance calculable du tout, et donc SILENCIEUSEMENT
+// EXCLUE de weightedAvgByEffortDuration() (predictor.js, `if (!distance)
+// return;`) — invisible pour l'estimation malgré un statut ⚠️/✅ bien
+// posé. Ce paramètre optionnel permet d'utiliser l'allure que le coureur
+// vient de saisir dans le formulaire (déjà connue à ce stade) comme
+// repli, plutôt que de laisser le bloc sans distance. N'affecte aucun
+// appelant existant qui n'a pas ce paramètre (undefined par défaut,
+// comportement inchangé pour eux).
+function distanceEffortStructure(structureIntervalles, allureReplixSecParKm) {
   if (!structureIntervalles?.blocs?.length) return null;
   const nbSeries = structureIntervalles.nbSeries || 1;
   let total = 0;
@@ -6366,6 +6379,12 @@ function distanceEffortStructure(structureIntervalles) {
             total += distanceBlocM * reps;
           }
         }
+      } else if (bloc.dureeEffortSec && allureReplixSecParKm) {
+        // Repli : ni distanceM ni allure de bloc définie dans le plan,
+        // mais une allure de repli a été fournie par l'appelant (allure
+        // saisie manuellement par le coureur, cf. commentaire ci-dessus).
+        const distanceBlocM = (bloc.dureeEffortSec / allureReplixSecParKm) * 1000;
+        total += distanceBlocM * reps;
       }
     });
   }
