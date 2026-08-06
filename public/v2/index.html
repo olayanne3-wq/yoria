@@ -3206,9 +3206,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // plutôt que de modifier le plan en place cumulativement — sans ça, une
     // adaptation appliquée une fois restait figée même si les statuts qui
     // l'avaient déclenchée étaient corrigés ensuite (trouvé en usage réel).
+    //
+    // Utilise plan.volumeCourant en priorité s'il existe (06/08/2026, même
+    // correctif qu'appliquerChangementVolume et index.html — préserve la
+    // dernière intention réelle de volume réglée via le levier Volume,
+    // plutôt que de systématiquement repartir du volume de départ
+    // historique de paramsOrigine, cf. commentaire complet dans
+    // index.html).
+    const paramsPourAnalyse = planActuel.volumeCourant
+      ? { ...planActuel.paramsOrigine, volumeActuel: planActuel.volumeCourant.km, semaineDepartVolume: planActuel.volumeCourant.semaineNum }
+      : planActuel.paramsOrigine;
     let planPropre;
     try {
-      planPropre = Engine.generatePlan(planActuel.profilOrigine, planActuel.paramsOrigine);
+      planPropre = Engine.generatePlan(planActuel.profilOrigine, paramsPourAnalyse);
     } catch (e) {
       msgEl.textContent = 'Erreur de régénération : ' + e.message;
       msgEl.style.color = 'var(--signal)';
@@ -3244,6 +3254,12 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     planPropre.statuses = planActuel.statuses;
     planPropre.profilOrigine = planActuel.profilOrigine;
     planPropre.paramsOrigine = planActuel.paramsOrigine;
+    // Propage volumeCourant tel quel (06/08/2026, cf. commentaire plus
+    // haut) — cette régénération ne change pas l'intention de volume,
+    // seulement le contenu suite à l'adaptation, donc la dernière
+    // intention réelle du levier Volume doit continuer d'exister pour
+    // toute régénération future.
+    if (planActuel.volumeCourant) planPropre.volumeCourant = planActuel.volumeCourant;
 
     const nouveauxWarnings = Engine.appliquerAdaptations(planPropre);
     dernierPlanGenere = planPropre;
@@ -3523,6 +3539,24 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const { semaineDepartVolume, ...paramsSansCharniere } = nouveauxParams;
     planPropre.paramsOrigine = paramsSansCharniere;
 
+    // plan.volumeCourant (06/08/2026, suite au bug ci-dessus) — préserve la
+    // DERNIÈRE intention réelle de volume exprimée via ce levier, distincte
+    // de paramsOrigine.volumeActuel qui reste le volume de DÉPART HISTORIQUE
+    // du plan (jamais modifié après coup, sert de trace d'origine). Toute
+    // future régénération complète du plan (ex. réparation automatique,
+    // cf. index.html) doit utiliser plan.volumeCourant en priorité s'il
+    // existe, plutôt que de toujours repartir de paramsOrigine.volumeActuel
+    // — sans ça, une régénération complète "oublie" silencieusement tout
+    // changement de volume fait via ce levier et recalcule une progression
+    // depuis le volume de départ d'origine (cas réel rencontré : Laurent
+    // avait réglé 33km via ce levier, une réparation automatique
+    // ultérieure avait recalculé 39km en ignorant cette intention).
+    // Champ VOLONTAIREMENT séparé de paramsOrigine (jamais fusionné avec
+    // lui) — c'est exactement la même erreur de conception que
+    // semaineDepartVolume qui a causé le bug ci-dessus ; le garder à part
+    // évite structurellement toute récidive de ce type.
+    planPropre.volumeCourant = { km: nouveauVolume, semaineNum: semaineCharniere };
+
     dernierPlanGenere = planPropre;
     renderResults(planPropre);
     document.getElementById('levier-volume').style.display = 'none';
@@ -3708,7 +3742,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
-    const nouveauxParams = { ...plan.paramsOrigine, dateCourse: nouvelleDateCourse };
+    // Utilise volumeCourant en priorité s'il existe (06/08/2026, même
+    // correctif que le levier Volume et index.html — préserve la dernière
+    // intention réelle de volume, cf. commentaire complet dans
+    // appliquerChangementVolume).
+    const nouveauxParamsAvecVolume = plan.volumeCourant
+      ? { ...plan.paramsOrigine, dateCourse: nouvelleDateCourse, volumeActuel: plan.volumeCourant.km, semaineDepartVolume: plan.volumeCourant.semaineNum }
+      : { ...plan.paramsOrigine, dateCourse: nouvelleDateCourse };
+    const nouveauxParams = nouveauxParamsAvecVolume;
     let planPropre;
     try {
       planPropre = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
@@ -3737,7 +3778,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     planPropre.nom = plan.nom;
     planPropre.statuses = plan.statuses;
     planPropre.profilOrigine = plan.profilOrigine;
-    planPropre.paramsOrigine = nouveauxParams;
+    // paramsOrigine SANS semaineDepartVolume (même règle que le levier
+    // Volume, jamais persisté durablement) — dateCourse mise à jour, mais
+    // volumeActuel reste celui d'ORIGINE dans paramsOrigine (trace
+    // historique) ; la dernière intention reste dans volumeCourant
+    // ci-dessous, jamais fusionnée avec paramsOrigine.
+    const { semaineDepartVolume: _sdv, ...paramsOrigineSansCharniereDateCourse } = nouveauxParams;
+    planPropre.paramsOrigine = { ...paramsOrigineSansCharniereDateCourse, volumeActuel: plan.paramsOrigine.volumeActuel };
+    if (plan.volumeCourant) planPropre.volumeCourant = plan.volumeCourant;
 
     dernierPlanGenere = planPropre;
     renderResults(planPropre);
@@ -3782,9 +3830,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     }
 
     const nouveauProfil = { ...plan.profilOrigine, joursDisponiblesHabituels: joursSelectionnes, jourLongueChoisi: jourLongueSelectionne };
+    // Utilise volumeCourant en priorité s'il existe (06/08/2026, même
+    // correctif que les autres leviers — préserve la dernière intention
+    // réelle de volume, cf. commentaire complet dans
+    // appliquerChangementVolume).
+    const paramsPourJours = plan.volumeCourant
+      ? { ...plan.paramsOrigine, volumeActuel: plan.volumeCourant.km, semaineDepartVolume: plan.volumeCourant.semaineNum }
+      : plan.paramsOrigine;
     let planPropre;
     try {
-      planPropre = Engine.generatePlan(nouveauProfil, plan.paramsOrigine);
+      planPropre = Engine.generatePlan(nouveauProfil, paramsPourJours);
     } catch (e) {
       msgEl.textContent = 'Erreur de régénération : ' + e.message;
       msgEl.style.color = 'var(--signal)';
@@ -3813,7 +3868,12 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     planPropre.nom = plan.nom;
     planPropre.statuses = plan.statuses;
     planPropre.profilOrigine = nouveauProfil;
-    planPropre.paramsOrigine = plan.paramsOrigine;
+    // paramsOrigine SANS semaineDepartVolume résiduel (jamais persisté
+    // durablement, même règle que les autres leviers) — volumeActuel reste
+    // celui d'ORIGINE, la dernière intention reste dans volumeCourant.
+    const { semaineDepartVolume: _sdvJours, ...paramsOrigineSansCharniereJours } = paramsPourJours;
+    planPropre.paramsOrigine = { ...paramsOrigineSansCharniereJours, volumeActuel: plan.paramsOrigine.volumeActuel };
+    if (plan.volumeCourant) planPropre.volumeCourant = plan.volumeCourant;
 
     dernierPlanGenere = planPropre;
     renderResults(planPropre);
@@ -3900,7 +3960,13 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       return;
     }
 
-    const nouveauxParams = { ...plan.paramsOrigine, objectif: nouvelObjectif };
+    // Utilise volumeCourant en priorité s'il existe (06/08/2026, même
+    // correctif que le levier Volume et index.html — préserve la dernière
+    // intention réelle de volume, cf. commentaire complet dans
+    // appliquerChangementVolume).
+    const nouveauxParams = plan.volumeCourant
+      ? { ...plan.paramsOrigine, objectif: nouvelObjectif, volumeActuel: plan.volumeCourant.km, semaineDepartVolume: plan.volumeCourant.semaineNum }
+      : { ...plan.paramsOrigine, objectif: nouvelObjectif };
     let nouveauPlan;
     try {
       nouveauPlan = Engine.generatePlan(plan.profilOrigine, nouveauxParams);
@@ -3948,7 +4014,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     nouveauPlan.nom = plan.nom;
     nouveauPlan.statuses = plan.statuses || {};
     nouveauPlan.profilOrigine = plan.profilOrigine;
-    nouveauPlan.paramsOrigine = nouveauxParams;
+    // paramsOrigine SANS semaineDepartVolume ni sans le volumeActuel
+    // ponctuel de volumeCourant (jamais persistés durablement, même
+    // principe que le levier Volume) — objectif mis à jour, volumeActuel
+    // reste celui d'ORIGINE (trace historique). La dernière intention de
+    // volume reste dans volumeCourant, propagé séparément ci-dessous.
+    const { semaineDepartVolume: _sdvObjectif, ...paramsOrigineSansCharniereObjectif } = nouveauxParams;
+    nouveauPlan.paramsOrigine = { ...paramsOrigineSansCharniereObjectif, volumeActuel: plan.paramsOrigine.volumeActuel };
+    if (plan.volumeCourant) nouveauPlan.volumeCourant = plan.volumeCourant;
 
     dernierPlanGenere = nouveauPlan;
     renderResults(nouveauPlan);
