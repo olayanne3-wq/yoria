@@ -841,7 +841,83 @@ function resoudreSousType(sousType, restrictionsAllure) {
   return resolved;
 }
 
-export function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure, tauxAffutage = 1, estDechargeSemaine = false, nbApparitionsParSousType = {}, niveau = 'intermediaire' }) {
+// ---------------------------------------------------------------------------
+// Plafond Daniels par séance qualité (06/08/2026, cf. bibliotheque-seances.md
+// section 43 pour la conception complète et les sources)
+//
+// Chapitre 4, figure 4.1 du livre Daniels (fichier projet) : le volume d'une
+// SÉANCE INDIVIDUELLE (jamais le cumul de plusieurs séances qualité dans la
+// même semaine — texte exact : "the percentage of weekly miles that is
+// typically associated with a single session") est plafonné, avec un
+// pourcentage propre à chaque zone d'intensité :
+//   I (VMA)    : min(temps 10K, 8%  volume hebdo)
+//   T (Seuil)  : min(20 min,   10% volume hebdo)
+//   V (Vitesse): min(5 miles,  5%  volume hebdo)
+//   C (Allure course, repère "M" chez Daniels) : min(18 miles/29km, 20% volume hebdo)
+//
+// Ce plafond coexiste avec base/cap par niveau (PARAMS_NIVEAU dans chaque
+// case du switch de genererContenuQualite) sans le remplacer : base/cap
+// pilote la vitesse de progression et jusqu'où le moteur veut emmener le
+// coureur selon son expérience déclarée ; ce plafond Daniels dit ce que le
+// volume hebdo RÉEL de la semaine autorise physiologiquement, indépendamment
+// du niveau (formule universelle chez Daniels — le niveau influence le
+// résultat seulement de façon indirecte, via le volume hebdo réel, souvent
+// corrélé au niveau). En cas de conflit, le plus restrictif des deux prévaut
+// — pas de warning explicite quand ce plafond s'applique (même principe que
+// base/cap eux-mêmes, qui n'en émettent pas non plus).
+//
+// tempsRef10KSec est optionnel : si absent (ex. appelants qui n'ont pas
+// cette donnée sous la main), seul le plafond en % du volume hebdo
+// s'applique — reste cohérent car le repère "temps 10K"/"20 min"/"5 miles"
+// est de toute façon rarement la contrainte active pour un volume hebdo
+// modeste (le % est presque toujours le plus restrictif des deux dans ce
+// cas), cf. simulations en section 43 de la doc.
+const PLAFOND_DANIELS_PAR_ZONE = {
+  I: { pctVolumeHebdo: 0.08, reperAbsoluMin: null },        // temps 10K, géré via tempsRef10KSec
+  T: { pctVolumeHebdo: 0.10, reperAbsoluMin: 20 },           // 20 min max, quel que soit le volume
+  V: { pctVolumeHebdo: 0.05, reperAbsoluKm: 8.05 },          // 5 miles ≈ 8.05km
+  C: { pctVolumeHebdo: 0.20, reperAbsoluKm: 28.97 }          // 18 miles ≈ 28.97km (repère "M" chez Daniels)
+};
+
+const ZONE_PAR_SOUS_TYPE = {
+  'i-3min': 'I', 'i-30-30': 'I', 'pyramidale': 'I',
+  'seuil': 'T', 'seuil-court': 'T', 'seuil-2min': 'T', 'tempo-court': 'T', 'seuil-negatif': 'T',
+  'vitesse': 'V', 'cotes': 'V',
+  'allure-course': 'C', 'allure-course-court': 'C', 'test': 'C'
+};
+
+// Calcule la durée maximale (en secondes) autorisée pour le CORPS d'une
+// séance qualité (hors échauffement/retour au calme), selon le plafond
+// Daniels de sa zone. Retourne null si le sous-type n'est pas concerné
+// (allure-course non plafonnée séparément ici — la séance test l'est via
+// genererContenuTest, cf. plus bas) ou si aucune donnée de volume hebdo
+// n'est disponible pour calculer le %.
+function plafondDureeCorpsSec(sousType, volumeHebdoCibleKm, alluresSecZone, tempsRef10KSec) {
+  const zone = ZONE_PAR_SOUS_TYPE[sousType];
+  if (!zone) return null;
+  const conf = PLAFOND_DANIELS_PAR_ZONE[zone];
+  if (!conf) return null;
+
+  const candidats = [];
+
+  if (volumeHebdoCibleKm != null && volumeHebdoCibleKm > 0 && alluresSecZone) {
+    const kmPlafondPct = volumeHebdoCibleKm * conf.pctVolumeHebdo;
+    candidats.push(kmPlafondPct * alluresSecZone);
+  }
+
+  if (zone === 'I' && tempsRef10KSec != null) {
+    candidats.push(tempsRef10KSec);
+  } else if (conf.reperAbsoluMin != null) {
+    candidats.push(conf.reperAbsoluMin * 60);
+  } else if (conf.reperAbsoluKm != null && alluresSecZone) {
+    candidats.push(conf.reperAbsoluKm * alluresSecZone);
+  }
+
+  if (candidats.length === 0) return null;
+  return Math.min(...candidats);
+}
+
+export function genererContenuQualite({ distance, phase, semaineDansPhase, indexQualiteSemaine, alluresSec, restrictionsAllure, tauxAffutage = 1, estDechargeSemaine = false, nbApparitionsParSousType = {}, niveau = 'intermediaire', volumeHebdoCibleKm = null, tempsRef10KSec = null }) {
   const rotation = ROTATION_SOUS_TYPE[distance]?.[phase] ?? ['seuil'];
   if (rotation.length === 0) return { sousType: null, contenu: 'EF (réacclimatation, pas de qualité cette semaine)', kmEstime: 0 };
 
@@ -855,13 +931,25 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
   const ajuster = (valeur, floor) =>
     facteurReductionCorps < 1 ? Math.max(floor, Math.round(valeur * facteurReductionCorps)) : valeur;
 
+  // Plafond Daniels : calculé une fois pour ce sous-type, réutilisé dans
+  // chaque case concernée pour plafonner reps/durée AVANT application du
+  // facteur de réduction Affûtage/décharge (qui continue de s'appliquer
+  // par-dessus, cohérent avec le fait que ce plafond est un maximum
+  // physiologique du volume hebdo COURANT, déjà réduit pendant Affûtage/
+  // décharge via volumeHebdoCibleKm transmis par l'appelant).
+  const alluresZonePourPlafond = { I, T, V, C };
+  const plafondCorpsSec = (zoneSousType) =>
+    plafondDureeCorpsSec(zoneSousType, volumeHebdoCibleKm, alluresZonePourPlafond[ZONE_PAR_SOUS_TYPE[zoneSousType]], tempsRef10KSec);
+
   let contenuCorps, kmCorps, structureIntervalles;
 
   switch (sousType) {
     case 'seuil-court': {
       const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      const plafondSec = plafondCorpsSec('seuil-court');
+      if (plafondSec != null) reps = Math.max(2, Math.min(reps, Math.floor(plafondSec / (6 * 60))));
       kmCorps = kmDepuisMinutes(reps * 6, T);
       contenuCorps = `${reps}×6min @ ${formatPace(T)} (Seuil), récup 90s`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 6*60, allure: formatPace(T), dureeRecupSec: 90 }] };
@@ -870,7 +958,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'seuil': {
       const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      const plafondSec = plafondCorpsSec('seuil');
+      if (plafondSec != null) reps = Math.max(2, Math.min(reps, Math.floor(plafondSec / (8 * 60))));
       kmCorps = kmDepuisMinutes(reps * 8, T);
       contenuCorps = `${reps}×8min @ ${formatPace(T)} (Seuil), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 8*60, allure: formatPace(T), dureeRecupSec: 2*60 }] };
@@ -892,6 +982,15 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
       }
       repsParSerie = ajuster(repsParSerie, 4);
       series = ajuster(series, 1);
+      const plafondSec = plafondCorpsSec('i-30-30');
+      if (plafondSec != null) {
+        // Plafonne le nombre total de répétitions d'effort (toutes séries
+        // confondues) — 30s d'effort par rep, la récup intra-série ne
+        // compte pas dans le "volume d'effort" au sens Daniels.
+        const repsMaxTotal = Math.max(4, Math.floor(plafondSec / 30));
+        while (series * repsParSerie > repsMaxTotal && repsParSerie > 4) repsParSerie--;
+        while (series * repsParSerie > repsMaxTotal && series > 1) series--;
+      }
       kmCorps = kmDepuisMinutes(series * repsParSerie * 0.5, I);
       contenuCorps = series > 1
         ? `${series} séries de ${repsParSerie}×30s-30s @ ${formatPace(I)} (VMA), récup 3min entre les séries`
@@ -902,7 +1001,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'i-3min': {
       const PARAMS_NIVEAU = { debutant:{base:3,cap:5}, intermediaire:{base:4,cap:6}, confirme:{base:5,cap:7} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      const plafondSec = plafondCorpsSec('i-3min');
+      if (plafondSec != null) reps = Math.max(2, Math.min(reps, Math.floor(plafondSec / (3 * 60))));
       kmCorps = kmDepuisMinutes(reps * 3, I);
       contenuCorps = `${reps}×3min @ ${formatPace(I)} (VMA), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 3*60, allure: formatPace(I), dureeRecupSec: 2*60 }] };
@@ -911,7 +1012,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'vitesse': {
       const PARAMS_NIVEAU = { debutant:{base:4,cap:8}, intermediaire:{base:6,cap:10}, confirme:{base:8,cap:12} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      const plafondSec = plafondCorpsSec('vitesse');
+      if (plafondSec != null && V) reps = Math.max(3, Math.min(reps, Math.floor(plafondSec / (0.3 * V))));
       kmCorps = reps * 0.3;
       contenuCorps = `${reps}×300m @ ${formatPace(V)} (Vitesse), récupération complète`;
       structureIntervalles = { blocs: [{ repetitions: reps, distanceEffortM: 300, allure: formatPace(V), dureeRecupSec: null, recupLabel: 'complète' }] };
@@ -920,7 +1023,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'cotes': {
       const PARAMS_NIVEAU = { debutant:{base:4,cap:8}, intermediaire:{base:6,cap:10}, confirme:{base:8,cap:12} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      const plafondSec = plafondCorpsSec('cotes');
+      if (plafondSec != null) reps = Math.max(3, Math.min(reps, Math.floor(plafondSec / 30)));
       kmCorps = kmDepuisMinutes(reps * 0.5, V);
       contenuCorps = `${reps}×30s en côte (effort soutenu), récupération trot`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 30, allure: 'effort soutenu (côte)', dureeRecupSec: null, recupLabel: 'trot' }] };
@@ -929,7 +1034,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'allure-course': {
       const PARAMS_NIVEAU = { debutant:{base:2,cap:4}, intermediaire:{base:3,cap:5}, confirme:{base:4,cap:6} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 2);
+      const plafondSec = plafondCorpsSec('allure-course');
+      if (plafondSec != null) reps = Math.max(2, Math.min(reps, Math.floor(plafondSec / (5 * 60))));
       kmCorps = kmDepuisMinutes(reps * 5, C);
       contenuCorps = `${reps}×5min @ ${formatPace(C)} (allure course), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 5*60, allure: formatPace(C), dureeRecupSec: 2*60 }] };
@@ -938,7 +1045,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'allure-course-court': {
       const PARAMS_NIVEAU = { debutant:{base:1,cap:2}, intermediaire:{base:2,cap:3}, confirme:{base:3,cap:4} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 1);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 1);
+      const plafondSec = plafondCorpsSec('allure-course-court');
+      if (plafondSec != null) reps = Math.max(1, Math.min(reps, Math.floor(plafondSec / (3 * 60))));
       kmCorps = kmDepuisMinutes(reps * 3, C);
       contenuCorps = `${reps}×3min @ ${formatPace(C)} (allure course), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 3*60, allure: formatPace(C), dureeRecupSec: 2*60 }] };
@@ -950,7 +1059,20 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
         intermediaire: [2, 3, 4, 3, 2],
         confirme:      [2, 3, 4, 5, 4, 3, 2],
       };
-      const paliers = PALIERS_PAR_NIVEAU[niveau] || PALIERS_PAR_NIVEAU.intermediaire;
+      let paliers = PALIERS_PAR_NIVEAU[niveau] || PALIERS_PAR_NIVEAU.intermediaire;
+      const plafondSec = plafondCorpsSec('pyramidale');
+      if (plafondSec != null) {
+        const plafondMin = plafondSec / 60;
+        // Retire des paliers depuis la fin tant que le total dépasse le
+        // plafond — même logique que le repli du moteur de décision pour
+        // les séances pyramidales (bibliotheque-seances.md, réduction
+        // structurelle), plancher au plus petit palier connu (3 valeurs).
+        let paliersReduits = [...paliers];
+        while (paliersReduits.reduce((a, b) => a + b, 0) > plafondMin && paliersReduits.length > 3) {
+          paliersReduits.pop();
+        }
+        paliers = paliersReduits;
+      }
       const estDemiPyramide = paliers.every((p, i) => i === 0 || p > paliers[i-1]);
       const totalMin = paliers.reduce((a, b) => a + b, 0);
       kmCorps = kmDepuisMinutes(totalMin, I);
@@ -963,7 +1085,11 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'seuil-negatif': {
       const PARAMS_NIVEAU = { debutant:{base:6,cap:10}, intermediaire:{base:8,cap:12}, confirme:{base:10,cap:14} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const dureeBloc = ajuster(reduireSelonNiveauProgression(base, 2, cap, semaineDansPhase), 5);
+      let dureeBloc = ajuster(reduireSelonNiveauProgression(base, 2, cap, semaineDansPhase), 5);
+      const plafondSec = plafondCorpsSec('seuil-negatif');
+      // Deux blocs enchaînés (T puis T soutenu) : le plafond porte sur le
+      // total des deux blocs (2×dureeBloc), cohérent avec "une séance".
+      if (plafondSec != null) dureeBloc = Math.max(5, Math.min(dureeBloc, Math.floor(plafondSec / 60 / 2)));
       const paceBloc2 = T - (T - I) * 0.3;
       kmCorps = kmDepuisMinutes(dureeBloc, T) + kmDepuisMinutes(dureeBloc, paceBloc2);
       contenuCorps = `${dureeBloc}min @ ${formatPace(T)} (Seuil) puis ${dureeBloc}min @ ${formatPace(paceBloc2)} (Seuil soutenu), enchaînés sans récup`;
@@ -976,7 +1102,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'tempo-court': {
       const PARAMS_NIVEAU = { debutant:{base:15,cap:25}, intermediaire:{base:20,cap:35}, confirme:{base:25,cap:40} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const duree = ajuster(reduireSelonNiveauProgression(base, 5, cap, semaineDansPhase), 10);
+      let duree = ajuster(reduireSelonNiveauProgression(base, 5, cap, semaineDansPhase), 10);
+      const plafondSec = plafondCorpsSec('tempo-court');
+      if (plafondSec != null) duree = Math.max(10, Math.min(duree, Math.floor(plafondSec / 60)));
       kmCorps = kmDepuisMinutes(duree, T);
       contenuCorps = `${duree}min continu @ ${formatPace(T)} (Seuil léger)`;
       structureIntervalles = { blocs: [{ repetitions: 1, dureeEffortSec: duree*60, allure: formatPace(T), dureeRecupSec: 0 }] };
@@ -985,7 +1113,9 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
     case 'seuil-2min': {
       const PARAMS_NIVEAU = { debutant:{base:3,cap:7}, intermediaire:{base:4,cap:8}, confirme:{base:5,cap:9} };
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
-      const reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      let reps = ajuster(reduireSelonNiveauProgression(base, 1, cap, semaineDansPhase), 3);
+      const plafondSec = plafondCorpsSec('seuil-2min');
+      if (plafondSec != null) reps = Math.max(3, Math.min(reps, Math.floor(plafondSec / (2 * 60))));
       kmCorps = kmDepuisMinutes(reps * 2, T);
       contenuCorps = `${reps}×2min @ ${formatPace(T)} (Seuil), récup 2min`;
       structureIntervalles = { blocs: [{ repetitions: reps, dureeEffortSec: 2*60, allure: formatPace(T), dureeRecupSec: 2*60 }] };
@@ -1114,13 +1244,27 @@ export function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
 const POURCENTAGE_CONFIRMATION_ALLURE = { '5K': 0.60, '10K': 0.55, 'Semi': 0.35, 'Marathon': 0.25 };
 const TAMPON_TEST_SEMAINES = { '5K': 1, '10K': 1, 'Semi': 2, 'Marathon': 2 };
 
-export function genererContenuTest({ distance, alluresSec }) {
+// Plafond Daniels (repère "M", zone C) appliqué à la distance de test :
+// même mécanisme que genererContenuQualite (cf. commentaire plus haut,
+// PLAFOND_DANIELS_PAR_ZONE.C). volumeHebdoCibleKm optionnel — si absent,
+// la distance de test générée par POURCENTAGE_CONFIRMATION_ALLURE reste
+// inchangée (comportement historique).
+export function genererContenuTest({ distance, alluresSec, volumeHebdoCibleKm = null }) {
   const distanceCourseKm = KM_BY_DISTANCE[distance] ?? 10;
   const pourcentage = POURCENTAGE_CONFIRMATION_ALLURE[distance] ?? 0.5;
-  const distanceTestKm = Math.round(distanceCourseKm * pourcentage * 10) / 10;
+  let distanceTestKm = Math.round(distanceCourseKm * pourcentage * 10) / 10;
 
   const C = alluresSec.C, E = alluresSec.E;
   const kmDepuisMinutes = (min, paceSecParKm) => (min * 60) / paceSecParKm;
+
+  if (volumeHebdoCibleKm != null && volumeHebdoCibleKm > 0) {
+    const confC = PLAFOND_DANIELS_PAR_ZONE.C;
+    const kmPlafondPct = volumeHebdoCibleKm * confC.pctVolumeHebdo;
+    const kmPlafondAbsolu = confC.reperAbsoluKm;
+    const kmPlafond = Math.min(kmPlafondPct, kmPlafondAbsolu);
+    distanceTestKm = Math.round(Math.min(distanceTestKm, kmPlafond) * 10) / 10;
+  }
+
   const DUREE_ECHAUFFEMENT_MIN = 15;
   const DUREE_RETOUR_CALME_MIN = 10;
   const dureeConfirmationMin = Math.round((distanceTestKm * C) / 60);
@@ -1495,7 +1639,7 @@ export function placerSeanceTest(plan, alluresSec) {
   if (!jourQualite) return;
   const [jour, seance] = jourQualite;
 
-  const { sousType, contenu, kmEstime, distanceTestKm, structureIntervalles } = genererContenuTest({ distance: plan.distance, alluresSec });
+  const { sousType, contenu, kmEstime, distanceTestKm, structureIntervalles } = genererContenuTest({ distance: plan.distance, alluresSec, volumeHebdoCibleKm: semaine.volumeCibleKm });
   seance.sousType = sousType;
   seance.contenu = contenu;
   seance.kmEstime = kmEstime;
@@ -1673,6 +1817,17 @@ export function generatePlan(profil, params) {
     Object.entries(allSeconds).map(([k, v]) => [k, formatPace(v)])
   );
 
+  // Temps 10K de référence (secondes), pour le plafond Daniels de la zone I
+  // (repère "min(temps 10K, 8% volume hebdo)") — dérivé via Riegel depuis
+  // tempsReference, cohérent avec computeAllures qui fait le même calcul
+  // pour paceRef10k en interne. Transmis à genererContenuQualite via
+  // tempsRef10KSec ci-dessous.
+  const tempsRef10KSec = riegelPredict(
+    refTimeSeconds,
+    KM_BY_DISTANCE[params.refDistance ?? params.distance],
+    10
+  );
+
   const { totalSemaines, phases, warnings: warningsPhases } = computePhases({
     dateDebut: params.dateDebut,
     dateCourse: params.dateCourse,
@@ -1765,7 +1920,9 @@ export function generatePlan(profil, params) {
             tauxAffutage: tauxAffutageSemaine,
             estDechargeSemaine: dechargeSemaine,
             nbApparitionsParSousType,
-            niveau: profil.niveau
+            niveau: profil.niveau,
+            volumeHebdoCibleKm: entreeVolumeSemaine?.volumeKm ?? null,
+            tempsRef10KSec
           });
           seance.sousType = sousType;
           seance.contenu = contenu;
@@ -2010,6 +2167,12 @@ export function appliquerAdaptations(plan) {
     distanceCibleKm: KM_BY_DISTANCE[plan.paramsOrigine.distance]
   });
 
+  const tempsRef10KSec = riegelPredict(
+    parseTimeToSeconds(plan.paramsOrigine.tempsReference),
+    KM_BY_DISTANCE[plan.paramsOrigine.refDistance ?? plan.paramsOrigine.distance],
+    10
+  );
+
   let curseur = 0;
   const bornesPhases = plan.phases.map(p => {
     const debut = curseur;
@@ -2077,7 +2240,9 @@ export function appliquerAdaptations(plan) {
         tauxAffutage: 1,
         estDechargeSemaine: true,
         nbApparitionsParSousType,
-        niveau: plan.profilOrigine?.niveau
+        niveau: plan.profilOrigine?.niveau,
+        volumeHebdoCibleKm: nouveauVolume,
+        tempsRef10KSec
       });
       seance.sousType = sousType;
       seance.contenu = contenu;
@@ -2127,6 +2292,12 @@ export function regenererStructuresIntervalles(plan) {
     distanceCibleKm: KM_BY_DISTANCE[plan.paramsOrigine.distance]
   });
 
+  const tempsRef10KSec = riegelPredict(
+    parseTimeToSeconds(plan.paramsOrigine.tempsReference),
+    KM_BY_DISTANCE[plan.paramsOrigine.refDistance ?? plan.paramsOrigine.distance],
+    10
+  );
+
   let curseur = 0;
   const bornesPhases = plan.phases.map(p => {
     const debut = curseur;
@@ -2157,7 +2328,7 @@ export function regenererStructuresIntervalles(plan) {
       }
 
       if (seance.estTest) {
-        const { structureIntervalles } = genererContenuTest({ distance: plan.paramsOrigine.distance, alluresSec });
+        const { structureIntervalles } = genererContenuTest({ distance: plan.paramsOrigine.distance, alluresSec, volumeHebdoCibleKm: semaine.volumeCibleKm });
         seance.structureIntervalles = structureIntervalles;
         nbMisesAJour++;
         continue;
@@ -2173,7 +2344,9 @@ export function regenererStructuresIntervalles(plan) {
         tauxAffutage: semaine.tauxAffutage ?? 1,
         estDechargeSemaine: semaine.estDecharge ?? false,
         nbApparitionsParSousType: { ...nbApparitionsParSousType, [seance.sousType]: Math.max(0, (nbApparitionsParSousType[seance.sousType] ?? 1) - 1) },
-        niveau: plan.profilOrigine?.niveau
+        niveau: plan.profilOrigine?.niveau,
+        volumeHebdoCibleKm: semaine.volumeCibleKm,
+        tempsRef10KSec
       });
 
       if (sousType !== seance.sousType) continue;
