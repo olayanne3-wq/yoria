@@ -27,7 +27,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.36", title:"Nouveau badge kilomètres cumulés, résultat de course enrichi, détail des intervalles en saisie manuelle", current:true, notes:[
+      { ver:"v2.37", title:"Séances de qualité mieux dosées, plafonnement du volume par séance", current:true, notes:[
+        "🎯 Le volume d'une séance de qualité (VMA, seuil, fractionné, allure course, ainsi que la séance test) est désormais plafonné selon ton volume hebdomadaire — évite des séances disproportionnées par rapport à ta charge d'entraînement du moment",
+        "🔧 Correctif de fiabilité important sur le levier \"Volume\" du wizard : un changement de volume est maintenant fidèlement conservé, même après avoir utilisé un autre levier (Jours, Objectif, Date de course) ou le bouton \"Analyser et adapter\"",
+        "✏️ Vue Semaine : un seul crayon de saisie manuelle par séance, au lieu de deux affichés en même temps une fois la séance validée",
+        "✅ Le badge de statut d'une séance affiche maintenant le vrai symbole choisi (✅❌⚠️😴), au lieu d'un symbole générique",
+      ]},
+      { ver:"v2.36", title:"Nouveau badge kilomètres cumulés, résultat de course enrichi, détail des intervalles en saisie manuelle", current:false, notes:[
         "🏅 Nouveau badge \"Km cumulés\" : 7 paliers de 50 à 2000 km, sur l'ensemble de tes séances validées, tous plans confondus",
         "🏁 Le résultat de course peut maintenant inclure ton ressenti, un commentaire, et tes classements général et par catégorie",
         "📖 Nouvelle section \"Mes courses\" dans Stats, pour retrouver l'historique de tous tes résultats",
