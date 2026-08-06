@@ -406,11 +406,66 @@ export const PLAFONDS_VOLUME = {
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
+// Table calibrée par niveau (06/08/2026, remplace l'ancienne table à un
+// seul niveau, calée "intermédiaire" à sa création sans méthode
+// systématique documentée). Recalibration par simulation exhaustive :
+// pour chaque cellule [distance][niveau][jours], recherche du volume
+// plancher exact où generatePlan() cesse de refuser le plan
+// (VOLUME_JOURS_INCOMPATIBLE, cf. plus bas), en balayant systématiquement
+// plusieurs placements de jours (dont jours consécutifs), plusieurs temps
+// de référence par niveau (couvrant la variabilité d'allure réelle du
+// niveau, qui influence fortement ce plancher via les plafonds Daniels de
+// genererContenuQualite — un coureur plus rapide plafonne plus haut, à
+// durée de séance égale), plusieurs ampleurs d'objectif (faible/modérée/
+// ambitieuse) et deux durées de plan — en retenant le pire cas (le
+// plancher le plus élevé observé) pour chaque cellule.
+//
+// Les contraintes ponctuelles (blessure-active, douleur-chronique,
+// reprise) ont été explicitement EXCLUES de cette calibration : elles
+// peuvent localement casser la monotonie attendue entre distances
+// voisines (ex. Semi < 10K dans certains cas sous blessure-active, à
+// cause de rotations de sous-types différentes par distance dans
+// ROTATION_SOUS_TYPE) — un vrai comportement du moteur, pas une erreur
+// de simulation, mais qui rendrait la table peu lisible si on le
+// répercutait ici. Un coureur avec l'une de ces contraintes proche de ce
+// plancher reste protégé par le second garde-fou (VOLUME_JOURS_INCOMPATIBLE,
+// calculé après génération réelle du plan, cf. plus bas dans
+// generatePlan()) et par les warnings dédiés à ces contraintes
+// (BLESSURE_ACTIVE, etc., cf. appliquerContraintes()).
+//
+// Les planchers bruts obtenus par simulation ont ensuite été : (1)
+// forcés monotones sur les 4 axes (croissant avec le nombre de jours,
+// avec la distance 5K<=10K<=Semi<=Marathon, avec le niveau
+// debutant<=intermediaire<=confirme) — le moteur n'est PAS toujours
+// strictement monotone lui-même dans les cas limites (écarts de 1-2km
+// observés), cette table lisse ces écarts plutôt que de les reproduire
+// tels quels ; (2) majorés de 15% (arrondi au km supérieur) comme marge
+// de confort au-dessus du strict minimum structurel, pour éviter qu'un
+// plan généré pile à ce volume n'ait des EF/longues à peine au-dessus du
+// plancher absolu (VOLUME_MIN_EF_KM/VOLUME_MIN_LONGUE_KM). Vérifié : ne
+// redescend jamais sous le plancher réel mesuré par simulation, quelle
+// que soit la cellule.
 export const VOLUME_MIN_PAR_JOURS = {
-  '5K':       { 2: 12, 3: 16, 4: 19, 5: 28, 6: 31, 7: 34 },
-  '10K':      { 2: 16, 3: 20, 4: 23, 5: 32, 6: 35, 7: 38 },
-  'Semi':     { 2: 18, 3: 22, 4: 25, 5: 36, 6: 39, 7: 42 },
-  'Marathon': { 2: 18, 3: 22, 4: 25, 5: 40, 6: 43, 7: 46 },
+  '5K': {
+    debutant:      { 2: 11, 3: 13, 4: 17, 5: 20, 6: 29, 7: 34 },
+    intermediaire: { 2: 11, 3: 14, 4: 18, 5: 25, 6: 29, 7: 36 },
+    confirme:      { 2: 14, 3: 18, 4: 20, 5: 28, 6: 32, 7: 36 },
+  },
+  '10K': {
+    debutant:      { 2: 12, 3: 15, 4: 19, 5: 21, 6: 29, 7: 34 },
+    intermediaire: { 2: 13, 3: 17, 4: 20, 5: 27, 6: 30, 7: 36 },
+    confirme:      { 2: 15, 3: 19, 4: 21, 5: 32, 6: 35, 7: 37 },
+  },
+  'Semi': {
+    debutant:      { 2: 12, 3: 15, 4: 19, 5: 21, 6: 29, 7: 34 },
+    intermediaire: { 2: 13, 3: 17, 4: 20, 5: 28, 6: 32, 7: 36 },
+    confirme:      { 2: 15, 3: 19, 4: 21, 5: 32, 6: 36, 7: 40 },
+  },
+  'Marathon': {
+    debutant:      { 2: 12, 3: 15, 4: 19, 5: 21, 6: 29, 7: 34 },
+    intermediaire: { 2: 14, 3: 18, 4: 21, 5: 29, 6: 33, 7: 36 },
+    confirme:      { 2: 17, 3: 20, 4: 23, 5: 34, 6: 36, 7: 41 },
+  },
 };
 
 export const DUREE_AFFUTAGE_JOURS = {
@@ -1793,7 +1848,14 @@ function differencierEF({ assignment, kmParEF }) {
 
 export function generatePlan(profil, params) {
   const nbJoursProfil = profil.joursDisponiblesHabituels?.length ?? 0;
-  const volumeMinRequis = VOLUME_MIN_PAR_JOURS[params.distance]?.[nbJoursProfil];
+  // Table indexée par niveau depuis le 06/08/2026 (cf. commentaire sur
+  // VOLUME_MIN_PAR_JOURS) — repli sur 'intermediaire' si le niveau du
+  // profil est absent de la table (ex. 'grand-debutant', qui ne passe de
+  // toute façon jamais par ce chemin de génération standard, cf.
+  // placerSemaine) ou non reconnu, plutôt que de laisser passer un accès
+  // undefined silencieux.
+  const volumeMinRequis = VOLUME_MIN_PAR_JOURS[params.distance]?.[profil.niveau]?.[nbJoursProfil]
+    ?? VOLUME_MIN_PAR_JOURS[params.distance]?.intermediaire?.[nbJoursProfil];
   if (volumeMinRequis !== undefined && params.volumeActuel < volumeMinRequis) {
     return {
       planInvalide: true,
