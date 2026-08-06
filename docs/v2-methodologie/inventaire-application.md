@@ -155,6 +155,57 @@ calcule désormais `semaineCharniere` AVANT l'appel à `generatePlan()` et
 la transmet via le nouveau paramètre `semaineDepartVolume` — cf. §7 pour
 le détail complet du fonctionnement côté moteur.
 
+**Bug "semaineDepartVolume résiduel" — EF/longue à 0km, y compris sur la
+semaine en cours (06/08/2026, signalé par Laurent)** — `semaineDepartVolume`
+transmis à `generatePlan()` restait "collé" dans `paramsOrigine` du plan
+sauvegardé après l'appel du levier Volume : tout autre levier réutilisant
+ensuite `paramsOrigine` tel quel (Objectif, Jours, Date de course, ainsi
+que le bouton "Analyser et adapter") héritait silencieusement de cette
+charnière obsolète, faisant retomber `volumeCibleKm` à `null`/0 pour
+toutes les semaines antérieures — y compris la semaine EN COURS si elle
+se trouvait avant cette ancienne charnière. `repartirVolumeSemaine()`
+donnait alors 0km à l'EF et à la longue (jamais à la qualité, qui ne
+dépend pas de ce calcul). Double correctif :
+1. **`semaineDepartVolume` ne doit plus jamais être persisté dans
+   `paramsOrigine`** — retiré par destructuring avant toute sauvegarde,
+   dans les 4 leviers ET le bouton "Analyser et adapter" (les 5 points
+   d'appel de `Engine.generatePlan()` dans `v2/index.html`).
+2. **`plan.volumeCourant: { km, semaineNum }`** (nouveau champ, séparé de
+   `paramsOrigine`) — préserve la DERNIÈRE intention réelle de volume
+   exprimée via le levier Volume, distincte de
+   `paramsOrigine.volumeActuel` qui reste le volume de départ HISTORIQUE
+   du plan (jamais modifié après coup, simple trace d'origine). Écrit
+   uniquement par `appliquerChangementVolume()`. Les 4 autres points de
+   régénération complète (Objectif, Jours, Date de course, "Analyser et
+   adapter") le lisent en priorité s'il existe
+   (`volumeActuel: volumeCourant.km, semaineDepartVolume:
+   volumeCourant.semaineNum` transmis à `generatePlan()` pour CET appel
+   seulement, jamais persisté) et le propagent tel quel vers le plan
+   résultant — sans ce mécanisme, toute régénération complète "oubliait"
+   silencieusement un ajustement de volume fait via le levier et
+   recalculait depuis le volume de départ d'origine (cas réel : Laurent
+   avait réglé 33km via le levier, une réparation automatique du bug
+   ci-dessus avait recalculé 39km en ignorant cette intention).
+
+Réparation rétroactive des plans déjà cassés par ce bug avant le
+correctif : `index.html`, au chargement du plan, détecte directement le
+symptôme (EF ou longue à `kmEstime === 0`) plutôt que la présence de
+`semaineDepartVolume` (qui peut avoir déjà disparu suite à un usage
+ultérieur du levier après le correctif — un premier essai de réparation
+basé sur cette seule condition ne se déclenchait donc jamais sur un
+plan dans cet état). Réparation semaine par semaine (jamais une
+régénération globale) : seuls les jours EF/longue à 0 de chaque semaine
+cassée sont remplacés, jamais la qualité (jamais affectée par ce bug).
+**Garde-fou de sécurité** : une semaine STRICTEMENT PASSÉE (tous ses
+jours avant aujourd'hui) n'est jamais réparée automatiquement, même
+cassée — un avertissement (`SEMAINE_PASSEE_NON_REPAREE`) le signale
+plutôt que de risquer de réécrire le texte d'une séance déjà vécue par
+le coureur (un premier jet de ce correctif régénérait tout sans cette
+protection — corrigé après que Laurent a soulevé le risque). Semaine en
+cours et futures : réparées (risque accepté explicitement par Laurent
+pour la semaine en cours, le texte peut varier légèrement mais
+statuts/RPE/saisies manuelles restent préservés).
+
 **Navigation du wizard** — `ECRANS_WIZARD` (registre centralisé) +
 `afficherEcranWizard(id)` masque tous les écrans puis affiche seulement
 celui demandé, garantit par construction qu'un seul écran est visible à
@@ -1679,6 +1730,7 @@ Stats (cf. §4/§5, tous plans confondus).
 | Refondre l'aide en tutos d'action par fonctionnalité | ✅ Livré le 04/08/2026 — section "Tutos par action" en tuiles, sélecteur d'onglets Aide/Tutos, 16 tutos rédigés couvrant Démarrer/Au quotidien/Gérer son plan/Suivi/Compte. Détail complet en §4. Reste ouvert : aucune image intégrée pour l'instant (Laurent prévoit de fournir des captures au fil de l'eau, le format le supporte déjà). |
 | Couleur manquante pour le type de séance TEST dans la mini-frise semaine + crayon affiché en double dans le popover de saisie | ✅ Corrigés le 04/08/2026, dans la même session que le chantier Aide ci-dessus. Détail en §4. |
 | Clignotement de l'écran au chargement de l'app | 🔶 Investigation approfondie menée le 04/08/2026, PARTIELLEMENT résolue — plusieurs correctifs structurellement corrects ont été appliqués (remplacement atomique du DOM via `replaceChildren` au lieu d'un `innerHTML=""` prématuré, regroupement des rendus automatiques différés via `renderDiffere()`, connexion WebSocket Realtime non-bloquante, chargement `defer` de 9 scripts classic bloquants, correction d'une balise `<meta name="theme-color">` invalide), mais Laurent rapporte que le clignotement persiste après chacun d'eux. Un test DevTools Performance + Screenshots (filmstrip) a confirmé la vraie nature du symptôme : une page BLANCHE réelle d'environ 750ms à 1.85s avant le premier affichage (pas un double-rendu répété comme supposé initialement) — probablement causée par un enchaînement structurel d'au moins 2-3 allers-retours réseau séquentiels et nécessaires vers Supabase (`getUser()` → `migrerDonneesExistantes()` → `precharger()`) avant que la donnée ne soit prête pour le premier rendu, chacun avec sa propre latence de connexion. Écarté comme non concluant : différer l'écriture concurrente de `migrerDonneesExistantes()`/`precharger()` (ordre nécessaire, la seconde lit ce que la première vient d'écrire). Piste non engagée par prudence : afficher un premier rendu depuis le cache localStorage local avant confirmation serveur, avec re-render silencieux une fois confirmé — chantier plus large sur un flux d'authentification déjà marqué par plusieurs bugs sensibles, nécessiterait une session dédiée avec validation explicite avant de s'y engager. |
+| **Bug "semaineDepartVolume résiduel" — EF/longue à 0km, y compris semaine en cours (06/08/2026)** | ✅ Corrigé et poussé. `semaineDepartVolume` (levier Volume) ne pollue plus jamais `paramsOrigine` — retiré avant toute sauvegarde dans les 4 leviers + le bouton "Analyser et adapter". Nouveau champ `plan.volumeCourant: {km, semaineNum}` (séparé de `paramsOrigine`) préserve la dernière intention réelle de volume, lu en priorité par toute régénération complète future. Réparation rétroactive ajoutée dans `index.html` (détection directe du symptôme EF/longue à 0km, jamais de la cause supposée) pour les plans déjà cassés avant ce correctif — protège les semaines strictement passées (jamais réécrites), répare semaine en cours et futures. Détail complet en §3. |
 | **Centraliser sur le dashboard le signal `analyserAdaptations()` du wizard** | 🔶 PARTIELLEMENT comblé depuis le 27/07/2026 (vérifié le 06/08/2026, absent de ce tableau) — `analyserAdaptations()` alimente désormais le message du coach IA côté dashboard (si `adaptationsConsecutivesMax >= 3`), mais reste un simple texte informatif, PAS une carte UI Appliquer/Ignorer équivalente à celle du moteur de décision (RunnerStateCalculator). Reste à concevoir : fusionner ou juxtaposer les deux signaux en carte(s) UI, gérer Appliquer/Ignorer de façon cohérente entre les deux mécanismes. Session dédiée nécessaire. |
 | **Unifier les saisies manuelles avec le format Strava/FIT (`stravaActivities`)** | 🔶 Discuté avec Laurent le 05/08/2026, PAS engagé — jugé techniquement possible mais structurellement plus lourd qu'un ajustement ponctuel. Points à trancher avant de coder : représentation de l'absence de laps réels (piste retenue à discuter : un lap synthétique unique couvrant toute la distance/durée saisie, cohérent avec le détail réussi/raté par intervalle ajouté le même jour, cf. ligne ci-dessus) ; principe actuel de priorité manuelle (`getStravaRunSiPasManuel` retourne `null` si une saisie manuelle existe) à repenser en un tableau unifié avec un marqueur de priorité, répercuté sur plusieurs dizaines de points d'usage de `stravaActivities.find(...)` ; indexation différente (`manualPerf` par `uid` de séance, `stravaActivities` par date) ; portée de persistance différente (`manualPerf` préfixé par plan, `stravaActivities` global au compte). Nécessiterait une session dédiée avec audit exhaustif des points d'usage avant tout codage. |
 
