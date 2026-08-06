@@ -6630,8 +6630,16 @@ function renderWeekDetail(weekNum) {
         // accès à la correction/réimport, avant validation à la saisie
         // initiale — même popover (renderManualPerfRow) dans les deux cas.
         (s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE") ? renderIconeSaisieManuelle(uid, s, stravaRun) : null,
-        // Badge de statut (22/07/2026) : rond coloré pour ✅/❌/⚠️, icône
-        // directe (pas de rond) pour 😴.
+        // Badge de statut — affiche le VRAI emoji du statut (06/08/2026,
+        // demande de Laurent : "je veux avoir les mêmes symboles en haut
+        // à droite que ceux qu'on choisit pour le statut de la séance")
+        // — avant ce correctif, ⚠️ et ❌ étaient tous deux compressés en
+        // un simple "!" générique sur fond orange, perdant la distinction
+        // visuelle entre les deux qui existe pourtant sur les boutons de
+        // sélection de statut plus bas dans la carte (SOPTS). Le rond de
+        // fond coloré est conservé pour ✅/❌/⚠️ (cohérence visuelle avec
+        // le reste de l'app), mais contient maintenant le vrai symbole du
+        // statut — 😴 reste sans rond, comme avant (déjà le cas).
         isDoneSession ? (
           statutEffectif === "😴"
             ? el("span",{style:{fontSize:"16px",flexShrink:"0"}}, "😴")
@@ -6640,8 +6648,8 @@ function renderWeekDetail(weekNum) {
                 color:statutEffectif==="✅"?"#fff":"var(--bg)",
                 borderRadius:"50%",width:"20px",height:"20px",
                 display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:"14px",fontWeight:"900",flexShrink:"0"
-              }}, statutEffectif==="✅"?"✓":"!")
+                fontSize:"12px",flexShrink:"0"
+              }}, statutEffectif)
         ) : null
       ),
       el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},effSess.session),
