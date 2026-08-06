@@ -827,7 +827,24 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
           // traîne encore (defensive, cf. correctif précédent) — sert de
           // base pour recalculer la VRAIE progression de volume attendue.
           const { semaineDepartVolume, ...paramsOriginePropres } = planBrut.paramsOrigine;
-          const planRegenere = generatePlan(planBrut.profilOrigine, paramsOriginePropres);
+
+          // Utilise plan.volumeCourant en PRIORITÉ s'il existe (06/08/2026,
+          // suite au signalement de Laurent : une réparation avait
+          // recalculé 39km sur sa semaine en cours en ignorant qu'il avait
+          // réglé 33km via le levier Volume) — ce champ, écrit par
+          // appliquerChangementVolume() (v2/index.html), préserve la
+          // DERNIÈRE intention réelle de volume, distincte de
+          // paramsOrigine.volumeActuel qui reste le volume de départ
+          // HISTORIQUE du plan (jamais modifié après coup). Sans lui, la
+          // régénération de réparation repart toujours du volume
+          // d'origine et "oublie" silencieusement tout ajustement fait
+          // depuis via ce levier. Repli sur paramsOriginePropres.volumeActuel
+          // (comportement historique) si aucun volumeCourant n'a jamais
+          // été enregistré (plan jamais modifié via ce levier).
+          const paramsPourReparation = planBrut.volumeCourant
+            ? { ...paramsOriginePropres, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
+            : paramsOriginePropres;
+          const planRegenere = generatePlan(planBrut.profilOrigine, paramsPourReparation);
 
           if (!planRegenere?.planInvalide && debutPlanRepar) {
             let semainesReparees = 0;
@@ -892,91 +909,6 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     }
 
     window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
-
-    // CORRECTIF PONCTUEL — TEMPORAIRE (06/08/2026, à retirer une fois
-    // appliqué). Le mécanisme de réparation générique ci-dessus recalcule
-    // volumeCibleKm depuis paramsOrigine.volumeActuel (le volume de départ
-    // D'ORIGINE du plan), pas depuis la dernière valeur réellement réglée
-    // par Laurent via le levier Volume — cette dernière intention a été
-    // perdue au moment où le plan a été pollué (semaineDepartVolume
-    // résiduel, cf. plus haut), donc la réparation automatique donnait un
-    // volume trop haut (39km reconstruit depuis l'origine, au lieu des
-    // 33km réellement voulus). Laurent a confirmé sa vraie valeur (33km)
-    // le 06/08/2026 — appliquée ici directement à la semaine en cours
-    // uniquement, le temps qu'un vrai mécanisme de préservation de la
-    // dernière intention soit conçu (chantier reporté, pas engagé
-    // aujourd'hui). Ne régénère QUE EF/longue de cette semaine précise à
-    // partir de ce volume corrigé — la qualité déjà en place n'est jamais
-    // touchée (jamais cassée par ce bug).
-    if (planBrut?.id && window.__UTILISATEUR__?.id) {
-      try {
-        const VOLUME_CORRECTIF_PONCTUEL_KM = 33;
-        const debutPlanCorrectif = planBrut.dateDebut ? new Date(planBrut.dateDebut + 'T00:00:00Z') : null;
-        if (debutPlanCorrectif) {
-          const aujourdhuiCorrectif = new Date();
-          const aujourdhuiStrCorrectif = new Date(Date.UTC(aujourdhuiCorrectif.getFullYear(), aujourdhuiCorrectif.getMonth(), aujourdhuiCorrectif.getDate())).toISOString().slice(0, 10);
-
-          const semaineEnCours = planBrut.semaines.find(s => {
-            const datesJoursSemaine = Object.keys(s.assignment || {}).map(jourIndex => {
-              const d = new Date(debutPlanCorrectif);
-              d.setUTCDate(debutPlanCorrectif.getUTCDate() + (s.semaineNum - 1) * 7 + Number(jourIndex));
-              return d.toISOString().slice(0, 10);
-            });
-            return datesJoursSemaine.some(d => d === aujourdhuiStrCorrectif) ||
-              (datesJoursSemaine.length > 0 && datesJoursSemaine[0] <= aujourdhuiStrCorrectif && datesJoursSemaine[datesJoursSemaine.length - 1] >= aujourdhuiStrCorrectif);
-          });
-
-          // Ne s'applique QUE si cette semaine avait bien un volume
-          // recalculé au-dessus de la vraie valeur voulue (marge de
-          // tolérance ±2km, pour ne pas re-corriger une semaine déjà
-          // correcte si ce code tourne plusieurs fois) — évite d'écraser
-          // un volume qui aurait entretemps été correctement recalculé
-          // par un vrai usage du levier Volume par Laurent.
-          if (semaineEnCours && Math.abs((semaineEnCours.volumeCibleKm ?? 0) - VOLUME_CORRECTIF_PONCTUEL_KM) > 2) {
-            let kmQualiteTotal = 0;
-            Object.values(semaineEnCours.assignment).forEach(s => {
-              if (s.type === 'qualite') kmQualiteTotal += (s.kmEstime ?? 0);
-            });
-            const { repartirVolumeSemaine, genererContenuEF, genererContenuLongue } = window;
-            const nbEF = Object.values(semaineEnCours.assignment).filter(s => s.type === 'ef').length;
-            const aLongue = Object.values(semaineEnCours.assignment).some(s => s.type === 'longue');
-            const { kmLongue, kmParEF } = repartirVolumeSemaine({
-              volumeCibleKm: VOLUME_CORRECTIF_PONCTUEL_KM,
-              kmQualiteTotal, nbEF, aLongue,
-              nbJours: Object.keys(semaineEnCours.assignment).length
-            });
-            const alluresSecCorrectif = computeAllures({
-              refTimeSeconds: parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
-              refDistanceKm: KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
-              objectifTimeSeconds: parseTimeToSeconds(planBrut.paramsOrigine.objectif),
-              distanceCibleKm: KM_BY_DISTANCE[planBrut.paramsOrigine.distance]
-            });
-            Object.entries(semaineEnCours.assignment).forEach(([jour, seance]) => {
-              if (seance.type === 'ef') {
-                const { contenu, kmEstime } = genererContenuEF({ alluresSec: alluresSecCorrectif, kmCible: kmParEF, role: seance.role });
-                seance.contenu = contenu;
-                seance.kmEstime = kmEstime;
-              } else if (seance.type === 'longue') {
-                const { contenu, kmEstime } = genererContenuLongue({ distance: planBrut.paramsOrigine.distance, phase: semaineEnCours.phase, alluresSec: alluresSecCorrectif, kmCible: kmLongue });
-                seance.contenu = contenu;
-                seance.kmEstime = kmEstime;
-              }
-            });
-            semaineEnCours.volumeCibleKm = VOLUME_CORRECTIF_PONCTUEL_KM;
-            window.__PLAN_BRUT__ = planBrut;
-            window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
-            console.info(`Correctif ponctuel appliqué : volume semaine en cours ramené à ${VOLUME_CORRECTIF_PONCTUEL_KM}km (dernière intention réelle de Laurent).`);
-            if (window.LkSync?.mettreAJourPlanSupabase && planBrut.id) {
-              LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut).catch(e =>
-                console.warn('Re-sauvegarde du correctif ponctuel échouée :', e.message)
-              );
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Correctif ponctuel volume 33km échoué :', e.message);
-      }
-    }
     window.__PLANS_DISPONIBLES__ = plansDisponibles;
   })();
 </script>
