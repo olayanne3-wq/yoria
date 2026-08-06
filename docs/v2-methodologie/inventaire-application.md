@@ -860,42 +860,37 @@ déclenchant `VOLUME_JOURS_INCOMPATIBLE` avec un message IDENTIQUE quel
 que soit le volume réellement saisi (bug signalé par Laurent, reproduit
 jusqu'à 100km/semaine).
 
-`VOLUME_MIN_PAR_JOURS` est une table à deux niveaux
-(`[distance][nbJours]`) — un seuil unique calé sur 10K s'est révélé
-insuffisant pour Semi/Marathon (rotation Construction avec des séances
-qualité plus volumineuses, jusqu'à +7km d'écart mesuré pour Marathon à
-7j) :
+`VOLUME_MIN_PAR_JOURS` est une table à trois niveaux
+(`[distance][niveau][nbJours]`), recalibrée par niveau le 06/08/2026 —
+remplace l'ancienne table à deux niveaux (`[distance][nbJours]`, calée
+uniquement sur "intermédiaire" à sa création). Calibration par simulation
+exhaustive du moteur réel (pire cas sur allure/objectif/placement des
+jours/durée du plan, hors contraintes ponctuelles qui cassent localement
+la monotonie inter-distance), planchers ensuite forcés monotones sur les
+4 axes (jours croissants, distance 5K≤10K≤Semi≤Marathon, niveau
+debutant≤intermediaire≤confirme) et majorés de 15% comme marge de
+confort au-dessus du strict minimum structurel :
 
-| Jours | 5K | 10K | Semi | Marathon |
+| Jours | 5K deb/int/conf | 10K deb/int/conf | Semi deb/int/conf | Marathon deb/int/conf |
 |---|---|---|---|---|
-| 2 | 12 km | 16 km | 18 km | 18 km |
-| 3 | 16 km | 20 km | 22 km | 22 km |
-| 4 | 19 km | 23 km | 25 km | 25 km |
-| 5 | 28 km | 32 km | 36 km | 40 km |
-| 6 | 31 km | 35 km | 39 km | 43 km |
-| 7 | 34 km | 38 km | 42 km | 46 km |
+| 2 | 11/11/14 | 12/13/15 | 12/13/15 | 12/14/17 |
+| 3 | 13/14/18 | 15/17/19 | 15/17/19 | 15/18/20 |
+| 4 | 17/18/20 | 19/20/21 | 19/20/21 | 19/21/23 |
+| 5 | 20/25/28 | 21/27/32 | 21/28/32 | 21/29/34 |
+| 6 | 29/29/32 | 29/30/35 | 29/32/36 | 29/33/36 |
+| 7 | 34/36/36 | 34/36/37 | 34/36/40 | 34/36/41 |
 
-`generatePlan()` vérifie `params.volumeActuel` contre
-`VOLUME_MIN_PAR_JOURS[params.distance][nbJours]` en tout premier, avant
-même de calculer phases/allures — retourne `{ planInvalide: true, code:
-'VOLUME_MIN_JOURS_NON_ATTEINT', message }` immédiatement si sous le
-seuil. Le garde-fou `VOLUME_JOURS_INCOMPATIBLE` (après génération
-complète) reste en place comme filet complémentaire. Le wizard
-(`v2/index.html`) affiche déjà ce message génériquement — les 6 points
-d'appel de `Engine.generatePlan()` testent tous `planInvalide` et
-affichent `plan.message`, sans câblage supplémentaire nécessaire.
-`decision-engine-apply.classic.js` n'a aucun lien avec
-`repartirVolumeSemaine` (il réduit des séances déjà générées, jamais leur
-répartition) — rien à y propager. **Note (02/08/2026)** : cette table a
-été calibrée uniquement au niveau intermédiaire à sa création — en
-pratique, le vrai seuil praticable (EF non ridicule) varie sensiblement
-par niveau (débutant : la table est déjà confortable ; confirmé : le
-vrai seuil praticable peut être ~8km au-dessus de la table pour 10K/5j,
-cf. simulation du 02/08/2026). La table n'a pas été recalibrée sur les 3
-niveaux — le nouveau système de répartition par poids (ci-dessous)
-absorbe une bonne partie de l'écart en pratique (garantit un EF minimum
-quel que soit le volume), donc la recalibration de cette table reste un
-chantier à part, pas urgent tant que le plancher tient.
+`generatePlan()` lit `VOLUME_MIN_PAR_JOURS[params.distance][profil.niveau][nbJours]`,
+repli sur `intermediaire` si le niveau est absent de la table (ex.
+`grand-debutant`, qui ne passe de toute façon jamais par ce chemin de
+génération standard) ou non reconnu. Vérifié sans régression contre
+`scripts/test-plans-varies.js` (mêmes 4 profils refusés qu'avec
+l'ancienne table, aucun nouveau refus). Les contraintes ponctuelles
+(blessure-active, douleur-chronique, reprise) restent hors de cette
+calibration — un coureur proche de ce plancher avec l'une de ces
+contraintes reste protégé par le second garde-fou
+`VOLUME_JOURS_INCOMPATIBLE` (calculé après génération réelle du plan) et
+par les warnings dédiés (`BLESSURE_ACTIVE`, etc.).
 
 **`computeVolumeProgression` — paramètre `semaineDepart` (02/08/2026)** —
 par défaut à 1 (comportement historique, génération initiale d'un plan).
@@ -1759,7 +1754,8 @@ Stats (cf. §4/§5, tous plans confondus).
 | Couleur manquante pour le type de séance TEST dans la mini-frise semaine + crayon affiché en double dans le popover de saisie | ✅ Corrigés le 04/08/2026, dans la même session que le chantier Aide ci-dessus. Détail en §4. |
 | Clignotement de l'écran au chargement de l'app | 🔶 Investigation approfondie menée le 04/08/2026, PARTIELLEMENT résolue — plusieurs correctifs structurellement corrects ont été appliqués (remplacement atomique du DOM via `replaceChildren` au lieu d'un `innerHTML=""` prématuré, regroupement des rendus automatiques différés via `renderDiffere()`, connexion WebSocket Realtime non-bloquante, chargement `defer` de 9 scripts classic bloquants, correction d'une balise `<meta name="theme-color">` invalide), mais Laurent rapporte que le clignotement persiste après chacun d'eux. Un test DevTools Performance + Screenshots (filmstrip) a confirmé la vraie nature du symptôme : une page BLANCHE réelle d'environ 750ms à 1.85s avant le premier affichage (pas un double-rendu répété comme supposé initialement) — probablement causée par un enchaînement structurel d'au moins 2-3 allers-retours réseau séquentiels et nécessaires vers Supabase (`getUser()` → `migrerDonneesExistantes()` → `precharger()`) avant que la donnée ne soit prête pour le premier rendu, chacun avec sa propre latence de connexion. Écarté comme non concluant : différer l'écriture concurrente de `migrerDonneesExistantes()`/`precharger()` (ordre nécessaire, la seconde lit ce que la première vient d'écrire). Piste non engagée par prudence : afficher un premier rendu depuis le cache localStorage local avant confirmation serveur, avec re-render silencieux une fois confirmé — chantier plus large sur un flux d'authentification déjà marqué par plusieurs bugs sensibles, nécessiterait une session dédiée avec validation explicite avant de s'y engager. |
 | **Bug "semaineDepartVolume résiduel" — EF/longue à 0km, y compris semaine en cours (06/08/2026)** | ✅ Corrigé et poussé. `semaineDepartVolume` (levier Volume) ne pollue plus jamais `paramsOrigine` — retiré avant toute sauvegarde dans les 4 leviers + le bouton "Analyser et adapter". Nouveau champ `plan.volumeCourant: {km, semaineNum}` (séparé de `paramsOrigine`) préserve la dernière intention réelle de volume, lu en priorité par toute régénération complète future. Réparation rétroactive ajoutée dans `index.html` (détection directe du symptôme EF/longue à 0km, jamais de la cause supposée) pour les plans déjà cassés avant ce correctif — protège les semaines strictement passées (jamais réécrites), répare semaine en cours et futures. Détail complet en §3. |
-| **Centraliser sur le dashboard le signal `analyserAdaptations()` du wizard** | 🔶 PARTIELLEMENT comblé depuis le 27/07/2026 (vérifié le 06/08/2026, absent de ce tableau) — `analyserAdaptations()` alimente désormais le message du coach IA côté dashboard (si `adaptationsConsecutivesMax >= 3`), mais reste un simple texte informatif, PAS une carte UI Appliquer/Ignorer équivalente à celle du moteur de décision (RunnerStateCalculator). Reste à concevoir : fusionner ou juxtaposer les deux signaux en carte(s) UI, gérer Appliquer/Ignorer de façon cohérente entre les deux mécanismes. Session dédiée nécessaire. |
+| **Recalibration de `VOLUME_MIN_PAR_JOURS` par niveau (06/08/2026)** | ✅ Codé et poussé. Table 3D `[distance][niveau][jours]` par simulation exhaustive du moteur réel, monotone sur 4 axes, marge de confort 15% au-dessus du plancher structurel réel. Détail complet en §7. |
+| **Centraliser sur le dashboard le signal `analyserAdaptations()`** | ✅ Déjà livré (vérifié le 06/08/2026 directement sur le code réel, l'état "PARTIELLEMENT comblé" précédemment noté ici était périmé). `adaptationEl` (`index.html`) est une vraie carte UI Appliquer/Ignorer, même pattern que `moteurDecisionEl` (RunnerStateCalculator) : bouton Appliquer → `appliquerAdaptations()`, bouton Ignorer → persistance par semaine (`lk_adaptations_ignorees`). Garde-fou anti-collision déjà en place : si `moteurDecisionEl` (physio, prioritaire) cible la même semaine le même jour, `adaptationEl` se tait sur cette semaine plutôt que de proposer une action concurrente — collision journalisée dans `signalements` (`type: 'collision_moteur'`) pour observer si ça arrive réellement en usage réel. **Décision actée le 06/08/2026** : les deux cartes restent séparées (jamais fusionnées) — l'ordre d'affichage (`adaptationEl` avant `moteurDecisionEl` dans le DOM) permet aux deux d'apparaître simultanément l'une sous l'autre si elles ciblent des semaines différentes le même jour, ce qui reste un doublon visuel possible mais non résolu activement : **suivi passif** via la table `signalements`, fusion reconsidérée seulement si les collisions s'avèrent fréquentes en pratique. |
 | **Unifier les saisies manuelles avec le format Strava/FIT (`stravaActivities`)** | 🔶 Discuté avec Laurent le 05/08/2026, PAS engagé — jugé techniquement possible mais structurellement plus lourd qu'un ajustement ponctuel. Points à trancher avant de coder : représentation de l'absence de laps réels (piste retenue à discuter : un lap synthétique unique couvrant toute la distance/durée saisie, cohérent avec le détail réussi/raté par intervalle ajouté le même jour, cf. ligne ci-dessus) ; principe actuel de priorité manuelle (`getStravaRunSiPasManuel` retourne `null` si une saisie manuelle existe) à repenser en un tableau unifié avec un marqueur de priorité, répercuté sur plusieurs dizaines de points d'usage de `stravaActivities.find(...)` ; indexation différente (`manualPerf` par `uid` de séance, `stravaActivities` par date) ; portée de persistance différente (`manualPerf` préfixé par plan, `stravaActivities` global au compte). Nécessiterait une session dédiée avec audit exhaustif des points d'usage avant tout codage. |
 
 Pour l'historique des versions livrées et des correctifs, voir
