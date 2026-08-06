@@ -6097,20 +6097,15 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
 
   const wrap = el("div",{style:{borderTop:"1px solid var(--border)",paddingTop:"10px",marginTop:"4px"}});
 
-  // En-tête résumé + lien Corriger / Strava
+  // Lien "✏️ Corriger" retiré le 06/08/2026 (signalé par Laurent : deux
+  // crayons visibles en même temps une fois la séance validée) — l'icône
+  // ✏️ du header (renderIconeSaisieManuelle) reste affichée après
+  // validation et ouvre le même popover/formulaire (renderManualPerfRow),
+  // ce lien texte était donc strictement redondant. correctionSlot/
+  // liensDroite conservés vides (au lieu de restructurer tout le bloc) —
+  // limite l'ampleur du changement, sans revenu fonctionnel perdu.
   const correctionSlot = el("div",{style:{display:"none",marginTop:"8px"}});
-  const correctionLink = el("a",{href:"#",style:{color:"var(--accent)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"✏️ Corriger");
-  let correctionOpen = false;
-  correctionLink.addEventListener("click", avecRetourTactile((e)=>{
-    e.preventDefault(); e.stopPropagation();
-    correctionOpen = !correctionOpen;
-    if (correctionOpen) {
-      correctionSlot.innerHTML = "";
-      correctionSlot.appendChild(renderManualPerfRow(uid, s, stravaRun, true));
-    }
-    correctionSlot.style.display = correctionOpen ? "block" : "none";
-  }));
-  const liensDroite = el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}}, correctionLink);
+  const liensDroite = el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}});
   // Badge de source + bouton de suppression — ajoutés le 03/08/2026, suite
   // à la demande de Laurent de pouvoir voir la provenance d'une activité
   // déjà importée (Strava/FIT) et la retirer explicitement. Nécessaire
