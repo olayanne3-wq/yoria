@@ -376,6 +376,19 @@ crayon corrigé le 04/08/2026** : le popover affichait un second crayon
 redondant avec le crayon du header qui vient d'être cliqué pour ouvrir ce
 même popover — retiré.
 
+**Lien "✏️ Corriger" retiré du bloc "Réalisé" (06/08/2026)** — signalé par
+Laurent : deux crayons visibles simultanément une fois une séance
+validée, dans la vue Semaine (icône ✏️ du header, toujours visible avant
+ET après validation, cf. ci-dessus + lien texte "✏️ Corriger" dans le
+bloc "Réalisé", cf. §16 pour la refonte carte "Aujourd'hui"). Les deux
+ouvraient exactement le même formulaire (`renderManualPerfRow`) — le
+lien texte du bloc "Réalisé" était donc strictement redondant avec
+l'icône header, qui seule suffit désormais. `correctionSlot`/`liensDroite`
+conservés vides dans `renderBlocRealise` plutôt qu'une restructuration
+plus large du bloc — limite l'ampleur du changement, aucune perte
+fonctionnelle (le badge source, le lien Strava et le bouton supprimer
+restent inchangés dans `liensDroite`).
+
 **Saisie manuelle — détail des intervalles réussi/raté (05/08/2026)** —
 pour toute séance avec `structureIntervalles` (VMA/SEUIL/SPEC), le
 formulaire de saisie manuelle affiche une grille de boutons ✓/✕, un par
@@ -389,6 +402,21 @@ répétitions · X/N réussies", même pattern visuel que le résumé
 Strava/FIT existant (sans détail dépliable — pas de laps réels à
 afficher pour une saisie manuelle). N'entre PAS dans le calcul du
 prédicteur (cf. §7bis) — seule l'allure moyenne globale saisie compte.
+
+**Badge de statut carte (haut à droite, vue Semaine) — vrai emoji au lieu
+du symbole compressé (06/08/2026)** — signalé par Laurent : "je veux
+avoir les mêmes symboles en haut à droite que ceux qu'on choisit pour le
+statut de la séance". Avant ce correctif, le badge compressait ⚠️ et ❌
+en un simple `"!"` générique sur fond orange (`var(--warn)`), perdant la
+distinction visuelle entre les deux qui existe pourtant sur les boutons
+de sélection de statut plus bas dans la carte (`SOPTS`). Corrigé en deux
+temps : d'abord affichage du vrai emoji (`statutEffectif`) dans un rond
+de fond coloré conservé par cohérence visuelle, puis — suite à une
+remarque immédiate de Laurent sur la redondance du rond avec les
+couleurs propres de chaque emoji — **rond de fond entièrement retiré**,
+traitement unifié avec 😴 (qui n'en avait jamais eu), taille augmentée à
+20px pour la lisibilité. Le badge est désormais un simple
+`el("span", {fontSize:"20px"}, statutEffectif)`.
 
 **Mini-frise semaine (vue Semaine, `L M M J V S D`) — couleur du type
 TEST manquante, corrigée le 04/08/2026** — cette mini-frise utilise deux
