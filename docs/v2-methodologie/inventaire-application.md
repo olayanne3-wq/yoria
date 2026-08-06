@@ -119,10 +119,18 @@ déclaration se trouve techniquement "plus loin dans le fichier" — un
 Simulation LIVE de l'impact avant validation, jamais appliqué sans clic
 explicite sur "Appliquer". Application à partir de la SEMAINE SUIVANTE
 uniquement — la semaine en cours et les précédentes gardent leur contenu
-original. Règle de pouce pour Jours/Volume (pas de modèle scientifique
-rigoureux) : rythme de progression proportionnel au nombre de séances
-QUALITÉ/semaine (`Engine.nbQualiteFor`), avec avertissement de fiabilité
-limitée. Levier Objectif : garde-fou de faisabilité en direct
+original. **Levier Jours (conçu et livré le 26/07/2026)** : réutilise le
+composant `.days-grid` existant (`daysGridSimulation`), permet aussi de
+déplacer uniquement la sortie longue (reclic sur un jour déjà
+sélectionné) ; simulation live via `simulerImpactJours()`,
+`Engine.nbQualiteFor(nbJours, niveau)` fait varier le rythme de
+progression proportionnellement au nombre de séances QUALITÉ ;
+application via `appliquerChangementJours()`, même coupure nette à la
+semaine suivante que les 3 autres leviers. Règle de pouce pour
+Jours/Volume (pas de modèle scientifique rigoureux) : rythme de
+progression proportionnel au nombre de séances QUALITÉ/semaine
+(`Engine.nbQualiteFor`), avec avertissement de fiabilité limitée. Levier
+Objectif : garde-fou de faisabilité en direct
 (`verifierFaisabiliteNouvelObjectif`), avertit seulement — change QUE
 l'allure course (`allures.C`), jamais VMA/SEUIL/EF (dépendent uniquement
 de la forme réellement mesurée, cf. §7 allures dynamiques). Levier Date
@@ -987,6 +995,18 @@ Filtres d'activités : `a.type === "Run" || a.sport_type === "Run"`
 nouvelle donnée de qualité du JOUR (`aDesNouvellesDonneesQualite`), pas à
 chaque simple chargement.
 
+**Contextualisation du verdict "❌ À risque" (Stats, projection au jour J,
+26/07/2026)** — livrée le même jour que sa conception. Écart chiffré vs
+objectif toujours affiché ("−Xs d'avance"/"+Xs vs objectif"), message
+contextuel affiché uniquement sous verdict "❌ À risque" précisant le
+nombre de semaines de données disponibles sur la durée totale du plan et
+rappelant que le rythme évolue souvent en phase Spécifique/Affûtage —
+purement informatif, ne change rien au calcul. Piste alternative
+(pondérer différemment les phases à venir plutôt que d'extrapoler
+uniformément) reste NON codée et NON conçue en détail — nécessite de
+définir combien Spécifique/Affûtage apportent en plus, donnée non
+disponible actuellement.
+
 **Non couvert / reporté** : PACES-S (plaisir par séance) ;
 R-062/R-070/R-080 jamais observées sur données réelles de Laurent —
 surveiller ; rythme de convergence (`PAS_CONVERGENCE_BASE=0.15`) à
@@ -1232,8 +1252,14 @@ fichier, avant la déclaration).
 `type=forecast|current|historical`. Géolocalisation : dernière activité
 Strava GPS pour actuelle/passée, position navigateur pour prévision J+1.
 Heure réelle de séance extraite de `start_date_local` pour la météo
-passée (repli 18h si absente). `timezone: "Europe/Paris"` fixe côté
-serveur (chantier ouvert, cf. §16). **`fetchWeather()`/
+passée (repli 18h si absente) — **livré le 24/07/2026**, `handleHistorical`
+(`api/weather.js`) accepte un paramètre `hour` optionnel transmis par
+`fetchHistoricalWeather()` depuis la vue Semaine, extrait via découpage de
+chaîne (jamais `new Date().getHours()`, qui donnait un décalage de +2h en
+été à cause du suffixe "Z" mal interprété). `timezone` transmis
+dynamiquement depuis `Intl.DateTimeFormat().resolvedOptions().timeZone`
+(fuseau du navigateur) — `TIMEZONE_DEFAUT="Europe/Paris"` ne sert que de
+repli si le navigateur ne fournit rien, plus un point bloquant. **`fetchWeather()`/
 `verifierMeteoSeanceDemain()` en rendu différé depuis le 04/08/2026**
 (cf. §4/§16) : ces deux fonctions s'exécutent immédiatement au
 chargement (fire-and-forget, jamais `await`-ées), leur `render()` de fin
@@ -1630,6 +1656,9 @@ Stats (cf. §4/§5, tous plans confondus).
 |---|---|
 | Import `.fit` avec détail par répétition (détection sans marqueurs natifs, protection des activités importées, icône ✏️ unifiée) | ✅ Codé, poussé et testé en conditions réelles le 03/08/2026. Détail en §4/§9/§10 et `docs/v2-methodologie/import-fit-intervalles.md`. |
 | Refonte carte "Aujourd'hui" (rien à ouvrir, icônes conditionnelles, bloc "Réalisé" dépliable, stylo coloré) | ✅ Conçue et livrée le 26/07/2026, absence de trace dans ce tableau corrigée le 06/08/2026 après vérification directe du code. Détail complet en §4. |
+| Vraie météo à l'heure de la séance (jamais 18h fixe) | ✅ Livrée le 24/07/2026, absence de trace dans ce tableau corrigée le 06/08/2026. `handleHistorical` accepte `hour`, `timezone` transmis dynamiquement depuis le navigateur. Détail complet en §11. |
+| Contextualiser le verdict "❌ À risque" (projection au jour J, Stats) | ✅ Livrée le 26/07/2026, absence de trace dans ce tableau corrigée le 06/08/2026. Écart chiffré + message contextuel sous le verdict, purement informatif. Détail en §7bis. Piste alternative (repondérer les phases Spécifique/Affûtage dans le calcul lui-même) reste non conçue en détail — chantier de conception séparé si besoin un jour. |
+| Simuler changement de jours d'entraînement (wizard, accordéon "Modifier mon plan") | ✅ Conçue et livrée le 26/07/2026, absence de trace dans ce tableau corrigée le 06/08/2026. 2e levier de l'accordéon, simulation live via `Engine.nbQualiteFor()`. Détail complet en §3. |
 | Système de badges (récompenses) | ✅ Livré, extrait dans `badges.js` le 31/07/2026. 15 badges en 4 catégories (dont "Km cumulés", ajouté le 05/08/2026, cf. ligne dédiée ci-dessous), consultables depuis Stats (`renderBadges()`) — jamais rien en permanence sur le dashboard, seul un bandeau ponctuel dismissible. Badges à paliers (record historique jamais perdu si la série casse) : séances validées d'affilée, semaines complètes d'affilée, FC EF/LONGUE maîtrisée d'affilée, semaines parfaites (badge CUMULÉ, pas une série), km cumulés (idem, cumulé). Badges événementiels : nouvelle estimation, record battu, test semi-Cooper, repos écouté, semaine équilibrée, premier plan, mi-parcours, entrée Affûtage, course terminée, retour réussi. Stockage `badges_debloques` (best-effort), cache `window.__badgesCache__`. **Corrections du 02/08/2026** (signalées par Laurent) : (1) libellés de palier ambigus reformulés avec un verbe d'action explicite ; (2) légende "série active / record X" retirée pour `semaine_parfaite` (badge cumulé) ; (3) badge `record_battu` déplacé vers le seul déclencheur légitime (validation d'un résultat de course, cf. `resultatCard`) ; (4) recalcul forcé au clic sur "Mes badges", plus de cache indéfini. |
 | **Badge "Km cumulés" (nouveau, 05/08/2026)** | ✅ Codé et poussé. 7 paliers (50/100/250/500/1000/1500/2000 km), catégorie progression. Cumul TOTAL tous plans confondus (pas seulement le plan actif), sur toute séance validée ✅/⚠️/❌ — décision explicite de Laurent d'inclure ❌ (une séance ratée/non conforme a quand même été courue). Alimenté par `profilCoureur.kmCumulesTotal` (cf. §6), ajusté de façon idempotente à chaque changement de statut via `recalculerKmComptesPourUid()` (cf. §5, registre `lk_km_comptes_par_uid`). **6 points d'écriture de statut audités et corrigés** pour appeler ce recalcul : clic manuel (`renderStatusRow`), saisie manuelle Enregistrer/Annuler, suppression d'une activité, auto-validation en masse après synchro (le chemin le plus fréquent), choix d'activité ambiguë, test semi-Cooper. Rattrapage de l'historique déjà validé avant ce chantier : script ponctuel fourni une fois à Laurent (non versionné dans le repo), à relancer si besoin (idempotent, recalcule depuis zéro à chaque exécution). |
 | **Résultat de course enrichi + section "Mes courses" (nouveau, 05/08/2026)** | ✅ Codé et poussé. `resultatCard` (jour de course) accepte désormais ressenti (RPE), commentaire, classement général et classement catégorie (place/total chacun) — stockés dans `lk_race_result_details` (cf. §5/§14bis), séparée de `lk_race_result` pour zéro impact sur les usages existants. Nouvelle fonction `chargerResultatsCoursesSupabase()` (`sync-storage.js`, cf. §5) pour lire ces résultats sur tous les plans du compte. Nouveau groupe accordéon "🏅 Mes courses" dans Stats (cf. §4), chargement asynchrone à la première ouverture. |
@@ -1650,6 +1679,7 @@ Stats (cf. §4/§5, tous plans confondus).
 | Refondre l'aide en tutos d'action par fonctionnalité | ✅ Livré le 04/08/2026 — section "Tutos par action" en tuiles, sélecteur d'onglets Aide/Tutos, 16 tutos rédigés couvrant Démarrer/Au quotidien/Gérer son plan/Suivi/Compte. Détail complet en §4. Reste ouvert : aucune image intégrée pour l'instant (Laurent prévoit de fournir des captures au fil de l'eau, le format le supporte déjà). |
 | Couleur manquante pour le type de séance TEST dans la mini-frise semaine + crayon affiché en double dans le popover de saisie | ✅ Corrigés le 04/08/2026, dans la même session que le chantier Aide ci-dessus. Détail en §4. |
 | Clignotement de l'écran au chargement de l'app | 🔶 Investigation approfondie menée le 04/08/2026, PARTIELLEMENT résolue — plusieurs correctifs structurellement corrects ont été appliqués (remplacement atomique du DOM via `replaceChildren` au lieu d'un `innerHTML=""` prématuré, regroupement des rendus automatiques différés via `renderDiffere()`, connexion WebSocket Realtime non-bloquante, chargement `defer` de 9 scripts classic bloquants, correction d'une balise `<meta name="theme-color">` invalide), mais Laurent rapporte que le clignotement persiste après chacun d'eux. Un test DevTools Performance + Screenshots (filmstrip) a confirmé la vraie nature du symptôme : une page BLANCHE réelle d'environ 750ms à 1.85s avant le premier affichage (pas un double-rendu répété comme supposé initialement) — probablement causée par un enchaînement structurel d'au moins 2-3 allers-retours réseau séquentiels et nécessaires vers Supabase (`getUser()` → `migrerDonneesExistantes()` → `precharger()`) avant que la donnée ne soit prête pour le premier rendu, chacun avec sa propre latence de connexion. Écarté comme non concluant : différer l'écriture concurrente de `migrerDonneesExistantes()`/`precharger()` (ordre nécessaire, la seconde lit ce que la première vient d'écrire). Piste non engagée par prudence : afficher un premier rendu depuis le cache localStorage local avant confirmation serveur, avec re-render silencieux une fois confirmé — chantier plus large sur un flux d'authentification déjà marqué par plusieurs bugs sensibles, nécessiterait une session dédiée avec validation explicite avant de s'y engager. |
+| **Centraliser sur le dashboard le signal `analyserAdaptations()` du wizard** | 🔶 PARTIELLEMENT comblé depuis le 27/07/2026 (vérifié le 06/08/2026, absent de ce tableau) — `analyserAdaptations()` alimente désormais le message du coach IA côté dashboard (si `adaptationsConsecutivesMax >= 3`), mais reste un simple texte informatif, PAS une carte UI Appliquer/Ignorer équivalente à celle du moteur de décision (RunnerStateCalculator). Reste à concevoir : fusionner ou juxtaposer les deux signaux en carte(s) UI, gérer Appliquer/Ignorer de façon cohérente entre les deux mécanismes. Session dédiée nécessaire. |
 | **Unifier les saisies manuelles avec le format Strava/FIT (`stravaActivities`)** | 🔶 Discuté avec Laurent le 05/08/2026, PAS engagé — jugé techniquement possible mais structurellement plus lourd qu'un ajustement ponctuel. Points à trancher avant de coder : représentation de l'absence de laps réels (piste retenue à discuter : un lap synthétique unique couvrant toute la distance/durée saisie, cohérent avec le détail réussi/raté par intervalle ajouté le même jour, cf. ligne ci-dessus) ; principe actuel de priorité manuelle (`getStravaRunSiPasManuel` retourne `null` si une saisie manuelle existe) à repenser en un tableau unifié avec un marqueur de priorité, répercuté sur plusieurs dizaines de points d'usage de `stravaActivities.find(...)` ; indexation différente (`manualPerf` par `uid` de séance, `stravaActivities` par date) ; portée de persistance différente (`manualPerf` préfixé par plan, `stravaActivities` global au compte). Nécessiterait une session dédiée avec audit exhaustif des points d'usage avant tout codage. |
 
 Pour l'historique des versions livrées et des correctifs, voir
