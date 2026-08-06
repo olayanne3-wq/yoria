@@ -782,105 +782,112 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // régénération échoue pour une raison quelconque (plan invalide,
     // paramsOrigine absent), on garde le plan tel quel plutôt que de
     // bloquer le chargement de l'app.
-    if (planBrut?.paramsOrigine?.semaineDepartVolume !== undefined && planBrut.profilOrigine) {
+    // RÉPARATION DÉFINITIVE (06/08/2026) — détection DIRECTE des semaines
+    // cassées par leur symptôme réel (volumeCibleKm absent/nul avec EF ou
+    // longue à 0km), plutôt que par la présence de semaineDepartVolume dans
+    // paramsOrigine. Nécessaire car ce champ peut avoir déjà disparu de
+    // paramsOrigine (ex. après un usage ultérieur du levier Volume, dont le
+    // correctif de v2/index.html retire bien semaineDepartVolume avant
+    // sauvegarde) SANS que les semaines déjà cassées avant ce nettoyage
+    // n'aient jamais été réparées — volumeCibleKm est un champ figé DANS
+    // CHAQUE SEMAINE du plan déjà sauvegardé, indépendant de paramsOrigine,
+    // donc une détection basée uniquement sur paramsOrigine.semaineDepartVolume
+    // manquait ce cas (bug persistant signalé par Laurent malgré le premier
+    // correctif — la condition de déclenchement ne se déclenchait jamais).
+    //
+    // Réparation semaine par semaine (pas une régénération globale) :
+    // reconstruit uniquement le contenu EF/longue des semaines cassées, à
+    // partir du volume hebdo qu'elles AURAIENT dû avoir selon la vraie
+    // progression recalculée depuis paramsOrigine — jamais les séances
+    // qualité (jamais cassées par ce bug, cf. diagnostic avec Laurent) ni
+    // les autres semaines (non affectées, laissées intactes).
+    //
+    // Protection identique au correctif précédent : une semaine
+    // STRICTEMENT PASSÉE (tous ses jours avant aujourd'hui) n'est jamais
+    // réparée automatiquement, même si cassée — seul un avertissement le
+    // signale, pour ne jamais réécrire une séance déjà vécue par le
+    // coureur. Semaine en cours et futures : réparées (risque assumé par
+    // Laurent pour la semaine en cours, cf. échange du 06/08/2026).
+    if (planBrut?.profilOrigine && planBrut?.paramsOrigine && Array.isArray(planBrut?.semaines)) {
       try {
-        // CORRECTIF (06/08/2026, après signalement de Laurent : "ça
-        // risque de changer le plan sur les semaines passées ?") — la
-        // toute première version de cette réparation régénérait le plan
-        // ENTIER sans aucune protection, y compris les semaines déjà
-        // passées ou en cours : bien que statuses/manualPerf/sessionRpe
-        // soient recopiés, le TEXTE des séances (notes pratiques
-        // injectées aléatoirement, injecterNotesPratiques etc.) aurait pu
-        // changer pour des semaines déjà réalisées — même risque déjà
-        // identifié et corrigé pour les leviers du wizard (cf. fusion
-        // "ancien contenu pour les semaines passées" dans
-        // appliquerChangementVolume/Jours/Objectif/DateCourse). Corrigé en
-        // appliquant EXACTEMENT le même principe de coupure nette ici :
-        // seules les semaines strictement FUTURES par rapport à
-        // aujourd'hui sont remplacées par le contenu régénéré, tout le
-        // reste (semaines passées ET semaine en cours) garde le plan
-        // ORIGINAL tel quel, même si elles sont elles-mêmes affectées par
-        // la pollution semaineDepartVolume (0km sur EF/longue) — un
-        // avertissement explicite est ajouté au plan dans ce cas plutôt
-        // que de risquer de réécrire silencieusement le contenu d'une
-        // séance déjà réalisée.
-        const debutPlanRepar = planBrut.dateDebut ? new Date(planBrut.dateDebut + 'T00:00:00Z') : null;
-        const aujourdhuiRepar = new Date();
-        const aujourdhuiStrRepar = new Date(Date.UTC(aujourdhuiRepar.getFullYear(), aujourdhuiRepar.getMonth(), aujourdhuiRepar.getDate())).toISOString().slice(0, 10);
+        const semainesCasseesIdx = [];
+        planBrut.semaines.forEach((s, idx) => {
+          const efOuLongueA0 = Object.values(s.assignment || {}).some(
+            seance => (seance.type === 'ef' || seance.type === 'longue') && seance.kmEstime === 0
+          );
+          if (efOuLongueA0) semainesCasseesIdx.push(idx);
+        });
 
-        const { semaineDepartVolume, ...paramsOriginePropres } = planBrut.paramsOrigine;
-        const planRegenere = generatePlan(planBrut.profilOrigine, paramsOriginePropres);
+        if (semainesCasseesIdx.length > 0) {
+          const debutPlanRepar = planBrut.dateDebut ? new Date(planBrut.dateDebut + 'T00:00:00Z') : null;
+          const aujourdhuiRepar = new Date();
+          const aujourdhuiStrRepar = new Date(Date.UTC(aujourdhuiRepar.getFullYear(), aujourdhuiRepar.getMonth(), aujourdhuiRepar.getDate())).toISOString().slice(0, 10);
 
-        if (!planRegenere?.planInvalide && debutPlanRepar) {
-          let semainesEncorePolluees = 0;
-          planRegenere.semaines = planRegenere.semaines.map(semaineNouvelle => {
-            const semaineAncienne = planBrut.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
-            if (!semaineAncienne) return semaineNouvelle;
+          // paramsOrigine propre, sans semaineDepartVolume résiduel s'il
+          // traîne encore (defensive, cf. correctif précédent) — sert de
+          // base pour recalculer la VRAIE progression de volume attendue.
+          const { semaineDepartVolume, ...paramsOriginePropres } = planBrut.paramsOrigine;
+          const planRegenere = generatePlan(planBrut.profilOrigine, paramsOriginePropres);
 
-            // Date de chaque jour de cette semaine, pour déterminer si elle
-            // est strictement passée (protégée) ou réparable (en cours ou
-            // future, cf. plus bas).
-            const datesJoursSemaine = Object.keys(semaineAncienne.assignment || {}).map(jourIndex => {
-              const d = new Date(debutPlanRepar);
-              d.setUTCDate(debutPlanRepar.getUTCDate() + (semaineAncienne.semaineNum - 1) * 7 + Number(jourIndex));
-              return d.toISOString().slice(0, 10);
-            });
-            // Assoupli (06/08/2026, décision explicite de Laurent : accepter
-            // le risque pour la semaine en cours plutôt que la laisser
-            // cassée) — une semaine est réparable si elle contient AU MOINS
-            // un jour à partir d'aujourd'hui (inclus), pas seulement si elle
-            // est entièrement future. Ne protège donc plus que les semaines
-            // STRICTEMENT PASSÉES (tous les jours avant aujourd'hui) —
-            // cohérent avec le principe déjà en place pour
-            // ADAPTATION_IGNOREE_SEMAINE_PASSEE (plan-generator.js), qui
-            // vérifie l'inverse exact (toutes les dates < aujourd'hui) pour
-            // ignorer une adaptation.
-            const semaineStrictementPassee = datesJoursSemaine.length > 0 && datesJoursSemaine.every(d => d < aujourdhuiStrRepar);
-            const semaineStrictementFuture = !semaineStrictementPassee;
+          if (!planRegenere?.planInvalide && debutPlanRepar) {
+            let semainesReparees = 0;
+            let semainesEncorePolluees = 0;
 
-            if (semaineStrictementFuture) return semaineNouvelle;
+            semainesCasseesIdx.forEach(idx => {
+              const semaineAncienne = planBrut.semaines[idx];
+              const semaineRegeneree = planRegenere.semaines.find(s => s.semaineNum === semaineAncienne.semaineNum);
+              if (!semaineRegeneree) return;
 
-            // Semaine passée ou en cours : contenu ORIGINAL conservé sans
-            // exception. Si elle était déjà polluée (0km), elle le reste
-            // — signalé via un avertissement plutôt que réparé
-            // silencieusement, pour ne jamais réécrire une séance déjà
-            // vécue par le coureur.
-            const etaitPolluee = Object.values(semaineAncienne.assignment || {}).some(
-              s => (s.type === 'ef' || s.type === 'longue') && s.kmEstime === 0
-            );
-            if (etaitPolluee) semainesEncorePolluees++;
-            return semaineAncienne;
-          });
+              const datesJoursSemaine = Object.keys(semaineAncienne.assignment || {}).map(jourIndex => {
+                const d = new Date(debutPlanRepar);
+                d.setUTCDate(debutPlanRepar.getUTCDate() + (semaineAncienne.semaineNum - 1) * 7 + Number(jourIndex));
+                return d.toISOString().slice(0, 10);
+              });
+              const semaineStrictementPassee = datesJoursSemaine.length > 0 && datesJoursSemaine.every(d => d < aujourdhuiStrRepar);
 
-          if (semainesEncorePolluees > 0) {
-            planRegenere.warnings = [
-              ...(planRegenere.warnings ?? []),
-              {
-                code: 'SEMAINE_PASSEE_NON_REPAREE',
-                message: `${semainesEncorePolluees} semaine(s) déjà commencée(s) ou passée(s) gardent un volume EF/longue à 0 (bug corrigé pour les semaines futures uniquement, jamais réécrit sur du contenu déjà vécu). Contacte le support si besoin d'une correction manuelle de ces semaines précises.`
+              if (semaineStrictementPassee) {
+                semainesEncorePolluees++;
+                return;
               }
-            ];
-          }
 
-          planRegenere.id = planBrut.id;
-          planRegenere.nom = planBrut.nom;
-          planRegenere.statuses = planBrut.statuses;
-          planRegenere.manualPerf = planBrut.manualPerf;
-          planRegenere.sessionRpe = planBrut.sessionRpe;
-          planRegenere.profilOrigine = planBrut.profilOrigine;
-          planRegenere.paramsOrigine = paramsOriginePropres;
-          planRegenere.estPlanRepli = planBrut.estPlanRepli;
-          planBrut = planRegenere;
-          window.__PLAN_BRUT__ = planBrut;
-          console.info(`Plan réparé : semaineDepartVolume résiduel retiré, ${semainesEncorePolluees} semaine(s) passée(s)/en cours non touchée(s) par sécurité.`);
-          if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && planBrut.id) {
-            LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut).catch(e =>
-              console.warn('Re-sauvegarde du plan réparé (semaineDepartVolume) échouée :', e.message)
-            );
+              // Répare UNIQUEMENT les jours EF/longue de cette semaine,
+              // avec le contenu régénéré — la ou les séances qualité déjà
+              // présentes dans planBrut restent inchangées (jamais cassées
+              // par ce bug, pas de raison de les toucher).
+              Object.keys(semaineAncienne.assignment).forEach(jourIndex => {
+                const seanceAncienne = semaineAncienne.assignment[jourIndex];
+                const seanceRegeneree = semaineRegeneree.assignment[jourIndex];
+                if (!seanceRegeneree) return;
+                if ((seanceAncienne.type === 'ef' || seanceAncienne.type === 'longue') && seanceAncienne.kmEstime === 0) {
+                  semaineAncienne.assignment[jourIndex] = { ...seanceAncienne, ...seanceRegeneree };
+                }
+              });
+              semaineAncienne.volumeCibleKm = semaineRegeneree.volumeCibleKm;
+              semainesReparees++;
+            });
+
+            if (semainesReparees > 0) {
+              window.__PLAN_BRUT__ = planBrut;
+              console.info(`Plan réparé : ${semainesReparees} semaine(s) EF/longue à 0km corrigée(s).`);
+              if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && planBrut.id) {
+                LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut).catch(e =>
+                  console.warn('Re-sauvegarde du plan réparé (EF/longue 0km) échouée :', e.message)
+                );
+              }
+            }
+            if (semainesEncorePolluees > 0) {
+              planBrut.warnings = [
+                ...(planBrut.warnings ?? []),
+                {
+                  code: 'SEMAINE_PASSEE_NON_REPAREE',
+                  message: `${semainesEncorePolluees} semaine(s) déjà passée(s) gardent un volume EF/longue à 0 (jamais réécrit sur du contenu déjà vécu). Contacte le support si besoin d'une correction manuelle de ces semaines précises.`
+                }
+              ];
+            }
           }
         }
       } catch (e) {
-        console.warn('Réparation semaineDepartVolume résiduel échouée, plan conservé tel quel :', e.message);
+        console.warn('Réparation EF/longue à 0km échouée, plan conservé tel quel :', e.message);
       }
     }
 
