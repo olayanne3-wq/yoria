@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+successfully downloaded text file (SHA: f3ab83fcc0b473b1ed3529b15dc3914dcf1493f9)<!DOCTYPE html>
 <html lang="fr">
 <head>
 <!-- Sentry (suivi d'erreurs, ajouté le 20/07/2026 pour les beta testeurs).
@@ -632,11 +632,32 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // être chargé APRÈS plan-generator.js ci-dessus, jamais avant.
     window._planFormeModule = await import("/v2/engine/plan-forme.js");
     Object.assign(window, window._planFormeModule);
+    // v1-bridge.js / badges.js / session-analysis.js / predictor.js —
+    // PARALLÉLISÉS le 06/08/2026 (chantier "écran blanc prolongé au
+    // chargement"), auparavant chargés en 4 `await import()` strictement
+    // séquentiels. Vérifié avant ce changement : aucun des 4 fichiers ne
+    // contient de `import` ES statique vers un autre module de ce groupe
+    // (ni entre eux, ni vers plan-generator.js/plan-forme.js déjà résolus
+    // à ce stade) — chacun reçoit tout ce dont il a besoin via un `ctx`
+    // explicite passé par l'appelant, jamais une dépendance de chargement
+    // implicite. Contrairement à plan-generator.js → plan-forme.js
+    // ci-dessus (ordre RÉELLEMENT nécessaire, documenté, laissé
+    // séquentiel), ces 4 imports n'ont aucune contrainte d'ordre entre eux
+    // — Promise.all() remplace donc 4 allers-retours réseau/résolution ESM
+    // en série par 1 seul en parallèle, sans changement de comportement
+    // (chaque Object.assign(window, ...) reste appliqué avant la suite du
+    // bloc, seule la façon dont les 4 promesses sont attendues change).
+    const [v1BridgeMod, badgesMod, sessionAnalysisMod, predictorMod] = await Promise.all([
+      import("/v2/engine/v1-bridge.js"),
+      import("/v2/engine/badges.js"),
+      import("/v2/engine/session-analysis.js"),
+      import("/v2/engine/predictor.js"),
+    ]);
     // v1-bridge.js — module autonome, aucune dépendance vers un autre
     // module. construireAllSessions() n'est jamais appelée (index.html a
     // sa propre fonction locale recalculerAllSessions() qui fait la même
     // chose, dupliquée en dur — dette technique mineure, non traitée ici).
-    window._v1BridgeModule = await import("/v2/engine/v1-bridge.js");
+    window._v1BridgeModule = v1BridgeMod;
     Object.assign(window, window._v1BridgeModule);
     // badges.js — extrait de index.html le 31/07/2026 (réduction de la
     // taille du fichier). Vrai module ES (contrairement aux .classic.js) :
@@ -649,7 +670,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // sont des données statiques. Les fonctions restent accessibles via
     // window._badgesModule.xxx (pas de préfixe global sans risque de
     // collision de nom, contrairement aux constantes ci-dessus).
-    window._badgesModule = await import("/v2/engine/badges.js");
+    window._badgesModule = badgesMod;
     Object.assign(window, {
       DEFINITIONS_BADGES: window._badgesModule.DEFINITIONS_BADGES,
       LIBELLES_BADGES: window._badgesModule.LIBELLES_BADGES,
@@ -663,14 +684,14 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     // predictor.js, qui devra gérer la mutation de predHistory). Chargé en
     // global via window._sessionAnalysisModule, wrappers locaux définis
     // plus bas dans ce fichier à l'endroit de l'ancien bloc.
-    window._sessionAnalysisModule = await import("/v2/engine/session-analysis.js");
+    window._sessionAnalysisModule = sessionAnalysisMod;
     // predictor.js — extrait de index.html le 31/07/2026 (module B du
     // chantier prédicteur, après session-analysis.js). Vrai module ES,
     // fonctions pures uniquement — cf. son en-tête pour le détail des
     // fonctions restées en wrapper local dans ce fichier
     // (rebuildPredHistory/verifierEtAppliquerAlluresDynamiques, trop
     // couplées à l'orchestration UI/Supabase pour être déplacées).
-    window._predictorModule = await import("/v2/engine/predictor.js");
+    window._predictorModule = predictorMod;
 
     const idPlanChoisi = localStorage.getItem('v2_preview_plan_id');
     let planBrut = null;
