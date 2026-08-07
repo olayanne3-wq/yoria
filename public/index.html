@@ -6356,7 +6356,16 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       const distance = dureeSaisieMin
         ? distanceTotaleAvecRecup(s.structureIntervalles, dureeSaisieMin*60, window.__PLAN_BRUT__?.allures?.E)
         : (s.structureIntervalles ? distanceEffortStructure(s.structureIntervalles, paceSec) : null);
-      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null, intervalles: formWrap._intervallesState || null };
+      // laps : reconstruction au format Strava (un lap par répétition,
+      // cf. construireLapsManuels ci-dessus) — champ optionnel, null pour
+      // une EF/LONGUE (pas de structureIntervalles) ou si la grille
+      // réussi/raté n'a pas pu être construite. weightedAvgByEffortDuration()
+      // (predictor.js) garde un repli sur l'ancien "lap virtuel unique"
+      // (distanceEffortStructureFn) quand ce champ est absent — pas de
+      // migration rétroactive des saisies déjà existantes (peu nombreuses,
+      // uniquement sur le compte de test au 07/08/2026).
+      const laps = construireLapsManuels(s.structureIntervalles, formWrap._intervallesState, speed);
+      manualPerf[uid] = { average_speed: speed, distance: distance||null, average_heartrate: hr, dureeSaisieMin: dureeSaisieMin||null, intervalles: formWrap._intervallesState || null, laps };
       save(clePourPlan("lk_manual_perf"), manualPerf);
       // Cumul km (badge "km cumulés", 05/08/2026) — la saisie manuelle peut
       // changer la distance d'une séance DÉJÀ validée (✅/⚠️/❌ déjà posé
@@ -6644,6 +6653,67 @@ function distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFS
   const distanceReste = (dureeResteSec/allureEFSec)*1000; // échauffement + retour au calme
 
   return Math.round(distanceEffort + distanceRecup + distanceReste) || null;
+}
+
+// Construit manualPerf[uid].laps — un lap SYNTHÉTIQUE par répétition
+// attendue de structureIntervalles, dans le même format qu'un vrai lap
+// Strava (distance, average_speed, average_heartrate), pour que
+// weightedAvgByEffortDuration() (predictor.js) puisse les consommer
+// directement au lieu de fabriquer un "lap virtuel" unique à la volée
+// (chantier "unifier les saisies manuelles avec le format Strava/FIT",
+// conçu avec Laurent le 07/08/2026, cf. inventaire §16).
+//
+// Un intervalle marqué ✕ (raté, cf. grille réussi/raté du 05/08/2026)
+// produit quand même un lap (pour l'affichage/comptage km), mais porte
+// `_reussi:false` — weightedAvgByEffortDuration() doit filtrer sur ce
+// champ avant de pondérer la vitesse : on n'a qu'une seule allure globale
+// saisie à la main, l'attribuer telle quelle à une répétition ratée
+// gonflerait artificiellement l'estimation (décision actée avec Laurent :
+// pas de donnée fiable sur un raté, mieux vaut l'exclure que deviner une
+// pénalité arbitraire).
+//
+// speedMs : vitesse globale saisie (m/s,= 1000/paceSec) — même valeur
+// pour tous les laps réussis, aucune allure par intervalle n'est demandée
+// au coureur (charge de saisie disproportionnée, décision déjà actée le
+// 05/08/2026).
+// intervallesState : tableau de booléens (réussi/raté), même ordre que la
+// grille de boutons ✓/✕ du formulaire.
+//
+// Retourne null si structureIntervalles est absente/vide (EF, LONGUE —
+// pas d'intervalles à construire) ou si le nombre de répétitions
+// attendues est 0.
+function construireLapsManuels(structureIntervalles, intervallesState, speedMs) {
+  if (!structureIntervalles?.blocs?.length || !speedMs) return null;
+  const nbSeries = structureIntervalles.nbSeries || 1;
+  const laps = [];
+  for (let serie=0; serie<nbSeries; serie++) {
+    structureIntervalles.blocs.forEach(bloc => {
+      const reps = bloc.repetitions || 1;
+      for (let r=0; r<reps; r++) {
+        // Distance de CETTE répétition — même logique bloc par bloc que
+        // distanceEffortStructure()/distanceTotaleAvecRecup() ci-dessous :
+        // priorité à distanceM si connue, sinon dérivée de
+        // dureeEffortSec × vitesse globale saisie (jamais l'allure du
+        // bloc, qui peut différer de ce que le coureur a réellement
+        // couru — cf. principe "une seule allure globale, pas d'allure
+        // par intervalle").
+        let distance = null;
+        if (bloc.distanceM) distance = bloc.distanceM;
+        else if (bloc.dureeEffortSec) distance = bloc.dureeEffortSec * speedMs;
+        if (!distance) return; // bloc sans distance ni durée exploitable : répétition ignorée plutôt que fausser le calcul avec une valeur inventée
+        const idx = laps.length; // index dans l'ordre de construction = même ordre que la grille ✓/✕ du formulaire
+        const reussi = intervallesState ? (intervallesState[idx] !== false) : true; // repli "réussi" si pas de grille (séance sans structureIntervalles.blocs suffisant, cas déjà rare)
+        laps.push({
+          distance: Math.round(distance),
+          average_speed: speedMs,
+          average_heartrate: null,
+          _source: "manuel",
+          _reussi: reussi,
+        });
+      }
+    });
+  }
+  return laps.length ? laps : null;
 }
 
 // Retourne l'activité Strava du jour correspondant à une séance, SAUF si
