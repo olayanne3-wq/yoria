@@ -108,12 +108,20 @@ async function rejouerEntreeFile(entree) {
       return !error;
     }
     if (entree.type === 'plan_donnees') {
-      const { error: erreurLecture, data: existant } = await supabase
-        .from('plan_donnees').select('data').eq('plan_id', entree.payload.plan_id).maybeSingle();
-      if (erreurLecture) return false;
-      const donnees = { ...(existant?.data || {}), [entree.payload.cleBase]: entree.payload.valeur };
-      const { error } = await supabase.from('plan_donnees').upsert({
-        plan_id: entree.payload.plan_id, user_id: entree.payload.user_id, data: donnees,
+      // CORRECTIF (07/08/2026, chantier race condition — cf. en-tête de
+      // synchroniserVersSupabase() plus bas). AVANT ce correctif, le
+      // rejeu en file reproduisait le MÊME read-modify-write en 2 étapes
+      // que la fonction principale — donc rejouait aussi la race
+      // condition d'origine, en plus de perpétuer un chemin de code
+      // parallèle à maintenir. Utilise maintenant le même RPC atomique
+      // merger_plan_donnees() que le chemin normal — un seul chemin
+      // d'écriture vers plan_donnees dans tout ce fichier, cohérent avec
+      // la fonction principale ci-dessous.
+      const { error } = await supabase.rpc('merger_plan_donnees', {
+        p_plan_id: entree.payload.plan_id,
+        p_user_id: entree.payload.user_id,
+        p_cle: entree.payload.cleBase,
+        p_valeur: entree.payload.valeur,
       });
       return !error;
     }
@@ -476,28 +484,40 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
   marquerEchoLocal(planId); // avant l'écriture : l'événement Realtime qui
   // reviendra pour ce planId dans les 3s sera ignoré, c'est notre propre écho.
 
-  supabase.from('plan_donnees')
-    .select('data')
-    .eq('plan_id', planId)
-    .maybeSingle()
-    .then(({ data: existant }) => {
-      const donnees = { ...(existant?.data || {}), [cleBase]: valeur };
-      return supabase.from('plan_donnees').upsert({
-        plan_id: planId,
-        user_id: userId,
-        data: donnees,
-      });
-    })
-    .then((res) => {
-      if (res?.error) {
-        console.warn('Sync plan_donnees échouée, mise en file :', res.error.message);
-        ajouterALaFile('plan_donnees', { plan_id: planId, user_id: userId, cleBase, valeur });
-      }
-    })
-    .catch((err) => {
-      console.warn('Sync plan_donnees échouée, mise en file :', err.message);
+  // CORRECTIF race condition (07/08/2026, bug signalé par Laurent : des
+  // statuts ✅/⚠️/❌ posés disparaissaient silencieusement, en particulier
+  // autour d'un changement de source de données — cf. discussion complète
+  // dans inventaire §16 et migration-plan-donnees-merge-atomique.sql).
+  //
+  // AVANT ce correctif, cette fonction faisait un read-modify-write en 2
+  // requêtes séparées (select puis upsert) : si deux appels à
+  // synchroniserVersSupabase() pour des clés DIFFÉRENTES partaient
+  // presque simultanément (plusieurs saves rapprochés — ex. une saisie
+  // manuelle suivie d'un changement de source, ou plusieurs onglets/
+  // appareils actifs sur le même plan), chacun lisait `data` AVANT que
+  // l'autre n'ait écrit sa propre fusion, et le second écrasait le
+  // premier avec une version de `data` ne contenant pas encore sa
+  // fusion à lui — perte silencieuse d'une clé fraîchement sauvegardée.
+  //
+  // Fix : un seul appel RPC (merger_plan_donnees, fonction Postgres
+  // définie dans migration-plan-donnees-merge-atomique.sql) qui fait le
+  // merge ATOMIQUEMENT côté serveur (jsonb_set en une seule transaction)
+  // — plus de fenêtre de lecture séparée, donc plus de race condition
+  // possible quel que soit le nombre d'écritures concurrentes.
+  supabase.rpc('merger_plan_donnees', {
+    p_plan_id: planId,
+    p_user_id: userId,
+    p_cle: cleBase,
+    p_valeur: valeur,
+  }).then(({ error }) => {
+    if (error) {
+      console.warn('Sync plan_donnees échouée, mise en file :', error.message);
       ajouterALaFile('plan_donnees', { plan_id: planId, user_id: userId, cleBase, valeur });
-    });
+    }
+  }).catch((err) => {
+    console.warn('Sync plan_donnees échouée, mise en file :', err.message);
+    ajouterALaFile('plan_donnees', { plan_id: planId, user_id: userId, cleBase, valeur });
+  });
 }
 
 // ------------------------------------------------------------
