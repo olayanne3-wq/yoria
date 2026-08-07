@@ -315,24 +315,28 @@ input[type=text], input[type=number], input[type=password] {
      translate(-50%,-50%)), mécanisme indépendant du flex du parent.
      v9 (07/08/2026, revérifié avec repères magenta après la v8) —
      nouvelle vidéo de contrôle : le centrage vertical est cette fois
-     PARFAIT (écart mesuré = 0.0px sur 5 frames indépendantes, le carré
-     tombe exactement sur la ligne magenta) — la v8 a bien corrigé la
-     position. Mais le second problème identifié en v8 persiste
-     IDENTIQUE : largeur 827px, hauteur 756px, toujours pas un carré —
-     confirme que ce n'était pas lié au flex/margin (déjà retiré en v8)
-     mais à un vrai comportement différent de height:76.5vw (une unité vw
-     appliquée à la propriété height) sur cette WebView spécifique, que
-     Playwright desktop ne reproduit pas. Plutôt que de continuer à
-     deviner la cause exacte de ce comportement, contourné entièrement :
-     height:76.5vw remplacé par aspect-ratio:1, qui garantit
-     mathématiquement une hauteur strictement égale à la largeur, quel
-     que soit le comportement de vw/vh sur cette plateforme — plus besoin
-     d'object-fit:cover non plus, l'image source (icon-512.png, déjà
-     512x512) remplit alors naturellement un conteneur carré sans
-     recadrage.
-     v5 (mesure de largeur, toujours valable) : 76.5vw (mesuré 826/1080px
-     sur bande centrale, validation croisée sur 15 points), rayon
-     d'arrondi 20%.
+     PARFAIT (écart mesuré = 0.0px sur 5 frames indépendantes) — la v8 a
+     bien corrigé la position. Mais le second problème (v8) persiste
+     IDENTIQUE : largeur 827px, hauteur 756px, toujours pas un carré.
+     v10 (07/08/2026, aspect-ratio:1 n'a EU AUCUN EFFET) — nouvelle vidéo
+     de contrôle après le passage à aspect-ratio:1 : mesures strictement
+     IDENTIQUES à la v9 (756/827, au pixel près) — la propriété semble
+     purement et simplement ignorée par cette WebView (probablement un
+     moteur de rendu trop ancien pour la supporter, aspect-ratio étant une
+     propriété CSS relativement récente). Deux mécanismes CSS différents
+     (height:76.5vw en v9, aspect-ratio:1 en v10) ont donc échoué de façon
+     identique à produire un carré — signe qu'aucune approche purement
+     CSS testée jusqu'ici ne fonctionne de façon fiable sur cette
+     plateforme. Contourné en calculant les deux dimensions en PIXELS
+     ABSOLUS via un petit script JS synchrone, exécuté immédiatement après
+     l'élément dans le flux du document (donc avant le premier paint
+     complet, sans attendre de framework) : window.innerWidth * 0.765,
+     appliqué identiquement à width ET height — élimine toute dépendance
+     aux unités CSS (vw/vh/aspect-ratio) dont le support s'est révélé
+     incertain sur cette WebView précise.
+     v5 (mesure de largeur, toujours valable) : 76.5% de la largeur
+     d'écran (mesuré 826/1080px sur bande centrale, validation croisée
+     sur 15 points), rayon d'arrondi 20%.
      /icon-512.png en <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
@@ -348,8 +352,26 @@ input[type=text], input[type=number], input[type=password] {
      de la position finale — ne doit jamais rester en production. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; outline:6px solid #FF00FF; outline-offset:-6px;">
   <div style="position:absolute; left:0; right:0; top:49.48%; height:2px; background:#FF00FF; z-index:1;"></div>
-  <img src="/icon-512.png" alt="" style="position:absolute; top:49.48%; left:50%; transform:translate(-50%, -50%); width:76.5vw; aspect-ratio:1; border-radius:20%; z-index:0;">
+  <img id="logo-ecran-chargement" src="/icon-512.png" alt="" style="position:absolute; top:49.48%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0;">
 </div>
+<script>
+// Dimensions en pixels absolus calculées en JS (07/08/2026, v10) — cf.
+// commentaire détaillé ci-dessus : deux mécanismes CSS différents
+// (height:vw, aspect-ratio) ont échoué à produire un carré sur cette
+// WebView. Synchrone, exécuté immédiatement (pas de DOMContentLoaded,
+// l'élément #logo-ecran-chargement existe déjà juste au-dessus dans le
+// flux du document au moment où ce script s'exécute) — garantit que le
+// carré a la bonne taille dès le tout premier paint, sans flash d'une
+// mauvaise taille suivi d'une correction.
+(function() {
+  var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
+  var img = document.getElementById('logo-ecran-chargement');
+  if (img) {
+    img.style.width = tailleCote;
+    img.style.height = tailleCote;
+  }
+})();
+</script>
 <div id="app"></div>
 <div id="nav-root"></div>
 
