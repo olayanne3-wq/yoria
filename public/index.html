@@ -304,20 +304,29 @@ input[type=text], input[type=number], input[type=password] {
      construit dynamiquement dans #app).
      v6 (07/08/2026, "il y a bien un problème de position, pas
      d'environ..." — Laurent avait raison, la v4 ne corrigeait que la
-     MOITIÉ de l'écart réel) — vérifié cette fois par rendu Playwright
-     exact (screenshot HTML/CSS réel à la résolution 1080x2400, mesuré
-     pixel par pixel avec la même méthode que sur la vidéo de référence)
-     plutôt que par calcul manuel : avec margin-top:-12.5px (v4), le
-     centre du carré rendu tombe à y=1194, pas 1187.5 comme visé — un
-     écart résiduel de 6.5px qui correspond exactement à la MOITIÉ du
-     -12.5px appliqué. Cause : dans un conteneur flex avec align-items:
-     center, un margin-top négatif sur l'enfant ne déplace l'élément que
-     de la MOITIÉ de sa valeur — le calcul de centrage répartit l'effet de
-     la marge des deux côtés implicitement, contrairement à l'intuition
-     d'un déplacement direct. Il fallait donc -25px, pas -12.5px, pour
-     obtenir le vrai décalage de 12.5px vers le haut. Revalidé par un
-     second rendu Playwright avec -25px : centre mesuré à y=1187.5,
-     identique au pixel près à la cible.
+     MOITIÉ de l'écart réel) — vérifié par rendu Playwright exact
+     (screenshot HTML/CSS réel à la résolution 1080x2400, mesuré pixel par
+     pixel avec la même méthode que sur la vidéo de référence) : avec
+     margin-top:-12.5px (v4), le centre du carré rendu tombe à y=1194, pas
+     1187.5 comme visé — MOITIÉ de l'effet attendu, parce que dans un
+     conteneur flex avec align-items: center, un margin-top négatif sur
+     l'enfant ne déplace l'élément que de la moitié de sa valeur (le
+     calcul de centrage répartit l'effet de la marge des deux côtés
+     implicitement). Corrigé à -25px, validé par un second rendu
+     Playwright à y=1187.5 exact.
+     v7 (07/08/2026, "toujours pas bon" après la v6 malgré la validation
+     Playwright) — Chromium desktop (utilisé par Playwright) ne reproduit
+     visiblement pas exactement le comportement de la WebView Android
+     réelle sur ce point précis : une nouvelle vidéo de contrôle a montré
+     un écart RÉSIDUEL de 6.5px après la v6 (mesuré à la même position
+     stable x=500 sur la séquence de démarrage : centre à y=1181, cible
+     toujours 1187.5). Ajusté empiriquement en ajoutant ce résidu observé
+     au décalage déjà appliqué (12.5+6.5=19px de décalage visuel visé,
+     doublé pour le même effet de division par 2 du flex, soit -38px) —
+     contrairement aux versions précédentes, cet ajustement n'est PAS
+     revalidé par un rendu Playwright exact (le rendu desktop ne semble
+     pas fiable pour ce pixel-perfect précis sur cet écran) : à confirmer
+     par Laurent sur le prochain test réel en conditions réelles.
      v5 (mesures de taille, toujours valables) : carré à 76.5vw (mesuré
      826/1080px sur bande centrale, validation croisée sur 15 points),
      rayon d'arrondi 20%.
@@ -327,7 +336,7 @@ input[type=text], input[type=number], input[type=password] {
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; display:flex; align-items:center; justify-content:center;">
-  <img src="/icon-512.png" alt="" style="width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; margin-top:-1.0417vh;">
+  <img src="/icon-512.png" alt="" style="width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; margin-top:-1.5833vh;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
