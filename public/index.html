@@ -178,18 +178,19 @@ input[type=text], input[type=number], input[type=password] {
    remplacement du contenu de #app, y compris le tout premier au
    chargement de l'app. Combiné au fait que #nav-root (la barre du bas)
    apparaît elle sans aucun fondu équivalent (immédiatement pleinement
-   opaque, cf. render() : deux replaceChildren() distincts, l'un pour
-   #app avec ce fondu CSS, l'autre pour #nav-root sans), cette
-   désynchronisation visuelle — nav nette et immédiate pendant que le
-   contenu principal fondu progressivement en retard, capturé par Laurent
-   sur vidéo — se perçoit comme plusieurs étapes/flashs distincts plutôt
-   qu'un chargement uni, même si techniquement ce n'est qu'un seul
-   render() avec une animation en cours. #app.pas-de-fondu désactive ce
-   fondu uniquement pour le premier render() (classe posée puis retirée
-   juste après par render(), cf. plus bas) — les changements de vue
-   ultérieurs (Dashboard→Stats etc.) gardent le fondu normal, qui reste
-   pertinent dans ce contexte. */
-#app.pas-de-fondu > div { animation: none; }
+   opaque), cette désynchronisation visuelle — nav nette et immédiate
+   pendant que le contenu principal fondu progressivement en retard,
+   capturé par Laurent sur vidéo — se perçoit comme plusieurs étapes/
+   flashs distincts. Une première tentative de correctif ici (classe CSS
+   #app.pas-de-fondu posée puis retirée par render()) s'est révélée peu
+   fiable en pratique (vidéo de contrôle montrant le fondu délavé toujours
+   présent) — probablement un piège de timing entre la pose de la classe
+   sur le parent #app et l'insertion de l'enfant via replaceChildren(),
+   l'animation pouvant capturer l'état de style au moment de l'insertion
+   avant qu'un reflow n'ait eu lieu. Remplacé par un style inline direct
+   sur l'élément inséré lui-même (content.style.animation = "none"), posé
+   dans render() juste avant replaceChildren() — cf. son commentaire.
+   Cette règle CSS générale reste inchangée pour les rendus suivants. */
 
 /* ── Roulette de saisie de temps (31/07/2026, cf. public/v2/index.html —
    même composant, porté ici pour les records personnels de Réglages).
@@ -11639,7 +11640,15 @@ let _renderDiffereChargementTimer = null;
 function renderDiffereChargementInitial() {
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
-  _renderDiffereChargementTimer = setTimeout(render, 150);
+  _renderDiffereChargementTimer = setTimeout(() => {
+    // Ce render() de regroupement reste sans fondu (fenêtre encore active,
+    // cf. commentaire sur window._fenetreChargementInitialActive dans
+    // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, pour que
+    // tout render() déclenché après celui-ci (ex. un clic utilisateur qui
+    // suivrait de peu) retrouve le fondu normal.
+    render();
+    window._fenetreChargementInitialActive = false;
+  }, 150);
 }
 
 function render() {
@@ -11651,20 +11660,6 @@ function render() {
   // directement une fois le calcul terminé.
   clearTimeout(_renderDiffereTimer);
   const app=document.getElementById("app");
-  // CORRECTIF (07/08/2026) — cf. commentaire sur #app.pas-de-fondu dans le
-  // <style> du <head> : le tout premier render() de l'app pose cette
-  // classe pour désactiver le fondu d'entrée (évite la désynchronisation
-  // visuelle avec #nav-root, qui n'a jamais eu de fondu). Retirée juste
-  // après (pas conservée), donc tout render() suivant garde le fondu
-  // normal. window._premierRenderEffectue reste undefined jusqu'ici sur
-  // tout le cycle de vie du script (jamais réinitialisé), garantissant
-  // que ce chemin ne s'exécute bien qu'une seule fois par chargement de
-  // page.
-  if (!window._premierRenderEffectue) {
-    window._premierRenderEffectue = true;
-    app.classList.add("pas-de-fondu");
-    setTimeout(() => app.classList.remove("pas-de-fondu"), 0);
-  }
   // CORRECTIF FLASH (04/08/2026, demande de Laurent — "clignotement de
   // tout l'écran à l'ouverture") — app.innerHTML="" était exécuté ICI, en
   // tout début de fonction, AVANT même que hdr/content ne soient
@@ -11797,6 +11792,27 @@ function render() {
     })
   );
 
+  // CORRECTIF (07/08/2026, v3 — la v2, limitée au tout premier render(),
+  // ne suffisait pas : la vidéo de contrôle a montré un contenu affiché
+  // NET une première fois, puis complètement redémonté et refondu par un
+  // second render() ~150ms plus tard (déclenché par
+  // renderDiffereChargementInitial(), cf. son commentaire plus bas —
+  // regroupement badges/météo/météo-demain), recréant le fondu délavé sur
+  // un contenu déjà stable. Un vrai clignotement (disparition puis
+  // réapparition), pas juste une transition progressive à sens unique —
+  // corrigé le diagnostic après nouvelle analyse frame par frame d'une
+  // vidéo de contrôle, suite au retour de Laurent que le problème n'était
+  // pas qu'un fondu lent. window._premierRenderEffectue ne suffisait donc
+  // pas : remplacé par window._fenetreChargementInitialActive, qui reste
+  // vrai jusqu'à APRÈS que renderDiffereChargementInitial() ait déclenché
+  // son propre render() de regroupement (fenêtre fermée juste après cet
+  // appel, cf. plus bas) — couvre donc TOUS les render() (premier ET
+  // celui du regroupement à 150ms) qui ont lieu pendant cette fenêtre.
+  if (window._fenetreChargementInitialActive !== false) {
+    window._fenetreChargementInitialActive = true;
+    if (hdr) hdr.style.animation = "none";
+    content.style.animation = "none";
+  }
   // Remplacement atomique — cf. commentaire en tête de render() : plus de
   // app.innerHTML="" séparé en amont, ce replaceChildren() est la SEULE
   // opération qui touche réellement le DOM affiché, en une fois.
@@ -11905,6 +11921,19 @@ if (missingFns.length > 0) {
 // localStorage à ce stade. Chantier v2.5 migration, 13 juillet 2026,
 // cf. inventaire §8bis.
 render();
+
+// Filet de sécurité (07/08/2026) — ferme window._fenetreChargementInitialActive
+// même si aucune des 3 sources (badges/fetchWeather/verifierMeteoSeanceDemain)
+// ne déclenche jamais renderDiffereChargementInitial() (cas possible : pas
+// de séance demain, météo indisponible, badges déjà en cache synchrone)
+// — sans ce filet, le fondu resterait désactivé indéfiniment pour tout
+// render() ultérieur (ex. changement d'onglet), pas seulement le
+// chargement initial. 2s : largement au-delà du délai de 150ms du
+// regroupement normal, donc sans effet sur le cas normal où l'une des 3
+// sources ferme déjà la fenêtre plus tôt (clearTimeout pas nécessaire ici,
+// cette fermeture est idempotente — la reposer à false si déjà false ne
+// change rien).
+setTimeout(() => { window._fenetreChargementInitialActive = false; }, 2000);
 
 // ── Observation a posteriori des decision_events (24/07/2026) ──────────────
 // Chantier de vision "coach adaptatif à mémoire" — même principe que
