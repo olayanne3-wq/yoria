@@ -302,26 +302,32 @@ input[type=text], input[type=number], input[type=password] {
      — s'affiche dès le premier paint du navigateur, avant même que le
      moindre script ne s'exécute (contrairement à tout ce qui est
      construit dynamiquement dans #app).
-     v2 (07/08/2026, correctif "problème de taille" signalé par vidéo de
-     contrôle) — la v1 recréait le logo en SVG inline avec un dégradé
-     séparé pour le fond ET pour le petit carré (172px, beaucoup trop
-     petit par rapport au vrai splash qui occupe ~60% de la largeur
-     d'écran), ce qui donnait un rendu visuellement inversé (le carré
-     paraissait plus sombre que le fond, l'inverse du vrai splash) et mal
-     proportionné. Utilise désormais directement /icon-512.png (la vraie
-     icône PNG servie par Android pour ce splash) en <img>, à 60vw
-     (plafonné à 280px) — fidélité parfaite garantie puisque c'est
-     littéralement le même fichier image, plus simple et plus fiable que
-     recréer le dégradé en CSS/SVG. #071732 (coin bas-droite du dégradé de
-     l'icône, extrait par échantillonnage de pixel) comme fond de la zone
-     autour de l'image, cohérent avec la teinte la plus sombre de l'icône
-     elle-même plutôt qu'une couleur arbitraire.
+     v3 (07/08/2026, "je veux que ça colle exactement" — mesures prises
+     directement sur une vidéo de contrôle du vrai splash Android, frame
+     par frame, plutôt qu'estimées à l'œil) : sur une frame stable du
+     splash (écran 1080x2400), le carré arrondi mesure exactement 805x805
+     pixels (bords détectés par analyse de la transition de couleur pixel
+     par pixel, à une hauteur/largeur choisie hors de la zone occupée par
+     les traits du logo pour ne pas fausser la mesure) — soit 74.5% de la
+     largeur d'écran (805/1080), pas 60% comme dans la v2. Centré à
+     50.0%/49.5% horizontalement/verticalement (quasi exactement au milieu
+     de l'écran, cf. centre du carré à x=540.5 y=1187.5 sur les mêmes
+     dimensions) — un centrage flex classique suffit, sans décalage
+     particulier. Rayon d'arrondi des coins mesuré à 102px sur les 512px
+     de icon-512.png (opacité du canal alpha à x=0, y variable), soit
+     19.9% ≈ 20%, pas 22% comme dans la v2. Toujours /icon-512.png en
+     <img> (fidélité de couleur parfaite, cf. commentaire v2 déjà présent
+     pour ce choix) mais avec ces dimensions et cet arrondi recalculés.
+     max-width retiré : la v2 plafonnait à 280px pour les grands écrans,
+     mais rien n'indique que le vrai splash Android plafonne de cette
+     façon — 74.5vw partout, fidèle à la mesure, jusqu'à preuve du
+     contraire sur un grand écran.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; display:flex; align-items:center; justify-content:center;">
-  <img src="/icon-512.png" alt="" style="width:60vw; max-width:280px; height:auto; border-radius:22%;">
+  <img src="/icon-512.png" alt="" style="width:74.5vw; height:74.5vw; border-radius:20%; object-fit:cover;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
