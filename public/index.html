@@ -2279,6 +2279,20 @@ function coordonneesMeteoActuelles() {
   return { lat: derniereAvecGps.start_latlng[0], lon: derniereAvecGps.start_latlng[1] };
 }
 
+// Compteur explicite des 3 sources connues du chargement initial (07/08/2026,
+// v4 du chantier "clignotements successifs à l'ouverture") — cf. commentaire
+// détaillé sur renderDiffereChargementInitial() plus bas dans ce fichier
+// pour l'historique complet. Décrémenté à la FIN de chacune des 3 fonctions
+// (fetchWeather/verifierMeteoSeanceDemain/bloc badges dans render()), sur
+// TOUS leurs chemins de sortie (succès, échec, retour anticipé) — la
+// fenêtre doit se fermer même si une source échoue, pas seulement si elle
+// réussit, donc cet appel est fait dans un `finally` plutôt qu'après le
+// dernier appel utile de chaque fonction (qui pourrait être sauté par un
+// `return` anticipé).
+function signalerSourceChargementTerminee() {
+  window._sourcesChargementInitialRestantes = Math.max(0, (window._sourcesChargementInitialRestantes ?? 3) - 1);
+}
+
 async function fetchWeather() {
   try {
     const { lat, lon } = coordonneesMeteoActuelles();
@@ -2291,6 +2305,8 @@ async function fetchWeather() {
     renderDiffereChargementInitial(); // cf. définition : regroupe avec badges/verifierMeteoSeanceDemain (06/08/2026)
   } catch(e) {
     console.warn("Météo indisponible:", e.message);
+  } finally {
+    signalerSourceChargementTerminee();
   }
 }
 
@@ -2306,45 +2322,49 @@ async function fetchWeather() {
 // vérifie si une séance est prévue demain, et si oui déclenche la
 // prévision météo pour l'enrichir d'une note de chaleur si besoin.
 async function verifierMeteoSeanceDemain() {
-  const plan = window.__PLAN_BRUT__;
-  if (!plan?.dateDebut) return;
-  const debut = new Date(plan.dateDebut + 'T00:00:00Z');
-  // Calcul de "demain" en UTC, cohérent avec le calcul de dateSeance
-  // ci-dessous — mélanger un Date en fuseau local avec un calcul en UTC pur
-  // créait un décalage possible d'un jour selon l'heure et le fuseau de
-  // l'utilisateur (bug déjà trouvé et corrigé côté wizard, cf. commit
-  // cc03fc4, reproduit ici pour la même raison).
-  const aujourdhui = new Date();
-  const demain = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + 1));
-  const demainStr = demain.toISOString().slice(0, 10);
+  try {
+    const plan = window.__PLAN_BRUT__;
+    if (!plan?.dateDebut) return;
+    const debut = new Date(plan.dateDebut + 'T00:00:00Z');
+    // Calcul de "demain" en UTC, cohérent avec le calcul de dateSeance
+    // ci-dessous — mélanger un Date en fuseau local avec un calcul en UTC pur
+    // créait un décalage possible d'un jour selon l'heure et le fuseau de
+    // l'utilisateur (bug déjà trouvé et corrigé côté wizard, cf. commit
+    // cc03fc4, reproduit ici pour la même raison).
+    const aujourdhui = new Date();
+    const demain = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + 1));
+    const demainStr = demain.toISOString().slice(0, 10);
 
-  for (const semaine of plan.semaines) {
-    for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
-      const dateSeance = new Date(debut);
-      dateSeance.setUTCDate(debut.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
-      const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
+    for (const semaine of plan.semaines) {
+      for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
+        const dateSeance = new Date(debut);
+        dateSeance.setUTCDate(debut.getUTCDate() + (semaine.semaineNum - 1) * 7 + Number(jourIndex));
+        const dateSeanceStr = dateSeance.toISOString().slice(0, 10);
 
-      if (dateSeanceStr === demainStr && seance.contenu) {
-        // Import dynamique du module ES (19/07/2026, étape 1 du chantier
-        // de conversion module — cf. mémoire de session). weather.js
-        // n'est plus dupliqué en weather.classic.js : c'est le seul
-        // fichier source désormais. import() est asynchrone et peut être
-        // appelé n'importe où dans un script classique (contrairement à
-        // `import { x } from "..."` en haut de fichier, réservé aux vrais
-        // modules) — le `await` garantit que verifierMeteoPourSeance est
-        // bien chargée avant d'être appelée.
-        const { verifierMeteoPourSeance } = await import("/v2/engine/weather.js");
-        await verifierMeteoPourSeance(seance, demainStr);
-        // Re-traduit le plan brut (potentiellement enrichi d'une note) vers
-        // le format v1 affiché, et rafraîchit l'affichage immédiatement
-        window.__PLAN_GENERE__ = traduirePlanVersFormatV1(plan);
-        PLAN = window.__PLAN_GENERE__;
-        ALL_SESSIONS = recalculerAllSessions();
-        renderDiffereChargementInitial(); // cf. définition : regroupe avec badges/fetchWeather (06/08/2026)
-        return; // une seule séance concernée par jour dans l'immense
-        // majorité des cas — pas la peine de continuer à parcourir
+        if (dateSeanceStr === demainStr && seance.contenu) {
+          // Import dynamique du module ES (19/07/2026, étape 1 du chantier
+          // de conversion module — cf. mémoire de session). weather.js
+          // n'est plus dupliqué en weather.classic.js : c'est le seul
+          // fichier source désormais. import() est asynchrone et peut être
+          // appelé n'importe où dans un script classique (contrairement à
+          // `import { x } from "..."` en haut de fichier, réservé aux vrais
+          // modules) — le `await` garantit que verifierMeteoPourSeance est
+          // bien chargée avant d'être appelée.
+          const { verifierMeteoPourSeance } = await import("/v2/engine/weather.js");
+          await verifierMeteoPourSeance(seance, demainStr);
+          // Re-traduit le plan brut (potentiellement enrichi d'une note) vers
+          // le format v1 affiché, et rafraîchit l'affichage immédiatement
+          window.__PLAN_GENERE__ = traduirePlanVersFormatV1(plan);
+          PLAN = window.__PLAN_GENERE__;
+          ALL_SESSIONS = recalculerAllSessions();
+          renderDiffereChargementInitial(); // cf. définition : regroupe avec badges/fetchWeather (06/08/2026)
+          return; // une seule séance concernée par jour dans l'immense
+          // majorité des cas — pas la peine de continuer à parcourir
+        }
       }
     }
+  } finally {
+    signalerSourceChargementTerminee();
   }
 }
 // verifierMeteoSeanceDemain() appelée désormais juste après résolution de
@@ -11637,17 +11657,35 @@ function renderDiffere() {
 // flash reste distinct quelle que soit la fenêtre — seul un vrai
 // mécanisme d'attente explicite, plus complexe, changerait ce cas).
 let _renderDiffereChargementTimer = null;
+// Compteur explicite des 3 sources connues du chargement initial
+// (badges, fetchWeather, verifierMeteoSeanceDemain) — 07/08/2026, v4.
+// La v3 fermait window._fenetreChargementInitialActive dès que CE
+// render()-ci (celui du regroupement 150ms) avait eu lieu, plus un filet
+// de sécurité à 2000ms — mais une vidéo de contrôle a montré un
+// TROISIÈME clignotement : fetchWeather() peut résoudre après ces 2
+// secondes (latence réseau réelle observée), son propre
+// renderDiffereChargementInitial() déclenche alors un render() avec la
+// fenêtre déjà fermée par le filet de sécurité, réactivant le fondu pour
+// cette insertion tardive de la météo. Compte désormais explicitement
+// les 3 sources : la fenêtre ne se ferme qu'une fois que les 3 se sont
+// manifestées (résolues OU échouées, peu importe), quelle que soit leur
+// latence individuelle — plus de délai fixe qui peut couper trop tôt.
+window._sourcesChargementInitialRestantes = 3;
 function renderDiffereChargementInitial() {
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
   _renderDiffereChargementTimer = setTimeout(() => {
     // Ce render() de regroupement reste sans fondu (fenêtre encore active,
     // cf. commentaire sur window._fenetreChargementInitialActive dans
-    // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, pour que
-    // tout render() déclenché après celui-ci (ex. un clic utilisateur qui
-    // suivrait de peu) retrouve le fondu normal.
+    // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, et
+    // seulement si les 3 sources se sont déjà toutes manifestées (sinon
+    // une source encore en cours, potentiellement lente, redéclenchera
+    // ce même mécanisme plus tard et devra encore trouver la fenêtre
+    // ouverte).
     render();
-    window._fenetreChargementInitialActive = false;
+    if (window._sourcesChargementInitialRestantes <= 0) {
+      window._fenetreChargementInitialActive = false;
+    }
   }, 150);
 }
 
@@ -11697,17 +11735,29 @@ function render() {
   if (window.__PLAN_BRUT__ && !window.__PLAN_BRUT__.estPlanRepli && typeof window.__badgesCache__ === "undefined") {
     window.__badgesCache__ = null;
     (async () => {
-      const badgesDejaEnregistres = await chargerBadgesDebloques();
-      const etatActuel = calculerEtatBadgesActuel();
-      const nouveaux = detecterNouveauxBadges(etatActuel, badgesDejaEnregistres);
-      for (const { badgeId, niveau } of nouveaux) {
-        await enregistrerBadgeDebloque(badgeId, niveau);
-        badgesDejaEnregistres[badgeId] = DEFINITIONS_BADGES[badgeId].paliers.length > 0 ? niveau : true;
+      try {
+        const badgesDejaEnregistres = await chargerBadgesDebloques();
+        const etatActuel = calculerEtatBadgesActuel();
+        const nouveaux = detecterNouveauxBadges(etatActuel, badgesDejaEnregistres);
+        for (const { badgeId, niveau } of nouveaux) {
+          await enregistrerBadgeDebloque(badgeId, niveau);
+          badgesDejaEnregistres[badgeId] = DEFINITIONS_BADGES[badgeId].paliers.length > 0 ? niveau : true;
+        }
+        window.__badgesCache__ = badgesDejaEnregistres;
+        window.__badgesNouveauxAAfficher__ = nouveaux;
+        renderDiffereChargementInitial(); // cf. définition : regroupe avec fetchWeather/verifierMeteoSeanceDemain (06/08/2026)
+      } finally {
+        signalerSourceChargementTerminee();
       }
-      window.__badgesCache__ = badgesDejaEnregistres;
-      window.__badgesNouveauxAAfficher__ = nouveaux;
-      renderDiffereChargementInitial(); // cf. définition : regroupe avec fetchWeather/verifierMeteoSeanceDemain (06/08/2026)
     })();
+  } else {
+    // Bloc jamais exécuté (pas de plan valide, ou badges déjà en cache
+    // d'une session précédente sur cette page) — cf. commentaire sur
+    // signalerSourceChargementTerminee() : cette source doit quand même
+    // être comptée comme "terminée" immédiatement, sinon le compteur ne
+    // redescend jamais à 0 dans ce cas et la fenêtre resterait ouverte
+    // indéfiniment.
+    signalerSourceChargementTerminee();
   }
 
   // Header uniquement pour les vues secondaires (pas le dashboard)
@@ -11922,18 +11972,17 @@ if (missingFns.length > 0) {
 // cf. inventaire §8bis.
 render();
 
-// Filet de sécurité (07/08/2026) — ferme window._fenetreChargementInitialActive
-// même si aucune des 3 sources (badges/fetchWeather/verifierMeteoSeanceDemain)
-// ne déclenche jamais renderDiffereChargementInitial() (cas possible : pas
-// de séance demain, météo indisponible, badges déjà en cache synchrone)
-// — sans ce filet, le fondu resterait désactivé indéfiniment pour tout
-// render() ultérieur (ex. changement d'onglet), pas seulement le
-// chargement initial. 2s : largement au-delà du délai de 150ms du
-// regroupement normal, donc sans effet sur le cas normal où l'une des 3
-// sources ferme déjà la fenêtre plus tôt (clearTimeout pas nécessaire ici,
-// cette fermeture est idempotente — la reposer à false si déjà false ne
-// change rien).
-setTimeout(() => { window._fenetreChargementInitialActive = false; }, 2000);
+// Filet de sécurité de DERNIER RECOURS (07/08/2026, v4) — le compteur
+// explicite window._sourcesChargementInitialRestantes (cf.
+// signalerSourceChargementTerminee()) devrait normalement toujours
+// atteindre 0 par lui-même, chaque source étant enveloppée dans un
+// try/finally ou un else qui la décrémente sur tous ses chemins de
+// sortie. Ce filet à 15s ne sert qu'à couvrir un bug non anticipé dans
+// l'une des 3 sources (ex. une exception qui échapperait au
+// try/finally) — 15s est délibérément très généreux, largement au-delà
+// de toute latence réseau réaliste, pour ne jamais interférer avec le
+// fonctionnement normal du compteur explicite.
+setTimeout(() => { window._fenetreChargementInitialActive = false; }, 15000);
 
 // ── Observation a posteriori des decision_events (24/07/2026) ──────────────
 // Chantier de vision "coach adaptatif à mémoire" — même principe que
