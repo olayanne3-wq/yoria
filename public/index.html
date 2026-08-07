@@ -16,7 +16,23 @@ window.sentryOnLoad = function () {
   });
 };
 </script>
-<script src="https://js-de.sentry-cdn.com/1598be66558d46e63cc4443c635738e7.min.js" crossorigin="anonymous"></script>
+<!-- CORRECTIF (06/08/2026, suite de la recherche sur le clignotement à
+     l'ouverture — persistant malgré les correctifs du 04/08 sur la police/
+     les 8 scripts moteur, et du 06/08 sur jsPDF) — ce Loader Script Sentry
+     était resté en <script src> classique bloquant, placé en tout premier
+     dans le <head>, avant même l'import map et la police : le navigateur
+     devait le télécharger et l'exécuter entièrement avant de pouvoir
+     continuer à parser le reste de la page, retardant TOUT ce qui suit
+     (y compris les correctifs déjà faits plus bas, qui ne peuvent agir
+     qu'une fois ce blocage initial levé). defer sans risque : le Loader
+     Script Sentry est conçu pour être chargé de façon asynchrone par
+     défaut (c'est tout l'intérêt de ce Loader Script par rapport à un
+     SDK classique, il bufferise les appels avant sa propre
+     initialisation) ; window.sentryOnLoad reste défini avant lui (ordre
+     inchangé) et Sentry.setUser() n'est appelé que bien plus tard, dans
+     le .then() de monterEcranAuth() — aucune dépendance de timing
+     précoce sur ce script. -->
+<script defer src="https://js-de.sentry-cdn.com/1598be66558d46e63cc4443c635738e7.min.js" crossorigin="anonymous"></script>
 <!-- Import map ajoutée le 03/08/2026 : fit-file-parser@3.0.2 (chargé par
      chargerFitParser(), plus bas dans ce fichier) déclare une vraie
      dépendance npm vers le package `buffer` (vérifié dans son
