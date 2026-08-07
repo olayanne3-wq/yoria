@@ -306,28 +306,33 @@ input[type=text], input[type=number], input[type=password] {
      demandés par Laurent) — les tentatives précédentes (v6/v7, ajustement
      de margin-top dans un conteneur flex centré) ajustaient une valeur
      dont l'effet réel restait imprévisible sur la vraie WebView Android
-     (confirmé différent du rendu Playwright desktop, cf. historique
-     détaillé dans le repo). Avec les repères magenta ajoutés (bordure +
-     ligne horizontale à la position cible), une vidéo de contrôle a
-     enfin permis une mesure fiable sans ambiguïté (8 frames indépendantes
-     de la séquence de démarrage, toutes identiques) : le carré mesurait
-     826px de LARGEUR (conforme à 76.5vw, correct) mais seulement 756px de
-     HAUTEUR (pas 826px comme visé pour un carré) — donc pas seulement un
-     problème de position, mais aussi de proportions : width:76.5vw;
-     height:76.5vw ne donnait pas un carré sur cette WebView, contrairement
-     au rendu Playwright desktop qui l'avait validé comme correct. Plutôt
-     que de continuer à corriger une valeur de plus sur un mécanisme
-     (flex + margin-top négatif) dont l'effet s'est avéré imprévisible à
-     deux reprises sur la vraie plateforme cible, remplacé par un
-     positionnement absolu direct (top/left en % + transform:
-     translate(-50%,-50%)) — mécanisme CSS différent, qui centre l'élément
-     sur son propre point d'ancrage sans dépendre du calcul de centrage
-     flex du parent ni d'aucune marge. Repères magenta laissés en place
-     pour cette itération, à retirer seulement après confirmation par
-     Laurent que le carré est maintenant bien un carré, bien positionné.
-     v5 (mesures de taille, toujours valables pour width) : 76.5vw (mesuré
-     826/1080px sur bande centrale, validation croisée sur 15 points),
-     rayon d'arrondi 20%.
+     (confirmé différent du rendu Playwright desktop). Avec les repères
+     magenta, une vidéo de contrôle a permis une mesure fiable sans
+     ambiguïté : le carré mesurait 826px de LARGEUR (conforme à 76.5vw)
+     mais 756px de HAUTEUR (pas 826px comme visé pour un carré) — pas
+     qu'un problème de position, aussi de proportions. Corrigé le
+     centrage par positionnement absolu (top/left en % + transform:
+     translate(-50%,-50%)), mécanisme indépendant du flex du parent.
+     v9 (07/08/2026, revérifié avec repères magenta après la v8) —
+     nouvelle vidéo de contrôle : le centrage vertical est cette fois
+     PARFAIT (écart mesuré = 0.0px sur 5 frames indépendantes, le carré
+     tombe exactement sur la ligne magenta) — la v8 a bien corrigé la
+     position. Mais le second problème identifié en v8 persiste
+     IDENTIQUE : largeur 827px, hauteur 756px, toujours pas un carré —
+     confirme que ce n'était pas lié au flex/margin (déjà retiré en v8)
+     mais à un vrai comportement différent de height:76.5vw (une unité vw
+     appliquée à la propriété height) sur cette WebView spécifique, que
+     Playwright desktop ne reproduit pas. Plutôt que de continuer à
+     deviner la cause exacte de ce comportement, contourné entièrement :
+     height:76.5vw remplacé par aspect-ratio:1, qui garantit
+     mathématiquement une hauteur strictement égale à la largeur, quel
+     que soit le comportement de vw/vh sur cette plateforme — plus besoin
+     d'object-fit:cover non plus, l'image source (icon-512.png, déjà
+     512x512) remplit alors naturellement un conteneur carré sans
+     recadrage.
+     v5 (mesure de largeur, toujours valable) : 76.5vw (mesuré 826/1080px
+     sur bande centrale, validation croisée sur 15 points), rayon
+     d'arrondi 20%.
      /icon-512.png en <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
@@ -343,7 +348,7 @@ input[type=text], input[type=number], input[type=password] {
      de la position finale — ne doit jamais rester en production. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; outline:6px solid #FF00FF; outline-offset:-6px;">
   <div style="position:absolute; left:0; right:0; top:49.48%; height:2px; background:#FF00FF; z-index:1;"></div>
-  <img src="/icon-512.png" alt="" style="position:absolute; top:49.48%; left:50%; transform:translate(-50%, -50%); width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; z-index:0;">
+  <img src="/icon-512.png" alt="" style="position:absolute; top:49.48%; left:50%; transform:translate(-50%, -50%); width:76.5vw; aspect-ratio:1; border-radius:20%; z-index:0;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
