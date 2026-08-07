@@ -10877,6 +10877,63 @@ function renderSettings() {
 
   const hasRes=!!load(clePourPlan("lk_race_result"),null);
 
+  // CORRECTIF MANUEL TEMPORAIRE (07/08/2026, demande explicite de
+  // Laurent) — le badge "km cumulés" (profilCoureur.kmCumulesTotal) peut
+  // rester figé après le premier passage à un statut sur une séance : cf.
+  // recalculerKmComptesPourUid(), qui n'ajuste le cumul QUE lors d'un
+  // changement de statut, jamais si la distance Strava associée change
+  // ensuite (resynchronisation, correction sur Strava...). Contrairement
+  // au résumé de préparation (onglet Course), qui relit stravaActivities
+  // en direct à chaque affichage, ce cumul est un compteur PERSISTANT —
+  // sans un vrai mécanisme de recalcul automatique (non implémenté,
+  // discussion avec Laurent : correction ponctuelle suffisante pour
+  // l'instant plutôt qu'un chantier de recalcul systématique à chaque
+  // synchro), ce bouton permet de le resynchroniser manuellement à la
+  // demande. Reconstruit kmComptesParUid ET kmCumulesTotal depuis zéro, à
+  // partir des SEULES séances validées du PLAN ACTUEL (pas tous plans
+  // confondus comme le veut le badge en principe — limitation actée avec
+  // Laurent, il n'a qu'un seul plan à ce jour ; parcourir tous les plans
+  // du compte nécessiterait de recharger leurs statuses/manualPerf
+  // respectifs depuis Supabase, un vrai chantier à part). Bouton
+  // volontairement discret (style secondaire, pas d'icône), à retirer
+  // si un vrai mécanisme de recalcul automatique est développé plus tard.
+  const recalcKmSection = el("div",{style:{marginBottom:"24px"}},
+    el("div",{class:"label"},"🔧 Maintenance"),
+    el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
+      el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.5"}},
+        "Si le badge \"km cumulés\" (Stats/Badges) ne correspond plus à tes séances réellement validées sur ce plan, recalcule-le ici."
+      ),
+      el("button",{style:{width:"100%",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",padding:"10px",color:"var(--text)",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
+        onClick: async ()=>{
+          if (!confirm("Recalculer le badge km cumulés à partir des séances validées de ce plan ? Cette action ne concerne que le plan actuel.")) return;
+          const nouveauKmComptesParUid = {};
+          let total = 0;
+          ALL_SESSIONS.forEach(s => {
+            const statut = statuses[s.uid] || "—";
+            if (statut !== "✅" && statut !== "⚠️" && statut !== "❌") return;
+            let km = 0;
+            if (manualPerf[s.uid]?.distance) {
+              km = manualPerf[s.uid].distance;
+            } else {
+              const run = getStravaRunSiPasManuel(s.date, s.uid);
+              if (run?.distance) km = run.distance / 1000;
+            }
+            if (km > 0) {
+              nouveauKmComptesParUid[s.uid] = km;
+              total += km;
+            }
+          });
+          kmComptesParUid = nouveauKmComptesParUid;
+          save(clePourPlan("lk_km_comptes_par_uid"), kmComptesParUid);
+          profilCoureur.kmCumulesTotal = Math.round(total * 10) / 10;
+          sauvegarderProfilCoureur();
+          alert("Badge recalculé : "+profilCoureur.kmCumulesTotal+" km.");
+          render();
+        }
+      },"Recalculer le badge km cumulés")
+    )
+  );
+
   const pdfSection=el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"Exporter en PDF"),
     el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px",display:"flex",flexDirection:"column",gap:"8px"}},
@@ -10955,6 +11012,10 @@ function renderSettings() {
 
     renderGroupeAccordeonStats("📤","Export","var(--text-muted)", [
       pdfSection
+    ]),
+
+    renderGroupeAccordeonStats("🔧","Maintenance","var(--text-muted)", [
+      recalcKmSection
     ]),
 
     renderGroupeAccordeonStats("ℹ️","Version","var(--text-muted)", [
