@@ -302,88 +302,38 @@ input[type=text], input[type=number], input[type=password] {
      — s'affiche dès le premier paint du navigateur, avant même que le
      moindre script ne s'exécute (contrairement à tout ce qui est
      construit dynamiquement dans #app).
-     v8 (07/08/2026, diagnostic enfin fiable grâce aux repères magenta
-     demandés par Laurent) — les tentatives précédentes (v6/v7, ajustement
-     de margin-top dans un conteneur flex centré) ajustaient une valeur
-     dont l'effet réel restait imprévisible sur la vraie WebView Android
-     (confirmé différent du rendu Playwright desktop). Avec les repères
-     magenta, une vidéo de contrôle a permis une mesure fiable sans
-     ambiguïté : le carré mesurait 826px de LARGEUR (conforme à 76.5vw)
-     mais 756px de HAUTEUR (pas 826px comme visé pour un carré) — pas
-     qu'un problème de position, aussi de proportions. Corrigé le
-     centrage par positionnement absolu (top/left en % + transform:
-     translate(-50%,-50%)), mécanisme indépendant du flex du parent.
-     v9 (07/08/2026, revérifié avec repères magenta après la v8) —
-     nouvelle vidéo de contrôle : le centrage vertical est cette fois
-     PARFAIT (écart mesuré = 0.0px sur 5 frames indépendantes) — la v8 a
-     bien corrigé la position. Mais le second problème (v8) persiste
-     IDENTIQUE : largeur 827px, hauteur 756px, toujours pas un carré.
-     v10 (07/08/2026, aspect-ratio:1 n'a EU AUCUN EFFET) — nouvelle vidéo
-     de contrôle après le passage à aspect-ratio:1 : mesures strictement
-     IDENTIQUES à la v9 (756/827, au pixel près). Contourné en calculant
-     les dimensions en pixels absolus via un petit script JS synchrone.
-     v11 (07/08/2026, "toujours un décalage" — le VRAI problème n'était
-     pas la forme du carré, mais la cible de position elle-même) — une
-     nouvelle vidéo de contrôle a permis de mesurer, pour la première
-     fois, le SPLASH ANDROID NATIF lui-même avec la même méthode
-     rigoureuse (frame par frame, filtrage des bords) : centre à y=1201
-     sur cette vidéo (stable sur 4 frames indépendantes), alors que la
-     cible utilisée depuis la v4 (y=1187.5, soit 49.48%) provenait d'une
-     mesure faite sur une AUTRE vidéo, plus ancienne. Comparé directement
-     au même moment à mon écran (v10, centre mesuré à y=1176) : écart réel
-     de 25px entre mon écran et le VRAI splash natif de cette séquence —
-     le décalage que Laurent continuait de voir était réel, mais la
-     cause n'était plus dans le mécanisme de centrage (transform
-     translate, déjà validé fonctionnel v9) : c'était la valeur cible
-     elle-même qui était devenue obsolète/imprécise. Fait révélateur :
-     1201/2400 = 50.04%, quasiment exactement 50% — un centrage simple au
-     milieu de l'écran total, sans le décalage compliqué "hors barres
-     système" introduit en v4 (qui semble avoir été une sur-interprétation
-     d'un écart de mesure sur cette autre vidéo, pas un vrai effet des
-     barres système). Simplifié en conséquence : top:50% partout, retour
-     à un centrage direct.
-     NOTE IMPORTANTE sur la forme (v8-v10) : la même vidéo de v11 a aussi
-     permis de mesurer le splash NATIF lui-même à 754px de hauteur pour
-     825px de largeur — quasiment identique au ratio non-carré observé
-     sur mon écran (756/827) depuis la v8. Le splash Android natif
-     lui-même n'est PAS un carré parfait dans ces captures (probablement
-     un artefact de l'app d'enregistrement d'écran, ou du masquage
-     d'icône adaptative Android) — donc les tentatives v8/v9/v10 pour
-     forcer un carré parfait sur mon écran corrigeaient un problème qui
-     n'existait pas vraiment : mon écran reproduit fidèlement ce que fait
-     le vrai splash. Le script JS de dimensionnement (v10) est conservé
-     tel quel (n'introduit pas de régression), simplement la véritable
-     cause du décalage restant était ailleurs (la position, pas la
-     forme).
-     v5 (mesure de largeur, toujours valable) : 76.5% de la largeur
-     d'écran (mesuré 826/1080px sur bande centrale, validation croisée
-     sur 15 points), rayon d'arrondi 20%.
+     Historique de calibration (07/08/2026, condensé — le détail complet
+     de chaque itération reste dans l'historique git si besoin) : position
+     et taille affinées sur plusieurs vidéos de contrôle avec repères
+     visuels temporaires (ligne + bordure magenta, retirés une fois la
+     calibration validée). Deux enseignements retenus :
+     (1) Centrage : top:50% (centre simple de l'écran total) — une cible
+     plus complexe ("hors barres système", 49.48%) avait été calculée à
+     partir d'une mesure imprécise et s'est révélée fausse une fois
+     comparée directement au vrai splash natif sur une vidéo de contrôle.
+     (2) Taille : 76.5% de la largeur d'écran (mesuré 826/1080px),
+     appliquée en pixels absolus via un petit script JS synchrone plutôt
+     qu'en CSS (vw/aspect-ratio se sont révélés peu fiables sur cette
+     WebView). Le rendu n'est volontairement PAS un carré parfait
+     (largeur/hauteur legèrement différentes) : vérifié que le splash
+     Android natif lui-même n'est pas un carré parfait dans ces captures,
+     donc reproduire cette légère asymétrie est fidèle à la référence,
+     pas un bug.
      /icon-512.png en <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
-     réintroduire un flash de transition sur cet écran-là.
-     REPÈRES DE DEBUG TEMPORAIRES (07/08/2026, demande de Laurent : "mets
-     un repère pour voir à quelle frame le décalage apparaît") — ligne
-     horizontale magenta vive (#FF00FF, couleur absente de tout le reste
-     de l'app et du splash Android natif) tracée à y=50% de la hauteur
-     d'écran (la cible corrigée v11). Bordure magenta autour de tout
-     l'écran de chargement, pour le distinguer sans ambiguïté du splash
-     Android natif sur une vidéo de contrôle. À RETIRER après validation
-     de la position finale — ne doit jamais rester en production. -->
-<div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; outline:6px solid #FF00FF; outline-offset:-6px;">
-  <div style="position:absolute; left:0; right:0; top:50%; height:2px; background:#FF00FF; z-index:1;"></div>
+     réintroduire un flash de transition sur cet écran-là. -->
+<div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732;">
   <img id="logo-ecran-chargement" src="/icon-512.png" alt="" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0;">
 </div>
 <script>
-// Dimensions en pixels absolus calculées en JS (07/08/2026, v10) — cf.
-// commentaire détaillé ci-dessus : deux mécanismes CSS différents
-// (height:vw, aspect-ratio) ont échoué à produire un carré sur cette
-// WebView. Synchrone, exécuté immédiatement (pas de DOMContentLoaded,
-// l'élément #logo-ecran-chargement existe déjà juste au-dessus dans le
-// flux du document au moment où ce script s'exécute) — garantit que le
-// carré a la bonne taille dès le tout premier paint, sans flash d'une
-// mauvaise taille suivi d'une correction.
+// Dimensions en pixels absolus calculées en JS (07/08/2026) — cf.
+// commentaire détaillé ci-dessus. Synchrone, exécuté immédiatement (pas
+// de DOMContentLoaded, l'élément #logo-ecran-chargement existe déjà
+// juste au-dessus dans le flux du document au moment où ce script
+// s'exécute) — garantit que le logo a la bonne taille dès le tout
+// premier paint, sans flash d'une mauvaise taille suivi d'une correction.
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
   var img = document.getElementById('logo-ecran-chargement');
