@@ -7760,6 +7760,36 @@ function renderStats() {
     const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
     const mk = (tag, attrs) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
     const xScale = i => PAD.l + (i / Math.max(hist.length - 1, 1)) * iW;
+    // CORRECTIF (07/08/2026, signalé par Laurent : "pas d'abscisse" sur les
+    // graphiques de charge d'entraînement) — PAD.b réservait déjà 20px en
+    // bas pour un axe X, jamais dessiné jusqu'ici : les deux graphiques
+    // (charge aiguë/chronique et ratio ACWR) n'avaient donc aucun repère
+    // temporel visible, contrairement à l'axe Y (valeurs de charge/ratio)
+    // déjà affiché. hist contient déjà une date par point (cf.
+    // calculerHistoriqueCharge, decision-engine-runner-state.classic.js),
+    // simplement jamais affichée. dessinerAxeX() : 4 labels de date répartis
+    // régulièrement dans l'historique (premier, dernier, et 2 intermédiaires
+    // également espacés) plutôt que d'essayer d'afficher toutes les dates
+    // sur seulement 340px de large — jusqu'à 56 points, ce serait
+    // totalement illisible. Format court (j/m) cohérent avec l'espace
+    // disponible sur mobile.
+    const dessinerAxeX = (svg) => {
+      const nbLabels = Math.min(4, hist.length);
+      if (nbLabels < 2) return;
+      for (let k = 0; k < nbLabels; k++) {
+        const idx = Math.round((k / (nbLabels - 1)) * (hist.length - 1));
+        const d = new Date(hist[idx].date + "T00:00:00Z");
+        const label = d.getUTCDate() + "/" + (d.getUTCMonth() + 1);
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", xScale(idx));
+        t.setAttribute("y", H - 4);
+        t.setAttribute("fill", "var(--text-muted)");
+        t.setAttribute("font-size", "8");
+        t.setAttribute("text-anchor", k === 0 ? "start" : k === nbLabels - 1 ? "end" : "middle");
+        t.textContent = label;
+        svg.appendChild(t);
+      }
+    };
 
     // ── Graphique 1 : charge aiguë vs chronique ────────────────────────────
     const svg1 = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -7778,6 +7808,7 @@ function renderStats() {
     const ptsChronique = hist.map((h, i) => `${xScale(i)},${yScale1(h.chargeChronique)}`).join(" ");
     svg1.appendChild(mk("polyline", { points: ptsChronique, fill: "none", stroke: "var(--text-muted)", "stroke-width": "2", "stroke-dasharray": "4,3", "stroke-linejoin": "round" }));
     svg1.appendChild(mk("polyline", { points: ptsAigue, fill: "none", stroke: "var(--accent)", "stroke-width": "2.5", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    dessinerAxeX(svg1);
 
     // ── Graphique 2 : ratio ACWR avec zones ────────────────────────────────
     const svg2 = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -7815,6 +7846,7 @@ function renderStats() {
     dernierLbl.setAttribute("x", xScale(hist.length - 1)); dernierLbl.setAttribute("y", yScale2(dernierRatioVal) - 8);
     dernierLbl.setAttribute("fill", "var(--text)"); dernierLbl.setAttribute("font-size", "10"); dernierLbl.setAttribute("text-anchor", "end"); dernierLbl.setAttribute("font-weight", "700");
     dernierLbl.textContent = dernierRatioVal.toFixed(2); svg2.appendChild(dernierLbl);
+    dessinerAxeX(svg2);
 
     const statutColor = dernierRatioVal > ACWR_SEUIL_RISQUE ? "var(--warn)" : dernierRatioVal > ACWR_SEUIL_VIGILANCE ? "var(--warn)" : dernierRatioVal < ACWR_SEUIL_SOUS_CHARGE ? "var(--accent)" : "var(--accent2)";
     const statutTexte = dernierRatioVal > ACWR_SEUIL_RISQUE ? "Risque élevé — charge en forte hausse"
