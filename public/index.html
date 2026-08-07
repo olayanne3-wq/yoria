@@ -287,32 +287,42 @@ input[type=text], input[type=number], input[type=password] {
 </head>
 <body>
 <!-- Écran de chargement statique (07/08/2026, demande de Laurent : garder
-     le logo Y visible entre le splash Android natif et le premier rendu
-     du dashboard, plutôt qu'un écran blanc). HTML/CSS pur, aucune
-     dépendance JS — s'affiche dès le premier paint du navigateur, avant
-     même que le moindre script ne s'exécute (contrairement à tout ce qui
-     est construit dynamiquement dans #app). Même SVG que celui utilisé
-     par l'écran de connexion (cf. auth.js, monterEcranAuth) et le splash
-     Android (manifest.json/icon-*.png) — cohérence visuelle sur toute la
-     séquence de démarrage. Masqué par render() dès le tout premier rendu
-     réel (cf. son commentaire sur window._fenetreChargementInitialActive)
-     via display:none — pas de fondu de sortie volontaire ici, pour ne pas
+     le MÊME logo Y avec le MÊME fond que le splash Android natif, plutôt
+     qu'un écran blanc entre les deux). HTML/CSS pur, aucune dépendance JS
+     — s'affiche dès le premier paint du navigateur, avant même que le
+     moindre script ne s'exécute (contrairement à tout ce qui est
+     construit dynamiquement dans #app).
+     Couleurs du dégradé de fond extraites directement de icon-512.png
+     (l'icône PNG réelle utilisée par Android pour ce splash, distincte du
+     SVG source public/icon.svg qui est transparent) : #1A44BB en haut à
+     gauche jusqu'à #071732 en bas à droite — reproduit fidèlement le fond
+     marine que Laurent voit pendant la transition Android, retrouvé par
+     échantillonnage de pixels sur l'icône réelle (l'ancienne version de
+     cet écran utilisait var(--bg), un fond clair, sans rapport avec le
+     splash natif — corrigé après retour explicite de Laurent). Logo dans
+     un carré arrondi (comme sur l'icône, proportions similaires : ~86%
+     de la largeur visible), pas seulement les traits sur fond uni.
+     Masqué par render() dès le tout premier rendu réel (cf. son
+     commentaire sur window._fenetreChargementInitialActive) via
+     display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
-<div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:var(--bg); display:flex; align-items:center; justify-content:center;">
-  <svg width="72" height="72" viewBox="0 0 512 512">
-    <defs>
-      <linearGradient id="gChargement1" x1="100" y1="80" x2="260" y2="430" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#1E4ED8"/>
-        <stop offset="1" stop-color="#2E8CF0"/>
-      </linearGradient>
-      <linearGradient id="gChargement2" x1="420" y1="80" x2="250" y2="430" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#22C7B8"/>
-        <stop offset="1" stop-color="#75E4D8"/>
-      </linearGradient>
-    </defs>
-    <path d="M92 92 C184 104, 232 154, 256 230 C270 276, 264 342, 246 420" fill="none" stroke="url(#gChargement1)" stroke-width="42" stroke-linecap="round"/>
-    <path d="M420 92 C328 104, 280 154, 256 230 C242 276, 248 342, 266 420" fill="none" stroke="url(#gChargement2)" stroke-width="42" stroke-linecap="round"/>
-  </svg>
+<div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:linear-gradient(135deg, #1A44BB 0%, #071732 100%); display:flex; align-items:center; justify-content:center;">
+  <div style="width:172px; height:172px; border-radius:38px; background:linear-gradient(135deg, #1A44BB 0%, #071732 100%); display:flex; align-items:center; justify-content:center; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+    <svg width="86" height="86" viewBox="0 0 512 512">
+      <defs>
+        <linearGradient id="gChargement1" x1="100" y1="80" x2="260" y2="430" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#1E4ED8"/>
+          <stop offset="1" stop-color="#2E8CF0"/>
+        </linearGradient>
+        <linearGradient id="gChargement2" x1="420" y1="80" x2="250" y2="430" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#22C7B8"/>
+          <stop offset="1" stop-color="#75E4D8"/>
+        </linearGradient>
+      </defs>
+      <path d="M92 92 C184 104, 232 154, 256 230 C270 276, 264 342, 246 420" fill="none" stroke="url(#gChargement1)" stroke-width="42" stroke-linecap="round"/>
+      <path d="M420 92 C328 104, 280 154, 256 230 C242 276, 248 342, 266 420" fill="none" stroke="url(#gChargement2)" stroke-width="42" stroke-linecap="round"/>
+    </svg>
+  </div>
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
