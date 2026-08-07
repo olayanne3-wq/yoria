@@ -237,7 +237,19 @@ input[type=text], input[type=number], input[type=password] {
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- CORRECTIF (06/08/2026, suite de la recherche sur le clignotement à
+     l'ouverture) — dernier <script src> classique bloquant restant dans
+     le <head>, oublié lors du correctif du 04/08/2026 qui avait traité
+     la police Google Fonts (cf. commentaire plus haut) et les 8 scripts
+     moteur (cf. commentaire plus bas, passés en defer). Même mécanisme :
+     pointant vers un domaine tiers (cdnjs.cloudflare.com), le navigateur
+     devait attendre la fin du téléchargement avant de continuer à parser
+     le reste de la page. jsPDF n'est utilisé que par des fonctions
+     d'export déclenchées par clic utilisateur (exportPdfRecap et
+     similaires, jamais au chargement) — defer garantit que le script est
+     résolu avant DOMContentLoaded, donc disponible bien avant qu'un
+     export soit possible, sans jamais bloquer le premier paint. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div id="app"></div>
