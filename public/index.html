@@ -173,6 +173,23 @@ input[type=text], input[type=number], input[type=password] {
 }
 #app > div { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+/* CORRECTIF (07/08/2026, suite du chantier "clignotements successifs à
+   l'ouverture") — ce fondu de 0.2s (opacity 0→1) s'applique à CHAQUE
+   remplacement du contenu de #app, y compris le tout premier au
+   chargement de l'app. Combiné au fait que #nav-root (la barre du bas)
+   apparaît elle sans aucun fondu équivalent (immédiatement pleinement
+   opaque, cf. render() : deux replaceChildren() distincts, l'un pour
+   #app avec ce fondu CSS, l'autre pour #nav-root sans), cette
+   désynchronisation visuelle — nav nette et immédiate pendant que le
+   contenu principal fondu progressivement en retard, capturé par Laurent
+   sur vidéo — se perçoit comme plusieurs étapes/flashs distincts plutôt
+   qu'un chargement uni, même si techniquement ce n'est qu'un seul
+   render() avec une animation en cours. #app.pas-de-fondu désactive ce
+   fondu uniquement pour le premier render() (classe posée puis retirée
+   juste après par render(), cf. plus bas) — les changements de vue
+   ultérieurs (Dashboard→Stats etc.) gardent le fondu normal, qui reste
+   pertinent dans ce contexte. */
+#app.pas-de-fondu > div { animation: none; }
 
 /* ── Roulette de saisie de temps (31/07/2026, cf. public/v2/index.html —
    même composant, porté ici pour les records personnels de Réglages).
@@ -11634,6 +11651,20 @@ function render() {
   // directement une fois le calcul terminé.
   clearTimeout(_renderDiffereTimer);
   const app=document.getElementById("app");
+  // CORRECTIF (07/08/2026) — cf. commentaire sur #app.pas-de-fondu dans le
+  // <style> du <head> : le tout premier render() de l'app pose cette
+  // classe pour désactiver le fondu d'entrée (évite la désynchronisation
+  // visuelle avec #nav-root, qui n'a jamais eu de fondu). Retirée juste
+  // après (pas conservée), donc tout render() suivant garde le fondu
+  // normal. window._premierRenderEffectue reste undefined jusqu'ici sur
+  // tout le cycle de vie du script (jamais réinitialisé), garantissant
+  // que ce chemin ne s'exécute bien qu'une seule fois par chargement de
+  // page.
+  if (!window._premierRenderEffectue) {
+    window._premierRenderEffectue = true;
+    app.classList.add("pas-de-fondu");
+    setTimeout(() => app.classList.remove("pas-de-fondu"), 0);
+  }
   // CORRECTIF FLASH (04/08/2026, demande de Laurent — "clignotement de
   // tout l'écran à l'ouverture") — app.innerHTML="" était exécuté ICI, en
   // tout début de fonction, AVANT même que hdr/content ne soient
