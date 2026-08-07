@@ -2574,7 +2574,19 @@ function estAnniversaireAujourdhui(dateNaissance) {
 // mais jamais centralisé, donc oublié à plusieurs endroits distincts.
 function activitesDuPlan() {
   const dateDebutPlan = window.__PLAN_BRUT__?.dateDebut;
-  return stravaActivities.filter(a => !dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan);
+  // CORRECTIF (07/08/2026, signalé par Laurent : écart entre le badge "km
+  // cumulés" et le résumé de préparation de l'onglet Course) — cette
+  // fonction ne filtrait QUE sur la date, contrairement à
+  // matchActivitiesToPlan() (cf. son commentaire "Repli sport_type") qui
+  // exige déjà a.type==="Run"||a.sport_type==="Run" avant tout matching à
+  // une séance. Une activité Strava non-course (vélo, natation, marche...)
+  // synchronisée dans la fenêtre du plan était donc comptée ici (résumé de
+  // préparation, "Km courus") mais ne pouvait JAMAIS matcher une séance —
+  // donc jamais comptée dans kmComptesParUid (le badge). Filtre aligné ici
+  // pour que les deux comptent exactement le même périmètre d'activités.
+  return stravaActivities.filter(a =>
+    (a.type==="Run"||a.sport_type==="Run") && (!dateDebutPlan || a.start_date_local?.slice(0,10) >= dateDebutPlan)
+  );
 }
 // Mode Forme (13 juillet 2026) : plan sans dateCourse, cf. plan-forme.js.
 // ESTMODEFORME sert de discriminant pour masquer tout ce qui suppose une
