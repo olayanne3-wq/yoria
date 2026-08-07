@@ -6223,9 +6223,18 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
     let paceSec = paceInitSec;
 
     const paceValueEl = el("span",{style:{fontSize:"18px",fontWeight:"700",color:"var(--text)",minWidth:"64px",textAlign:"center"}}, fmtPace(1000/paceSec)+"/km");
-    const stepBtn = (delta, label) => {
+    // CORRECTIF (07/08/2026, signalé par Laurent : comportement inversé du
+    // stepper). AVANT ce correctif : stepBtn(+5,"−") et stepBtn(-5,"+") —
+    // le bouton étiqueté "−" (affiché à gauche) AUGMENTAIT paceSec (donc
+    // ralentissait l'allure), et le bouton "+" la diminuait (accélérait).
+    // Cause : confusion entre "diminuer le pace en secondes" et "diminuer
+    // l'allure affichée" dans le commentaire d'origine — deux notions
+    // opposées (pace plus petit = allure plus rapide). Fix : "−" diminue
+    // paceSec (plus rapide), "+" l'augmente (plus lent), comme un stepper
+    // numérique classique.
+    const stepBtn = (delta, label, size) => {
       const b = el("button",{type:"button",style:{
-        width:"38px",height:"38px",fontSize:"18px",fontWeight:"700",
+        width:(size||"38")+"px",height:(size||"38")+"px",fontSize:size?"14px":"18px",fontWeight:"700",
         background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"8px",
         color:"var(--text-muted)",cursor:"pointer"
       }}, label);
@@ -6235,10 +6244,16 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
       }));
       return b;
     };
-    const paceStepper = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}},
-      stepBtn(+5,"−"), // -5s/km = plus rapide, affiché à gauche comme "diminuer l'allure affichée"
+    // Réglage fin (07/08/2026, demande Laurent : le pas de 5s/km ne
+    // permettait pas d'ajuster précisément) — petits boutons ±1s/km
+    // accolés aux boutons ±5s/km existants, mêmes signes (− diminue,
+    // + augmente), juste un pas plus fin.
+    const paceStepper = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}},
+      stepBtn(-5,"−"),
+      stepBtn(-1,"−",28),
       paceValueEl,
-      stepBtn(-5,"+") // +5s/km = plus lent
+      stepBtn(+1,"+",28),
+      stepBtn(+5,"+")
     );
     if (target) {
       formWrap.appendChild(el("div",{style:{fontSize:"11px",color:"var(--text2)",textAlign:"center",marginTop:"2px"}},
