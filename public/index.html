@@ -12374,6 +12374,16 @@ function render() {
 }
 
 // ── Vérification des fonctions critiques ────────────────────────────────────
+// CORRECTIF (07/08/2026) : getEffortLaps retirée de cette liste — c'est
+// une fonction PRIVÉE de session-analysis.js (jamais `export`ée,
+// volontairement, cf. son en-tête : "appelée uniquement par
+// getLapsAffichage() en interne, jamais appelée directement depuis
+// index.html"). Sa présence ici la rendait structurellement TOUJOURS
+// "manquante" (typeof y est nécessairement 'undefined', ce module ne
+// l'exporte jamais) — un faux warning affiché à chaque chargement de
+// page depuis l'extraction du module le 31/07/2026, sans lien avec un
+// vrai problème. getLapsAffichage() (la fonction publique qui l'utilise
+// en interne) reste dans la liste, elle est le vrai point de vérification.
 // Depuis l'encapsulation en IIFE async (section 7, sélection de plan), ces
 // fonctions ne sont plus sur window mais dans la portée locale de l'IIFE.
 // Correctif 27/07/2026 : l'ancienne implémentation utilisait eval(fn) sur
@@ -12389,7 +12399,6 @@ function render() {
 const CRITICAL_FNS_REFS = {
   syncStrava: typeof syncStrava !== 'undefined' ? syncStrava : undefined,
   predict10K: typeof predict10K !== 'undefined' ? predict10K : undefined,
-  getEffortLaps: typeof getEffortLaps !== 'undefined' ? getEffortLaps : undefined,
   getLapsAffichage: typeof getLapsAffichage !== 'undefined' ? getLapsAffichage : undefined,
   rebuildPredHistory: typeof rebuildPredHistory !== 'undefined' ? rebuildPredHistory : undefined,
   renderDashboard: typeof renderDashboard !== 'undefined' ? renderDashboard : undefined,
