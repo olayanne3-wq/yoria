@@ -286,6 +286,34 @@ input[type=text], input[type=number], input[type=password] {
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
+<!-- Écran de chargement statique (07/08/2026, demande de Laurent : garder
+     le logo Y visible entre le splash Android natif et le premier rendu
+     du dashboard, plutôt qu'un écran blanc). HTML/CSS pur, aucune
+     dépendance JS — s'affiche dès le premier paint du navigateur, avant
+     même que le moindre script ne s'exécute (contrairement à tout ce qui
+     est construit dynamiquement dans #app). Même SVG que celui utilisé
+     par l'écran de connexion (cf. auth.js, monterEcranAuth) et le splash
+     Android (manifest.json/icon-*.png) — cohérence visuelle sur toute la
+     séquence de démarrage. Masqué par render() dès le tout premier rendu
+     réel (cf. son commentaire sur window._fenetreChargementInitialActive)
+     via display:none — pas de fondu de sortie volontaire ici, pour ne pas
+     réintroduire un flash de transition sur cet écran-là. -->
+<div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:var(--bg); display:flex; align-items:center; justify-content:center;">
+  <svg width="72" height="72" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="gChargement1" x1="100" y1="80" x2="260" y2="430" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#1E4ED8"/>
+        <stop offset="1" stop-color="#2E8CF0"/>
+      </linearGradient>
+      <linearGradient id="gChargement2" x1="420" y1="80" x2="250" y2="430" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#22C7B8"/>
+        <stop offset="1" stop-color="#75E4D8"/>
+      </linearGradient>
+    </defs>
+    <path d="M92 92 C184 104, 232 154, 256 230 C270 276, 264 342, 246 420" fill="none" stroke="url(#gChargement1)" stroke-width="42" stroke-linecap="round"/>
+    <path d="M420 92 C328 104, 280 154, 256 230 C242 276, 248 342, 266 420" fill="none" stroke="url(#gChargement2)" stroke-width="42" stroke-linecap="round"/>
+  </svg>
+</div>
 <div id="app"></div>
 <div id="nav-root"></div>
 
@@ -11862,6 +11890,19 @@ function render() {
     window._fenetreChargementInitialActive = true;
     if (hdr) hdr.style.animation = "none";
     content.style.animation = "none";
+  }
+  // Masque l'écran de chargement statique (logo Y, cf. #ecran-chargement
+  // dans le <body>) dès ce tout premier render() réel — une seule fois
+  // (l'élément n'existe de toute façon plus dans le DOM après la première
+  // fois, cf. .remove() plutôt qu'un simple display:none : évite de
+  // garder un nœud DOM fixed inutile en mémoire pour le reste de la
+  // session). display:none avant remove() plutôt qu'un remove() direct :
+  // masque instantanément dans tous les cas, même si .remove() devait
+  // échouer pour une raison quelconque.
+  const ecranChargement = document.getElementById("ecran-chargement");
+  if (ecranChargement) {
+    ecranChargement.style.display = "none";
+    ecranChargement.remove();
   }
   // Remplacement atomique — cf. commentaire en tête de render() : plus de
   // app.innerHTML="" séparé en amont, ce replaceChildren() est la SEULE
