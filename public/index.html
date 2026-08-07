@@ -1417,6 +1417,26 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+// CORRECTIF (07/08/2026, bug signalé par Laurent : un swap de séance
+// [ex. SORTIE LONGUE déplacée dimanche → samedi] restait affiché
+// correctement en mémoire juste après l'action, mais REDEVENAIT faux
+// après un rechargement complet de la page). Même cause racine et même
+// pattern que le correctif du 26/07/2026 sur statuses (cf. son
+// commentaire détaillé plus haut, ligne ~1384) — mais celui-ci ne
+// rattrapait QUE statuses, pas swappedSessions : le recalcul de
+// rattrapage qu'il ajoute (ligne ~1401) s'exécute juste après le
+// chargement de statuses, mais AVANT le chargement de swappedSessions
+// (ici, 18 lignes plus loin dans le fichier) — au moment de ce premier
+// recalcul, swappedSessions est encore dans sa temporal dead zone,
+// getEffectiveSession() retombe silencieusement sur son catch (aucun
+// swap appliqué), et rien ne redéclenchait de recalcul avant une
+// action explicite (swap, statut...). D'où le symptôme : le swap est
+// bien persisté en storage (vérifié), mais ALL_SESSIONS reste figée
+// sur le contenu pré-swap jusqu'à la première interaction qui force un
+// recalcul — jamais au chargement initial seul. Second recalcul ici,
+// juste après le vrai chargement de swappedSessions, pour couvrir ce
+// second cas de TDZ que le correctif du 26/07 ne couvrait pas.
+if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
 // plusieurs activités Strava tombent le même jour qu'une séance du plan,
 // matchActivitiesToPlan() ne choisit plus automatiquement (risque de
