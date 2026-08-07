@@ -125,9 +125,8 @@ export function weightedAvgByEffortDuration(sessionType, runs, dateDebutPlan, ct
   }) : [];
 
   // Séances du même type validées avec une saisie manuelle (allure
-  // renseignée) — injectées comme un "lap virtuel" unique par séance dans
-  // le même agrégat pondéré par durée d'effort, à poids strictement égal
-  // aux laps Strava (aucune décote).
+  // renseignée) — injectées dans le même agrégat pondéré par durée
+  // d'effort, à poids strictement égal aux laps Strava (aucune décote).
   const manualSessions = allSessions.filter(sess =>
     sess.type===sessionType && manualPerf[sess.uid]?.average_speed &&
     (!dateDebutPlan || sess.date >= dateDebutPlan)
@@ -153,6 +152,43 @@ export function weightedAvgByEffortDuration(sessionType, runs, dateDebutPlan, ct
 
   manualSessions.forEach(sess => {
     const mp = manualPerf[sess.uid];
+    // CHANTIER "unifier les saisies manuelles avec le format Strava/FIT"
+    // (conçu avec Laurent le 07/08/2026, cf. inventaire §16). AVANT ce
+    // chantier, chaque séance manuelle produisait un unique "lap virtuel"
+    // agrégé — un seul point de vitesse/distance pour toute la séance,
+    // sans distinguer les répétitions individuellement réussies des
+    // ratées. Priorité désormais donnée à `mp.laps` (un lap synthétique
+    // PAR RÉPÉTITION, construit à la sauvegarde de la saisie par
+    // construireLapsManuels() côté index.html, cf. son en-tête) quand ce
+    // champ existe — traité EXACTEMENT comme des laps Strava normaux
+    // (même boucle, même pondération par durée d'effort), à ceci près
+    // qu'un lap marqué `_reussi:false` (répétition ratée, cf. grille ✓/✕
+    // du 05/08/2026) est exclu du calcul de vitesse pondérée : on n'a
+    // qu'une seule allure globale saisie à la main, l'attribuer telle
+    // quelle à une répétition ratée gonflerait artificiellement
+    // l'estimation (décision actée avec Laurent : pas de donnée fiable
+    // sur un raté, mieux vaut l'exclure que deviner une pénalité
+    // arbitraire).
+    //
+    // PAS DE MIGRATION RÉTROACTIVE (décision actée le 07/08/2026 : très
+    // peu de saisies manuelles existantes, uniquement sur le compte de
+    // test) — repli sur l'ANCIEN chemin ("lap virtuel" unique agrégé,
+    // cf. correctif du 05/08/2026 sur mp.distance vs distance d'effort
+    // seul) pour toute saisie manuelle antérieure à ce chantier, qui n'a
+    // jamais eu de champ `mp.laps`.
+    if (mp.laps && mp.laps.length) {
+      const lapsRetenus = mp.laps.filter(l => l._reussi !== false);
+      if (!lapsRetenus.length) return; // tous les intervalles ratés : aucun lap fiable pour l'estimation (le taux réussi/raté et le comptage km restent inchangés ailleurs, cf. mp.intervalles)
+      lapsRetenus.forEach(l => {
+        const effortDuration = l.distance / l.average_speed;
+        weightedSpeed += l.average_speed * effortDuration;
+        totalWeight += effortDuration;
+      });
+      allLaps = allLaps.concat(lapsRetenus);
+      return;
+    }
+
+    // ── Ancien chemin (repli, saisies antérieures à ce chantier) ────────
     // CORRECTIF (05/08/2026, bug signalé par Laurent : "modifier la durée
     // totale de la séance change l'estimation, alors que seule l'allure
     // des intervalles devrait compter"). AVANT ce correctif, cette ligne
