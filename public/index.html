@@ -11558,17 +11558,30 @@ function renderDiffere() {
 // successifs plutôt qu'un seul regroupé.
 //
 // renderDiffereChargementInitial() est un timer SÉPARÉ, à fenêtre plus
-// large (600ms), utilisé UNIQUEMENT par ces 3 sources connues du
-// chargement — jamais par renderDiffere() ni par aucune mise à jour
-// réactive à une action utilisateur (celles-ci gardent 50ms, inchangé).
-// 600ms couvre la latence réseau typique d'un aller-retour Supabase/API
-// météo sans être perceptible comme un retard (contrairement à un
-// render() immédiat par source, qui produit le clignotement observé).
+// large (150ms) que renderDiffere() (50ms), utilisé UNIQUEMENT par ces 3
+// sources connues du chargement — jamais par renderDiffere() ni par
+// aucune mise à jour réactive à une action utilisateur (celles-ci gardent
+// 50ms, inchangé). Réduit de 600ms à 150ms le 06/08/2026 (retour de
+// Laurent : "démarrage plus lent" après un premier essai à 600ms) — ce
+// timer repart à zéro à CHAQUE résolution d'une des 3 sources (clearTimeout
+// + nouveau setTimeout), donc son délai s'ajoute après la résolution de la
+// PLUS LENTE des 3, pas un délai fixe depuis le chargement : à 600ms, un
+// écart de plusieurs centaines de ms entre la source la plus rapide et la
+// plus lente (fréquent entre un badge en cache local et une météo qui
+// dépend du réseau) faisait que le rendu final n'intervenait que
+// longtemps après que tout soit déjà résolu. 150ms reste largement
+// suffisant pour absorber un écart de quelques dizaines de ms entre 2
+// sources qui se résolvent presque en même temps (le cas qui produit
+// réellement le clignotement), sans ajouter de retard perceptible dans le
+// cas plus fréquent où les 3 sources ont déjà bien plus de 150ms d'écart
+// entre elles (le regroupement n'aide alors de toute façon pas, chaque
+// flash reste distinct quelle que soit la fenêtre — seul un vrai
+// mécanisme d'attente explicite, plus complexe, changerait ce cas).
 let _renderDiffereChargementTimer = null;
 function renderDiffereChargementInitial() {
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
-  _renderDiffereChargementTimer = setTimeout(render, 600);
+  _renderDiffereChargementTimer = setTimeout(render, 150);
 }
 
 function render() {
