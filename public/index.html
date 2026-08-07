@@ -10901,34 +10901,98 @@ function renderSettings() {
     el("div",{class:"label"},"🔧 Maintenance"),
     el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
       el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.5"}},
-        "Si le badge \"km cumulés\" (Stats/Badges) ne correspond plus à tes séances réellement validées sur ce plan, recalcule-le ici."
+        "Si le badge \"km cumulés\" (Stats/Badges) ne correspond plus à tes séances réellement validées, recalcule-le ici — tous plans confondus."
       ),
       el("button",{style:{width:"100%",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",padding:"10px",color:"var(--text)",fontSize:"14px",fontWeight:"700",cursor:"pointer"},
-        onClick: async ()=>{
-          if (!confirm("Recalculer le badge km cumulés à partir des séances validées de ce plan ? Cette action ne concerne que le plan actuel.")) return;
-          const nouveauKmComptesParUid = {};
-          let total = 0;
-          ALL_SESSIONS.forEach(s => {
-            const statut = statuses[s.uid] || "—";
-            if (statut !== "✅" && statut !== "⚠️" && statut !== "❌") return;
-            let km = 0;
-            if (manualPerf[s.uid]?.distance) {
-              km = manualPerf[s.uid].distance;
-            } else {
-              const run = getStravaRunSiPasManuel(s.date, s.uid);
-              if (run?.distance) km = run.distance / 1000;
+        onClick: async (e)=>{
+          if (!confirm("Recalculer le badge km cumulés à partir de TOUS tes plans (celui-ci et les précédents) ? Cette action peut prendre quelques secondes.")) return;
+          const btn = e.target;
+          const texteOriginal = btn.textContent;
+          btn.disabled = true; btn.textContent = "Calcul en cours…";
+          try {
+            // CORRECTIF (07/08/2026, v2 — évolution demandée par Laurent
+            // après la v1 limitée au plan actuel) — le badge est en
+            // principe "tous plans confondus" (cf. commentaire sur
+            // recalculerKmComptesPourUid, décision du 05/08/2026), donc ce
+            // recalcul doit maintenant reparcourir TOUS les plans du
+            // compte, pas seulement celui affiché. Le plan ACTUEL est
+            // traité à partir des variables déjà en mémoire (statuses/
+            // manualPerf/ALL_SESSIONS), garanties à jour même si pas
+            // encore synchronisées vers Supabase — les AUTRES plans sont
+            // lus directement depuis plan_donnees (Supabase), sans jamais
+            // passer par precharger()/localStorage ni modifier
+            // window.__PLAN_BRUT__, pour ne jamais perturber l'affichage
+            // ou l'état de la session en cours. stravaActivities reste la
+            // même variable globale pour tous les plans (jamais préfixée
+            // par plan), donc réutilisable telle quelle.
+            let totalGlobal = 0;
+            let nouveauKmComptesParUidPlanActuel = {};
+
+            ALL_SESSIONS.forEach(s => {
+              const statut = statuses[s.uid] || "—";
+              if (statut !== "✅" && statut !== "⚠️" && statut !== "❌") return;
+              let km = 0;
+              if (manualPerf[s.uid]?.distance) {
+                km = manualPerf[s.uid].distance;
+              } else {
+                const run = getStravaRunSiPasManuel(s.date, s.uid);
+                if (run?.distance) km = run.distance / 1000;
+              }
+              if (km > 0) {
+                nouveauKmComptesParUidPlanActuel[s.uid] = km;
+                totalGlobal += km;
+              }
+            });
+
+            const tousLesPlans = window.__UTILISATEUR__?.id
+              ? await LkSync.chargerPlansSupabase(window.__UTILISATEUR__.id)
+              : [];
+            const autresPlans = tousLesPlans.filter(p => p.id && p.id !== window.__PLAN_BRUT__?.id);
+
+            for (const plan of autresPlans) {
+              try {
+                const { data, error } = await LkAuth.supabase
+                  .from("plan_donnees")
+                  .select("data")
+                  .eq("plan_id", plan.id)
+                  .maybeSingle();
+                if (error || !data?.data) continue;
+                const statutsAutrePlan = data.data.lk_statuses || {};
+                const manualPerfAutrePlan = data.data.lk_manual_perf || {};
+                const planTraduit = window._v1BridgeModule.traduirePlanVersFormatV1(plan);
+                if (!planTraduit?.length) continue;
+                planTraduit.forEach(semaine => {
+                  semaine.sessions.forEach((s, i) => {
+                    const uid = `${semaine.week}-${i}`;
+                    const statut = statutsAutrePlan[uid] || "—";
+                    if (statut !== "✅" && statut !== "⚠️" && statut !== "❌") return;
+                    let km = 0;
+                    if (manualPerfAutrePlan[uid]?.distance) {
+                      km = manualPerfAutrePlan[uid].distance;
+                    } else if (!manualPerfAutrePlan[uid]) {
+                      const run = stravaActivities.find(a =>
+                        (a.type==="Run"||a.sport_type==="Run") && a.start_date_local?.slice(0,10) === s.date
+                      );
+                      if (run?.distance) km = run.distance / 1000;
+                    }
+                    if (km > 0) totalGlobal += km;
+                  });
+                });
+              } catch (err) {
+                console.warn("Recalcul badge : lecture d'un plan précédent échouée, ignoré :", plan.id, err.message);
+              }
             }
-            if (km > 0) {
-              nouveauKmComptesParUid[s.uid] = km;
-              total += km;
-            }
-          });
-          kmComptesParUid = nouveauKmComptesParUid;
-          save(clePourPlan("lk_km_comptes_par_uid"), kmComptesParUid);
-          profilCoureur.kmCumulesTotal = Math.round(total * 10) / 10;
-          sauvegarderProfilCoureur();
-          alert("Badge recalculé : "+profilCoureur.kmCumulesTotal+" km.");
-          render();
+
+            kmComptesParUid = nouveauKmComptesParUidPlanActuel;
+            save(clePourPlan("lk_km_comptes_par_uid"), kmComptesParUid);
+            profilCoureur.kmCumulesTotal = Math.round(totalGlobal * 10) / 10;
+            sauvegarderProfilCoureur();
+            alert("Badge recalculé (tous plans confondus) : "+profilCoureur.kmCumulesTotal+" km.");
+            render();
+          } catch (err) {
+            alert("Le recalcul a échoué : "+err.message);
+            btn.disabled = false; btn.textContent = texteOriginal;
+          }
         }
       },"Recalculer le badge km cumulés")
     )
