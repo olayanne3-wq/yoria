@@ -320,15 +320,28 @@ input[type=text], input[type=number], input[type=password] {
      l'appareil/l'orientation) — un simple décalage constant, mesuré sur
      un cas réel, suffit ici puisque l'écart est faible et probablement
      stable entre appareils Android récents.
-     v3 (mesures de taille, toujours valables) : carré à 74.5vw (mesuré
-     805/1080px), rayon d'arrondi 20% (mesuré 102/512px), /icon-512.png en
-     <img> pour fidélité de couleur parfaite.
+     v5 (07/08/2026, "la taille est toujours légèrement différente" —
+     Laurent a raison, la mesure de la v3 était biaisée) : la toute
+     première mesure de largeur avait été prise à y=900, une hauteur qui
+     se trouve encore DANS la courbe d'arrondi du coin (pas encore la
+     pleine largeur du carré), sous-estimant systématiquement la taille
+     réelle (805px mesurés au lieu de la vraie valeur). Remesuré cette
+     fois sur toute une bande centrale (y=950 à y=1260, une quinzaine de
+     points espacés de 10px, tous strictement identiques : bords à
+     x=128/954) — largeur réelle confirmée à 826px, hauteur à 825px (quasi
+     parfaitement carré, écart de mesure de ±1px). Soit 76.5% de la
+     largeur d'écran (826/1080), pas 74.5% comme dans la v3 — la même
+     méthode de validation croisée (plusieurs colonnes/lignes de mesure,
+     pas une seule) confirme en revanche que le rayon d'arrondi (20%) et
+     le centrage vertical (décalage -0.52vh, cf. commentaire v4 toujours
+     valable) étaient corrects.
+     /icon-512.png en <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; display:flex; align-items:center; justify-content:center;">
-  <img src="/icon-512.png" alt="" style="width:74.5vw; height:74.5vw; border-radius:20%; object-fit:cover; margin-top:-0.52vh;">
+  <img src="/icon-512.png" alt="" style="width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; margin-top:-0.52vh;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
