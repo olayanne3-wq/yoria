@@ -7915,6 +7915,30 @@ function renderStats() {
     });
     const pts = hist.map((h, i) => `${xScale(i)},${yScale(h.monotonieRealisee)}`).join(" ");
     svg.appendChild(mk("polyline", { points: pts, fill: "none", stroke: "var(--accent)", "stroke-width": "2.5", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    // CORRECTIF (07/08/2026, même bug signalé par Laurent sur les
+    // graphiques ACWR juste au-dessus : PAD.b réservait déjà 20px pour un
+    // axe X, jamais dessiné) — ici l'historique est par SEMAINE (hist[i].
+    // semaine, numéro de semaine du plan), pas par date journalière comme
+    // sur les graphiques ACWR : format "S12" cohérent avec le reste de
+    // l'app (cf. libellé "Semaine actuelle : S"+cw dans renderWeeks()),
+    // pas un format de date. Même principe de 4 labels max répartis
+    // régulièrement, mais ce graphique a rarement plus de 8 points (cf.
+    // fenetreSemaines=8 à l'appel), donc affiche souvent tous les points
+    // sans avoir besoin de sous-échantillonner.
+    const nbLabelsSemaine = Math.min(4, hist.length);
+    if (nbLabelsSemaine >= 2) {
+      for (let k = 0; k < nbLabelsSemaine; k++) {
+        const idx = Math.round((k / (nbLabelsSemaine - 1)) * (hist.length - 1));
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", xScale(idx));
+        t.setAttribute("y", H - 4);
+        t.setAttribute("fill", "var(--text-muted)");
+        t.setAttribute("font-size", "8");
+        t.setAttribute("text-anchor", k === 0 ? "start" : k === nbLabelsSemaine - 1 ? "end" : "middle");
+        t.textContent = "S" + hist[idx].semaine;
+        svg.appendChild(t);
+      }
+    }
     hist.forEach((h, i) => {
       svg.appendChild(mk("circle", { cx: xScale(i), cy: yScale(h.monotonieRealisee), r: i === hist.length - 1 ? "4" : "2", fill: "var(--accent)" }));
     });
