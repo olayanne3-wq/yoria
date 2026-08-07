@@ -7469,7 +7469,16 @@ function renderStats() {
       // séance individuelle (week.sessions[i] n'a que day/date/type/...),
       // seul l'objet SEMAINE (w, avant le flatMap) a un champ week — d'où
       // w.week répété pour chaque séance de cette semaine, pas s.week.
-      const allWeeks = PLAN.flatMap(w=>w.sessions.map(s=>({s,weekNum:w.week}))).filter(({s})=>s.type===type).map(({weekNum})=>weekNum);
+      // CORRECTIF (07/08/2026, suite du bug getEffectiveSession/swap déjà
+      // corrigé sur renderGrilleJoursSemaine) — ce filtre lisait s.type
+      // directement depuis w.sessions BRUT, alors que pts/ieData (les
+      // points réellement affichés sur ce graphique, cf. plus haut) sont
+      // construits depuis ALL_SESSIONS, qui applique déjà
+      // getEffectiveSession() via recalculerAllSessions(). Une séance
+      // swappée pouvait donc faire apparaître un point sur une semaine
+      // absente de cet axe (ou l'inverse) — décorrélation entre les
+      // points et l'axe des semaines qui les positionne.
+      const allWeeks = PLAN.flatMap(w=>w.sessions.map((s,i)=>({s:getEffectiveSession(w,i)||s,weekNum:w.week}))).filter(({s})=>s.type===type).map(({weekNum})=>weekNum);
       const uniqueWeeks = [...new Set(allWeeks)].sort((a,b)=>a-b);
       const nW = uniqueWeeks.length;
       const xOf = w => PL + ((uniqueWeeks.indexOf(w)) / Math.max(nW-1,1)) * (W-PL-PR);
