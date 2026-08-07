@@ -9078,6 +9078,12 @@ function showSessionMenu(week, slotIdx) {
         delete swappedSessions[uid];
         delete swappedSessions[swapUid];
         save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+        // CORRECTIF (07/08/2026) — même bug et même fix que les deux
+        // chemins de création de swap (cf. leur commentaire pour le
+        // détail) : "Annuler le déplacement" avait le même oubli de
+        // recalcul de ALL_SESSIONS avant render(), troisième et dernier
+        // site de mutation de swappedSessions dans ce fichier.
+        ALL_SESSIONS = recalculerAllSessions();
         overlay.remove();
         render();
       });
@@ -9243,6 +9249,21 @@ function showMoveMenu(week, slotIdx) {
         swappedSessions[uidB] = uidA;
       }
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+      // CORRECTIF (07/08/2026, bug signalé par Laurent : après avoir
+      // déplacé une SORTIE LONGUE du dimanche vers un samedi initialement
+      // REPOS, le dashboard continuait d'afficher "Repos" pour samedi.
+      // Cause : ALL_SESSIONS (construite par recalculerAllSessions(), qui
+      // applique déjà getEffectiveSession() pour refléter les swaps —
+      // cf. son en-tête) n'était JAMAIS recalculée après avoir posé le
+      // nouveau swappedSessions ci-dessus — render() réutilisait donc
+      // l'ancien ALL_SESSIONS, calculé avant ce swap, encore basé sur le
+      // contenu d'origine des deux slots. Même pattern de bug déjà
+      // corrigé ailleurs sur ce fichier pour statuses (cf. correctif
+      // 26/07/2026, "bug badge 😴", sur les boutons Annuler/Supprimer de
+      // renderManualPerfRow) : toute mutation d'un état source de
+      // ALL_SESSIONS doit être suivie d'un recalcul explicite avant tout
+      // render(), jamais implicite.
+      ALL_SESSIONS = recalculerAllSessions();
       overlay.remove();
       render();
     });
@@ -9295,6 +9316,11 @@ function showRestoreMenu(week, slotIdx) {
       swappedSessions[uidB] = uidA;
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+      // CORRECTIF (07/08/2026) — même bug et même fix que le chemin de
+      // swap normal ci-dessus (cf. son commentaire pour le détail complet) :
+      // ce second chemin ("Restaurer vers...", quand le jour cible du swap
+      // était déjà occupé) avait le même oubli de recalcul de ALL_SESSIONS.
+      ALL_SESSIONS = recalculerAllSessions();
       overlay.remove();
       render();
     });
