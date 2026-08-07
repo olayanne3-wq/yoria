@@ -2232,7 +2232,7 @@ async function fetchWeather() {
     if (!data.disponible) return;
     weatherTemp = data.temperatureC;
     weatherDesc = data.emoji;
-    renderDiffere(); // cf. définition de renderDiffere() : évite un flash isolé au chargement (04/08/2026)
+    renderDiffereChargementInitial(); // cf. définition : regroupe avec badges/verifierMeteoSeanceDemain (06/08/2026)
   } catch(e) {
     console.warn("Météo indisponible:", e.message);
   }
@@ -2284,7 +2284,7 @@ async function verifierMeteoSeanceDemain() {
         window.__PLAN_GENERE__ = traduirePlanVersFormatV1(plan);
         PLAN = window.__PLAN_GENERE__;
         ALL_SESSIONS = recalculerAllSessions();
-        renderDiffere(); // cf. définition de renderDiffere() : évite un flash isolé au chargement (04/08/2026)
+        renderDiffereChargementInitial(); // cf. définition : regroupe avec badges/fetchWeather (06/08/2026)
         return; // une seule séance concernée par jour dans l'immense
         // majorité des cas — pas la peine de continuer à parcourir
       }
@@ -11543,6 +11543,34 @@ function renderDiffere() {
   _renderDiffereTimer = setTimeout(render, 50);
 }
 
+// CORRECTIF FLASH — regroupement des re-renders automatiques du
+// CHARGEMENT INITIAL uniquement (06/08/2026, suite du chantier
+// "clignotements successifs à l'ouverture") — 3 sources indépendantes se
+// terminent chacune par un re-render au chargement : le bloc badges (dans
+// render(), juste au-dessus), fetchWeather() et verifierMeteoSeanceDemain()
+// (toutes deux définies plus haut, appelées au niveau racine du script).
+// Leurs latences réseau respectives varient et dépassent facilement la
+// fenêtre de 50ms de renderDiffere() (déjà réduite depuis 250ms le
+// 04/08/2026, cf. son commentaire ci-dessus — élargir CETTE fenêtre
+// générale retarderait aussi les mises à jour réactives à un clic
+// utilisateur, ce qui avait déjà été signalé comme pire) : chacune peut
+// donc arriver isolément et produire son propre flash, plusieurs flashs
+// successifs plutôt qu'un seul regroupé.
+//
+// renderDiffereChargementInitial() est un timer SÉPARÉ, à fenêtre plus
+// large (600ms), utilisé UNIQUEMENT par ces 3 sources connues du
+// chargement — jamais par renderDiffere() ni par aucune mise à jour
+// réactive à une action utilisateur (celles-ci gardent 50ms, inchangé).
+// 600ms couvre la latence réseau typique d'un aller-retour Supabase/API
+// météo sans être perceptible comme un retard (contrairement à un
+// render() immédiat par source, qui produit le clignotement observé).
+let _renderDiffereChargementTimer = null;
+function renderDiffereChargementInitial() {
+  clearTimeout(_renderDiffereChargementTimer);
+  clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
+  _renderDiffereChargementTimer = setTimeout(render, 600);
+}
+
 function render() {
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
@@ -11598,7 +11626,7 @@ function render() {
       }
       window.__badgesCache__ = badgesDejaEnregistres;
       window.__badgesNouveauxAAfficher__ = nouveaux;
-      renderDiffere(); // cf. définition de renderDiffere() : regroupe avec d'autres mises à jour auto proches (04/08/2026)
+      renderDiffereChargementInitial(); // cf. définition : regroupe avec fetchWeather/verifierMeteoSeanceDemain (06/08/2026)
     })();
   }
 
