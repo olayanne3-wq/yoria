@@ -302,32 +302,33 @@ input[type=text], input[type=number], input[type=password] {
      — s'affiche dès le premier paint du navigateur, avant même que le
      moindre script ne s'exécute (contrairement à tout ce qui est
      construit dynamiquement dans #app).
-     v3 (07/08/2026, "je veux que ça colle exactement" — mesures prises
-     directement sur une vidéo de contrôle du vrai splash Android, frame
-     par frame, plutôt qu'estimées à l'œil) : sur une frame stable du
-     splash (écran 1080x2400), le carré arrondi mesure exactement 805x805
-     pixels (bords détectés par analyse de la transition de couleur pixel
-     par pixel, à une hauteur/largeur choisie hors de la zone occupée par
-     les traits du logo pour ne pas fausser la mesure) — soit 74.5% de la
-     largeur d'écran (805/1080), pas 60% comme dans la v2. Centré à
-     50.0%/49.5% horizontalement/verticalement (quasi exactement au milieu
-     de l'écran, cf. centre du carré à x=540.5 y=1187.5 sur les mêmes
-     dimensions) — un centrage flex classique suffit, sans décalage
-     particulier. Rayon d'arrondi des coins mesuré à 102px sur les 512px
-     de icon-512.png (opacité du canal alpha à x=0, y variable), soit
-     19.9% ≈ 20%, pas 22% comme dans la v2. Toujours /icon-512.png en
-     <img> (fidélité de couleur parfaite, cf. commentaire v2 déjà présent
-     pour ce choix) mais avec ces dimensions et cet arrondi recalculés.
-     max-width retiré : la v2 plafonnait à 280px pour les grands écrans,
-     mais rien n'indique que le vrai splash Android plafonne de cette
-     façon — 74.5vw partout, fidèle à la mesure, jusqu'à preuve du
-     contraire sur un grand écran.
+     v4 (07/08/2026, "léger décalage" signalé par Laurent après la v3) —
+     la v3 centrait le carré exactement au milieu de l'écran total
+     (position:fixed inset:0 + flex centré), mais une mesure plus précise
+     a montré que le vrai splash Android centre le logo sur la ZONE DE
+     CONTENU visible (hors barre de statut ET barre de navigation), pas
+     sur la hauteur totale de l'écran — sur la frame de référence
+     (1080x2400), la barre de statut occupe 0-104px et la barre de
+     navigation 2270-2400px, donc le vrai centre de la zone de contenu est
+     à y=(104+2270)/2=1187px, qui correspond exactement au centre du carré
+     mesuré (1187.5px) — alors qu'un centrage sur toute la hauteur
+     d'écran donne y=1200px, un écart de 12.5px (0.52% de la hauteur
+     d'écran) vers le bas par rapport au vrai splash. Corrigé en appliquant
+     ce même décalage vers le haut via margin-top négatif sur l'image,
+     plutôt qu'en essayant de recalculer la zone de contenu réelle en CSS
+     (plus fragile, dépend de safe-area-inset qui varie selon
+     l'appareil/l'orientation) — un simple décalage constant, mesuré sur
+     un cas réel, suffit ici puisque l'écart est faible et probablement
+     stable entre appareils Android récents.
+     v3 (mesures de taille, toujours valables) : carré à 74.5vw (mesuré
+     805/1080px), rayon d'arrondi 20% (mesuré 102/512px), /icon-512.png en
+     <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; display:flex; align-items:center; justify-content:center;">
-  <img src="/icon-512.png" alt="" style="width:74.5vw; height:74.5vw; border-radius:20%; object-fit:cover;">
+  <img src="/icon-512.png" alt="" style="width:74.5vw; height:74.5vw; border-radius:20%; object-fit:cover; margin-top:-0.52vh;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
