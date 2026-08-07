@@ -27,7 +27,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.37", title:"Séances de qualité mieux dosées, plafonnement du volume par séance", current:true, notes:[
+      { ver:"v2.38", title:"Estimation 10K enrichie par la saisie manuelle, correctifs de fiabilité", current:true, notes:[
+        "🎯 En saisie manuelle, chaque répétition réussie ou ratée contribue désormais à ton estimation 10K, exactement comme une vraie séance Strava",
+        "🔧 Correctif important : les statuts de séance (✅⚠️❌) ne pouvaient plus disparaître silencieusement, notamment en changeant de source de données",
+        "🔄 Correctif : échanger deux séances affiche maintenant fidèlement le résultat partout, y compris après avoir quitté et rouvert l'app",
+        "🎚️ Boutons +/- 1s/km ajoutés en saisie manuelle, pour affiner ton allure plus précisément",
+        "✏️ Correctif : les boutons +/- de l'allure en saisie manuelle fonctionnaient à l'envers",
+      ]},
+      { ver:"v2.37", title:"Séances de qualité mieux dosées, plafonnement du volume par séance", current:false, notes:[
         "🎯 Le volume d'une séance de qualité (VMA, seuil, fractionné, allure course, ainsi que la séance test) est désormais plafonné selon ton volume hebdomadaire — évite des séances disproportionnées par rapport à ta charge d'entraînement du moment",
         "🔧 Correctif de fiabilité important sur le levier \"Volume\" du wizard : un changement de volume est maintenant fidèlement conservé, même après avoir utilisé un autre levier (Jours, Objectif, Date de course) ou le bouton \"Analyser et adapter\"",
         "✏️ Vue Semaine : un seul crayon de saisie manuelle par séance, au lieu de deux affichés en même temps une fois la séance validée",
