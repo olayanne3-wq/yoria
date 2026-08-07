@@ -302,46 +302,32 @@ input[type=text], input[type=number], input[type=password] {
      — s'affiche dès le premier paint du navigateur, avant même que le
      moindre script ne s'exécute (contrairement à tout ce qui est
      construit dynamiquement dans #app).
-     v4 (07/08/2026, "léger décalage" signalé par Laurent après la v3) —
-     la v3 centrait le carré exactement au milieu de l'écran total
-     (position:fixed inset:0 + flex centré), mais une mesure plus précise
-     a montré que le vrai splash Android centre le logo sur la ZONE DE
-     CONTENU visible (hors barre de statut ET barre de navigation), pas
-     sur la hauteur totale de l'écran — sur la frame de référence
-     (1080x2400), la barre de statut occupe 0-104px et la barre de
-     navigation 2270-2400px, donc le vrai centre de la zone de contenu est
-     à y=(104+2270)/2=1187px, qui correspond exactement au centre du carré
-     mesuré (1187.5px) — alors qu'un centrage sur toute la hauteur
-     d'écran donne y=1200px, un écart de 12.5px (0.52% de la hauteur
-     d'écran) vers le bas par rapport au vrai splash. Corrigé en appliquant
-     ce même décalage vers le haut via margin-top négatif sur l'image,
-     plutôt qu'en essayant de recalculer la zone de contenu réelle en CSS
-     (plus fragile, dépend de safe-area-inset qui varie selon
-     l'appareil/l'orientation) — un simple décalage constant, mesuré sur
-     un cas réel, suffit ici puisque l'écart est faible et probablement
-     stable entre appareils Android récents.
-     v5 (07/08/2026, "la taille est toujours légèrement différente" —
-     Laurent a raison, la mesure de la v3 était biaisée) : la toute
-     première mesure de largeur avait été prise à y=900, une hauteur qui
-     se trouve encore DANS la courbe d'arrondi du coin (pas encore la
-     pleine largeur du carré), sous-estimant systématiquement la taille
-     réelle (805px mesurés au lieu de la vraie valeur). Remesuré cette
-     fois sur toute une bande centrale (y=950 à y=1260, une quinzaine de
-     points espacés de 10px, tous strictement identiques : bords à
-     x=128/954) — largeur réelle confirmée à 826px, hauteur à 825px (quasi
-     parfaitement carré, écart de mesure de ±1px). Soit 76.5% de la
-     largeur d'écran (826/1080), pas 74.5% comme dans la v3 — la même
-     méthode de validation croisée (plusieurs colonnes/lignes de mesure,
-     pas une seule) confirme en revanche que le rayon d'arrondi (20%) et
-     le centrage vertical (décalage -0.52vh, cf. commentaire v4 toujours
-     valable) étaient corrects.
+     v6 (07/08/2026, "il y a bien un problème de position, pas
+     d'environ..." — Laurent avait raison, la v4 ne corrigeait que la
+     MOITIÉ de l'écart réel) — vérifié cette fois par rendu Playwright
+     exact (screenshot HTML/CSS réel à la résolution 1080x2400, mesuré
+     pixel par pixel avec la même méthode que sur la vidéo de référence)
+     plutôt que par calcul manuel : avec margin-top:-12.5px (v4), le
+     centre du carré rendu tombe à y=1194, pas 1187.5 comme visé — un
+     écart résiduel de 6.5px qui correspond exactement à la MOITIÉ du
+     -12.5px appliqué. Cause : dans un conteneur flex avec align-items:
+     center, un margin-top négatif sur l'enfant ne déplace l'élément que
+     de la MOITIÉ de sa valeur — le calcul de centrage répartit l'effet de
+     la marge des deux côtés implicitement, contrairement à l'intuition
+     d'un déplacement direct. Il fallait donc -25px, pas -12.5px, pour
+     obtenir le vrai décalage de 12.5px vers le haut. Revalidé par un
+     second rendu Playwright avec -25px : centre mesuré à y=1187.5,
+     identique au pixel près à la cible.
+     v5 (mesures de taille, toujours valables) : carré à 76.5vw (mesuré
+     826/1080px sur bande centrale, validation croisée sur 15 points),
+     rayon d'arrondi 20%.
      /icon-512.png en <img> pour fidélité de couleur parfaite.
      Masqué par render() dès le tout premier rendu réel (cf. son
      commentaire sur window._fenetreChargementInitialActive) via
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732; display:flex; align-items:center; justify-content:center;">
-  <img src="/icon-512.png" alt="" style="width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; margin-top:-0.52vh;">
+  <img src="/icon-512.png" alt="" style="width:76.5vw; height:76.5vw; border-radius:20%; object-fit:cover; margin-top:-1.0417vh;">
 </div>
 <div id="app"></div>
 <div id="nav-root"></div>
