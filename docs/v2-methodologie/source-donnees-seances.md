@@ -40,7 +40,8 @@ Nouveau réglage dans Réglages, **préférence d'affichage par défaut sur la c
 | Valeur | Statut | Comportement |
 |---|---|---|
 | `strava` | Disponible | Active aujourd'hui (comportement par défaut, rétrocompatible) |
-| `manuel` | À implémenter (ce chantier) | Le formulaire de saisie manuelle s'affiche en premier sur la carte du jour |
+| `manuel` | Disponible | Le formulaire de saisie manuelle s'affiche en premier sur la carte du jour |
+| `fit` | Disponible (ajouté après ce document, cf. §10 de l'inventaire) | Import d'un fichier `.fit` exporté depuis la montre |
 | `montre` (Garmin, Coros, Polar…) | Prévu, non implémenté | Option visible mais désactivée dans Réglages, pour poser le cap produit |
 | `gpx` | Prévu, non implémenté | Idem |
 
@@ -50,20 +51,36 @@ Le réglage ne conditionne que l'affichage par défaut : même en mode `strava`,
 
 ## 4. Format de la saisie manuelle
 
-Les laps Strava sont détaillés par répétition (`getLapsAffichage`). Reproduire ce niveau de détail en saisie manuelle serait trop lourd pour un usage sans montre connectée.
+**Mis à jour le 07/08/2026** — remplace le format "lap virtuel unique par séance" initialement retenu (cf. archive ci-dessous), après une conception dédiée à l'unification avec le format Strava/FIT (cf. inventaire §4/§5/§7bis pour le détail complet).
 
-**Choix : un "lap virtuel" unique par séance**, injecté dans le même pipeline de calcul que les laps Strava (`weightedAvgByEffortDuration`), sans traitement différencié :
+Les laps Strava sont détaillés par répétition (`getLapsAffichage`). Reproduire ce niveau de détail EN SAISIE (une allure par répétition) resterait trop lourd pour un usage sans montre connectée — ce principe reste inchangé. Ce qui a changé, c'est la **représentation stockée** : plutôt qu'un lap unique agrégeant toute la séance, chaque répétition attendue de `structureIntervalles` produit désormais son propre lap synthétique, à partir de la même allure globale saisie une seule fois, combinée à une grille réussi/raté (✓/✕) par répétition (déjà en place depuis le 05/08/2026, cf. section suivante).
+
+```js
+// manualPerf[uid].laps — un lap PAR RÉPÉTITION, même format qu'un lap Strava
+[
+  { distance, average_speed, average_heartrate: null, _source: "manuel", _reussi: true },
+  { distance, average_speed, average_heartrate: null, _source: "manuel", _reussi: false },
+  // ...
+]
+```
+
+Un lap marqué `_reussi: false` est exclu du calcul de vitesse pondérée du prédicteur (une seule allure globale est saisie à la main — l'attribuer telle quelle à une répétition ratée gonflerait artificiellement l'estimation), mais reste présent pour l'affichage/comptage km. Construit par `construireLapsManuels()` au moment de la sauvegarde (`index.html`), consommé par `weightedAvgByEffortDuration()` (`predictor.js`) exactement comme des laps Strava. Repli complet sur l'ancien format ci-dessous pour toute saisie manuelle antérieure à ce champ — pas de migration rétroactive.
+
+Champs du formulaire (tous optionnels sauf le statut ✅/⚠️/❌, qui seul suffit à valider la séance) — inchangés par cette évolution :
+- **Allure moyenne de l'effort** (pas l'allure totale de la sortie)
+- **FC moyenne** (optionnel)
+- **Ressenti (RPE, échelle simple)**
+- **Réussite par répétition** (✓/✕, ajouté le 05/08/2026) — sert désormais aussi à construire les laps individuels ci-dessus, en plus de son rôle d'origine (affichage du taux de réussite)
+
+### Archive — format d'origine (13/07/2026 → 07/08/2026)
+
+Conservé pour référence historique. Un "lap virtuel" unique par séance, injecté dans le même pipeline de calcul que les laps Strava, sans distinction de répétition :
 
 ```js
 { average_speed: distanceEffort / tempsEffort, distance: distanceEffort }
 ```
 
-Champs du formulaire (tous optionnels sauf le statut ✅/⚠️/❌, qui seul suffit à valider la séance) :
-- **Allure moyenne de l'effort** (pas l'allure totale de la sortie — cohérent avec ce que `getLapsAffichage` extrait déjà des laps Strava)
-- **FC moyenne** (optionnel) — alimente les mêmes garde-fous d'adaptation que la FC Strava quand disponible
-- **Ressenti (RPE, échelle simple)** — sert de repli pour l'adaptation du plan quand la FC n'est pas renseignée
-
-Distance d'effort déductible de `structureIntervalles` si non précisée par l'utilisateur (le plan connaît déjà la distance prévue).
+Distance d'effort déductible de `structureIntervalles` si non précisée par l'utilisateur. Ce format reste le repli utilisé par `weightedAvgByEffortDuration()` pour toute saisie manuelle antérieure au nouveau champ `laps` (pas de migration rétroactive, cf. ci-dessus).
 
 ---
 
@@ -72,15 +89,17 @@ Distance d'effort déductible de `structureIntervalles` si non précisée par l'
 Suit la convention existante (`statuses`, `hiddenSessions`, etc.) :
 
 ```js
-let manualPerf = load(clePourPlan("lk_manual_perf"), {}); // {uid: {average_speed, distance, average_heartrate, rpe}}
+let manualPerf = load(clePourPlan("lk_manual_perf"), {}); // {uid: {average_speed, distance, average_heartrate, dureeSaisieMin, intervalles, laps}}
 ```
 
-Persisté et synchronisé via Supabase au même titre que `statuses` (à vérifier lors de l'implémentation — cf. section 6, ouvert).
+Persisté et synchronisé via Supabase au même titre que `statuses` (`LkSync`, cf. section 6 ci-dessous, confirmé et depuis renforcé par le correctif de race condition du 07/08/2026 — merge atomique via RPC, cf. inventaire §5).
 
 ---
 
 ## 6. Points ouverts / à vérifier à l'implémentation
 
-- Confirmer que `manualPerf` suit le même chemin de synchronisation Supabase que `statuses` (`LkSync`), pour ne pas recréer un silo localStorage-only.
-- Décider si un badge discret ("Saisie manuelle retenue — Strava ignorée pour cette séance") doit apparaître sur la carte quand une correction manuelle écrase une activité Strava existante, pour la transparence — non tranché, mais recommandé pour éviter toute confusion silencieuse.
-- Les options `montre` et `gpx` du réglage `dataSource` sont volontairement non fonctionnelles à ce stade — à ne pas confondre avec un chantier à traiter maintenant.
+**Section close le 07/08/2026** — les trois points ci-dessous, ouverts depuis la conception initiale, sont maintenant tranchés :
+
+- ~~Confirmer que `manualPerf` suit le même chemin de synchronisation Supabase que `statuses`~~ — confirmé, `manualPerf` est synchronisé exactement comme toute autre clé préfixée par plan via `synchroniserVersSupabase()`/`plan_donnees`. Le mécanisme de synchronisation lui-même a été rendu plus robuste le 07/08/2026 (merge atomique via RPC `merger_plan_donnees`, corrige une race condition qui pouvait faire disparaître silencieusement une clé fraîchement sauvegardée — cf. inventaire §5).
+- ~~Décider si un badge discret doit signaler qu'une saisie manuelle écrase une activité Strava existante~~ — tranché : le bloc "Réalisé" affiche déjà la source de la donnée retenue (badge Strava/FIT/manuel, cf. inventaire §4), suffisant pour la transparence recherchée ; pas de badge dédié supplémentaire jugé nécessaire.
+- ~~Les options `montre` et `gpx` sont volontairement non fonctionnelles~~ — `fit` est passée de "non implémentée" à disponible entre-temps (cf. tableau §3 ci-dessus, chantier livré le 03/08/2026, cf. inventaire §10). `montre` et `gpx` restent non implémentées à ce jour, aucun changement de statut.
