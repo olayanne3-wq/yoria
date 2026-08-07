@@ -961,6 +961,28 @@ let _renderDiffereTimer = null;
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
 
+// CORRECTIF (06/08/2026, chantier "clignotements successifs à
+// l'ouverture") — verifierMeteoSeanceDemain() était appelée au niveau
+// racine du script (ligne ~2294 plus bas), donc AVANT que
+// window.__PLAN_BRUT__ ne soit jamais assigné (uniquement fait à
+// l'intérieur de l'IIFE __PLAN_PRET__ ci-dessus, résolue de façon
+// asynchrone). Son tout premier if (!plan?.dateDebut) return; la faisait
+// donc systématiquement échouer silencieusement au premier chargement —
+// elle ne contribuait en réalité jamais aux flashs regroupés via
+// renderDiffereChargementInitial() (cf. son commentaire plus bas), qui ne
+// s'appuyait donc de fait que sur 2 sources réelles (badges et
+// fetchWeather), dont l'écart de démarrage (badges ne démarre qu'à
+// l'intérieur du premier render(), après toute la chaîne d'auth ;
+// fetchWeather démarre dès le niveau racine, en parallèle) restait plus
+// grand que ce qu'une fenêtre de regroupement de 150ms pouvait absorber,
+// d'où le clignotement résiduel malgré le regroupement des 3 sources.
+// Appelée ici, elle a désormais bien accès à window.__PLAN_BRUT__ (déjà
+// résolu par __PLAN_PRET__ juste au-dessus) et démarre à peu près au même
+// moment que le bloc badges (dans le premier render(), qui suit peu après
+// ce point) plutôt que de rater sa fenêtre — réduit l'écart réel entre les
+// sources plutôt que de continuer à l'agrandir en compensation.
+verifierMeteoSeanceDemain();
+
 // Deuxième passe de préchargement, cette fois avec le planId maintenant
 // connu (window.__PLAN_BRUT__.id) — remplit localStorage avec les
 // données préfixées par plan (lk_statuses_xxx, lk_notes_xxx, etc.) AVANT
@@ -2291,7 +2313,10 @@ async function verifierMeteoSeanceDemain() {
     }
   }
 }
-verifierMeteoSeanceDemain();
+// verifierMeteoSeanceDemain() appelée désormais juste après résolution de
+// __PLAN_PRET__ (cf. commentaire à cet emplacement) — l'appel qui était
+// ici échouait systématiquement (window.__PLAN_BRUT__ jamais encore
+// assigné à ce stade du chargement), retiré le 06/08/2026.
 fetchWeather();
 setInterval(fetchWeather, 30 * 60 * 1000); // refresh toutes les 30 min
 
