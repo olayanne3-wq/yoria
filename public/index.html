@@ -5514,10 +5514,20 @@ const JOURS_LABEL_COURT = ["L","M","M","J","V","S","D"];
 function renderGrilleJoursSemaine(week) {
   return el("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"6px",marginBottom:"12px"}},
     week.sessions.map((s,i) => {
-      const estRepos = s.type === "REPOS";
+      // CORRECTIF (07/08/2026, signalé par Laurent : "en cas de décalage
+      // de séance, la modification n'est pas faite sur la barre de la
+      // semaine") — cette grille lisait week.sessions[i] directement,
+      // ignorant swappedSessions (cf. getEffectiveSession(), déjà utilisée
+      // partout ailleurs dans ce fichier pour ce même besoin — ex. la
+      // vue détail de semaine, ligne ~6748). Une séance déplacée via le
+      // menu de swap continuait donc d'afficher son type d'ORIGINE sur
+      // cette grille, alors que le détail de semaine affichait bien le
+      // type après échange — désynchronisation entre les deux vues.
+      const effSess = getEffectiveSession(week, i) || s;
+      const estRepos = effSess.type === "REPOS";
       const statut = statuses[`${week.week}-${i}`];
       const aVenir = !statut && !estRepos;
-      const couleur = TYPE_SEANCE_COULEUR[s.type] || "var(--border-soft)";
+      const couleur = TYPE_SEANCE_COULEUR[effSess.type] || "var(--border-soft)";
       const cell = el(estRepos ? "div" : "button",{
         style:{
           position:"relative", height:"52px", borderRadius:"5px",
@@ -5527,7 +5537,7 @@ function renderGrilleJoursSemaine(week) {
         }
       },
         el("span",{style:{fontSize:"8px",color:"var(--text-muted)",position:"absolute",top:"2px",left:"3px"}}, JOURS_LABEL_COURT[i]),
-        estRepos ? null : el("span",{style:{fontSize:"9px",fontWeight:"600",color:"var(--bg)",textAlign:"center",lineHeight:"1.1",padding:"0 2px"}}, TYPE_SEANCE_LABEL[s.type] || s.type),
+        estRepos ? null : el("span",{style:{fontSize:"9px",fontWeight:"600",color:"var(--bg)",textAlign:"center",lineHeight:"1.1",padding:"0 2px"}}, TYPE_SEANCE_LABEL[effSess.type] || effSess.type),
         (statut && !estRepos) ? el("div",{style:{position:"absolute",bottom:"1px",right:"1px",fontSize:"14px",lineHeight:"1",width:"18px",height:"18px",display:"flex",alignItems:"center",justifyContent:"center"}}, statut) : null
       );
       if (!estRepos) {
