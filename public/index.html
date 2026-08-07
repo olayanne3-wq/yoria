@@ -6659,7 +6659,20 @@ function distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFS
 function getStravaRunSiPasManuel(date, uid, activites) {
   if (uid && manualPerf[uid]) return null;
   const source = activites || stravaActivities;
-  return source.find(a => a.start_date_local?.slice(0,10) === date) || null;
+  // CORRECTIF (07/08/2026, suite du correctif sur activitesDuPlan() —
+  // écart badge/résumé de préparation signalé par Laurent) — ce find()
+  // n'avait AUCUN filtre sur le type d'activité, contrairement à
+  // matchActivitiesToPlan()/activitesDuPlan() (désormais alignées sur
+  // type==="Run"||sport_type==="Run"). Une activité Strava non-course
+  // (vélo, natation...) synchronisée le même jour qu'une séance de course
+  // pouvait donc être retournée ici et comptée dans le badge "km cumulés"
+  // (via recalculerKmComptesPourUid, qui utilise cette fonction), sans
+  // jamais être comptée dans le résumé de préparation — écart inverse de
+  // celui déjà corrigé. Filtre aligné pour que ce point d'entrée unique
+  // (cf. commentaire ci-dessus : "ne jamais réintroduire un
+  // stravaActivities.find(...) direct") ne retourne plus jamais une
+  // activité non-course.
+  return source.find(a => (a.type==="Run"||a.sport_type==="Run") && a.start_date_local?.slice(0,10) === date) || null;
 }
 
 // Ajuste profilCoureur.kmCumulesTotal pour UNE séance (uid), de façon
