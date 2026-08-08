@@ -45,7 +45,7 @@ yoria/
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
 │       ├── import-fit-intervalles.md   # Conception + implémentation import .fit (cf. §10)
 │       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin)
-│       └── (autres docs de contexte : jour-de-course, notes-meteo, etc.)
+│       └── (autres docs de contexte : jour-de-course, source-donnees-seances, etc.)
 ├── public/
 │   ├── index.html                 # App principale (dashboard, ~11700 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
@@ -595,7 +595,9 @@ toujours les séances déjà passées.
 **Stratégie de jour de course** : `calculerStrategieCourse()` (miroir
 exact entre `index.html` et `plan-generator.js`) — bornes km fixes pour
 Semi/Marathon (tous les 5km + palier à 35km sur marathon), proportionnel
-pour 5K/10K.
+pour 5K/10K. Détail complet du pacing par distance et de la semaine
+d'approche (garde-fous J-2/J-1, repères J-3/veille) dans
+`docs/v2-methodologie/jour-de-course.md`.
 
 **v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
 le plan brut (v2) et le format `index.html`. Tout nouveau champ
