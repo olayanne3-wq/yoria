@@ -1,23 +1,23 @@
-# Repères qualitatifs sur séances dures — Run by Léa v2.0
+# Repères qualitatifs sur séances dures — Yoria v2.0
 
-Document de référence méthodologique pour le mécanisme de repères qualitatifs (ressenti + progression relative), implémenté dans `public/v2/engine/plan-generator.js`. Tranché et implémenté le 6 juillet 2026 — section 2.4 du document [`convergence-v1-v2.md`](./convergence-v1-v2.md).
+Document de référence méthodologique pour le mécanisme de repères qualitatifs (ressenti + progression relative), implémenté dans `public/v2/engine/plan-generator.js`.
 
 ---
 
 ## 1. Principe
 
-Deux natures de repère distinctes, regroupées dans une même section du document de convergence parce qu'elles portent toutes deux sur le **ressenti attendu** d'une séance dure (seuil/VMA), pas sur son exécution technique (ça, c'est le rôle des notes pratiques, section 2.3) :
+Deux natures de repère distinctes, regroupées ensemble parce qu'elles portent toutes deux sur le **ressenti attendu** d'une séance dure (seuil/VMA), pas sur son exécution technique (ça, c'est le rôle des notes pratiques) :
 
 - **Repère de ressenti** : décrit l'intensité subjective attendue de l'effort, indépendamment de tout historique (ex. "Effort contrôlé, 3-4 mots max si tu devais parler").
 - **Progression relative** : compare la séance actuelle à une occurrence antérieure similaire de la même famille, pour signaler que la fatigue accumulée depuis peut se faire sentir malgré un volume comparable.
 
-**Origine** : v1 avait ces deux types de note codés en dur pour des séances spécifiques du plan de Laurent. Le moteur v2 n'avait ni l'un ni l'autre.
+**Origine** : la v1 avait ces deux types de note codés en dur pour des séances spécifiques d'un plan donné. Le moteur v2 n'avait ni l'un ni l'autre.
 
 ## 2. Repère de ressenti
 
 ### Règle de détection
 
-Basée sur la même famille que les notes pratiques (`FAMILLE_SOUS_TYPE`, partagé avec la section 2.3) — mais **seulement pour `seuil` et `vma`**, pas pour `allure-course` ni `longue`. Choix assumé : le ressenti d'une allure course ou d'une sortie longue est déjà largement couvert ailleurs (repère d'allure cible pour allure-course, note pratique hydratation pour la longue) — ajouter un repère de ressenti spécifique à ces deux-là n'a pas été jugé nécessaire.
+Basée sur la même famille que les notes pratiques (`FAMILLE_SOUS_TYPE`, partagé entre les deux mécanismes) — mais **seulement pour `seuil` et `vma`**, pas pour `allure-course` ni `longue`. Choix assumé : le ressenti d'une allure course ou d'une sortie longue est déjà largement couvert ailleurs (repère d'allure cible pour allure-course, note pratique hydratation pour la longue) — ajouter un repère de ressenti spécifique à ces deux-là n'a pas été jugé nécessaire.
 
 ### Banque de variantes
 
@@ -38,7 +38,7 @@ Ces deux garde-fous sont volontairement stricts : l'intention est un repère **p
 
 ### Format du message
 
-`"Volume similaire à S{numéro} (il y a {N} semaines) — la fatigue accumulée depuis peut se faire sentir."` — pas de banque de variantes ici (contrairement au reste des mécanismes de contenu de ce document), le message est généré dynamiquement avec le numéro de semaine et l'écart réels, donc intrinsèquement variable d'une occurrence à l'autre sans besoin de plusieurs formulations pré-écrites.
+`"Volume similaire à S{numéro} (il y a {N} semaines) — la fatigue accumulée depuis peut se faire sentir."` — pas de banque de variantes ici (contrairement au reste des mécanismes de contenu), le message est généré dynamiquement avec le numéro de semaine et l'écart réels, donc intrinsèquement variable d'une occurrence à l'autre sans besoin de plusieurs formulations pré-écrites.
 
 ## 4. Deux bugs réels trouvés en implémentant ce mécanisme
 
@@ -64,7 +64,7 @@ Ce bug précis est reproduit explicitement dans `test-reperes-qualitatifs.mjs` (
 
 ## 5. Hypothèses non tranchées
 
-- **Valeur définitive du seuil de similarité (10%)** : choisie empiriquement, pas dérivée d'un principe méthodologique documenté. Pourrait mériter un ajustement une fois observée sur plusieurs plans réels de profils différents (pas seulement celui de Laurent utilisé pour les tests).
+- **Valeur définitive du seuil de similarité (10%)** : choisie empiriquement, pas dérivée d'un principe méthodologique documenté. Pourrait mériter un ajustement une fois observée sur plusieurs plans réels de profils différents.
 - **Pas de repère de progression pour `allure-course`** : `injecterRepereRessenti()` filtre par `seance.type === 'qualite'` puis vérifie l'existence d'une banque pour la famille (`NOTES_RESSENTI[famille]`) — `allure-course` passe le premier filtre mais est naturellement exclue faute de banque dédiée. `injecterProgressionRelative()`, elle, n'a pas cette deuxième vérification : elle s'applique à **toute** séance qualité, y compris `allure-course`. Cette différence entre les deux fonctions n'a jamais été explicitement discutée — possiblement un oubli, possiblement un choix implicite non documenté au moment de l'écriture.
 
 ## 6. Fichiers concernés
@@ -74,4 +74,4 @@ Ce bug précis est reproduit explicitement dans `test-reperes-qualitatifs.mjs` (
 
 ## 7. Statut
 
-**Implémenté et testé** (commit `bcc013e`, tôt dans la session du 6 juillet 2026). Fait partie des 6 chantiers de contenu du document de convergence, tous complétés le même jour.
+Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `jalons-narratifs.md`, `notes-pratiques.md`, `coherence-semaine-test.md`, `notes-meteo.md`).
