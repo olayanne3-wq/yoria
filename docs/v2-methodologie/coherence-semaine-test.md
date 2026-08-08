@@ -1,6 +1,6 @@
-# Cohérence narrative de la semaine test — Run by Léa v2.0
+# Cohérence narrative de la semaine test — Yoria v2.0
 
-Document de référence méthodologique pour le mécanisme de cohérence narrative autour de la séance test, implémenté dans `public/v2/engine/plan-generator.js`. Tranché et implémenté le 6 juillet 2026 — section 2.6 du document [`convergence-v1-v2.md`](./convergence-v1-v2.md).
+Document de référence méthodologique pour le mécanisme de cohérence narrative autour de la séance test, implémenté dans `public/v2/engine/plan-generator.js`.
 
 ---
 
@@ -12,11 +12,11 @@ La séance test (confirmation/recalibrage de l'allure objectif, placée vers la 
 2. **Veille** — encourage à rester facile, garder de l'énergie
 3. **Lendemain** — cadre la récupération après l'effort
 
-**Origine** : v1 avait ce type de cohérence narrative codée en dur autour de sa séance test spécifique. Le moteur v2 plaçait bien une séance test (mécanisme distinct, `placerSeanceTest()`), mais sans aucun habillage narratif de la semaine qui l'entoure avant l'implémentation de ce mécanisme.
+**Origine** : la v1 avait ce type de cohérence narrative codée en dur autour de sa séance test spécifique. Le moteur v2 plaçait bien une séance test (mécanisme distinct, `placerSeanceTest()`), mais sans aucun habillage narratif de la semaine qui l'entoure avant l'implémentation de ce mécanisme.
 
 ## 2. Contrainte d'ordonnancement — pourquoi ce mécanisme est séparé des jalons de transition
 
-Point technique important, déjà noté dans le code et dans le document `jalons-narratifs.md` : ce mécanisme doit s'exécuter **après** `placerSeanceTest()`, qui elle-même est appelée en toute fin de `generatePlan()`, une fois l'objet `plan` complet construit — alors que `injecterJalonsTransition()`/`injecterNotesPratiques()`/etc. (sections 2.3 et 2.5) s'exécutent bien plus tôt dans la fonction, avant même que la séance test n'existe.
+Point technique important, déjà noté dans le code et dans le document `jalons-narratifs.md` : ce mécanisme doit s'exécuter **après** `placerSeanceTest()`, qui elle-même est appelée en toute fin de `generatePlan()`, une fois l'objet `plan` complet construit — alors que `injecterJalonsTransition()`/`injecterNotesPratiques()`/etc. s'exécutent bien plus tôt dans la fonction, avant même que la séance test n'existe.
 
 Techniquement, il aurait été possible de retarder tout l'appel de `injecterJalonsTransition()` pour qu'il se produise après `placerSeanceTest()`, et d'y intégrer la note d'annonce de la semaine test comme un jalon supplémentaire (c'est d'ailleurs ce que prévoyait l'intention initiale, cf. `jalons-narratifs.md` section 5). Le choix retenu a été de créer un mécanisme séparé plutôt que de restructurer l'ordre d'exécution des autres injections — plus simple sur le moment, au prix d'une banque de variantes dupliquée (cf. section 5 ci-dessous).
 
@@ -48,7 +48,7 @@ Trois catégories, deux variantes chacune.
 
 ## 6. Hypothèses non tranchées
 
-- **Banque dupliquée avec les jalons de transition** (cf. section 2) : la note d'annonce de ce mécanisme et les jalons de transition (section 2.5) sont conceptuellement de même nature (signaler un moment clé du plan), mais vivent dans deux banques séparées (`NOTES_SEMAINE_TEST` vs `JALONS_TRANSITION`). Une vraie fusion architecturale (retarder l'appel de `injecterJalonsTransition()` pour qu'il tourne après `placerSeanceTest()`, et y intégrer ce cas) n'a jamais été tentée après l'implémentation initiale — resterait à faire si on veut vraiment unifier les deux mécanismes.
+- **Banque dupliquée avec les jalons de transition** (cf. section 2) : la note d'annonce de ce mécanisme et les jalons de transition sont conceptuellement de même nature (signaler un moment clé du plan), mais vivent dans deux banques séparées (`NOTES_SEMAINE_TEST` vs `JALONS_TRANSITION`). Une vraie fusion architecturale (retarder l'appel de `injecterJalonsTransition()` pour qu'il tourne après `placerSeanceTest()`, et y intégrer ce cas) n'a jamais été tentée après l'implémentation initiale — resterait à faire si on veut vraiment unifier les deux mécanismes.
 - **Un seul plan de course couvert** : le mécanisme suppose une seule séance test par plan (`estTest: true` sur une unique séance). Rien dans le code n'empêcherait plusieurs séances test si `placerSeanceTest()` évoluait pour en placer plusieurs (par exemple sur un plan très long) — le mécanisme actuel de cohérence narrative ne traiterait alors que la première trouvée par semaine, pas testé pour ce cas puisqu'il n'existe pas encore.
 
 ## 7. Fichiers concernés
@@ -58,4 +58,4 @@ Trois catégories, deux variantes chacune.
 
 ## 8. Statut
 
-**Implémenté et testé** (commit `d098f1a`, tôt dans la session du 6 juillet 2026). Fait partie des 6 chantiers de contenu du document de convergence, tous complétés le même jour.
+Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `jalons-narratifs.md`, `notes-meteo.md`).
