@@ -1,9 +1,9 @@
-# Fiche store Play Store — Run by Léa
+# Fiche store Play Store — Yoria
 
 ## Titre (30 caractères max)
-Run by Léa – Plan running
+Yoria – Coach running
 
-(29 caractères)
+(22 caractères)
 
 ## Description courte (80 caractères max)
 Plan d'entraînement running personnalisé, adapté automatiquement chaque semaine.
@@ -12,7 +12,7 @@ Plan d'entraînement running personnalisé, adapté automatiquement chaque semai
 
 ## Description longue (4000 caractères max)
 
-Run by Léa génère un plan d'entraînement running complet et personnalisé, du 5K au marathon, puis l'adapte automatiquement semaine après semaine en fonction des séances réalisées.
+Yoria génère un plan d'entraînement running complet et personnalisé, du 5K au marathon, puis l'adapte automatiquement semaine après semaine en fonction des séances réalisées.
 
 **Un plan adapté à chaque coureur**
 Après quelques questions sur le niveau, la disponibilité et l'objectif de course, l'application génère un plan structuré en phases (base, construction, affûtage) avec des séances variées — endurance, seuil, fractionné, sorties longues, allure de course — calibrées selon le niveau du coureur : débutant, intermédiaire ou confirmé. Chaque type de séance est décliné en plusieurs variantes pour garder l'entraînement varié et progressif tout au long de la préparation.
@@ -41,7 +41,7 @@ Le compte utilisateur se synchronise automatiquement entre tous les appareils gr
 **Export PDF**
 Le plan complet peut être exporté en PDF, consultable hors ligne à tout moment.
 
-Que l'objectif soit un premier 5K ou un nouveau record sur marathon, Run by Léa accompagne chaque coureur à chaque étape de sa préparation, avec un plan qui évolue au même rythme que sa progression.
+Que l'objectif soit un premier 5K ou un nouveau record sur marathon, Yoria accompagne chaque coureur à chaque étape de sa préparation, avec un plan qui évolue au même rythme que sa progression.
 
 ## Catégorie suggérée
 Santé et fitness
