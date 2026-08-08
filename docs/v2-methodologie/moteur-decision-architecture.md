@@ -1,8 +1,6 @@
-# Architecture — Moteur de décision Yoria (V1)
+# Architecture — Moteur de décision Yoria
 
-**Statut** : Document de conception — module indépendant, non branché au front
-**Version** : 1.5 — formalisation de la méthode de calcul de charge/fatigue (TRIMP/sRPE, §5.1)
-**Dernière mise à jour** : 2026-07-16
+**Statut** : Document de conception, référence des principes, contrats de données et fondements scientifiques du moteur de décision. Pour l'état de code réellement livré, voir l'inventaire de l'application (§8).
 
 ---
 
@@ -162,8 +160,7 @@ interface SeanceRealisee {
 }
 
 // --- Échantillon d'activité, quelle que soit la source ---
-// NB : ce type remplace l'ancien "StravaSample" — le moteur ne doit jamais
-// coder en dur une dépendance à Strava (cf. §4, principe d'indépendance aux sources).
+// Le moteur ne doit jamais coder en dur une dépendance à Strava (cf. §4, principe d'indépendance aux sources).
 interface ActivitySample {
   activityId: string;
   date: string;
@@ -229,7 +226,7 @@ Le `profilIndicatif` reste utile pour :
 // --- Module 1 : État du coureur ---
 interface RunnerState {
   fatigue: ScoreNormalise;        // 0-100, 100 = très fatigué
-  fraicheur: ScoreNormalise;      // 0-100, 100 = très frais (peut être 100-fatigue selon modèle)
+  fraicheur: ScoreNormalise;      // 0-100, très frais (peut être 100-fatigue selon modèle)
   charge: {
     aigue: number;                // charge 7 derniers jours
     chronique: number;            // charge moyenne 28 derniers jours
@@ -266,24 +263,21 @@ interface EngagementSignal {
 }
 
 // --- Module 2 : Analyse de séance ---
-// RÉVISÉ le 17/07/2026 suite à l'implémentation réelle (decision-engine-
-// session-analysis.classic.js) — cf. état d'implémentation détaillé en tête
-// du §6 Module 2 ci-dessous. Le champ `volume` du contrat d'origine a été
-// remplacé par `repetitions` : une comparaison de distance totale ne
-// détecte pas un abandon en cours de séance (la montre continue
-// d'enregistrer les créneaux prévus même en cas de répétition ratée/marchée
-// — la distance totale peut rester proche de la cible malgré une vraie
-// répétition ratée au milieu). Le signal réellement fiable est le taux de
+// Le champ `repetitions` remplace un champ "volume" de conception initiale : une
+// comparaison de distance totale ne détecte pas un abandon en cours de séance (la
+// montre continue d'enregistrer les créneaux prévus même en cas de répétition
+// ratée/marchée — la distance totale peut rester proche de la cible malgré une
+// vraie répétition ratée au milieu). Le signal réellement fiable est le taux de
 // répétitions dans la zone d'allure cible, pas le volume brut.
 interface SessionAnalysis {
   seanceId: string;
   reussite: boolean;
-  scoreReussite: ScoreNormalise;     // 0-100, pondère plusieurs critères (implémenté : allure 0.4, FC 0.25, répétitions 0.35)
+  scoreReussite: ScoreNormalise;     // 0-100, pondère plusieurs critères (allure 0.4, FC 0.25, répétitions 0.35)
   difficulteRessentie: 'facile' | 'normale' | 'difficile' | 'tres_difficile' | 'inconnue';
   derive: {
     allure: EcartAnalyse;
     frequenceCardiaque: EcartAnalyse;
-    repetitions: EcartAnalyse;       // ex-"volume" — cf. note ci-dessus. nbDansLaZone/nbTotal/tauxReussite en plus des champs EcartAnalyse standards
+    repetitions: EcartAnalyse;       // nbDansLaZone/nbTotal/tauxReussite en plus des champs EcartAnalyse standards
   };
   alertes: AlerteSeance[];
 }
@@ -295,7 +289,7 @@ interface EcartAnalyse {
 }
 
 interface AlerteSeance {
-  code: string;              // ex: "FC_TROP_HAUTE", "ALLURE_HORS_ZONE" (implémenté : plus de ALLURE_TROP_RAPIDE distinct, cf. note allure symétrique ci-dessous)
+  code: string;              // ex: "FC_TROP_HAUTE", "ALLURE_HORS_ZONE"
   gravite: 'info' | 'attention' | 'alerte';
 }
 
@@ -441,7 +435,7 @@ Tous les coureurs n'ont pas les mêmes données disponibles :
 
 ### 4.2 Principe directeur : dégradation différenciée par catégorie de règle
 
-Comme énoncé en introduction, le mode de réaction à une donnée manquante **dépend de la criticité de la règle**, pas d'un choix binaire unique pour tout le moteur :
+Le mode de réaction à une donnée manquante **dépend de la criticité de la règle**, pas d'un choix binaire unique pour tout le moteur :
 
 | Catégorie de règle | Comportement par défaut si donnée requise manque | Justification |
 |---|---|---|
@@ -451,8 +445,6 @@ Comme énoncé en introduction, le mode de réaction à une donnée manquante **
 | **Maintien** | `bloquer` (mais c'est déjà la règle par défaut, donc sans impact) | N/A |
 
 ### 4.3 Exemples de proxys de dégradation
-
-Ce sont des exemples concrets à affiner avec un regard coach, mais ils illustrent le principe :
 
 ```typescript
 const R024_FatigueElevee: DecisionRule = {
@@ -508,7 +500,7 @@ const R010_ProgressionValidee: DecisionRule = {
 
 ### 4.4 Impact sur le calcul de confiance globale (Module 1)
 
-`calculerConfiance` (§5, Module 1) doit intégrer le `DataProfile` et `champsDisponibles` comme entrées de base, pas seulement le volume d'historique :
+`calculerConfiance` (§6, Module 1) intègre le `DataProfile` et `champsDisponibles` comme entrées de base, pas seulement le volume d'historique :
 
 ```typescript
 function calculerConfiance(
@@ -534,7 +526,7 @@ function calculerConfiance(
 
 Le `plafondParProfil` n'est **pas** une pénalité arbitraire envers les utilisateurs sans matériel connecté — c'est une honnêteté du système : une décision basée sur des données déclaratives reste structurellement moins fiable qu'une décision basée sur des mesures capteur, et le moteur doit le refléter dans sa confiance affichée, jamais le cacher.
 
-### 4.5 Conséquence sur l'UI (hors périmètre de ce moteur, mais à anticiper)
+### 4.5 Conséquence sur l'UI
 
 Le fait que `EngineDecision.confiance` puisse être structurellement plafonné pour un utilisateur en saisie manuelle est une information utile à remonter côté produit : c'est un levier naturel et honnête pour inciter à connecter Strava/une montre, sans avoir à le formuler comme du marketing — le moteur donne juste une meilleure décision avec plus de données, ce qui est vrai.
 
@@ -542,31 +534,31 @@ Le fait que `EngineDecision.confiance` puisse être structurellement plafonné p
 
 ## 5. Fondements scientifiques
 
-Cette section rassemble ce que dit la littérature scientifique sur les signaux que le moteur manipule. Elle sert de référence indépendante du catalogue de règles (§7) : elle est écrite *avant* de valider ou ajuster les règles existantes, précisément pour éviter le biais qui consisterait à chercher une étude qui confirme une règle déjà écrite plutôt que d'ajuster la règle à ce que montre la recherche.
+Cette section rassemble ce que dit la littérature scientifique sur les signaux que le moteur manipule. Elle sert de référence indépendante du catalogue de règles (§7) : elle est écrite pour éviter le biais qui consisterait à chercher une étude qui confirme une règle déjà écrite plutôt que d'ajuster la règle à ce que montre la recherche.
 
 **Principe de lecture** : la science du sport sur le running récréatif est plus jeune et plus fragmentée qu'on ne le pense généralement — beaucoup de règles "de bon sens" largement diffusées (comme la règle des 10%) n'ont en réalité jamais été validées, voire ont été explicitement infirmées par des études récentes de grande ampleur. Le moteur doit refléter cette incertitude dans ses scores de confiance plutôt que de l'ignorer.
 
 ### 5.1 Méthode de calcul de la charge d'entraînement (fondation du reste du §5)
 
-Cette sous-section précède volontairement l'ACWR (§5.2) : l'ACWR n'est qu'un *ratio* entre deux charges — sans une méthode fiable pour calculer la charge elle-même, tout ce qui en dépend (ACWR, fatigue, `RunnerState.charge`) hérite de son imprécision. C'est la formule concrète derrière les sous-calculs `calculerCharge` et `calculerFatigue` esquissés au §6, Module 1.
+Cette sous-section précède volontairement l'ACWR (§5.2) : l'ACWR n'est qu'un *ratio* entre deux charges — sans une méthode fiable pour calculer la charge elle-même, tout ce qui en dépend (ACWR, fatigue, `RunnerState.charge`) hérite de son imprécision.
 
 **Ce que dit la littérature — deux méthodes complémentaires, pas concurrentes** :
 
 - **TRIMP (Training Impulse) de Banister**, la méthode de référence quand la fréquence cardiaque est disponible : `TRIMP = durée (min) × %FCR × facteur de pondération exponentiel`, où `%FCR` (fréquence cardiaque de réserve) = `(FC moyenne séance − FC repos) / (FC max − FC repos)`, et le facteur de pondération est `0.64 × e^(1.92 × %FCR)` pour les hommes ou `0.86 × e^(1.67 × %FCR)` pour les femmes — des constantes dérivées empiriquement de la relation entre fréquence cardiaque et taux de lactate sanguin observée lors de tests incrémentaux. La pondération exponentielle est volontaire : elle traduit le fait que le coût physiologique d'un effort augmente de façon disproportionnée avec l'intensité, pas de façon linéaire.
 - **sRPE (session-RPE) de Foster**, la méthode de référence en l'absence de FC (cf. §5.2 sur la validité du RPE) : `sRPE = durée (min) × RPE (échelle CR-10)`. Une étude comparant sRPE à plusieurs variantes de TRIMP basées sur la FC trouve des corrélations fortes entre les deux approches (r = 0.79 pour le TRIMP de Banister, jusqu'à r = 0.91 pour certaines variantes), ce qui **valide scientifiquement le principe de dégradation déjà posé au §4.3** : passer de la FC au RPE en cas de donnée manquante n'est pas un pis-aller arbitraire, c'est une substitution dont l'équivalence est documentée.
 
-**Limites connues à ne pas ignorer** : le TRIMP classique utilise une FC moyenne de séance, ce qui ne distingue pas les phases d'effort et de récupération au sein d'une même séance — un fractionné et un footing continu à FC moyenne identique produiront le même score, alors que leur coût physiologique réel diffère. Des variantes plus fines existent (TRIMP par sommation d'impulsions partielles) mais demandent un traitement des données seconde par seconde, hors de portée d'une V1. Par ailleurs, les constantes de pondération (0.64/1.92 et 0.86/1.67) reposent sur un échantillon historique restreint et une distinction binaire homme/femme qui ne capture pas toute la variabilité physiologique individuelle — à traiter comme une approximation raisonnable, pas une vérité individualisée.
+**Limites connues à ne pas ignorer** : le TRIMP classique utilise une FC moyenne de séance, ce qui ne distingue pas les phases d'effort et de récupération au sein d'une même séance — un fractionné et un footing continu à FC moyenne identique produiront le même score, alors que leur coût physiologique réel diffère. Des variantes plus fines existent (TRIMP par sommation d'impulsions partielles) mais demandent un traitement des données seconde par seconde. Par ailleurs, les constantes de pondération (0.64/1.92 et 0.86/1.67) reposent sur un échantillon historique restreint et une distinction binaire homme/femme qui ne capture pas toute la variabilité physiologique individuelle — à traiter comme une approximation raisonnable, pas une vérité individualisée.
 
 **Implication pour le moteur** :
-- `calculerCharge` (§6, Module 1) implémente le TRIMP de Banister quand `frequenceCardiaque` est disponible dans `DataAvailability`, et bascule sur le sRPE de Foster sinon — exactement la logique de dégradation déjà écrite en §4.3, désormais adossée à une formule précise plutôt qu'à un principe général.
+- `calculerCharge` (§6, Module 1) implémente le TRIMP de Banister quand `frequenceCardiaque` est disponible dans `DataAvailability`, et bascule sur le sRPE de Foster sinon.
 - Les deux méthodes produisent des échelles de valeurs différentes (TRIMP en dizaines/centaines, sRPE en centaines selon la durée) : le moteur doit les normaliser sur une échelle commune avant tout calcul d'ACWR ou de charge chronique, pour ne jamais comparer un TRIMP et un sRPE comme s'ils étaient la même unité.
-- Puisque le sexe entre dans la formule TRIMP, `RunnerProfile.sexe` (déjà présent en §3.1, avec l'option `'autre'`) doit avoir une valeur par défaut documentée pour ce calcul quand `'autre'` est déclaré — proposition : utiliser la moyenne des deux jeux de constantes plutôt que d'en choisir un arbitrairement, en le signalant explicitement dans la confiance du calcul.
+- Puisque le sexe entre dans la formule TRIMP, `RunnerProfile.sexe` doit avoir une valeur par défaut documentée pour ce calcul quand `'autre'` est déclaré : utiliser la moyenne des deux jeux de constantes plutôt que d'en choisir un arbitrairement, en le signalant explicitement dans la confiance du calcul.
 
 ### 5.2 Charge aiguë/chronique (ACWR)
 
 **Ce qu'on pensait savoir** : le ratio charge aiguë (7 derniers jours) / charge chronique (moyenne sur 3-6 semaines) prédirait le risque de blessure, avec une zone "sûre" entre 0.8 et 1.3.
 
-**Ce que dit la littérature récente** : une revue systématique sur l'ACWR et le risque de blessure conclut que la relation reste peu claire, avec une grande variabilité entre les points de référence, plages d'ACWR et variables testées selon les études, même si une tendance vers un risque de blessure plus faible dans la zone 0.8-1.3 ressort de plusieurs travaux. Une méta-analyse plus récente (2025, 22 études de cohorte) confirme l'intérêt de la métrique tout en soulignant l'hétérogénéité méthodologique du champ. À l'inverse, une revue systématique dédiée au football professionnel juge la relation entre ACWR et risque de blessure non concluante, avec des seuils précis difficiles à établir en l'état de la recherche.
+**Ce que dit la littérature récente** : une revue systématique sur l'ACWR et le risque de blessure conclut que la relation reste peu claire, avec une grande variabilité entre les points de référence, plages d'ACWR et variables testées selon les études, même si une tendance vers un risque de blessure plus faible dans la zone 0.8-1.3 ressort de plusieurs travaux. Une méta-analyse plus récente (22 études de cohorte) confirme l'intérêt de la métrique tout en soulignant l'hétérogénéité méthodologique du champ. À l'inverse, une revue systématique dédiée au football professionnel juge la relation entre ACWR et risque de blessure non concluante, avec des seuils précis difficiles à établir en l'état de la recherche.
 
 **Implication pour le moteur** :
 - L'ACWR reste un signal légitime à calculer et à utiliser (c'est un indicateur simple, continu, largement étudié), mais **le moteur ne doit jamais le traiter comme un prédicteur fiable isolé**. Il doit toujours être combiné à d'autres signaux (RPE, fréquence des séances manquées, tendance) avant de déclencher une décision de sécurité.
@@ -577,29 +569,18 @@ Cette sous-section précède volontairement l'ACWR (§5.2) : l'ACWR n'est qu'un 
 **Ce que dit la littérature** : l'échelle de Borg (CR-10 ou 6-20) est validée et largement utilisée comme méthode fiable et peu coûteuse de suivi de charge d'entraînement. Sa validité et sa fiabilité sont meilleures chez les sportifs entraînés que chez les débutants — une étude sur des échelles RPE faciales trouve une validité et fiabilité faibles chez les sujets non entraînés, contre une validité bonne (ICC ≥ 0.80) chez les sujets entraînés. La sRPE (session-RPE, = RPE × durée de la séance) est une méthode largement acceptée pour quantifier la charge interne d'entraînement.
 
 **Implication pour le moteur** :
-- Le RPE déclaré est une donnée de bonne qualité **si le coureur est suffisamment expérimenté et rigoureux dans sa saisie** — ce qui justifie de ne pas plafonner sa confiance aussi bas qu'on pourrait le penser pour une donnée "purement déclarative" (cf. §4.4), mais de la pondérer par le niveau d'expérience du profil coureur.
-- La sRPE (`ressentiRPE × dureeMin`) est une bonne candidate de proxy de charge quand la FC est indisponible (cf. règle `R-024` en §4.3) — c'est un calcul déjà standard dans la littérature, pas une improvisation.
+- Le RPE déclaré est une donnée de bonne qualité **si le coureur est suffisamment expérimenté et rigoureux dans sa saisie**.
+- La sRPE (`ressentiRPE × dureeMin`) est une bonne candidate de proxy de charge quand la FC est indisponible — c'est un calcul déjà standard dans la littérature, pas une improvisation.
 
-**Implémenté le 17/07/2026** (session ultérieure, cf. inventaire §33) :
-plutôt que de pondérer la confiance par le niveau d'expérience du coureur
-(non fait), la difficulté de fiabilité chez un coureur non entraîné a été
-traitée en amont, côté UI — l'échelle CR-10 (1-10) n'est jamais montrée
-directement au coureur, qui choisit parmi 5 niveaux visuels simples (🙂
-Facile → 🥵 Maximal), mappés vers CR-10 (2/4/6/8/10) uniquement pour le
-calcul interne. Compromis pragmatique entre le 1-3 initialement en place
-(trop grossier) et le 1-10 théorique (peu fiable sans ancrages verbaux
-précis pour un public non expert). Quand une FC est disponible, le RPE
-n'est pas utilisé en remplacement (le TRIMP reste la mesure principale)
-mais en ajustement : RPE ≥ 8 amplifie légèrement la charge calculée (+12%),
-jamais ne l'abaisse.
+**Application dans Yoria** : la difficulté de fiabilité chez un coureur non entraîné est traitée en amont, côté UI — l'échelle CR-10 (1-10) n'est jamais montrée directement au coureur, qui choisit parmi 5 niveaux visuels simples (🙂 Facile → 🥵 Maximal), mappés vers CR-10 (2/4/6/8/10) uniquement pour le calcul interne. Quand une FC est disponible, le RPE n'est pas utilisé en remplacement (le TRIMP reste la mesure principale) mais en ajustement : RPE ≥ 8 amplifie légèrement la charge calculée (+12%), jamais ne l'abaisse.
 
 ### 5.4 Surentraînement (Overtraining Syndrome) et marqueurs de détection précoce
 
 **Ce que dit la littérature** : le consensus conjoint ECSS/ACSM (Meeusen et al., 2013) reste la référence sur le sujet. Il distingue le surmenage fonctionnel (Functional Overreaching, FOR — bénéfique, suivi d'une amélioration après récupération), le surmenage non fonctionnel (Non-Functional Overreaching, NFOR) et le syndrome de surentraînement (Overtraining Syndrome, OTS) proprement dit, la distinction entre ces états étant en pratique difficile et reposant surtout sur l'évolution clinique. Un marqueur précoce identifié comme relativement fiable est une fréquence cardiaque de repos élevée de 10 à 30 battements par minute au-dessus de la valeur normale du sportif. Plus largement, aucun marqueur biochimique ou fonctionnel isolé n'est identifié comme fiable à lui seul pour détecter précocement l'OTS ; le suivi du ressenti subjectif de bien-être reste, historiquement, l'un des outils les plus efficaces (une étude ancienne mais toujours citée montre que des indices de bien-être auto-déclarés expliquent jusqu'à 76-85% de la variance des scores de "staleness").
 
 **Implication pour le moteur** :
-- Aucune règle de détection de surentraînement ne devrait reposer sur un seul signal. La combinaison FC de repos + ressenti subjectif + tendance de performance est la approche la mieux soutenue par la littérature, pas un score composite opaque.
-- Le champ `RunnerProfile.fcReposReference` (cf. §3.1, ajouté pour les besoins du calcul TRIMP en §5.1) sert doublement : c'est aussi l'un des rares marqueurs simples et actionnables de surentraînement identifiés par le consensus ECSS/ACSM (une FC de repos *quotidienne*, via un futur `DailyCheckIn`, permettrait de détecter l'élévation de 10-30 bpm mentionnée plus haut — la valeur de référence seule ne suffit pas pour ce signal précis, seulement pour le calcul de charge).
+- Aucune règle de détection de surentraînement ne devrait reposer sur un seul signal. La combinaison FC de repos + ressenti subjectif + tendance de performance est l'approche la mieux soutenue par la littérature, pas un score composite opaque.
+- Le champ `RunnerProfile.fcReposReference` sert doublement : c'est aussi l'un des rares marqueurs simples et actionnables de surentraînement identifiés par le consensus ECSS/ACSM (une FC de repos *quotidienne*, via un futur `DailyCheckIn`, permettrait de détecter l'élévation de 10-30 bpm mentionnée plus haut — la valeur de référence seule ne suffit pas pour ce signal précis, seulement pour le calcul de charge).
 - Le moteur doit rester prudent dans son vocabulaire : ne jamais afficher un diagnostic de type "syndrome de surentraînement" à l'utilisateur (ce n'est pas un outil clinique), seulement des alertes de type "signaux de fatigue accumulée" avec recommandation de consulter si les signes persistent.
 
 ### 5.5 Progression du volume d'entraînement (remplace la "règle des 10%")
@@ -608,60 +589,60 @@ jamais ne l'abaisse.
 
 Plus intéressant : une étude de cohorte de grande ampleur (Garmin-RUNSAFE Running Health Study, plus de 5 200 coureurs suivis 18 mois) publiée dans le British Journal of Sports Medicine trouve que **ce n'est pas la progression du volume hebdomadaire qui prédit le mieux le risque de blessure, mais le pic ponctuel d'une séance unique** : dépasser 110% de la plus longue sortie des 30 jours précédents est associé à un risque de blessure de surcharge accru de plus de 64%. Dans cette même étude, les métriques classiques (ACWR, variation hebdomadaire de volume) montraient peu ou pas de valeur prédictive.
 
-**Implication pour le moteur — changement de conception recommandé** :
-- Retirer toute règle qui plafonnerait mécaniquement la progression hebdomadaire à +10% comme s'il s'agissait d'un seuil scientifiquement validé (c'était implicitement le cas dans certaines formulations du §7 initial — à corriger).
-- Ajouter un signal de suivi beaucoup mieux soutenu : **le ratio entre la séance la plus longue prévue/réalisée et la plus longue séance des 30 derniers jours**. Une règle de sécurité dédiée à ce ratio (seuil indicatif à 110%) a plus de valeur prédictive démontrée qu'une règle sur le volume hebdomadaire global.
-- Ceci ne signifie pas que la progression du volume hebdomadaire est sans intérêt — elle reste pertinente pour la planification et la programmation progressive — mais elle ne doit plus être présentée comme un garde-fou de sécurité anti-blessure dans le moteur : ce rôle revient au signal de pic de séance unique.
+**Implication pour le moteur — changement de conception** :
+- Aucune règle ne doit plafonner mécaniquement la progression hebdomadaire à +10% comme s'il s'agissait d'un seuil scientifiquement validé.
+- Signal de suivi privilégié : **le ratio entre la séance la plus longue prévue/réalisée et la plus longue séance des 30 derniers jours**. Une règle de sécurité dédiée à ce ratio (seuil indicatif à 110%) a plus de valeur prédictive démontrée qu'une règle sur le volume hebdomadaire global.
+- Ceci ne signifie pas que la progression du volume hebdomadaire est sans intérêt — elle reste pertinente pour la planification et la programmation progressive — mais elle ne doit pas être présentée comme un garde-fou de sécurité anti-blessure dans le moteur : ce rôle revient au signal de pic de séance unique.
 
 ### 5.6 Sommeil
 
 **Ce que dit la littérature** : le sommeil est un facteur de risque de blessure musculo-squelettique indépendant, bien documenté. Dormir 7 heures ou moins de façon soutenue sur au moins 14 jours est associé à un risque de blessure musculo-squelettique 1.7 fois plus élevé. Une étude sur des coureurs récréatifs (n=339, suivi 6 mois) trouve qu'une moins bonne qualité de sommeil déclarée est associée à un risque de blessure liée à la course 36% plus élevé. Le manque de sommeil est également associé à une performance d'endurance réduite, un effet dont l'ampleur dépend de la durée de l'exercice.
 
 **Implication pour le moteur** :
-- Le sommeil n'apparaît dans aucune des sources de données listées au §2 du prompt initial (Profil, Plan, Historique, Strava) — c'est un **angle mort du catalogue actuel**, alors que c'est l'un des facteurs de risque de blessure les mieux soutenus par la littérature parmi tous ceux examinés dans cette section.
-- Recommandation forte : prévoir un champ de saisie simple (durée de sommeil déclarée, ou qualité perçue sur une échelle courte) dans un futur `DailyCheckIn`, même optionnel/déclaratif — le gain de signal potentiel est élevé par rapport au coût de saisie pour l'utilisateur.
-- En l'absence de cette donnée (cas très probable en V1), le moteur doit s'abstenir de toute règle basée sur le sommeil plutôt que de l'ignorer silencieusement dans sa documentation — la limite doit être visible et tracée comme un manque, pas comme un non-sujet.
+- Le sommeil est un **angle mort du catalogue actuel** — c'est l'un des facteurs de risque de blessure les mieux soutenus par la littérature parmi tous ceux examinés dans cette section, mais aucune source de données du moteur ne le capte à ce jour.
+- Recommandation : prévoir un champ de saisie simple (durée de sommeil déclarée, ou qualité perçue sur une échelle courte) dans un futur `DailyCheckIn`, même optionnel/déclaratif.
+- En l'absence de cette donnée, le moteur doit s'abstenir de toute règle basée sur le sommeil plutôt que de l'ignorer silencieusement dans sa documentation.
 
 ### 5.7 Plaisir et motivation — un déterminant de l'adhérence aussi important que la physiologie
 
 **Ce que dit la littérature** : le cadre théorique dominant est la **théorie de l'autodétermination** (Self-Determination Theory, Ryan & Deci), qui identifie trois besoins psychologiques de base — compétence, autonomie, relation sociale (*competence, autonomy, relatedness*) — dont la satisfaction prédit la motivation intrinsèque. Les formes autonomes de motivation sont associées à un plus grand plaisir et à des intentions d'abandon réduites, tandis que la motivation extrinsèque et l'amotivation sont corrélées à une faible adhérence à l'activité physique. Une étude longitudinale souligne même que l'augmentation de la motivation intrinsèque était le meilleur prédicteur du changement de poids à long terme, davantage que la perte de poids initiale — signe que le plaisir n'est pas un supplément agréable mais un moteur causal de la persévérance.
 
-Côté outils de mesure : la **PACES-S** (Physical Activity Enjoyment Scale, version courte) est une échelle validée à seulement 4 items ("j'aime ça", "je trouve ça agréable", "c'est très plaisant", "je me sens bien"), notée sur une échelle de Likert à 5 points, avec de bonnes propriétés psychométriques chez l'adulte — un format compatible avec une saisie rapide en app, contrairement à la version longue à 18 items conçue pour la recherche.
+Côté outils de mesure : la **PACES-S** (Physical Activity Enjoyment Scale, version courte) est une échelle validée à seulement 4 items ("j'aime ça", "je trouve ça agréable", "c'est très plaisant", "je me sens bien"), notée sur une échelle de Likert à 5 points, avec de bonnes propriétés psychométriques chez l'adulte.
 
 Côté signal comportemental (sans dépendre de la saisie déclarative) : dans les applications de fitness, le pattern d'usage des deux premières semaines est le prédicteur le plus fort de désengagement — les utilisateurs qui complètent moins de 3 séances sur leurs 14 premiers jours décrochent à un taux 3 à 4 fois supérieur à ceux qui installent une routine hebdomadaire régulière. Ce signal est purement comportemental, déjà disponible dans `RunnerHistory`, et ne nécessite aucune saisie supplémentaire de l'utilisateur.
 
 **Implication pour le moteur** :
-- Deux sources de signal complémentaires, à ne pas confondre : un **signal déclaratif léger** (mini-PACES-S, 1 à 4 questions, ponctuel) pour capter le plaisir ressenti, et un **signal comportemental silencieux** (régularité des 14 derniers jours vs habitude établie) toujours disponible, même sans aucune saisie volontaire du coureur.
-- Contrairement aux signaux physiologiques du reste du §5, le signal comportemental d'engagement est disponible pour 100% des coureurs quel que soit leur `DataProfile` (cf. §4) — c'est le seul axe du moteur qui ne dépend d'aucun capteur.
-- Le cadre SDT suggère aussi une piste concrète pour la nature des décisions à produire : une intervention pertinente sur le plan motivationnel n'est pas forcément "réduire la charge" mais peut être "varier la nature des séances" (répond au besoin de compétence/nouveauté) ou "proposer un objectif social/collectif" (répond au besoin de *relatedness*) — d'où les nouveaux types de décision `varier_le_plan` et `proposer_objectif_social` en §3.4, distincts des décisions de charge pure.
+- Deux sources de signal complémentaires : un **signal déclaratif léger** (mini-PACES-S, 1 à 4 questions, ponctuel) pour capter le plaisir ressenti, et un **signal comportemental silencieux** (régularité des 14 derniers jours vs habitude établie) toujours disponible, même sans aucune saisie volontaire du coureur.
+- Contrairement aux signaux physiologiques du reste du §5, le signal comportemental d'engagement est disponible pour 100% des coureurs quel que soit leur `DataProfile` — c'est le seul axe du moteur qui ne dépend d'aucun capteur.
+- Le cadre SDT suggère aussi une piste concrète pour la nature des décisions à produire : une intervention pertinente sur le plan motivationnel n'est pas forcément "réduire la charge" mais peut être "varier la nature des séances" (répond au besoin de compétence/nouveauté) ou "proposer un objectif social/collectif" (répond au besoin de *relatedness*) — d'où les types de décision `varier_le_plan` et `proposer_objectif_social` en §3.4, distincts des décisions de charge pure.
 - Le désengagement est un phénomène qui se construit dans la durée (le §5.7 ne repose que sur des tendances, jamais un instantané) — c'est pourquoi `EngagementState.tendanceEngagement` distingue explicitement `signal_faible` de `stable`, pour ne jamais interpréter un manque de données comme un signal positif.
 
 ### 5.8 Objectifs et délai jusqu'à l'événement
 
-**Ce que dit la littérature — périodisation et taper** : la structuration d'un plan en phases (base, développement spécifique, affûtage/taper) avant un objectif de course est une pratique largement documentée, mais **sans consensus scientifique sur l'approche "supérieure"** — les divergences dépendent fortement de l'expérience et de l'historique de l'athlète, ce qui rejoint l'esprit du §5.2 sur l'ACWR : le cadre général est solide, les seuils précis le sont moins. Sur le taper spécifiquement, une étude portant sur plus de 158 000 marathoniens récréatifs (données Strava) montre qu'un **taper plus long et plus discipliné** (réduction progressive et régulière du volume dans les semaines précédant la course) est associé à une meilleure performance le jour J que les tapers irréguliers — or environ deux tiers des coureurs récréatifs interrompent leur réduction de charge par une semaine de volume en hausse, ce qui dégrade la performance de course. C'est un signal directement actionnable : le moteur peut détecter ce pattern irrégulier et le signaler.
+**Ce que dit la littérature — périodisation et taper** : la structuration d'un plan en phases (base, développement spécifique, affûtage/taper) avant un objectif de course est une pratique largement documentée, mais **sans consensus scientifique sur l'approche "supérieure"** — les divergences dépendent fortement de l'expérience et de l'historique de l'athlète. Sur le taper spécifiquement, une étude portant sur plus de 158 000 marathoniens récréatifs (données Strava) montre qu'un **taper plus long et plus discipliné** (réduction progressive et régulière du volume dans les semaines précédant la course) est associé à une meilleure performance le jour J que les tapers irréguliers — or environ deux tiers des coureurs récréatifs interrompent leur réduction de charge par une semaine de volume en hausse, ce qui dégrade la performance de course. C'est un signal directement actionnable.
 
-**Ce que dit la pratique du coaching sur la faisabilité d'objectif** : plusieurs sources de coaching convergent sur deux principes, indépendamment de leur niveau de preuve scientifique formel (il s'agit ici de pratique professionnelle documentée plutôt que d'essais contrôlés, à la différence des sections précédentes) :
-- **Objectifs à paliers (A/B/C)** : fixer un objectif ambitieux ("A goal"), un objectif réaliste ("B goal", le plus souvent la cible déclarée par le coureur), et un objectif quasi garanti ("C goal") est une pratique répandue pour éviter le sentiment d'échec total d'un objectif binaire — ce qui rejoint directement le §5.7 sur la préservation de la motivation intrinsèque : un objectif manqué en tout ou rien nuit à l'adhérence à long terme.
-- **La consistance des séances-clés prédit mieux la faisabilité que le simple calcul du temps restant.** Plusieurs coachs cités s'appuient explicitement sur les allures réellement tenues en séance qualité (fractionné, tempo) et la régularité des sorties longues plutôt que sur une projection mathématique brute — c'est un signal déjà présent dans l'architecture existante (`SessionAnalysis`, `WeekAnalysis`) et ne nécessite donc aucune nouvelle collecte de données.
+**Ce que dit la pratique du coaching sur la faisabilité d'objectif** : deux principes convergent, indépendamment de leur niveau de preuve scientifique formel (pratique professionnelle documentée plutôt que d'essais contrôlés) :
+- **Objectifs à paliers (A/B/C)** : fixer un objectif ambitieux ("A goal"), un objectif réaliste ("B goal", le plus souvent la cible déclarée par le coureur), et un objectif quasi garanti ("C goal") est une pratique répandue pour éviter le sentiment d'échec total d'un objectif binaire — ce qui rejoint directement le §5.7 sur la préservation de la motivation intrinsèque.
+- **La consistance des séances-clés prédit mieux la faisabilité que le simple calcul du temps restant.** Les allures réellement tenues en séance qualité (fractionné, tempo) et la régularité des sorties longues sont plus informatives qu'une projection mathématique brute — un signal déjà présent dans l'architecture (`SessionAnalysis`, `WeekAnalysis`).
 
 **Implication pour le moteur** :
-- Le moteur **évalue** la faisabilité de l'objectif (calcul factuel, basé sur la consistance des séances-clés plutôt que sur une simple règle de trois avec le temps restant), mais ne **décide jamais seul** de modifier l'objectif du coureur — ce principe est cohérent avec l'esprit du §1 ("le moteur ne remplace jamais le choix de la personne") : `GoalFeasibility` produit un statut informatif, et les décisions qui en découlent (`alerter_objectif_a_risque`, `suggerer_objectif_alternatif`) restent des suggestions adressées au coureur, jamais des modifications automatiques et silencieuses de `ObjectifCourant`.
-- `DelaiObjectif.fenetreCritique` (les 2-4 dernières semaines avant l'événement) doit pouvoir **inverser localement** certaines priorités habituelles : une règle de sécurité qui réduirait fortement la charge en temps normal doit, en fenêtre critique, privilégier une réduction plus fine respectant le pattern de taper documenté (§5.8) plutôt qu'une coupure brutale qui gâcherait la préparation — c'est la traduction concrète de la question initiale "le délai contraint les décisions de sécurité/progression".
-- Le pattern de taper irrégulier (rebond de volume en pleine phase de réduction) devient une nouvelle règle de sécurité/adaptation à part entière (cf. §7), car c'est un signal comportemental directement mesurable et bien soutenu par la littérature.
+- Le moteur **évalue** la faisabilité de l'objectif (calcul factuel, basé sur la consistance des séances-clés plutôt que sur une simple règle de trois avec le temps restant), mais ne **décide jamais seul** de modifier l'objectif du coureur — cohérent avec le principe du §1 ("le moteur ne remplace jamais le choix de la personne") : `GoalFeasibility` produit un statut informatif, et les décisions qui en découlent (`alerter_objectif_a_risque`, `suggerer_objectif_alternatif`) restent des suggestions adressées au coureur, jamais des modifications automatiques et silencieuses de `ObjectifCourant`.
+- `DelaiObjectif.fenetreCritique` (les 2-4 dernières semaines avant l'événement) doit pouvoir **inverser localement** certaines priorités habituelles : une règle de sécurité qui réduirait fortement la charge en temps normal doit, en fenêtre critique, privilégier une réduction plus fine respectant le pattern de taper documenté plutôt qu'une coupure brutale qui gâcherait la préparation.
+- Le pattern de taper irrégulier (rebond de volume en pleine phase de réduction) est une règle de sécurité/adaptation à part entière (cf. §7), car c'est un signal comportemental directement mesurable et bien soutenu par la littérature.
 - La confiance de `GoalFeasibility` doit rester délibérément basse tant que peu de séances-clés ont été réalisées — un objectif ne peut pas être jugé "compromis" ou "en bonne voie" sur la base d'une seule séance de fractionné.
 
-### 5.9 Synthèse — ajustements à reporter sur le catalogue de règles (§7)
+### 5.9 Synthèse — principes retenus pour le catalogue de règles (§7)
 
-| Sujet | Statut dans le catalogue initial (§7) | Ajustement recommandé |
-|---|---|---|
-| Méthode de calcul de charge | Non spécifiée (`calculerCharge` restait une boîte noire) | **Formaliser** : TRIMP de Banister quand la FC est disponible, sRPE de Foster sinon — les deux corrélées (r=0.79-0.91), validant le principe de dégradation du §4.3 |
-| ACWR | Utilisé comme condition de plusieurs règles de sécurité | Conserver, mais plafonner la confiance quand c'est le seul signal disponible ; toujours combiner à un second signal |
-| RPE | Présent comme donnée optionnelle | Pondérer sa fiabilité par le niveau d'expérience du coureur (`profile.niveau`) |
-| Surentraînement | Pas de règle dédiée explicite | Ajouter une règle combinant FC de repos (si disponible) + ressenti + tendance de performance, jamais un seul signal isolé |
-| Règle des "10% hebdomadaire" | Implicite dans la logique de progression de charge | **Remplacer** par un signal de pic de séance unique (>110% de la plus longue séance des 30 derniers jours) comme garde-fou de sécurité principal |
-| Sommeil | Absent | Angle mort documenté ; à prévoir en V2 via `DailyCheckIn`, aucune règle tant que la donnée n'existe pas |
-| Plaisir / motivation | Absent | Nouvelle catégorie de règles à part entière (`engagement`), disponible dès la V1 via le signal comportemental de régularité, enrichissable par une mini-échelle PACES-S facultative |
-| Objectif / délai | Présent implicitement (`ObjectifCourant.dateEvenement`), jamais exploité pour moduler les décisions | Nouveau sous-module `GoalFeasibility` (§6) : objectifs à paliers A/B/C, détection du taper irrégulier, priorités localement inversées en fenêtre critique (2-4 dernières semaines) |
+| Sujet | Principe retenu |
+|---|---|
+| Méthode de calcul de charge | TRIMP de Banister quand la FC est disponible, sRPE de Foster sinon — les deux corrélées (r=0.79-0.91), validant le principe de dégradation du §4.3 |
+| ACWR | Signal légitime, mais jamais un prédicteur fiable isolé ; confiance plafonnée quand c'est le seul signal disponible |
+| RPE | Fiabilité pondérée par le niveau d'expérience du coureur (`profile.niveau`) |
+| Surentraînement | Règle combinant FC de repos (si disponible) + ressenti + tendance de performance, jamais un seul signal isolé |
+| Règle des "10% hebdomadaire" | Remplacée par un signal de pic de séance unique (>110% de la plus longue séance des 30 derniers jours) comme garde-fou de sécurité principal |
+| Sommeil | Angle mort documenté ; aucune règle tant que la donnée n'existe pas |
+| Plaisir / motivation | Catégorie de règles à part entière (`engagement`), disponible via le signal comportemental de régularité, enrichissable par une mini-échelle PACES-S facultative |
+| Objectif / délai | Sous-module `GoalFeasibility` (§6) : objectifs à paliers A/B/C, détection du taper irrégulier, priorités localement inversées en fenêtre critique (2-4 dernières semaines) |
 
 ---
 
@@ -684,8 +665,8 @@ interface RunnerStateCalculator {
 
 **Sous-calculs internes** (fonctions pures, testables isolément) :
 
-- `calculerDataAvailability(activityData, history)` → **premier calcul exécuté, avant tous les autres** (cf. §4). Produit l'objet `DataAvailability` en inspectant réellement les champs présents sur les derniers échantillons, sans jamais présumer d'une source. Tous les sous-calculs suivants reçoivent ce résultat et l'utilisent pour choisir leur stratégie (nominale ou proxy dégradé).
-- `calculerChargeSeance(sample, profile, dataAvailability)` → calcule la charge d'**une** séance individuelle, brique de base de tout le reste. Implémente le TRIMP de Banister si `frequenceCardiaque` est disponible, le sRPE de Foster sinon (cf. §5.1 pour les formules et leur justification scientifique) :
+- `calculerDataAvailability(activityData, history)` → **premier calcul exécuté, avant tous les autres**. Produit l'objet `DataAvailability` en inspectant réellement les champs présents sur les derniers échantillons, sans jamais présumer d'une source. Tous les sous-calculs suivants reçoivent ce résultat et l'utilisent pour choisir leur stratégie (nominale ou proxy dégradé).
+- `calculerChargeSeance(sample, profile, dataAvailability)` → calcule la charge d'**une** séance individuelle, brique de base de tout le reste. Implémente le TRIMP de Banister si `frequenceCardiaque` est disponible, le sRPE de Foster sinon (cf. §5.1 pour les formules) :
 
 ```typescript
 function calculerChargeSeance(
@@ -712,7 +693,7 @@ function calculerChargeSeance(
 }
 ```
 
-- `calculerCharge(activityData, fenetreJours, dataAvailability, profile)` → agrège `calculerChargeSeance` sur les séances de la fenêtre (7j pour la charge aiguë, 28j pour la chronique), en **normalisant TRIMP et sRPE sur une échelle commune** avant sommation (cf. §5.1 — ne jamais additionner des valeurs TRIMP et sRPE brutes comme si elles étaient dans la même unité) puis calcule le ratio ACWR = charge aiguë / charge chronique. Zone "sûre" généralement admise autour de 0.8–1.3 (cf. §5.2 pour les limites de ce seuil).
+- `calculerCharge(activityData, fenetreJours, dataAvailability, profile)` → agrège `calculerChargeSeance` sur les séances de la fenêtre (7j pour la charge aiguë, 28j pour la chronique), en **normalisant TRIMP et sRPE sur une échelle commune** avant sommation (cf. §5.1) puis calcule le ratio ACWR = charge aiguë / charge chronique. Zone "sûre" généralement admise autour de 0.8–1.3 (cf. §5.2 pour les limites de ce seuil).
 - `calculerFatigue(charge, recuperation, rpeRecent, dataAvailability)` → score composite, dont les poids relatifs des composantes s'ajustent selon ce qui est réellement disponible (cf. §4.3, `R-024`).
 - `calculerFraicheur(fatigue, joursDepuisDerniereSeanceIntense)`.
 - `calculerConfiance(dataAvailability, profondeurHistoriqueSemaines)` → voir formule détaillée en §4.4. Intègre à la fois le profil de complétude des données et la profondeur d'historique.
@@ -740,9 +721,7 @@ interface EngagementCalculator {
 - `calculerTendanceEngagement(regulariteRecente, plaisirDeclareRecent)` → `'en_baisse'` seulement si le signal est confirmé sur au moins deux points de mesure consécutifs (jamais sur un seul point, pour éviter de réagir à du bruit normal — une semaine chargée au travail n'est pas un décrochage). `'signal_faible'` si l'historique est trop court pour trancher, distinct de `'stable'`.
 - `calculerConfianceEngagement(profondeurHistorique, presenceDePlaisirDeclare)` → suit la même philosophie que `calculerConfiance` du `RunnerState` (§4.4) : la confiance ne doit jamais dépasser ce que les données permettent réellement d'affirmer.
 
-**Point de vigilance** : contrairement aux autres sous-calculs du Module 1, celui-ci ne dépend d'aucune donnée liée à une source connectée (Strava, montre) — c'est le seul signal du moteur disponible à confiance comparable pour tous les profils de `DataAvailability` (cf. §4), puisqu'il repose sur des données d'usage de l'app elle-même, pas sur des capteurs.
-
----
+**Point de vigilance** : contrairement aux autres sous-calculs du Module 1, celui-ci ne dépend d'aucune donnée liée à une source connectée (Strava, montre) — c'est le seul signal du moteur disponible à confiance comparable pour tous les profils de `DataAvailability`, puisqu'il repose sur des données d'usage de l'app elle-même, pas sur des capteurs.
 
 #### Sous-module — Calcul de la faisabilité de l'objectif (`GoalFeasibilityCalculator`)
 
@@ -760,57 +739,16 @@ interface GoalFeasibilityCalculator {
 ```
 
 **Sous-calculs internes** :
-- `calculerDelaiObjectif(objectif.dateEvenement, dateDuJour, planContext)` → produit `DelaiObjectif`, y compris `fenetreCritique` (2-4 dernières semaines) et `phaseAttendueSelonDelai` déduite d'une périodisation standard (§5.8) — sert de référence, pas de contrainte rigide, car il n'existe pas de consensus sur une périodisation unique (§5.8).
-- `calculerConsistanceSeancesClefs(sessionAnalysisHistorique)` → isole spécifiquement les séances de type `fractionne`, `tempo`, `longue` (cf. `SeancePrevue.type`, §3.1) et calcule leur taux de réussite et le respect des allures cibles — signal privilégié par rapport à une simple extrapolation du temps restant (§5.8).
+- `calculerDelaiObjectif(objectif.dateEvenement, dateDuJour, planContext)` → produit `DelaiObjectif`, y compris `fenetreCritique` (2-4 dernières semaines) et `phaseAttendueSelonDelai` déduite d'une périodisation standard (§5.8) — sert de référence, pas de contrainte rigide, car il n'existe pas de consensus sur une périodisation unique.
+- `calculerConsistanceSeancesClefs(sessionAnalysisHistorique)` → isole spécifiquement les séances de type `fractionne`, `tempo`, `longue` (cf. `SeancePrevue.type`, §3.1) et calcule leur taux de réussite et le respect des allures cibles.
 - `calculerStatutFaisabilite(consistanceSeancesClefs, delai, confiance)` → détermine `'en_bonne_voie' | 'incertain' | 'compromis' | 'donnees_insuffisantes'`. Retourne systématiquement `'donnees_insuffisantes'` tant que moins de 3 séances-clés n'ont été analysées, quelle que soit la tentation d'extrapoler plus tôt.
-- `detecterTaperIrregulier(activityData, delai)` → signal dédié (cf. §5.8, étude sur 158 000 marathoniens) : détecte un rebond de volume pendant la fenêtre critique, alimente une règle de sécurité/adaptation dédiée en §7.
+- `detecterTaperIrregulier(activityData, delai)` → détecte un rebond de volume pendant la fenêtre critique, alimente une règle de sécurité/adaptation dédiée en §7.
 
-**Point de vigilance** : ce sous-module ne doit jamais transformer son évaluation en modification automatique de `ObjectifCourant`. Le principe énoncé en §5.8 est structurel, pas seulement documentaire : `GoalFeasibilityCalculator` est en lecture seule sur l'objectif, jamais en écriture. Toute proposition de palier alternatif (`suggerer_objectif_alternatif`) reste une décision du module 5 adressée au coureur, jamais une action du module 1 sur les données du profil.
+**Point de vigilance** : ce sous-module ne doit jamais transformer son évaluation en modification automatique de `ObjectifCourant`. `GoalFeasibilityCalculator` est en lecture seule sur l'objectif, jamais en écriture. Toute proposition de palier alternatif (`suggerer_objectif_alternatif`) reste une décision du module 5 adressée au coureur, jamais une action du module 1 sur les données du profil.
 
 ---
 
 ### Module 2 — Analyse de séance (`SessionAnalyzer`)
-
-> **État d'implémentation réel (livré le 17/07/2026)** —
-> `decision-engine-session-analysis.classic.js`
-> (`DecisionEngineSessionAnalysis.analyser()`), branché côté `index.html` via
-> `analyserSeanceQualite(seance)`. **Périmètre restreint aux séances de
-> qualité** (VMA/SPEC/SEUIL/TEST) — décision explicite : EF/LONGUE/RECUP
-> n'ont pas de cible d'allure resserrée dans Yoria, l'écart n'y a pas le même
-> sens. Utilise `getLapsAffichage()` (déjà existant côté index.html) pour
-> isoler les vrais laps d'effort, jamais l'échauffement/récup/retour au
-> calme. Testable via un bloc dédié dans Stats ("🧪 Test Module 2").
->
-> Écarts par rapport à la logique décrite ci-dessous, décidés après
-> discussion avec Laurent le 17/07/2026 :
-> - **FC** : une FC trop **basse** ne pénalise plus (`dansLaZone` vrai dès
->   que `fc <= zoneFC.max`) — seule une FC trop haute reste un signal
->   négatif. Une FC basse accompagne souvent une allure plus rapide tenue
->   avec moins d'effort cardiaque que prévu (économie de course), pas un
->   raté.
-> - **Allure** : reste **symétrique** (trop rapide et trop lent pénalisent à
->   la même hauteur). Une asymétrie a été discutée et jugée sportivement
->   justifiée (respect du protocole, risque de dérive sur les répétitions
->   suivantes) mais **reportée faute de données réelles pour la calibrer**.
-> - **Volume → Répétitions** : le champ `volume` (comparaison de distance
->   totale) a été remplacé par `repetitions`, qui compte le taux de
->   répétitions individuelles dans la zone `okPace` avec un ratio de
->   complétion (`repOk`/`repWarn`) — réutilise exactement la même logique
->   que `autoValidate()`/`validateReason()`, déjà existants côté index.html,
->   pour qu'il n'existe qu'une seule définition de "séance de qualité
->   réussie" dans toute l'app. Raison du changement : la montre continue
->   d'enregistrer les créneaux prévus même en cas d'abandon partiel (une
->   répétition "marchée" reste un lap distinct), donc la distance totale
->   peut rester proche de la cible malgré une vraie répétition ratée au
->   milieu de la séance — signal peu fiable pour ce cas.
->
-> Modules 3 (WeekAnalyzer) et 4 (TrendAnalyzer) implémentés le 17/07/2026
-> (cf. inventaire §30/§31) — mais indépendamment de ce module (Module 2),
-> pas en tant que consommateurs de ses sorties : décision actée lors de leur
-> codage, le Module 2 ne couvre que les séances de qualité, un
-> WeekAnalyzer qui en dépendrait perdrait la vue sur EF/LONGUE/repos. Cette
-> anticipation ("qui consommeraient normalement les sorties de ce module")
-> ne s'est donc pas vérifiée.
 
 **Responsabilité** : comparer une séance prévue à sa réalisation.
 
@@ -820,13 +758,19 @@ interface SessionAnalyzer {
 }
 ```
 
-**Logique** (version théorique du contrat — cf. écarts réels ci-dessus) :
-1. Calcul des écarts (`EcartAnalyse`) pour allure, FC, volume — chacun avec une zone de tolérance paramétrable (ex : ±5% sur le volume = "dans la zone").
-2. `scoreReussite` = moyenne pondérée des `dansLaZone` (le volume compte souvent plus que l'allure exacte selon le type de séance : sur une sortie longue, respecter la FC prime sur l'allure).
+**Logique** :
+1. Calcul des écarts (`EcartAnalyse`) pour allure, FC, répétitions — chacun avec une zone de tolérance paramétrable.
+2. `scoreReussite` = moyenne pondérée des `dansLaZone` (allure 0.4, FC 0.25, répétitions 0.35).
 3. `difficulteRessentie` déduit du RPE si présent, sinon estimé depuis l'écart FC/allure (proxy imparfait, `'inconnue'` si aucune donnée fiable).
 4. `alertes` déclenchées par seuils simples (ex : FC moyenne > FC max cible + 10% → `"FC_TROP_HAUTE"` gravité `attention`).
 
+**Note sur la FC** : une FC trop **basse** ne pénalise pas le score (`dansLaZone` vrai dès que `fc <= zoneFC.max`) — seule une FC trop haute reste un signal négatif. Une FC basse accompagne souvent une allure plus rapide tenue avec moins d'effort cardiaque que prévu (économie de course), pas un raté.
+
+**Note sur l'allure** : reste symétrique (trop rapide et trop lent pénalisent à la même hauteur), faute de données réelles suffisantes pour calibrer une éventuelle asymétrie.
+
 **Point de vigilance** : ce module ne décide de rien. Il constate. La décision d'agir sur une FC trop haute appartient au moteur de règles (module 5), qui peut la croiser avec la tendance générale avant de réagir.
+
+**Périmètre** : restreint aux séances de qualité (VMA/SPEC/SEUIL/TEST) — EF/LONGUE/RECUP n'ont pas de cible d'allure resserrée dans Yoria, l'écart n'y a pas le même sens. Les modules 3 (WeekAnalyzer) et 4 (TrendAnalyzer) sont indépendants de ce module — un WeekAnalyzer qui en dépendrait perdrait la vue sur EF/LONGUE/repos.
 
 ---
 
@@ -884,11 +828,11 @@ interface RuleEngine {
 ```
 
 **Algorithme d'évaluation** :
-1. **Filtrage par disponibilité des données** (nouvelle étape, cf. §4) : pour chaque règle du `registre`, vérifier que ses `donneesRequises` sont présentes dans `input.runnerState.dataAvailability.champsDisponibles`.
+1. **Filtrage par disponibilité des données** : pour chaque règle du `registre`, vérifier que ses `donneesRequises` sont présentes dans `input.runnerState.dataAvailability.champsDisponibles`.
    - Si une donnée requise manque et `modeDegradation === 'bloquer'` → règle écartée, raison `"donnees_requises_manquantes"`.
    - Si une donnée requise manque et `modeDegradation === 'degrader_avec_proxy'` → règle reste éligible, mais sera exécutée en mode dégradé (voir étape 4).
 2. Sur les règles restantes, filtrer sur celles dont `conditions(input)` retourne `true`.
-3. Trier les règles retenues par `priorite` décroissante, puis par `categorie` à priorité égale, selon l'ordre fixe `securite` > `engagement` > `adaptation` > `progression` > `maintien` — c'est la traduction concrète des principes "sécurité avant performance" et "engagement pris au sérieux" du §1 (cf. note de priorité en §7).
+3. Trier les règles retenues par `priorite` décroissante, puis par `categorie` à priorité égale, selon l'ordre fixe `securite` > `engagement` > `adaptation` > `progression` > `maintien` — traduction concrète des principes "sécurité avant performance" et "engagement pris au sérieux" du §1 (cf. note de priorité en §7).
 4. La première règle de la liste triée est la règle gagnante. Si elle tourne en mode dégradé (données optionnelles manquantes ou proxy activé), sa confiance est plafonnée par `confianceMax`. Les autres règles retenues (mais non gagnantes) sont tracées dans `reglesEcartees` avec leur raison (`"priorite_inferieure"`, `"categorie_non_prioritaire"`, ou `"donnees_requises_manquantes"`).
 5. Si aucune règle ne matche (toutes écartées par données manquantes ou conditions non remplies) → règle par défaut `R-000` (`maintenir`, confiance basse, justification `"Aucun signal significatif détecté"` ou `"Données insuffisantes pour évaluer la situation"` selon le cas).
 
@@ -947,7 +891,7 @@ const R031_SeancesManqueesRepetees: DecisionRule = {
 };
 ```
 
-**Point de vigilance — gestion des conflits** : si `R-024` (sécurité, priorité 90) et `R-010` (progression, priorité 50) matchent toutes les deux sur le même input, `R-024` gagne automatiquement par tri de priorité. Ce comportement doit être couvert par un test dédié (voir §6).
+**Point de vigilance — gestion des conflits** : si `R-024` (sécurité, priorité 90) et `R-010` (progression, priorité 50) matchent toutes les deux sur le même input, `R-024` gagne automatiquement par tri de priorité. Ce comportement doit être couvert par un test dédié (voir §8).
 
 ---
 
@@ -972,63 +916,18 @@ interface DecisionFormatter {
 
 ---
 
-## 7. Catalogue de règles — structure de départ
-
-> **État d'implémentation réel (17/07/2026)** — le catalogue ci-dessous est la
-> feuille de route cible, volontairement large. Ce qui est réellement codé à
-> ce jour dans `decision-engine-rules.classic.js` (catalogue simplifié, cf.
-> en-tête du fichier) :
-> - **R-006** Pic de séance unique (sécurité, priorité 100) — correspond à la
->   règle 🔬 décrite ci-dessous
-> - **R-024s** Fatigue élevée basique (sécurité, priorité 90) — version
->   simplifiée de "Fatigue élevée + charge en hausse rapide"
-> - **R-050** ACWR élevé (sécurité, priorité 85, ajoutée 17/07/2026) — lit
->   directement `runnerState.charge.ratio`, seuils 1.3/1.5 conformes à §5.2 ;
->   recoupe partiellement "Risque critique (ACWR > 1.5) → repos complet"
->   ci-dessous mais reste une réduction de charge, pas un repos complet
-> - **R-060** Tendance fatigue en hausse (sécurité, priorité 80, ajoutée
->   17/07/2026) — compare 3 points de fatigue (J, J-4, J-7) recalculés via
->   `calculerRunnerState()`, se déclenche uniquement si aucun point n'a
->   franchi le seuil dur de R-024s ; approche différente de la donnée requise
->   `EngineInput` du contrat théorique — reste ainsi même après le codage du
->   Module 4 (17/07/2026, cf. inventaire §31) : R-060 n'a pas été réécrite
->   pour consommer `trendAnalysis`, les deux mécanismes coexistent
->   (§13.4 doc intégration)
-> - **R-070** Séances planifiées ratées consécutives (engagement, priorité
->   55 à l'origine, ajoutée 17/07/2026) — 2 séances *prévues au plan* marquées ❌
->   d'affilée (lit `ALL_SESSIONS`/`statuses` côté index.html, transmis en
->   input) ; signal plus direct que R-040, pas dans le catalogue théorique
->   d'origine. **Transformée en `reduire_charge` le 23/07/2026** (priorité
->   relevée à 70) : ampleur fixe -15%, cible directement la prochaine séance
->   qualité (pas EF/LONGUE en priorité comme R-024s/R-050) — comble le
->   manque identifié où aucune règle n'ajustait le plan face à un
->   comportement réel, seules les données physiologiques le faisaient.
->   Détail complet en inventaire §8.
-> - **R-040** Désengagement précoce (engagement, priorité 50) — correspond à
->   la règle documentée plus bas dans cette section
->
-> **Non codées à ce jour** : Signaux combinés de surentraînement, Taper
-> irrégulier détecté (R-051 ci-dessous), Objectif compromis (les deux
-> variantes), Progression bloquée si engagement en baisse, Progression
-> suspendue en fenêtre critique, Plaisir déclaré en baisse, Routine mais
-> isolement. Modules 2/3/4 (SessionAnalysis/WeekAnalysis/TrendAnalysis)
-> tous codés depuis le 17/07/2026 (cf. inventaire §27/§30/§31) et
-> `weekAnalysis`/`trendAnalysis` branchés dans l'input du RuleEngine (cf.
-> inventaire §32) — mais aucune règle ci-dessus ne les consomme encore ;
-> concevoir/coder ces règles reste donc nécessaire pour la plupart des
-> signaux listés ici. GoalFeasibility reste non codé
-> — cf. état d'implémentation en tête de §6 Module 2 ci-dessous.
+## 7. Catalogue de règles — structure de référence
 
 Les règles ne sont pas codées en dur dans le moteur : elles vivent dans un registre chargé au démarrage (fichier(s) séparé(s), ex. `rules/securite.rules.ts`, `rules/progression.rules.ts`, etc.). Cela permet d'ajouter/retirer une règle sans toucher à `RuleEngine`.
 
-**Proposition de découpage initial par catégorie** (liste de départ, non exhaustive, à enrichir avec un coach). Les règles marquées 🔬 sont directement ajustées à la lumière du §5 — voir la justification associée à chacune.
+**Découpage par catégorie** (liste de référence, non exhaustive, à enrichir avec un regard coach). Les règles marquées 🔬 sont directement ajustées à la lumière du §5 — voir la justification associée à chacune. Pour le catalogue effectivement codé à date, voir l'inventaire de l'application §8.
 
 **Sécurité** (priorité 80-100)
-- 🔬 **Pic de séance unique** (nouvelle règle, remplace l'ancien réflexe "+10% hebdo") — si une séance prévue ou réalisée dépasse 110% de la plus longue séance des 30 derniers jours → réduire la séance ou alerter avant qu'elle n'ait lieu. C'est le signal le mieux soutenu par la littérature récente pour le risque de blessure de surcharge (§5.5), à privilégier sur toute logique de plafonnement du volume hebdomadaire global.
+- 🔬 **Pic de séance unique** — si une séance prévue ou réalisée dépasse 110% de la plus longue séance des 30 derniers jours → réduire la séance ou alerter avant qu'elle n'ait lieu. C'est le signal le mieux soutenu par la littérature récente pour le risque de blessure de surcharge (§5.5), à privilégier sur toute logique de plafonnement du volume hebdomadaire global.
 - Fatigue élevée + charge en hausse rapide → réduire (🔬 confiance plafonnée si l'ACWR est le seul signal disponible, cf. §5.2 — toujours croiser avec RPE ou assiduité)
 - Risque critique (ACWR > 1.5) → repos complet (🔬 seuil à traiter comme indicatif, pas absolu — cf. §5.2 sur l'hétérogénéité des seuils dans la littérature)
-- 🔬 **Signaux combinés de surentraînement** (nouvelle règle, cf. §5.4) — FC de repos élevée de 10-30 bpm au-dessus de la valeur habituelle du coureur **et** ressenti subjectif dégradé sur plusieurs jours **et** tendance de performance en baisse → alerter fatigue accumulée. Volontairement conçue pour ne jamais se déclencher sur un seul de ces trois signaux (aucun marqueur isolé n'est fiable, cf. §5.4).
-- 🔬 **Taper irrégulier détecté** (nouvelle règle, cf. §5.8) — en `DelaiObjectif.fenetreCritique`, si un rebond de volume est détecté après une phase de réduction amorcée → `demarrer_taper` (ou le confirmer) avec justification explicite, plutôt que de laisser le rebond se reproduire. S'appuie sur le pattern observé chez ~2/3 des coureurs récréatifs (§5.8), associé à une performance de course dégradée.
+- 🔬 **Signaux combinés de surentraînement** (cf. §5.4) — FC de repos élevée de 10-30 bpm au-dessus de la valeur habituelle du coureur **et** ressenti subjectif dégradé sur plusieurs jours **et** tendance de performance en baisse → alerter fatigue accumulée. Volontairement conçue pour ne jamais se déclencher sur un seul de ces trois signaux (aucun marqueur isolé n'est fiable, cf. §5.4).
+- 🔬 **Taper irrégulier détecté** (cf. §5.8) — en `DelaiObjectif.fenetreCritique`, si un rebond de volume est détecté après une phase de réduction amorcée → `demarrer_taper` (ou le confirmer) avec justification explicite. S'appuie sur le pattern observé chez ~2/3 des coureurs récréatifs (§5.8), associé à une performance de course dégradée.
 - FC anormalement élevée sur plusieurs séances consécutives → alerter blessure potentielle
 - Douleur/blessure déclarée → indisponibilité, plan suspendu
 
@@ -1036,19 +935,19 @@ Les règles ne sont pas codées en dur dans le moteur : elles vivent dans un reg
 - Séances manquées répétées → adapter le plan (replanification, pas juste réduction)
 - Séance systématiquement trop facile/trop dure vs RPE → recalibrer les allures cibles (🔬 pondérer la confiance de cette règle par le niveau d'expérience du coureur, cf. §5.3 — le RPE est moins fiable chez les débutants)
 - Conditions externes défavorables (canicule) → adapter charge du jour
-- 🔬 **Objectif principal compromis, hors fenêtre critique** (nouvelle règle, cf. §5.8) — si `goalFeasibility.statut === 'compromis'` et `delai.fenetreCritique === false` (donc encore du temps pour agir) → `alerter_objectif_a_risque`, en pointant les séances-clés concernées. Reste purement informatif : ne modifie jamais `ObjectifCourant`.
-- 🔬 **Objectif principal compromis, en fenêtre critique** — même condition mais `fenetreCritique === true` → `suggerer_objectif_alternatif` (proposer explicitement le palier "C goal" si défini), car il est trop tard pour changer la trajectoire d'entraînement mais pas trop tard pour ajuster l'attente le jour de la course. Distinction directement issue de la pratique des objectifs à paliers documentée en §5.8.
+- 🔬 **Objectif principal compromis, hors fenêtre critique** (cf. §5.8) — si `goalFeasibility.statut === 'compromis'` et `delai.fenetreCritique === false` (donc encore du temps pour agir) → `alerter_objectif_a_risque`, en pointant les séances-clés concernées. Reste purement informatif : ne modifie jamais `ObjectifCourant`.
+- 🔬 **Objectif principal compromis, en fenêtre critique** — même condition mais `fenetreCritique === true` → `suggerer_objectif_alternatif` (proposer explicitement le palier "C goal" si défini), car il est trop tard pour changer la trajectoire d'entraînement mais pas trop tard pour ajuster l'attente le jour de la course.
 
 **Progression** (priorité 40-59)
-- Plusieurs semaines réussies + risque faible → augmenter progressivement (🔬 ne plus plafonner mécaniquement à +10% : ce seuil n'est pas validé, cf. §5.5 — la contrainte de sécurité pertinente est désormais la règle de pic de séance unique ci-dessus, pas un pourcentage hebdomadaire)
+- Plusieurs semaines réussies + risque faible → augmenter progressivement (🔬 ne pas plafonner mécaniquement à +10% : ce seuil n'est pas validé, cf. §5.5 — la contrainte de sécurité pertinente est la règle de pic de séance unique ci-dessus, pas un pourcentage hebdomadaire)
 - Phase du plan (`specifique`, `affutage`) → ajuste les seuils de déclenchement d'autres règles
-- 🔬 **Progression bloquée si engagement en baisse** (nouvelle règle, cf. §5.7) — même si toutes les conditions physiologiques de progression sont réunies, ne pas augmenter la charge si `engagementState.tendanceEngagement === 'en_baisse'`. Traduction directe du principe "engagement pris au sérieux" du §1 : la meilleure décision physiologique n'est pas la meilleure décision produit si le coureur est en train de décrocher.
+- 🔬 **Progression bloquée si engagement en baisse** (cf. §5.7) — même si toutes les conditions physiologiques de progression sont réunies, ne pas augmenter la charge si `engagementState.tendanceEngagement === 'en_baisse'`. Traduction directe du principe "engagement pris au sérieux" du §1 : la meilleure décision physiologique n'est pas la meilleure décision produit si le coureur est en train de décrocher.
 - 🔬 **Progression suspendue en fenêtre critique** — `delai.fenetreCritique === true` bloque systématiquement toute règle de type `augmenter_charge`, quelle que soit la physiologie : ce n'est plus le moment de progresser, c'est le moment de consolider (cf. §5.8 sur le taper).
 
 **Engagement** (priorité 55-70 — délibérément intercalée entre sécurité et progression, jamais après ; cf. note ci-dessous)
-- 🔬 **Désengagement précoce détecté** (nouvelle règle, cf. §5.7) — moins de 3 séances complétées sur les 14 premiers jours d'un nouveau plan → `alerter_risque_decrochage`. C'est le signal comportemental le mieux soutenu par la littérature produit sur ce sujet, disponible dès la V1 sans aucune saisie déclarative.
+- 🔬 **Désengagement précoce détecté** (cf. §5.7) — moins de 3 séances complétées sur les 14 premiers jours d'un nouveau plan → `alerter_risque_decrochage`. Signal comportemental disponible dès la V1 sans aucune saisie déclarative.
 - 🔬 **Plaisir déclaré en baisse** — si `engagementState.plaisirDeclare` est disponible et en baisse sur 2 relevés consécutifs → `varier_le_plan` (proposer un type de séance différent, un parcours différent, ou un objectif de courte durée plutôt qu'un ajustement de charge).
-- 🔬 **Routine mais isolement** — assiduité élevée et stable, mais aucun signal social/collectif enregistré sur plusieurs semaines → `proposer_objectif_social`, en réponse directe au besoin de *relatedness* identifié par la théorie de l'autodétermination (§5.7). Cette règle nécessite qu'un mécanisme social existe déjà côté produit (défi collectif, partage, etc.) — sinon elle reste techniquement définie mais non activable, ce qui est acceptable (elle attend juste sa fonctionnalité front).
+- 🔬 **Routine mais isolement** — assiduité élevée et stable, mais aucun signal social/collectif enregistré sur plusieurs semaines → `proposer_objectif_social`, en réponse directe au besoin de *relatedness* identifié par la théorie de l'autodétermination (§5.7). Cette règle nécessite qu'un mécanisme social existe déjà côté produit (défi collectif, partage, etc.) — sinon elle reste techniquement définie mais non activable.
 
 ```typescript
 const R040_DesengagementPrecoce: DecisionRule = {
@@ -1089,11 +988,11 @@ const R051_TaperIrregulier: DecisionRule = {
 **Maintien** (priorité 0-39, règle par défaut incluse)
 - Aucun signal significatif → maintenir le plan tel quel
 
-**Note sur la priorité de la catégorie `engagement`** : elle est placée délibérément *au-dessus* de `progression` mais *en-dessous* de `securite` dans l'algorithme de tri du module 5 (cf. §6, Module 5). Un signal d'engagement en baisse doit pouvoir bloquer une augmentation de charge (cf. règle "Progression bloquée si engagement en baisse" ci-dessus), mais ne doit jamais l'emporter sur une alerte de sécurité physique — un coureur en surcharge physiologique reste prioritairement protégé de la blessure, même si son plaisir déclaré est bon.
+**Note sur la priorité de la catégorie `engagement`** : elle est placée délibérément *au-dessus* de `progression` mais *en-dessous* de `securite` dans l'algorithme de tri du module 5. Un signal d'engagement en baisse doit pouvoir bloquer une augmentation de charge, mais ne doit jamais l'emporter sur une alerte de sécurité physique — un coureur en surcharge physiologique reste prioritairement protégé de la blessure, même si son plaisir déclaré est bon.
 
-**Note sur l'objectif/délai comme dimension transversale** : contrairement à `engagement`, l'objectif et le délai ne forment pas une catégorie de règles à part — ils agissent comme **modulateur transversal** de toutes les catégories existantes (cf. §5.8 : "le délai contraint les décisions de sécurité/progression" ET "déclenche ses propres règles"). C'est pourquoi les règles ci-dessus apparaissent réparties dans `securite`, `adaptation` et `progression` plutôt que regroupées, tout en s'appuyant sur le même sous-module `GoalFeasibilityCalculator` (§6).
+**Note sur l'objectif/délai comme dimension transversale** : contrairement à `engagement`, l'objectif et le délai ne forment pas une catégorie de règles à part — ils agissent comme **modulateur transversal** de toutes les catégories existantes. C'est pourquoi les règles ci-dessus apparaissent réparties dans `securite`, `adaptation` et `progression` plutôt que regroupées, tout en s'appuyant sur le même sous-module `GoalFeasibilityCalculator` (§6).
 
-**Angles morts assumés** : aucune règle sur le sommeil n'est incluse dans ce catalogue V1, faute de donnée disponible dans les sources actuelles (cf. §2 du prompt de conception) — voir §5.6 et la recommandation de `DailyCheckIn` en évolutivité future (§10). L'engagement et l'objectif/délai, en revanche, sont couverts dès la V1 : le premier grâce au signal comportemental toujours disponible (§5.7), le second parce que la donnée (`ObjectifCourant.dateEvenement`) est déjà présente dans les sources listées au départ (§2 du prompt de conception) — seule son exploitation active était manquante.
+**Angles morts assumés** : aucune règle sur le sommeil, faute de donnée disponible dans les sources actuelles (cf. §5.6 et la recommandation de `DailyCheckIn` en évolutivité future, §10). L'engagement et l'objectif/délai, en revanche, sont couverts dès la V1 : le premier grâce au signal comportemental toujours disponible (§5.7), le second parce que la donnée (`ObjectifCourant.dateEvenement`) est déjà présente dans les sources.
 
 ---
 
@@ -1193,34 +1092,39 @@ Cette liste n'est pas exhaustive de toute la littérature sur le sujet, mais cou
 - **Plaisir / motivation** : Ryan, R. M., & Deci, E. L., *Self-Determination Theory* (théorie de l'autodétermination), cadre de référence largement utilisé en psychologie du sport pour l'adhérence à l'activité physique. Kendzierski, D., & DeCarlo, K. J., *Physical Activity Enjoyment Scale: Two Validation Studies*, Journal of Sport & Exercise Psychology, 1991, et sa version courte PACES-S (Chen et al., 2021 ; validation anglophone adulte, PLOS One, 2024). Sur le signal comportemental de désengagement précoce en app de fitness : études sectorielles convergentes sur la fenêtre des 14 premiers jours comme période prédictive la plus forte du taux d'abandon.
 - **Objectifs et délai / taper** : Smyth, B., & Lawlor, A., *Longer Disciplined Tapers Improve Marathon Performance for Recreational Runners*, Frontiers in Sports and Active Living, 2021 (analyse de plus de 158 000 coureurs récréatifs via données Strava). Sur l'absence de consensus en périodisation : *Training Volume and Training Frequency Changes Associated with Boston Marathon Race Performance*, PMC. Sur la pratique des objectifs à paliers (A/B/C) et la consistance des séances-clés comme signal de faisabilité : sources de coaching professionnel convergentes (niveau de preuve : pratique documentée, pas d'essai contrôlé).
 
-**Note méthodologique** : ces sources ont été identifiées par recherche web au moment de la rédaction (juillet 2026) et non par une revue systématique formelle. Pour une V2 destinée à un usage réel auprès d'utilisateurs, une validation par un professionnel qualifié (médecin du sport, kinésithérapeute du sport, ou coach certifié) reste recommandée avant de coder les seuils numériques en dur dans les règles.
+**Note méthodologique** : ces sources ont été identifiées par recherche web au moment de la rédaction et non par une revue systématique formelle. Pour un usage réel auprès d'utilisateurs à grande échelle, une validation par un professionnel qualifié (médecin du sport, kinésithérapeute du sport, ou coach certifié) reste recommandée avant de coder les seuils numériques en dur dans les règles.
 
 ---
 
-## 12. Prochaines étapes suggérées
+## 12. Maintenabilité à long terme et garde-fous contre les adaptations brutales
 
-1. Valider ce document avec un regard "coach" (toi + éventuellement un vrai entraîneur ou professionnel de santé sportive) sur le catalogue de règles §7 et les fondements scientifiques §5 — c'est la partie la plus riche à enrichir avant tout code, et celle où l'expertise humaine ne peut pas être remplacée par de la recherche web.
-2. Définir les formules exactes de calcul de charge/fatigue (module 1) — c'est le seul endroit du moteur avec de la "vraie" science du sport, à sourcer soigneusement en s'appuyant sur §5.
-3. Décider si `DailyCheckIn` (sommeil, ressenti du jour, FC de repos) entre au périmètre V1 ou reste un chantier V2 — le §5.6 documente le potentiel signal mais ce n'est pas dans les sources listées au départ du prompt de conception.
-4. Une fois validé, on peut passer à l'implémentation module par module, en commençant par le module 1 (fondation de tout le reste) avec ses tests.
+### 12.1 Modifiable ne veut pas dire modifiable en confiance
+
+La conception du moteur (registre de règles séparé de `RuleEngine`, cf. §7 et §1 principe "évolutif sans rupture") rend techniquement facile de changer un seuil, une ampleur, ou d'ajouter une règle — une modification typique touche une poignée de lignes dans un seul fichier de règles, jamais le moteur d'exécution lui-même.
+
+Mais un moteur "en perpétuelle amélioration" a besoin de plus que de la facilité d'édition : il a besoin d'un moyen de savoir si un changement améliore ou dégrade les décisions produites, avant de le déployer sur de vrais coureurs. Deux principes à respecter à mesure que le catalogue grossit :
+
+- **Versionnage exploité, pas juste présent** : `EngineDecision.metadata.versionMoteur` existe dans les structures (§3.4) — à chaque modification de règle, incrémenter cette version, et conserver un historique des décisions passées avec la version qui les a produites (Supabase est l'endroit naturel). Sans ça, il devient impossible de répondre à la question "cette décision bizarre vient-elle de l'ancienne ou de la nouvelle version de la règle ?" une fois plusieurs itérations passées.
+- **Rejeu sur historique avant déploiement** : avant de changer un seuil ou d'ajouter une règle, la rejouer sur l'historique réel déjà accumulé plutôt que de la déployer directement et observer en production.
+
+### 12.2 Deux causes d'adaptations brutales, deux garde-fous
+
+**Cause 1 — cumul non borné de règles successives.** Rien dans l'architecture n'empêche par défaut deux décisions de réduction de charge de s'appliquer coup sur coup sur des jours rapprochés. Exemple : une règle de pic de séance réduit une séance de 20% un lundi, puis une règle de fatigue se déclenche le mercredi suivant et réduit encore de 15% — chaque règle est individuellement raisonnable, mais l'effet cumulé (plan réduit de plus d'un tiers en trois jours) ne l'est pas forcément, et aucune règle individuelle ne "voit" ce cumul.
+
+**Garde-fou** : un plafond de réduction cumulée sur une fenêtre glissante (proposition : pas plus de 25% de réduction cumulée sur 14 jours glissants, chiffre à valider avec un regard coach plutôt qu'arbitraire), vérifié **avant** d'appliquer une nouvelle décision de type `reduire_charge`. Techniquement, ça prend la forme d'une vérification supplémentaire au moment de l'application d'une décision — pas une nouvelle règle du catalogue, mais un garde-fou structurel qui s'applique après que le moteur de règles a décidé, juste avant l'écriture réelle sur le plan.
+
+**Cause 2 — aucune limite sur l'ampleur d'une décision individuelle prise isolément de son contexte.** Une règle mal calibrée pourrait en théorie produire un `ampleurPourcent` disproportionné si elle est mal écrite (ex: -80% au lieu de -8% par erreur de frappe dans une constante).
+
+**Garde-fou** : une borne dure au niveau du moteur lui-même (pas d'une règle individuelle), qui rejette ou plafonne toute `DecisionCandidate` dont `ampleurPourcent` dépasserait un seuil absolu (proposition : jamais plus de -30% sur une seule décision, jamais de `repos_complet` sur plus d'une semaine consécutive sans validation explicite). C'est une sécurité de dernier recours — elle ne remplace pas la vérification "la règle a-t-elle raison de se déclencher", elle protège contre le cas où même une règle censée être raisonnable produirait, par bug ou mauvais calibrage, un résultat absurde.
+
+**Lien avec le principe "rien n'est automatique sans validation explicite du coureur"** : ces deux garde-fous restent utiles même quand le coureur garde la main pour refuser une proposition, parce que la carte de proposition elle-même pourrait afficher une réduction cumulée choquante. Le principe "sécurité avant performance" (§1) s'applique autant à la protection contre les bugs du moteur qu'à la protection contre la fatigue physique du coureur.
+
 ---
 
-## 13. État d'implémentation réel (16 juillet 2026, mis à jour le 18 juillet 2026)
+## 13. Prochaines étapes suggérées
 
-Les modules 1 (partiel) et 5 ont été implémentés, testés et déployés en production le 16 juillet 2026 — première traversée complète du plan de conception vers du code réel. Le 17 juillet 2026, une deuxième session a complété cette base : unification de la source de vérité sur la charge (retrait de l'ancien calcul ACWR informel), branchement du coach IA existant sur les sorties du moteur, ajout des deux garde-fous du §10.2 du document d'intégration, ajout des champs profil `fcRepos`/`sexe`, puis livraison des Modules 2/3/4 (SessionAnalyzer/WeekAnalyzer/TrendAnalyzer) et de 3 nouvelles règles (R-050/R-060/R-070). Le 18 juillet 2026 (session ultérieure), deux nouvelles règles consommant enfin `weekAnalysis`/`trendAnalysis` (R-062, R-080), et un nouveau champ calculé (monotonie de charge, Foster) affiché sans règle associée faute de seuil validé pour un coureur récréatif. Le détail complet (fichiers livrés, écarts avec ce document, bugs trouvés et corrigés, validation sur données réelles, prochaines étapes) est documenté dans le **document d'intégration, §11 à §15, et l'inventaire de l'application §26 à §38**, pour éviter de dupliquer l'information à plusieurs endroits qui risqueraient de diverger.
+1. Valider ce document avec un regard "coach" (professionnel de santé sportive ou coach certifié) sur le catalogue de règles §7 et les fondements scientifiques §5.
+2. Décider si `DailyCheckIn` (sommeil, ressenti du jour, FC de repos) entre au périmètre ou reste un chantier futur.
+3. Étendre le catalogue de règles au-delà du socle actuellement codé (cf. inventaire §8) une fois les règles en place éprouvées sur un usage réel prolongé.
 
-En résumé, pour ce document :
-
-- **Module 1** : `RunnerStateCalculator` (charge/fatigue/ACWR/confiance) et `EngagementCalculator` (régularité comportementale) sont codés et consomment les vrais champs `fcRepos`/`sexe` du profil coureur quand ils sont renseignés (repli propre sinon, cf. §4 doc archi). `GoalFeasibilityCalculator` n'existe toujours pas.
-- **Module 2** (`SessionAnalyzer`) : codé, testé, corrigé en profondeur (17/07/2026) — ne couvre que les séances de qualité (VMA/SPEC/SEUIL/TEST), conformément au contrat.
-- **Module 3** (`WeekAnalyzer`) : codé (17/07/2026), complété le 18/07/2026 avec la monotonie de charge (`monotonieRealisee`/`monotoniePrevue`, formule Foster). `ecartVolumePourcent`/`chargeTotaleSemaine`/`seancesManquees` désormais consommés par R-080 (18/07/2026) ; `recuperationEstimee`/`progressionVsPrecedente` restent inconsommés — test empirique mené le 18/07/2026, résultat non concluant sur seulement 2 semaines de données, à refaire plus tard (cf. document d'intégration §15.4).
-- **Module 4** (`TrendAnalyzer`) : codé (17/07/2026), désormais consommé par 2 règles (R-062 sur `FATIGUE_CROISSANTE`, R-080 sur le nouveau signal `DEFICIT_VOLUME_DURABLE` ajouté le 18/07/2026). Les 3 autres signaux qu'il détecte déjà (`CHARGE_CROISSANTE_RAPIDE`, `SEANCES_MANQUEES_REPETEES`, `3_SEMAINES_REUSSIES`) restent inconsommés par aucune règle à ce jour.
-- **Module 5** : `RuleEngine` codé, catalogue passé de 3 règles (démarrage) à **7 règles actives** : R-006, R-024s, R-050, R-060, R-062, R-070, R-080. Les règles issues de `TrendAnalysis`/`WeekAnalysis` (R-062, R-080) n'ont jamais été observées se déclencher en conditions réelles à ce jour — à surveiller. R-070, elle, a été transformée en `reduire_charge` et observée le 23/07/2026 (cf. mise à jour ci-dessous). `evaluerRegles()` applique toujours une borne dure sur l'ampleur de toute décision individuelle (jamais plus de -30%, cf. §10.2).
-- **Un désaccord de fond a été corrigé entre ce document et le code réel** : la structure `PlanContext`/séance implicitement supposée ici et dans le document d'intégration (§6.2 de ce dernier) ne correspond pas à la vraie structure de `window.__PLAN_BRUT__` telle qu'elle existe dans le code de Yoria (`assignment` indexé par jour, pas `sessions[]` avec dates explicites). Le détail complet est en §11.3 du document d'intégration — à lire avant toute implémentation future qui toucherait directement au plan brut.
-
-**Mise à jour du 23 juillet 2026** : R-070 est sortie de la catégorie "jamais observée se déclencher" — elle a été transformée de `alerter_risque_decrochage` en `reduire_charge` (priorité relevée de 55 à 70), la première règle du catalogue "engagement" à réellement modifier le plan plutôt que se contenter d'alerter. Cible directement la prochaine séance qualité via un nouveau paramètre `cibleQualitePrioritaire`, réutilisant l'infrastructure de réduction structurelle des intervalles (elle-même livrée le même jour — les séances qualité peuvent désormais être réduites en nombre de répétitions/blocs, jamais en allure ni récup, avec un plancher par sous-type/niveau justifié par la littérature de périodisation). Un sélecteur de "readiness" pré-séance (ressenti du jour, distinct du RPE rétrospectif) a aussi été ajouté et vient moduler l'ampleur d'une décision `reduire_charge` déjà existante, jamais la déclencher seul. Détail complet en inventaire §8, pas dupliqué ici pour éviter la divergence — cf. avertissement en tête de §13.
-- **Garde-fous du §10.2** : les deux mécanismes proposés dans ce document (plafond de réduction cumulée, borne dure individuelle) sont désormais codés (17/07/2026) — `decision-engine-rules.classic.js` pour la borne dure, `decision-engine-apply.classic.js` pour le plafond cumulé sur 14 jours glissants. Détail complet en §26.3 de l'inventaire de l'application.
-- **Le coach IA existant (§9.1)** consomme désormais `RunnerState`/`EngagementState`/`EngineDecision` au lieu de son ancien calcul ACWR informel, conformément à la décision actée dans ce document — détail en §26.2 de l'inventaire. Une chaîne de 4 bugs distincts affectant ce même coach IA (prompt, race condition de synchronisation, paramètre manquant) a été trouvée et corrigée le 18/07/2026 — détail en inventaire §37.
-- **Nouveauté hors contrat théorique initial** : monotonie de charge (concept Foster, absent du §5 de ce document) ajoutée au Module 3 le 18/07/2026, après recherche de littérature ad hoc — affichage seul, décision explicite de ne pas créer de règle faute de seuil validé pour un coureur récréatif (contrairement à R-006/R-050 qui s'appuient sur des seuils bien soutenus). Détail en inventaire §36.1 et document d'intégration §15.3.
-
-Les principes directeurs (§1), les contrats de données (§3, sous réserve des champs non encore codés), les fondements scientifiques (§5) et le catalogue complet de règles (§7) restent la référence de conception valide pour la suite — seule leur couverture par le code actuel est partielle, pas leur validité.
+Les principes directeurs (§1), les contrats de données (§3), les fondements scientifiques (§5) et le catalogue complet de règles (§7) sont la référence de conception valide pour la suite — leur couverture par le code réel à un instant donné est documentée dans l'inventaire de l'application, pas ici.
