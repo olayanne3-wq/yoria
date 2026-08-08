@@ -14,7 +14,7 @@ des séances, allures), pas un résumé exhaustif du livre.
 ## 1. Principes de fond — pertinents pour la philosophie du moteur
 
 ### 1.1 "Quel est le but de cette séance ?"
-Question that l'auteur répète comme fil rouge de tout le livre. Chaque
+Question que l'auteur répète comme fil rouge de tout le livre. Chaque
 séance doit avoir une justification physiologique claire. Directement
 aligné avec le principe déjà posé dans `moteur-decision-architecture.md`
 §1 : chaque décision du moteur doit être **explicable**, jamais une
@@ -32,7 +32,7 @@ dans `DecisionEngineRunnerState`.
 C'est un principe directement transposable en règle de moteur : en cas
 d'ambiguïté ou de doute sur l'état du coureur, le biais par défaut doit
 être conservateur. Cohérent avec le principe déjà acté "sécurité avant
-performance" (doc archi §1) et avec les garde-fous §10.2 déjà codés (borne
+performance" (doc archi §1) et avec les garde-fous déjà codés (borne
 dure -30%, plafond cumulé -25%/14j).
 
 ### 1.4 Principe de réponse à l'entraînement (Principe 4) et loi des rendements décroissants (Principe 6)
@@ -88,9 +88,8 @@ E, M et T ; I et R ne sont pas encore lus (coupure du document).
 `__PLAN_BRUT__.allures.E` existe déjà dans le code et est utilisé pour les
 séances EF/LONGUE. Le livre confirme l'usage de cette allure aussi pour
 l'échauffement et le retour au calme des séances qualité — cohérent avec
-la décision prise le 17/07/2026 d'utiliser cette même allure pour dériver
-la distance de récup/échauffement/RAC dans `distanceTotaleAvecRecup()`
-(cf. inventaire §34.2).
+la décision d'utiliser cette même allure pour dériver la distance de
+récup/échauffement/RAC dans `distanceTotaleAvecRecup()`.
 
 ### 2.2 Durées limites — utile pour valider les bornes déjà en place
 - Course longue (L) : jamais plus de 150 min (2h30), même pour un
@@ -112,7 +111,7 @@ palier 3-4 semaines, puis augmenter d'un bloc plus généreux (ex. +5 mi
 d'un coup après un palier à 10 mi, plutôt que +1 mi chaque semaine).
 
 **Tension à noter avec la littérature déjà citée dans le moteur** : le
-doc archi §11 cite déjà une revue systématique sur "la règle des 10%"
+doc archi cite déjà une revue systématique sur "la règle des 10%"
 (23 047 coureurs) — cette synthèse Daniels apporte un avis de coach
 expérimenté qui nuance/complète la littérature académique déjà citée,
 sans la contredire frontalement (les deux s'accordent sur le risque d'une
@@ -147,8 +146,8 @@ Pour aller plus loin utilement, la suite du livre couvrirait notamment :
   lactate) — potentiellement pertinent pour affiner le calcul de charge
   au-delà du TRIMP/sRPE actuel
 - **Chapitres 11-18** : entraînement par distance de course (dont chapitre
-  16, marathon — directement pertinent vu l'objectif actuel de Laurent,
-  semi-marathon le 1er novembre 2026)
+  16, marathon, et chapitre 15, semi-marathon — directement pertinent vu
+  l'objectif actuel de Laurent, semi-marathon le 6 septembre 2026)
 
 Si tu ajoutes la suite du livre en contexte dans une prochaine session,
 cette synthèse peut être complétée section par section plutôt que refaite
