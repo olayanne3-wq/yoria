@@ -2,6 +2,22 @@ const form = document.getElementById("beta-form");
 const statusElement = document.getElementById("form-status");
 const submitButton = form.querySelector('button[type="submit"]');
 
+// Encart iOS (ajout) — affiché/masqué selon le choix "Android"/"iPhone"
+// du fieldset "Votre téléphone". Écoute sur le fieldset entier (délégation
+// d'événement) plutôt que sur chaque input radio individuellement : plus
+// court, et couvre aussi le cas où d'autres options de plateforme
+// s'ajouteraient un jour (ex. tablette) sans avoir à modifier ce script.
+const encartIos = document.getElementById("encart-ios");
+const platformFieldset = form.querySelector('input[name="platform"]').closest("fieldset");
+
+platformFieldset.addEventListener("change", (event) => {
+  if (event.target.name !== "platform") {
+    return;
+  }
+
+  encartIos.hidden = event.target.value !== "iphone";
+});
+
 function getBooleanRadioValue(name) {
   const selected = form.querySelector(
     `input[name="${name}"]:checked`,
@@ -61,6 +77,7 @@ form.addEventListener("submit", async (event) => {
     statusElement.className = "form-status success";
 
     form.reset();
+    encartIos.hidden = true;
   } catch (error) {
     statusElement.textContent = error.message;
     statusElement.className = "form-status error";
