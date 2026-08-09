@@ -2,8 +2,8 @@ const form = document.getElementById("beta-form");
 const statusElement = document.getElementById("form-status");
 const submitButton = form.querySelector('button[type="submit"]');
 
-// Encart iOS (ajout) — affiché/masqué selon le choix "Android"/"iPhone"
-// du fieldset "Votre téléphone". Écoute sur le fieldset entier (délégation
+// Encart iOS — affiché/masqué selon le choix "Android"/"iPhone" du
+// fieldset "Votre téléphone". Écoute sur le fieldset entier (délégation
 // d'événement) plutôt que sur chaque input radio individuellement : plus
 // court, et couvre aussi le cas où d'autres options de plateforme
 // s'ajouteraient un jour (ex. tablette) sans avoir à modifier ce script.
@@ -46,7 +46,6 @@ form.addEventListener("submit", async (event) => {
     runsPerWeek: Number(formData.get("runsPerWeek")),
     favoriteDistance: formData.get("favoriteDistance"),
     usesStrava: getBooleanRadioValue("usesStrava"),
-    acceptsFeedback: getBooleanRadioValue("acceptsFeedback"),
     message: formData.get("message"),
     consent: formData.get("consent") === "on",
     website: formData.get("website"),
