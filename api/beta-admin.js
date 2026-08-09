@@ -19,12 +19,6 @@ const SIGNALEMENT_STATUSES = new Set([
   "resolu",
 ]);
 
-// Tables applicatives à nettoyer explicitement avant suppression d'un
-// compte auth (ajout, réutilise TABLES_A_NETTOYER de api/delete-account.js
-// — cf. ce fichier pour le détail complet de la cause : decision_events
-// référence user_id sans ON DELETE CASCADE historiquement, un correctif de
-// schéma existe mais ce nettoyage explicite reste un filet de sécurité).
-const TABLES_A_NETTOYER_AVANT_SUPPRESSION_COMPTE = ["decision_events"];
 
 const json = (response, status, payload) =>
   response.status(status).json(payload);
@@ -144,6 +138,23 @@ async function supabaseRequest(config, path, options = {}) {
 // compte a été trouvé et supprimé, { supprime: false } si aucun compte
 // n'existe avec cet email — ce second cas n'est PAS une erreur (le cas le
 // plus fréquent : une candidature bêta sans compte Yoria jamais créé).
+// Tables applicatives liées directement par user_id (ajout, étendu au-delà
+// du seul decision_events déjà couvert par api/delete-account.js — cf.
+// inventaire §5, liste des tables liées à user_id : plans_original,
+// plans_actif, badges_debloques, decision_events en font partie).
+// integrations n'a PAS été retrouvée avec certitude comme liée à user_id
+// dans le code déjà consulté cette session (colonne v2_gist_id mentionnée,
+// structure exacte non vérifiée) — incluse par prudence, un DELETE sur une
+// table/colonne inexistante ou déjà vide échoue proprement (404/0 lignes),
+// jamais une vraie casse.
+const TABLES_USER_ID_DIRECT = [
+  "decision_events",
+  "plans_original",
+  "plans_actif",
+  "badges_debloques",
+  "integrations",
+];
+
 async function supprimerCompteYoriaParEmail(config, email) {
   const usersResponse = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users`,
@@ -169,7 +180,56 @@ async function supprimerCompteYoriaParEmail(config, email) {
     return { supprime: false };
   }
 
-  for (const table of TABLES_A_NETTOYER_AVANT_SUPPRESSION_COMPTE) {
+  // plan_donnees n'est PAS liée directement à user_id (elle référence
+  // plans_actif.id via plan_id, cf. inventaire §5) — il faut d'abord
+  // récupérer les ids des plans de cet utilisateur pour pouvoir la
+  // nettoyer. Lecture avant les DELETE ci-dessous, pour disposer de la
+  // liste avant que plans_actif ne soit potentiellement déjà supprimée.
+  let planIds = [];
+  try {
+    const plansResponse = await fetch(
+      `${config.supabaseUrl}/rest/v1/plans_actif?user_id=eq.${user.id}&select=id`,
+      {
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+        },
+      },
+    );
+    if (plansResponse.ok) {
+      const plans = await plansResponse.json();
+      planIds = Array.isArray(plans) ? plans.map((p) => p.id) : [];
+    }
+  } catch (erreurLecturePlans) {
+    // Best-effort — si cette lecture échoue, plan_donnees ne sera pas
+    // nettoyée explicitement, mais le reste de la suppression continue
+    // (elle serait de toute façon orpheline sans casser quoi que ce soit
+    // de fonctionnel, juste des lignes mortes en base).
+    console.warn("Lecture des plans avant suppression échouée :", erreurLecturePlans.message);
+  }
+
+  if (planIds.length > 0) {
+    const filtreIds = planIds.map((id) => encodeURIComponent(id)).join(",");
+    const cleanPlanDonneesRes = await fetch(
+      `${config.supabaseUrl}/rest/v1/plan_donnees?plan_id=in.(${filtreIds})`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          Prefer: "return=minimal",
+        },
+      },
+    );
+    if (!cleanPlanDonneesRes.ok) {
+      const errText = await cleanPlanDonneesRes.text();
+      console.error("Échec nettoyage plan_donnees avant suppression compte :", cleanPlanDonneesRes.status, errText);
+      throw new Error("Échec de la préparation à la suppression (table plan_donnees).");
+    }
+  }
+
+  // Tables liées directement par user_id.
+  for (const table of TABLES_USER_ID_DIRECT) {
     const cleanRes = await fetch(
       `${config.supabaseUrl}/rest/v1/${table}?user_id=eq.${user.id}`,
       {
@@ -184,9 +244,38 @@ async function supprimerCompteYoriaParEmail(config, email) {
 
     if (!cleanRes.ok) {
       const errText = await cleanRes.text();
-      console.error(`Échec nettoyage table ${table} avant suppression compte :`, cleanRes.status, errText);
-      throw new Error(`Échec de la préparation à la suppression (table ${table}).`);
+      // Une table absente ou une colonne user_id inexistante répond en
+      // 400/404 — traité comme non bloquant plutôt qu'une vraie erreur
+      // fatale, pour ne jamais empêcher la suppression du compte à cause
+      // d'une table optionnelle/mal identifiée (ex. integrations,
+      // incluse par prudence sans certitude absolue sur son schéma).
+      console.warn(`Nettoyage table ${table} non concluant (ignoré) :`, cleanRes.status, errText);
     }
+  }
+
+  // abonnements est liée par EMAIL, pas user_id (cf. code existant
+  // upsertAbonnementGratuit, qui filtre déjà sur email=eq.) — nettoyage
+  // séparé pour cette raison. Un abonnement Stripe actif n'est PAS annulé
+  // ici (aucun appel à l'API Stripe) : cette suppression ne retire que la
+  // ligne de suivi côté Supabase, pas l'abonnement réel côté Stripe — à
+  // annuler manuellement sur le dashboard Stripe si un vrai abonnement
+  // payant existait pour ce compte (cas très improbable pour un compte
+  // de test, mais à garder en tête si ce mécanisme sert un jour sur un
+  // vrai compte utilisateur).
+  const cleanAbonnementsRes = await fetch(
+    `${config.supabaseUrl}/rest/v1/abonnements?email=eq.${encodeURIComponent(email)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: config.supabaseKey,
+        Authorization: `Bearer ${config.supabaseKey}`,
+        Prefer: "return=minimal",
+      },
+    },
+  );
+  if (!cleanAbonnementsRes.ok) {
+    const errText = await cleanAbonnementsRes.text();
+    console.warn("Nettoyage table abonnements non concluant (ignoré) :", cleanAbonnementsRes.status, errText);
   }
 
   const deleteRes = await fetch(
