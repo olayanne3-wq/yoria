@@ -30,9 +30,9 @@ function signalementsTable(){const x=signalementsFiltered();$("#signalements-tbo
 ["signalement-type-filter","signalement-statut-filter"].forEach(id=>{$("#"+id).onchange=signalementsTable});
 function stats(){const group=(f)=>S.items.reduce((a,i)=>(a[i[f]]=(a[i[f]]||0)+1,a),{}),bar=(obj,labels)=>`<div class="bar-list">${Object.entries(obj).map(([k,v])=>`<div class="bar"><span>${esc(labels[k]||k)}</span><div class="track"><div class="fill" style="width:${pct(v,S.items.length)}%"></div></div><strong>${pct(v,S.items.length)}%</strong></div>`).join("")}</div>`;
 $("#statistics").innerHTML=`<article class="card"><h2>Plateformes</h2>${bar(group("platform"),P)}</article><article class="card"><h2>Niveaux</h2>${bar(group("running_level"),LV)}</article><article class="card"><h2>Distances</h2>${bar(group("favorite_distance"),D)}</article><article class="card"><h2>Engagement</h2>${bar({strava:S.items.filter(i=>i.uses_strava).length,feedback:S.items.filter(i=>i.accepts_feedback).length},{strava:"Strava",feedback:"Questionnaire"})}</article>`}
-function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;const invited=c.invited_at?`<div class="detail"><span>Invitation envoyée</span><strong>${esc(date(c.invited_at))}</strong></div>`:"";$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}${invited}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions"><button data-status="selected">Sélectionner</button><button data-send-invitation>📧 Envoyer l'invitation</button><button data-create-subscription>💳 Créer abonnement gratuit</button><button data-status="active">Marquer actif</button><button data-status="rejected">Refuser</button></div>`;$("#modal").hidden=false}
+function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;const invited=c.invited_at?`<div class="detail"><span>Invitation envoyée</span><strong>${esc(date(c.invited_at))}</strong></div>`:"";$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}${invited}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions"><button data-status="selected">Sélectionner</button><button data-send-invitation>📧 Envoyer l'invitation</button><button data-create-subscription>💳 Créer abonnement gratuit</button><button data-status="active">Marquer actif</button><button data-status="rejected">Refuser</button><button data-delete-application class="danger">🗑️ Supprimer définitivement</button></div>`;$("#modal").hidden=false}
 function close(){ $("#modal").hidden=true;S.id=null }
-document.addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(b)return open(b.dataset.id);if(e.target.closest("[data-close]"))return close();const invite=e.target.closest("[data-send-invitation]");if(invite&&S.id)return confirmInvitation();const sub=e.target.closest("[data-create-subscription]");if(sub&&S.id)return confirmSubscription();const a=e.target.closest("[data-status]");if(a&&S.id)update(a.dataset.status)});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(b)return open(b.dataset.id);if(e.target.closest("[data-close]"))return close();const invite=e.target.closest("[data-send-invitation]");if(invite&&S.id)return confirmInvitation();const sub=e.target.closest("[data-create-subscription]");if(sub&&S.id)return confirmSubscription();const del=e.target.closest("[data-delete-application]");if(del&&S.id)return confirmDeleteApplication();const a=e.target.closest("[data-status]");if(a&&S.id)update(a.dataset.status)});
 document.addEventListener("change",e=>{const sel=e.target.closest("[data-signalement-statut]");if(sel)updateSignalementStatut(sel.dataset.signalementStatut,sel.value)});
 async function update(status){try{const r=await req({method:"PATCH",body:JSON.stringify({id:S.id,status})});const i=S.items.findIndex(x=>x.id===S.id);S.items[i]=r.candidate;render();open(S.id)}catch(e){alert(e.message)}}
 async function updateSignalementStatut(id,statut){try{const r=await req({method:"PATCH",body:JSON.stringify({id,action:"update_signalement_statut",statut})});const i=S.signalements.findIndex(x=>x.id===id);if(i>=0)S.signalements[i]=r.signalement}catch(e){alert(e.message);signalementsTable()}}
@@ -40,6 +40,35 @@ async function sendInvitation(){const id=S.id;if(!id)return;const btn=$("[data-s
 function confirmInvitation(){const c=S.items.find(i=>i.id===S.id);if(!c)return;const msg=c.invited_at?`Une invitation a déjà été envoyée à ${c.email} le ${date(c.invited_at)}.\n\nSouhaites-tu vraiment la renvoyer ?`:`Envoyer l'invitation à :\n\n${c.first_name}\n${c.email}\n\nConfirmer l'envoi ?`;if(confirm(msg))sendInvitation()}
 async function createSubscription(){const id=S.id;if(!id)return;const btn=$("[data-create-subscription]");const label=btn?.textContent;if(btn){btn.disabled=true;btn.textContent="Création en cours…"}try{const r=await req({method:"PATCH",body:JSON.stringify({id,action:"create_free_subscription"})});alert(r.message||"Abonnement gratuit créé.")}catch(e){alert(e.message)}finally{const current=$("[data-create-subscription]");if(current){current.disabled=false;current.textContent=label||"💳 Créer abonnement gratuit"}}}
 function confirmSubscription(){const c=S.items.find(i=>i.id===S.id);if(!c)return;const msg=`Créer un abonnement Stripe gratuit (coupon 100%) pour :\n\n${c.first_name}\n${c.email}\n\nImportant : ${c.first_name} devra créer son compte Yoria avec exactement cette même adresse e-mail pour que l'abonnement se lie automatiquement.\n\nConfirmer ?`;if(confirm(msg))createSubscription()}
+
+// Suppression de candidature (ajout) — supprime la ligne beta_testers ET
+// tente de supprimer un compte Yoria associé à la même adresse email s'il
+// en existe un (cf. commentaire détaillé côté serveur, action
+// delete_application). Confirmation à double niveau volontairement plus
+// insistante que les autres actions (Sélectionner/Refuser/etc.) — action
+// irréversible, contrairement à un simple changement de statut.
+async function deleteApplication(){
+  const id=S.id;if(!id)return;
+  const btn=$("[data-delete-application]");const label=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent="Suppression en cours…"}
+  try{
+    const r=await req({method:"PATCH",body:JSON.stringify({id,action:"delete_application"})});
+    S.items=S.items.filter(x=>x.id!==id);
+    close();
+    render();
+    alert(r.message||"Candidature supprimée.");
+  }catch(e){
+    alert(e.message);
+  }finally{
+    const current=$("[data-delete-application]");
+    if(current){current.disabled=false;current.textContent=label||"🗑️ Supprimer définitivement"}
+  }
+}
+function confirmDeleteApplication(){
+  const c=S.items.find(i=>i.id===S.id);if(!c)return;
+  const msg=`⚠️ Suppression définitive et irréversible de :\n\n${c.first_name}\n${c.email}\n\nCeci supprime la candidature ET, si un compte Yoria existe avec cette adresse, ce compte également (plans, historique, tout).\n\nCette action ne peut pas être annulée.\n\nConfirmer la suppression ?`;
+  if(confirm(msg))deleteApplication();
+}
 
 /*
  * Module "Comptes" (25/07/2026, enrichi le 25/07/2026 avec statuts/RPE/
@@ -60,7 +89,7 @@ async function searchAccount(){
   $("#account-result").innerHTML="";
   try{
     const r=await req({method:"PATCH",body:JSON.stringify({action:"search_user_plan",email})});
-    renderAccount(r);
+    renderAccount(r,email);
   }catch(e){
     $("#account-status").hidden=false;
     $("#account-status").className="notice error";
@@ -72,10 +101,11 @@ async function searchAccount(){
 $("#account-search").onclick=searchAccount;
 $("#account-email").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); searchAccount(); } });
 
-function renderAccount(r){
+function renderAccount(r,email){
   const plans=r.plans||[];
   const decisions=r.decisions||[];
   let html=`<p><small>Compte : ${esc(r.user.email)} — ${plans.length} plan${plans.length>1?"s":""}</small></p>`;
+  html+=`<button data-delete-account="${esc(r.user.email)}" class="danger">🗑️ Supprimer ce compte définitivement</button>`;
   if(plans.length===0){
     html+=`<div class="empty">Aucun plan enregistré.</div>`;
   }else{
@@ -83,6 +113,34 @@ function renderAccount(r){
   }
   html+=decisionsCard(decisions);
   $("#account-result").innerHTML=html;
+}
+
+// Suppression de compte depuis le module "Comptes" (ajout) — cas d'un
+// compte créé sans jamais avoir candidaté à la bêta (donc absent de la
+// table beta_testers, pas de ligne à supprimer là-bas). Délégation
+// d'événement sur #account-result plutôt qu'un binding direct : le bouton
+// est recréé à chaque recherche (renderAccount), un binding direct serait
+// perdu à chaque nouvelle recherche.
+$("#account-result").addEventListener("click",e=>{
+  const btn=e.target.closest("[data-delete-account]");
+  if(!btn)return;
+  const email=btn.dataset.deleteAccount;
+  const msg=`⚠️ Suppression définitive et irréversible du compte Yoria :\n\n${email}\n\nCeci supprime le compte, tous ses plans et son historique.\n\nCette action ne peut pas être annulée.\n\nConfirmer la suppression ?`;
+  if(!confirm(msg))return;
+  deleteAccount(email,btn);
+});
+async function deleteAccount(email,btn){
+  const label=btn.textContent;
+  btn.disabled=true;btn.textContent="Suppression en cours…";
+  try{
+    const r=await req({method:"PATCH",body:JSON.stringify({action:"delete_account",email})});
+    alert(r.message||"Compte supprimé.");
+    $("#account-result").innerHTML="";
+    $("#account-email").value="";
+  }catch(e){
+    alert(e.message);
+    btn.disabled=false;btn.textContent=label;
+  }
 }
 
 function planCard(plan){
