@@ -102,6 +102,23 @@ window.sentryOnLoad = function () {
 <meta name="theme-color" content="#071732">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<!-- iOS Safari : apple-mobile-web-app-capable seul ne suffit pas pour un
+     rendu standalone propre. apple-mobile-web-app-status-bar-style
+     contrôle l'apparence de la barre de statut système au-dessus de
+     l'app une fois lancée depuis l'écran d'accueil (sinon iOS applique
+     une valeur par défaut, généralement opaque claire, qui jure avec le
+     thème sombre de l'écran de chargement #071732 défini juste au-dessus
+     dans theme-color). "black-translucent" laisse le contenu de l'app
+     passer sous la barre de statut (comme sur Android avec theme-color),
+     seule valeur qui permet un contrôle visuel cohérent avec le reste de
+     l'app plutôt qu'une bande fixe imposée par iOS. apple-mobile-web-
+     app-title définit le libellé affiché sous l'icône sur l'écran
+     d'accueil, indépendamment du <title> de la page (redondant ici
+     puisque les deux valent "Yoria", mais explicite plutôt qu'implicite
+     — iOS retomberait sur le <title> en son absence, comportement non
+     documenté comme garanti par Apple). -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Yoria">
 <title>Yoria</title>
 <!-- CORRECTIF (04/08/2026, suite de la recherche sur le clignotement à
      l'ouverture — confirmé par Laurent : un flash BLANC, identique sur
@@ -12510,6 +12527,55 @@ observerDecisionOutcomes();
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
 });
+
+// Bandeau iOS "Ajouter à l'écran d'accueil" — contrairement à Android
+// (bloqué ci-dessus, TWA Play Store seule voie prévue), iOS n'a AUCUN
+// équivalent officiel de TWA à ce jour (Apple ne fournit aucun pont
+// PWA-vers-App-Store) — la PWA installée manuellement reste donc la
+// seule voie d'installation possible sur iPhone. Safari ne propose aucun
+// prompt natif équivalent à beforeinstallprompt (repli manuel obligatoire
+// : Partager → Ajouter à l'écran d'accueil), d'où ce bandeau explicatif.
+//
+// Détection : Safari iOS spécifiquement (pas Chrome/Firefox iOS, qui
+// utilisent le même moteur WebKit imposé par Apple mais n'exposent pas
+// le même geste d'ajout à l'écran d'accueil de façon fiable), et
+// seulement si l'app n'est PAS déjà lancée en mode standalone (sinon le
+// bandeau s'afficherait à chaque ouverture de l'app déjà installée,
+// contre-productif). window.navigator.standalone est la détection
+// standard Apple pour ce cas (déjà utilisée plus bas dans ce fichier
+// pour le bug de reload TWA, cf. estStandalone) — repris ici à
+// l'identique pour rester cohérent avec l'unique autre usage existant de
+// ce signal dans le code.
+(function() {
+  const ua = window.navigator.userAgent;
+  const estIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const estSafari = estIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  const dejaStandalone = window.navigator.standalone === true;
+  if (!estSafari || dejaStandalone) return;
+
+  // Ne réaffiche pas le bandeau si déjà fermé une fois (pas de préfixe
+  // lk_ ici volontairement : cette préférence n'a aucun sens à
+  // synchroniser entre appareils via Supabase, contrairement aux clés
+  // préfixées par plan cf. inventaire §5 — elle décrit un état de CET
+  // appareil précis, indépendant de tout plan ou compte utilisateur).
+  if (localStorage.getItem('yoria_bandeau_ios_ferme') === '1') return;
+
+  const bandeau = document.createElement('div');
+  bandeau.id = 'bandeau-install-ios';
+  bandeau.style.cssText = 'position:fixed; left:12px; right:12px; bottom:12px; z-index:9997; background:#1E4ED8; color:#FFFFFF; border-radius:12px; padding:14px 16px; font-family:\'Inter\',-apple-system,\'Helvetica Neue\',Arial,sans-serif; font-size:14px; line-height:1.4; box-shadow:0 4px 16px rgba(0,0,0,0.25); display:flex; align-items:center; gap:10px;';
+  bandeau.innerHTML =
+    '<div style="flex:1;">' +
+      '<strong>Installe Yoria sur ton iPhone</strong><br>' +
+      'Appuie sur <strong>Partager</strong> ⬆️ puis <strong>« Sur l\'écran d\'accueil »</strong>' +
+    '</div>' +
+    '<button id="bandeau-install-ios-fermer" aria-label="Fermer" style="background:none; border:none; color:#FFFFFF; font-size:20px; line-height:1; padding:4px 8px; cursor:pointer; flex-shrink:0;">×</button>';
+
+  document.body.appendChild(bandeau);
+  document.getElementById('bandeau-install-ios-fermer').addEventListener('click', () => {
+    bandeau.remove();
+    localStorage.setItem('yoria_bandeau_ios_ferme', '1');
+  });
+})();
 
 if ('serviceWorker' in navigator) {
   // Mécanisme de mise à jour forcée (demandé par Laurent le 8 juillet 2026)
