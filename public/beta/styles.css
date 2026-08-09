@@ -911,6 +911,25 @@ fieldset {
   color: #c43c3c;
 }
 
+/* Encart iOS (ajout) — visible uniquement quand "iPhone" est sélectionné
+   dans le fieldset "Votre téléphone" (cf. script.js). Palette reprise de
+   .pill (fond --purple-soft, texte --purple) pour rester dans l'identité
+   visuelle existante plutôt que d'introduire une nouvelle couleur. */
+.encart-ios {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  color: var(--purple-dark);
+  background: var(--purple-soft);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.encart-ios strong {
+  display: inline-block;
+  margin-right: 4px;
+}
+
 footer {
   padding: 30px 0;
   border-top: 1px solid var(--border);
