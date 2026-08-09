@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+
+  <meta name="theme-color" content="#7140dd">
+
+  <title>Yoria — Merci pour votre candidature</title>
+
+  <link rel="icon" type="image/svg+xml" href="/beta/assets/logo-yoria.svg">
+  <link rel="stylesheet" href="/beta/styles.css">
+
+  <style>
+    /* Styles propres à cette page — reprennent la palette du site
+       (variables déjà définies dans styles.css) sans y ajouter de
+       sélecteurs qui pourraient entrer en collision avec la page
+       d'inscription. */
+    .merci-shell {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      background:
+        radial-gradient(circle at 0 100%, rgba(84, 215, 174, 0.2), transparent 27%),
+        radial-gradient(circle at 100% 0, rgba(164, 112, 255, 0.3), transparent 30%),
+        #21153d;
+    }
+
+    .merci-card {
+      width: 100%;
+      max-width: 560px;
+      padding: 42px 38px;
+      border-radius: 28px;
+      background: #ffffff;
+      box-shadow: 0 34px 90px rgba(9, 4, 22, 0.33);
+      text-align: center;
+    }
+
+    .merci-icone {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--purple-soft);
+      font-size: 30px;
+    }
+
+    .merci-card h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.6rem, 3vw, 2.1rem);
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .merci-card > p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .merci-etapes {
+      text-align: left;
+      display: grid;
+      gap: 16px;
+      padding: 22px;
+      margin-bottom: 28px;
+      border-radius: 18px;
+      background: var(--surface);
+    }
+
+    .merci-etape {
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .merci-etape span {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--purple);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .merci-etape p {
+      margin: 0;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .merci-etape strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .merci-attente {
+      padding: 20px;
+      margin-bottom: 8px;
+      border-radius: 18px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.6;
+    }
+
+    .merci-retour {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--purple);
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    [data-visible="false"] {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="merci-shell">
+    <div class="merci-card">
+      <div class="merci-icone">✓</div>
+
+      <!-- Bloc auto-validé (visible uniquement si ?statut=invited dans
+           l'URL, cf. script.js de la page d'inscription qui construit ce
+           lien après une réponse API autoValidee:true). Les instructions
+           dépendent de la plateforme choisie (?plateforme=android|iphone),
+           lues depuis le même paramètre. -->
+      <div id="bloc-valide" data-visible="false">
+        <h1>Bienvenue dans la bêta Yoria !</h1>
+        <p>
+          Votre accès est actif dès maintenant. Un e-mail de confirmation
+          vient aussi de vous être envoyé, avec le lien vers l'application.
+        </p>
+
+        <div id="etapes-android" class="merci-etapes" data-visible="false">
+          <div class="merci-etape">
+            <span>1</span>
+            <p>
+              <strong>Ouvrez Yoria</strong>
+              L'installation se lance directement depuis le lien reçu par e-mail,
+              comme n'importe quelle application.
+            </p>
+          </div>
+        </div>
+
+        <div id="etapes-iphone" class="merci-etapes" data-visible="false">
+          <div class="merci-etape">
+            <span>1</span>
+            <p>
+              <strong>Ouvrez le lien dans Safari</strong>
+              Pas Chrome ni un autre navigateur — Yoria s'installe via Safari,
+              pas via l'App Store.
+            </p>
+          </div>
+          <div class="merci-etape">
+            <span>2</span>
+            <p>
+              <strong>Appuyez sur Partager ⬆️</strong>
+              En bas de l'écran Safari.
+            </p>
+          </div>
+          <div class="merci-etape">
+            <span>3</span>
+            <p>
+              <strong>« Sur l'écran d'accueil »</strong>
+              Faites défiler le menu et sélectionnez cette option. Une icône
+              Yoria apparaîtra alors sur votre écran d'accueil.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloc en attente (validation manuelle classique, cf. beta-admin) —
+           visible par défaut, et dès que ?statut=pending ou en l'absence
+           de paramètre reconnu (repli sûr : ne jamais annoncer un accès
+           actif qui ne l'est pas réellement). -->
+      <div id="bloc-attente" data-visible="true">
+        <h1>Merci pour votre candidature !</h1>
+        <p>Elle a bien été enregistrée.</p>
+        <div class="merci-attente">
+          Nous étudions les candidatures au fil de l'eau. Si la vôtre est
+          retenue, vous recevrez un e-mail avec toutes les instructions
+          pour installer et démarrer avec Yoria.
+        </div>
+      </div>
+
+      <a class="merci-retour" href="/beta">← Retour au site</a>
+    </div>
+  </div>
+
+  <script src="/beta/merci.js"></script>
+</body>
+</html>
