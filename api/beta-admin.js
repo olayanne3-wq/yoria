@@ -19,6 +19,13 @@ const SIGNALEMENT_STATUSES = new Set([
   "resolu",
 ]);
 
+// Tables applicatives à nettoyer explicitement avant suppression d'un
+// compte auth (ajout, réutilise TABLES_A_NETTOYER de api/delete-account.js
+// — cf. ce fichier pour le détail complet de la cause : decision_events
+// référence user_id sans ON DELETE CASCADE historiquement, un correctif de
+// schéma existe mais ce nettoyage explicite reste un filet de sécurité).
+const TABLES_A_NETTOYER_AVANT_SUPPRESSION_COMPTE = ["decision_events"];
+
 const json = (response, status, payload) =>
   response.status(status).json(payload);
 
@@ -127,6 +134,79 @@ async function supabaseRequest(config, path, options = {}) {
   }
 
   return data;
+}
+
+// Suppression complète d'un compte Yoria par email (ajout) — pendant admin
+// de api/delete-account.js, mais déclenché avec la clé service_role
+// directement plutôt qu'un token d'accès utilisateur (celui-ci n'a aucun
+// sens depuis l'admin : Laurent n'est jamais connecté en tant que le
+// testeur dont il nettoie le compte). Retourne { supprime: true } si un
+// compte a été trouvé et supprimé, { supprime: false } si aucun compte
+// n'existe avec cet email — ce second cas n'est PAS une erreur (le cas le
+// plus fréquent : une candidature bêta sans compte Yoria jamais créé).
+async function supprimerCompteYoriaParEmail(config, email) {
+  const usersResponse = await fetch(
+    `${config.supabaseUrl}/auth/v1/admin/users`,
+    {
+      headers: {
+        apikey: config.supabaseKey,
+        Authorization: `Bearer ${config.supabaseKey}`,
+      },
+    },
+  );
+
+  if (!usersResponse.ok) {
+    throw new Error("Erreur lors de la recherche du compte à supprimer.");
+  }
+
+  const usersData = await usersResponse.json();
+  const users = Array.isArray(usersData) ? usersData : usersData.users || [];
+  const user = users.find(
+    (u) => (u.email || "").toLowerCase() === email.toLowerCase(),
+  );
+
+  if (!user) {
+    return { supprime: false };
+  }
+
+  for (const table of TABLES_A_NETTOYER_AVANT_SUPPRESSION_COMPTE) {
+    const cleanRes = await fetch(
+      `${config.supabaseUrl}/rest/v1/${table}?user_id=eq.${user.id}`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          Prefer: "return=minimal",
+        },
+      },
+    );
+
+    if (!cleanRes.ok) {
+      const errText = await cleanRes.text();
+      console.error(`Échec nettoyage table ${table} avant suppression compte :`, cleanRes.status, errText);
+      throw new Error(`Échec de la préparation à la suppression (table ${table}).`);
+    }
+  }
+
+  const deleteRes = await fetch(
+    `${config.supabaseUrl}/auth/v1/admin/users/${user.id}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: config.supabaseKey,
+        Authorization: `Bearer ${config.supabaseKey}`,
+      },
+    },
+  );
+
+  if (!deleteRes.ok) {
+    const errText = await deleteRes.text();
+    console.error("Échec suppression compte Supabase :", deleteRes.status, errText);
+    throw new Error("Échec de la suppression du compte côté Supabase.");
+  }
+
+  return { supprime: true, userId: user.id };
 }
 
 async function findOrCreateStripeCustomer(config, email, firstName) {
@@ -413,31 +493,9 @@ export default async function handler(request, response) {
     }
 
     /*
-     * Module "Comptes" (25/07/2026, enrichi le 25/07/2026 avec statuts/
-     * RPE/notes réels + decision_events/decision_outcomes) — recherche un
-     * utilisateur par email et retourne son ou ses plans en lecture seule,
-     * pour permettre à Laurent de comprendre un bug signalé sans avoir à
-     * écrire de SQL manuellement (usage 1 uniquement : accès admin, jamais
-     * entre utilisateurs — cf. inventaire §16/discussion de conception).
-     *
-     * uid réels via v1-bridge.js (traduirePlanVersFormatV1 +
-     * construireAllSessions) — réutilise EXACTEMENT la même logique que
-     * l'app cliente, importée directement (fonctions pures, aucune
-     * dépendance DOM) plutôt que réimplémentée ici, pour éliminer tout
-     * risque de divergence entre les deux copies (cf. inventaire §7,
-     * v1-bridge.js déjà documenté comme fragile si dupliqué/oublié).
-     *
-     * Aucune donnée Strava (token ou activité) n'est lue ici — décision de
-     * principe actée le 25/07/2026 : ce module ne doit utiliser QUE des
-     * données déjà stockées côté Yoria (Supabase), jamais rien qui touche,
-     * même indirectement, au compte Strava d'un testeur.
-     *
-     * L'API Admin Supabase (/auth/v1/admin/users?email=eq.X) a un
-     * filtrage peu fiable en pratique (retours utilisateurs contradictoires
-     * selon les versions) — on liste tous les utilisateurs et on filtre
-     * côté serveur. Volume actuel de comptes très faible (bêta), donc pas
-     * un problème de performance à ce stade ; à revoir avec pagination
-     * explicite si la base de testeurs grossit significativement.
+     * Module "Comptes" — recherche un utilisateur par email et retourne
+     * son ou ses plans en lecture seule (cf. commentaire détaillé plus bas
+     * sur search_user_plan, inchangé).
      */
     if (action === "search_user_plan") {
       const email = String(body.email || "").trim().toLowerCase();
@@ -582,11 +640,109 @@ export default async function handler(request, response) {
       }
     }
 
+    // Suppression d'un compte Yoria seul, sans passer par une candidature
+    // (ajout) — cas d'un compte créé sans jamais avoir candidaté à la
+    // bêta. Déclenché depuis le module "Comptes" (recherche par email déjà
+    // existante), sur un compte déjà affiché par search_user_plan.
+    if (action === "delete_account") {
+      const email = String(body.email || "").trim().toLowerCase();
+
+      if (!email) {
+        return json(response, 400, {
+          message: "Adresse e-mail manquante.",
+        });
+      }
+
+      try {
+        const resultat = await supprimerCompteYoriaParEmail(config, email);
+
+        if (!resultat.supprime) {
+          return json(response, 404, {
+            message: "Aucun compte Yoria trouvé avec cette adresse e-mail.",
+          });
+        }
+
+        return json(response, 200, {
+          success: true,
+          message: "Le compte Yoria a bien été supprimé.",
+        });
+      } catch (error) {
+        console.error("Erreur suppression compte :", error);
+
+        return json(response, 500, {
+          message: error.message || "La suppression du compte a échoué.",
+        });
+      }
+    }
+
     /*
      * Le reste (candidatures beta_testers) — id/action/status classiques.
      */
     const id = String(body.id || "");
     const status = String(body.status || "");
+
+    // Suppression d'une candidature bêta (ajout) — supprime la ligne
+    // beta_testers, PUIS tente de supprimer un compte Yoria associé à la
+    // même adresse email s'il en existe un (cas le plus courant en usage
+    // réel : un candidat qui a aussi effectivement créé son compte).
+    // L'absence de compte Yoria n'est jamais traitée comme une erreur —
+    // c'est le cas attendu pour la grande majorité des candidatures de
+    // test, qui ne vont jamais jusqu'à l'onboarding complet de l'app.
+    if (action === "delete_application") {
+      if (!/^[0-9a-f-]{36}$/i.test(id)) {
+        return json(response, 400, {
+          message: "Identifiant de candidature invalide.",
+        });
+      }
+
+      try {
+        const candidates = await supabaseRequest(
+          config,
+          `beta_testers?id=eq.${encodeURIComponent(id)}&select=email`,
+          { method: "GET" },
+        );
+
+        if (!Array.isArray(candidates) || candidates.length !== 1) {
+          return json(response, 404, {
+            message: "Candidature introuvable.",
+          });
+        }
+
+        const email = candidates[0].email;
+
+        await supabaseRequest(
+          config,
+          `beta_testers?id=eq.${encodeURIComponent(id)}`,
+          { method: "DELETE", headers: { Prefer: "return=minimal" } },
+        );
+
+        let compteAussiSupprime = false;
+        try {
+          const resultatCompte = await supprimerCompteYoriaParEmail(config, email);
+          compteAussiSupprime = resultatCompte.supprime;
+        } catch (erreurCompte) {
+          // Best-effort : la candidature est déjà supprimée à ce stade,
+          // ne jamais faire échouer toute l'opération si seule la partie
+          // "compte Yoria associé" pose problème — Laurent peut relancer
+          // une suppression de compte séparément depuis le module Comptes
+          // si besoin.
+          console.warn("Suppression du compte Yoria associé échouée :", erreurCompte.message);
+        }
+
+        return json(response, 200, {
+          success: true,
+          message: compteAussiSupprime
+            ? "Candidature et compte Yoria associé supprimés."
+            : "Candidature supprimée.",
+        });
+      } catch (error) {
+        console.error("Erreur suppression candidature :", error);
+
+        return json(response, 500, {
+          message: error.message || "La suppression a échoué.",
+        });
+      }
+    }
 
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return json(response, 400, {
