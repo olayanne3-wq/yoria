@@ -186,6 +186,13 @@ export default async function handler(request, response) {
     runs_per_week: runsPerWeek,
     favorite_distance: favoriteDistance,
     uses_strava: usesStrava,
+    // La colonne accepts_feedback est NOT NULL côté Supabase — ce champ a
+    // été retiré du formulaire (cf. révision de contenu), donc plus jamais
+    // envoyé par le client. false explicite ici plutôt qu'omis, pour ne
+    // jamais violer la contrainte NOT NULL (cause du bug "null value in
+    // column accepts_feedback violates not-null constraint" observé dans
+    // les logs Vercel après le retrait du champ).
+    accepts_feedback: false,
     message: message || null,
     status: autoValidee ? "invited" : "pending",
     consented_at: maintenant,
@@ -201,7 +208,7 @@ export default async function handler(request, response) {
           apikey: serviceRoleKey,
           Authorization: `Bearer ${serviceRoleKey}`,
           "Content-Type": "application/json",
-          Prefer: "return=representation",
+          Prefer: "return=minimal",
         },
         body: JSON.stringify(candidate),
       },
