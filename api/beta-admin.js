@@ -137,9 +137,139 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+// Instructions d'installation iOS (ajout) — insérées uniquement dans
+// l'email d'un candidat platform === "iphone" (cf. createInvitationHtml
+// ci-dessous). Yoria n'a pas d'équivalent de la TWA Android sur iPhone :
+// Apple ne propose aucun pont officiel PWA-vers-App-Store, donc
+// l'installation se fait via Safari (Partager → Sur l'écran d'accueil),
+// un geste manuel non intuitif sans ce guide. Volontairement en HTML de
+// table (comme le reste de ce fichier) plutôt qu'en Markdown/texte brut,
+// pour un rendu fiable dans les clients email qui ignorent le CSS externe
+// et parfois même les balises <style> (limite connue des emails HTML,
+// d'où le style inline systématique déjà utilisé partout dans ce fichier).
+function createInstructionsIosHtml() {
+  return `
+    <tr>
+      <td style="padding:0 34px 36px;">
+        <table
+          role="presentation"
+          width="100%"
+          cellspacing="0"
+          cellpadding="0"
+          style="
+            border-radius:16px;
+            background:#f5f3fa;
+            border:1px solid #e3deeb;
+          "
+        >
+          <tr>
+            <td style="padding:22px 24px;">
+              <div style="
+                margin:0 0 12px;
+                font-size:15px;
+                font-weight:800;
+                color:#19172b;
+              ">
+                📱 Installer Yoria sur iPhone
+              </div>
+
+              <p style="
+                margin:0 0 14px;
+                color:#615d70;
+                font-size:14px;
+                line-height:1.6;
+              ">
+                Yoria s'installe via Safari, pas via l'App Store — c'est
+                rapide (environ 30 secondes) :
+              </p>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" width="100%">
+                <tr>
+                  <td style="padding:0 0 10px; vertical-align:top; width:26px;">
+                    <div style="
+                      width:22px;
+                      height:22px;
+                      border-radius:50%;
+                      background:#7042db;
+                      color:#ffffff;
+                      font-size:12px;
+                      font-weight:800;
+                      text-align:center;
+                      line-height:22px;
+                    ">1</div>
+                  </td>
+                  <td style="padding:0 0 10px; vertical-align:top;">
+                    <span style="color:#19172b; font-size:14px; line-height:1.55;">
+                      Ouvrez le lien ci-dessus <strong>dans Safari</strong>
+                      (pas Chrome ni un autre navigateur)
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 0 10px; vertical-align:top; width:26px;">
+                    <div style="
+                      width:22px;
+                      height:22px;
+                      border-radius:50%;
+                      background:#7042db;
+                      color:#ffffff;
+                      font-size:12px;
+                      font-weight:800;
+                      text-align:center;
+                      line-height:22px;
+                    ">2</div>
+                  </td>
+                  <td style="padding:0 0 10px; vertical-align:top;">
+                    <span style="color:#19172b; font-size:14px; line-height:1.55;">
+                      Appuyez sur le bouton <strong>Partager</strong>
+                      ⬆️ (en bas de l'écran)
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0; vertical-align:top; width:26px;">
+                    <div style="
+                      width:22px;
+                      height:22px;
+                      border-radius:50%;
+                      background:#7042db;
+                      color:#ffffff;
+                      font-size:12px;
+                      font-weight:800;
+                      text-align:center;
+                      line-height:22px;
+                    ">3</div>
+                  </td>
+                  <td style="padding:0; vertical-align:top;">
+                    <span style="color:#19172b; font-size:14px; line-height:1.55;">
+                      Faites défiler et appuyez sur
+                      <strong>« Sur l'écran d'accueil »</strong>
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="
+                margin:16px 0 0;
+                color:#8a8696;
+                font-size:12.5px;
+                line-height:1.6;
+              ">
+                Une icône Yoria apparaîtra alors sur votre écran d'accueil,
+                comme n'importe quelle application.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  `;
+}
+
 function createInvitationHtml(candidate, appUrl) {
   const firstName = escapeHtml(candidate.first_name);
   const safeAppUrl = escapeHtml(appUrl);
+  const estIphone = candidate.platform === "iphone";
 
   return `
     <!DOCTYPE html>
@@ -198,7 +328,7 @@ function createInvitationHtml(candidate, appUrl) {
                 </tr>
 
                 <tr>
-                  <td style="padding:36px 34px;">
+                  <td style="padding:36px 34px ${estIphone ? "0" : "36px"};">
                     <h1 style="
                       margin:0 0 20px;
                       font-size:26px;
@@ -268,6 +398,8 @@ function createInvitationHtml(candidate, appUrl) {
                     </p>
                   </td>
                 </tr>
+
+                ${estIphone ? createInstructionsIosHtml() : ""}
 
                 <tr>
                   <td style="
