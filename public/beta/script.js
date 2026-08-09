@@ -37,11 +37,12 @@ form.addEventListener("submit", async (event) => {
   statusElement.className = "form-status";
 
   const formData = new FormData(form);
+  const platform = formData.get("platform");
 
   const payload = {
     firstName: formData.get("firstName"),
     email: formData.get("email"),
-    platform: formData.get("platform"),
+    platform,
     runningLevel: formData.get("runningLevel"),
     runsPerWeek: Number(formData.get("runsPerWeek")),
     favoriteDistance: formData.get("favoriteDistance"),
@@ -72,15 +73,18 @@ form.addEventListener("submit", async (event) => {
       );
     }
 
-    statusElement.textContent = result.message;
-    statusElement.className = "form-status success";
-
-    form.reset();
-    encartIos.hidden = true;
+    // Redirection vers la page de remerciement dédiée (ajout) — le statut
+    // réel (autoValidee) vient de la réponse API, jamais deviné côté
+    // client, pour ne jamais afficher par erreur un accès actif qui ne
+    // l'est pas. platform est repris tel quel du formulaire, déjà validé
+    // côté serveur (ALLOWED_PLATFORMS) donc sûr à transmettre tel quel
+    // dans l'URL.
+    const statutUrl = result.autoValidee ? "invited" : "pending";
+    const params = new URLSearchParams({ statut: statutUrl, plateforme: platform });
+    window.location.href = `/beta/merci.html?${params.toString()}`;
   } catch (error) {
     statusElement.textContent = error.message;
     statusElement.className = "form-status error";
-  } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Envoyer ma candidature";
   }
