@@ -320,6 +320,25 @@
                     <span>iPhone</span>
                   </label>
                 </div>
+
+                <!-- Encart iOS (ajout) — Yoria n'a pas d'équivalent de la
+                     TWA Android sur iPhone : Apple ne propose aucun pont
+                     officiel PWA-vers-App-Store. L'installation se fait
+                     via Safari (Partager → Sur l'écran d'accueil), un
+                     geste manuel non intuitif si le candidat ne s'y
+                     attend pas. Affiché dès la sélection d'iPhone, avant
+                     même l'envoi du formulaire, pour que le candidat le
+                     sache tout de suite plutôt que de le découvrir (ou
+                     pas) à la réception de l'invitation. Caché par défaut
+                     (id ciblé par script.js), jamais affiché si Android
+                     est sélectionné. -->
+                <div id="encart-ios" class="encart-ios" hidden>
+                  <strong>📱 Sur iPhone :</strong>
+                  Yoria s'installe via Safari — pas de téléchargement sur
+                  l'App Store. Une fois votre candidature acceptée, l'e-mail
+                  d'invitation vous expliquera comment faire (c'est rapide,
+                  environ 30 secondes).
+                </div>
               </fieldset>
 
               <label>
