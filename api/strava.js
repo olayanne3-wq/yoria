@@ -1,13 +1,12 @@
-// Origine autorisée pour les appels cross-origin (ajout, correctif
-// sécurité) — remplace le wildcard "*" précédent sur /refresh et
-// /activities. Un wildcard permettait à N'IMPORTE QUEL site tiers
-// d'appeler ces routes depuis le navigateur d'un utilisateur (si ce site
-// connaissait/devinait un token Strava valide, il aurait pu récupérer les
-// données d'activité de cet utilisateur via une requête fetch() côté
-// client). Seule l'app Yoria a légitimement besoin d'appeler ces routes —
-// codé en dur plutôt qu'en variable d'environnement, l'app tournant
-// uniquement sur ce domaine (confirmé : pas d'usage depuis les URLs de
-// preview Vercel).
+// Origine autorisée pour les appels cross-origin (correctif sécurité) —
+// remplace le wildcard "*" précédent sur /refresh et /activities. Un
+// wildcard permettait à N'IMPORTE QUEL site tiers d'appeler ces routes
+// depuis le navigateur d'un utilisateur (si ce site connaissait/devinait
+// un token Strava valide, il aurait pu récupérer les données d'activité
+// de cet utilisateur via une requête fetch() côté client). Seule l'app
+// Yoria a légitimement besoin d'appeler ces routes — codé en dur plutôt
+// qu'en variable d'environnement, l'app tournant uniquement sur ce
+// domaine (confirmé : pas d'usage depuis les URLs de preview Vercel).
 const ORIGINE_AUTORISEE = "https://yoria.run";
 
 export default async function handler(req, res) {
@@ -42,7 +41,13 @@ export default async function handler(req, res) {
   // ── /callback ────────────────────────────────────────────────────────────
   if (path === "/callback") {
     const code = req.query?.code;
-    console.log(`[strava callback] code reçu: ${code?.slice(0,8)}... | state: ${req.query?.state || 'aucun'} | ${new Date().toISOString()}`);
+    // Log de diagnostic (correctif sécurité, retrait du fragment de code) —
+    // le code OAuth lui-même n'est plus loggé, même tronqué. Un code
+    // d'autorisation est à usage unique et de courte durée de vie, donc le
+    // risque réel était faible, mais rien n'est gagné à le journaliser,
+    // même partiellement — seule sa présence/absence est utile pour le
+    // diagnostic, pas sa valeur.
+    console.log(`[strava callback] code présent: ${!!code} | state: ${req.query?.state || 'aucun'} | ${new Date().toISOString()}`);
     if (!code) return res.status(400).json({ error: "No code" });
 
     const resp = await fetch("https://www.strava.com/oauth/token", {
