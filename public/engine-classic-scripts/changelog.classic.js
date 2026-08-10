@@ -27,7 +27,11 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.38", title:"Estimation 10K enrichie par la saisie manuelle, correctifs de fiabilité", current:true, notes:[
+      { ver:"v2.39", title:"Installation facilitée sur iPhone, bêta plus rapide", current:true, notes:[
+        "📱 Sur iPhone, un guide s'affiche pour ajouter Yoria à ton écran d'accueil comme une vraie application",
+        "🚀 Le site d'inscription à la bêta valide désormais automatiquement les premières candidatures, avec un accès immédiat et les instructions d'installation adaptées à ton téléphone",
+      ]},
+      { ver:"v2.38", title:"Estimation 10K enrichie par la saisie manuelle, correctifs de fiabilité", current:false, notes:[
         "🎯 En saisie manuelle, chaque répétition réussie ou ratée contribue désormais à ton estimation 10K, exactement comme une vraie séance Strava",
         "🔧 Correctif important : les statuts de séance (✅⚠️❌) ne pouvaient plus disparaître silencieusement, notamment en changeant de source de données",
         "🔄 Correctif : échanger deux séances affiche maintenant fidèlement le résultat partout, y compris après avoir quitté et rouvert l'app",
