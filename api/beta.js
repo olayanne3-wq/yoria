@@ -1,4 +1,5 @@
 import { sendBrevoInvitation } from "../lib/beta-invitation-email.js";
+import { extraireIp, verifierEtIncrementerTentative } from "../lib/rate-limit.js";
 
 const ALLOWED_PLATFORMS = new Set(["android", "iphone"]);
 
@@ -25,6 +26,20 @@ const ALLOWED_DISTANCES = new Set([
 // automatiquement par ce mécanisme — la charge de suivi est la même pour
 // Laurent quelle que soit l'origine de l'invitation.
 const SEUIL_AUTO_VALIDATION = 20;
+
+// Rate limiting (ajout, correctif sécurité) — pertinent depuis
+// l'auto-validation : sans cette limite, un flot de candidatures
+// automatisées ou de spam manuel répété pourrait déclencher un envoi
+// d'email et une création de compte "invited" à chaque fois, sans
+// intervention humaine. Table dédiée tentatives_soumission_beta (cf.
+// docs/v2-methodologie/table-rate-limiting-beta.sql), séparée de
+// tentatives_connexion_admin (contexte différent, cf. lib/rate-limit.js).
+// Pas de réinitialisation après une candidature réussie (contrairement à
+// la connexion admin) — le but ici est de limiter le NOMBRE de
+// candidatures par IP sur la fenêtre, réussies ou non.
+const TABLE_RATE_LIMIT_BETA = "tentatives_soumission_beta";
+const FENETRE_RATE_LIMIT_MS = 15 * 60 * 1000;
+const MAX_TENTATIVES_RATE_LIMIT = 5;
 
 function cleanText(value, maxLength = 250) {
   if (typeof value !== "string") {
@@ -66,6 +81,25 @@ export default async function handler(request, response) {
     return sendJson(response, 500, {
       success: false,
       message: "Le service est temporairement indisponible.",
+    });
+  }
+
+  const rateLimitConfig = { supabaseUrl, supabaseKey: serviceRoleKey };
+  const ip = extraireIp(request);
+
+  const { autorise, reessayerDansMs } = await verifierEtIncrementerTentative(
+    rateLimitConfig,
+    TABLE_RATE_LIMIT_BETA,
+    ip,
+    FENETRE_RATE_LIMIT_MS,
+    MAX_TENTATIVES_RATE_LIMIT,
+  );
+
+  if (!autorise) {
+    const minutesRestantes = Math.ceil(reessayerDansMs / 60000);
+    return sendJson(response, 429, {
+      success: false,
+      message: `Trop de candidatures envoyées récemment. Réessayez dans ${minutesRestantes} minute${minutesRestantes > 1 ? "s" : ""}.`,
     });
   }
 
@@ -143,9 +177,9 @@ export default async function handler(request, response) {
     });
   }
 
-  // Auto-validation (ajout) — compte les candidatures déjà invited/active
-  // AVANT d'insérer la nouvelle, pour décider si elle passe automatiquement
-  // ou repasse en validation manuelle classique. Un léger risque de
+  // Auto-validation — compte les candidatures déjà invited/active AVANT
+  // d'insérer la nouvelle, pour décider si elle passe automatiquement ou
+  // repasse en validation manuelle classique. Un léger risque de
   // dépassement du seuil existe en cas de deux insertions concurrentes
   // quasi simultanées (lecture du compte non atomique avec l'insertion
   // suivante) — accepté comme limite mineure vu le volume attendu en bêta
@@ -241,7 +275,7 @@ export default async function handler(request, response) {
       });
     }
 
-    // Envoi de l'email d'invitation (ajout, uniquement si auto-validée) —
+    // Envoi de l'email d'invitation (uniquement si auto-validée) —
     // best-effort : un échec d'envoi ne doit jamais faire échouer
     // l'inscription elle-même (déjà enregistrée en base à ce stade). Le
     // candidat reste visible dans beta-admin avec statut "invited" même
