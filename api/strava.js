@@ -1,3 +1,15 @@
+// Origine autorisée pour les appels cross-origin (ajout, correctif
+// sécurité) — remplace le wildcard "*" précédent sur /refresh et
+// /activities. Un wildcard permettait à N'IMPORTE QUEL site tiers
+// d'appeler ces routes depuis le navigateur d'un utilisateur (si ce site
+// connaissait/devinait un token Strava valide, il aurait pu récupérer les
+// données d'activité de cet utilisateur via une requête fetch() côté
+// client). Seule l'app Yoria a légitimement besoin d'appeler ces routes —
+// codé en dur plutôt qu'en variable d'environnement, l'app tournant
+// uniquement sur ce domaine (confirmé : pas d'usage depuis les URLs de
+// preview Vercel).
+const ORIGINE_AUTORISEE = "https://yoria.run";
+
 export default async function handler(req, res) {
   const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
   const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
@@ -71,7 +83,7 @@ export default async function handler(req, res) {
       }),
     });
     const data = await resp.json();
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin", ORIGINE_AUTORISEE);
     return res.status(200).json(data);
   }
 
@@ -92,7 +104,7 @@ export default async function handler(req, res) {
     const activities = await resp.json();
 
     if (!Array.isArray(activities)) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Origin", ORIGINE_AUTORISEE);
       return res.status(200).json(activities);
     }
 
@@ -114,7 +126,7 @@ export default async function handler(req, res) {
       return act;
     }));
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin", ORIGINE_AUTORISEE);
     return res.status(200).json(enriched);
   }
 
