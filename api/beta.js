@@ -1,4 +1,4 @@
-import { sendBrevoInvitation } from "./_beta-invitation-email.js";
+import { sendBrevoInvitation } from "../lib/beta-invitation-email.js";
 
 const ALLOWED_PLATFORMS = new Set(["android", "iphone"]);
 

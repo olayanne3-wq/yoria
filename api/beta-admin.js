@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { traduirePlanVersFormatV1, construireAllSessions } from "../public/v2/engine/v1-bridge.js";
-import { sendBrevoInvitation } from "./_beta-invitation-email.js";
+import { sendBrevoInvitation } from "../lib/beta-invitation-email.js";
 
 const COOKIE = "yoria_beta_admin";
 const TTL = 28_800;
@@ -18,7 +18,6 @@ const SIGNALEMENT_STATUSES = new Set([
   "en_cours",
   "resolu",
 ]);
-
 
 const json = (response, status, payload) =>
   response.status(status).json(payload);
@@ -130,23 +129,14 @@ async function supabaseRequest(config, path, options = {}) {
   return data;
 }
 
-// Suppression complète d'un compte Yoria par email (ajout) — pendant admin
-// de api/delete-account.js, mais déclenché avec la clé service_role
-// directement plutôt qu'un token d'accès utilisateur (celui-ci n'a aucun
-// sens depuis l'admin : Laurent n'est jamais connecté en tant que le
-// testeur dont il nettoie le compte). Retourne { supprime: true } si un
-// compte a été trouvé et supprimé, { supprime: false } si aucun compte
-// n'existe avec cet email — ce second cas n'est PAS une erreur (le cas le
-// plus fréquent : une candidature bêta sans compte Yoria jamais créé).
-// Tables applicatives liées directement par user_id (ajout, étendu au-delà
-// du seul decision_events déjà couvert par api/delete-account.js — cf.
-// inventaire §5, liste des tables liées à user_id : plans_original,
-// plans_actif, badges_debloques, decision_events en font partie).
-// integrations n'a PAS été retrouvée avec certitude comme liée à user_id
-// dans le code déjà consulté cette session (colonne v2_gist_id mentionnée,
-// structure exacte non vérifiée) — incluse par prudence, un DELETE sur une
-// table/colonne inexistante ou déjà vide échoue proprement (404/0 lignes),
-// jamais une vraie casse.
+// Tables applicatives liées directement par user_id — cf. inventaire §5,
+// liste des tables liées à user_id : plans_original, plans_actif,
+// badges_debloques, decision_events en font partie. integrations n'a PAS
+// été retrouvée avec certitude comme liée à user_id dans le code déjà
+// consulté cette session (colonne v2_gist_id mentionnée, structure exacte
+// non vérifiée) — incluse par prudence, un DELETE sur une table/colonne
+// inexistante ou déjà vide échoue proprement (404/0 lignes), jamais une
+// vraie casse.
 const TABLES_USER_ID_DIRECT = [
   "decision_events",
   "plans_original",
@@ -155,6 +145,14 @@ const TABLES_USER_ID_DIRECT = [
   "integrations",
 ];
 
+// Suppression complète d'un compte Yoria par email — pendant admin de
+// api/delete-account.js, mais déclenché avec la clé service_role
+// directement plutôt qu'un token d'accès utilisateur (celui-ci n'a aucun
+// sens depuis l'admin : Laurent n'est jamais connecté en tant que le
+// testeur dont il nettoie le compte). Retourne { supprime: true } si un
+// compte a été trouvé et supprimé, { supprime: false } si aucun compte
+// n'existe avec cet email — ce second cas n'est PAS une erreur (le cas le
+// plus fréquent : une candidature bêta sans compte Yoria jamais créé).
 async function supprimerCompteYoriaParEmail(config, email) {
   const usersResponse = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users`,
@@ -730,8 +728,8 @@ export default async function handler(request, response) {
     }
 
     // Suppression d'un compte Yoria seul, sans passer par une candidature
-    // (ajout) — cas d'un compte créé sans jamais avoir candidaté à la
-    // bêta. Déclenché depuis le module "Comptes" (recherche par email déjà
+    // — cas d'un compte créé sans jamais avoir candidaté à la bêta.
+    // Déclenché depuis le module "Comptes" (recherche par email déjà
     // existante), sur un compte déjà affiché par search_user_plan.
     if (action === "delete_account") {
       const email = String(body.email || "").trim().toLowerCase();
@@ -770,13 +768,13 @@ export default async function handler(request, response) {
     const id = String(body.id || "");
     const status = String(body.status || "");
 
-    // Suppression d'une candidature bêta (ajout) — supprime la ligne
-    // beta_testers, PUIS tente de supprimer un compte Yoria associé à la
-    // même adresse email s'il en existe un (cas le plus courant en usage
-    // réel : un candidat qui a aussi effectivement créé son compte).
-    // L'absence de compte Yoria n'est jamais traitée comme une erreur —
-    // c'est le cas attendu pour la grande majorité des candidatures de
-    // test, qui ne vont jamais jusqu'à l'onboarding complet de l'app.
+    // Suppression d'une candidature bêta — supprime la ligne beta_testers,
+    // PUIS tente de supprimer un compte Yoria associé à la même adresse
+    // email s'il en existe un (cas le plus courant en usage réel : un
+    // candidat qui a aussi effectivement créé son compte). L'absence de
+    // compte Yoria n'est jamais traitée comme une erreur — c'est le cas
+    // attendu pour la grande majorité des candidatures de test, qui ne
+    // vont jamais jusqu'à l'onboarding complet de l'app.
     if (action === "delete_application") {
       if (!/^[0-9a-f-]{36}$/i.test(id)) {
         return json(response, 400, {
