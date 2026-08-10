@@ -17,17 +17,29 @@
 plans d'entraînement adaptatifs. Développeur solo : Laurent, objectif
 personnel semi-marathon le 6 septembre 2026.
 
-- Repo GitHub : `olayanne3-wq/yoria` (branche `main`)
-- Déployé sur Vercel, domaine `yoria.run`
+- Repo GitHub : `olayanne3-wq/yoria` (branche `main`), **public**
+- Déployé sur Vercel (plan **Hobby** — plafond strict de 12 fonctions
+  serverless par déploiement, cf. §2 sur `lib/` vs `api/`), domaine
+  `yoria.run`
 - Stack : vanilla HTML/CSS/JS (modules ES), hosting statique Vercel, API
   serverless dans `/api/`
-- Backend Supabase (auth + données), intégration Strava
+- Backend Supabase (auth + données, projet encore nommé "Run by Léa" côté
+  dashboard — cosmétique, aucun impact), intégration Strava
 
 ## 2. Arborescence du repo
 
 ```
 yoria/
-├── api/                          # Endpoints serverless (Vercel/Node)
+├── api/                          # Endpoints serverless (Vercel/Node) —
+│                                  # PLAFOND STRICT 12 fonctions max (plan
+│                                  # Hobby) : tout fichier .js ici compte
+│                                  # comme une fonction, y compris un module
+│                                  # jamais appelé en HTTP direct. Toute
+│                                  # logique partagée entre plusieurs
+│                                  # endpoints doit vivre dans lib/, jamais
+│                                  # dans api/ (cf. incident déjà rencontré :
+│                                  # errorCode exceeded_serverless_functions_
+│                                  # per_deployment).
 │   ├── coach.js                  # Proxy Claude Haiku (messages coach courts)
 │   ├── strava.js                 # OAuth Strava (auth, callback, refresh, activities)
 │   ├── weather.js                # Proxy Open-Meteo (prévision + alerte chaleur >28°C)
@@ -36,8 +48,14 @@ yoria/
 │   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
 │   ├── delete-account.js         # Suppression définitive d'un compte (cascade)
 │   ├── backup.js                 # Export global / ciblé utilisateur / réinjection / diagnostic cascades (cf. §5)
-│   ├── beta.js                   # Candidature bêta (public)
-│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits, signalements)
+│   ├── beta.js                   # Candidature bêta (public, cf. §16bis)
+│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits, signalements, cf. §16bis)
+├── lib/                          # Modules serveur PARTAGÉS entre plusieurs
+│                                  # fichiers api/*.js — jamais compilés en
+│                                  # fonction serverless (hors du dossier
+│                                  # api/), jamais appelés en HTTP direct.
+│   ├── beta-invitation-email.js   # Génération + envoi email d'invitation bêta (iOS/Android, cf. §16bis)
+│   └── rate-limit.js              # Rate limiting générique par IP (cf. §16bis)
 ├── docs/
 │   ├── legal/                    # Confidentialité, CGU/CGV, RGPD, Play Store data safety
 │   └── v2-methodologie/
@@ -45,12 +63,20 @@ yoria/
 │       ├── bibliotheque-seances.md     # Méthodologie des types de séances qualité
 │       ├── import-fit-intervalles.md   # Conception + implémentation import .fit (cf. §10)
 │       ├── diagnostic-cascades-user-id.sql  # Fonctions RPC pour l'onglet Cascades (beta-admin)
+│       ├── table-rate-limiting-admin.sql    # Schéma table tentatives_connexion_admin (cf. §16bis)
+│       ├── table-rate-limiting-beta.sql     # Schéma table tentatives_soumission_beta (cf. §16bis)
 │       └── (autres docs de contexte : jour-de-course, source-donnees-seances, etc.)
 ├── public/
 │   ├── index.html                 # App principale (dashboard, ~11700 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
-│   ├── beta/                      # Page candidature bêta publique
+│   ├── beta/                      # Site candidature bêta publique (cf. §16bis)
+│   │   ├── index.html             # Page d'inscription (one-page à ancres)
+│   │   ├── script.js
+│   │   ├── styles.css
+│   │   ├── merci.html             # Page de remerciement dédiée
+│   │   ├── merci.js
+│   │   └── assets/                # Screenshots + logo SVG (PNG mort supprimé), image Open Graph dédiée
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
 │   │                              # Onglets : Candidatures, Sélectionnés, Invités,
 │   │                              # Signalements, Comptes, Sauvegarde, Cascades, Statistiques
@@ -104,6 +130,22 @@ individuellement, pas seulement la première trouvée.
 **Toute mutation d'un état source de `ALL_SESSIONS`** (`statuses`,
 `swappedSessions`) doit être suivie d'un `ALL_SESSIONS =
 recalculerAllSessions()` explicite avant tout `render()`, jamais implicite.
+
+**Support PWA iOS** — `apple-mobile-web-app-status-bar-style` (valeur
+`black-translucent`, contenu de l'app passe sous la barre de statut
+système plutôt qu'une bande fixe imposée par iOS) et
+`apple-mobile-web-app-title` ajoutés dans le `<head>`, en complément de
+`apple-mobile-web-app-capable` déjà présent. Bandeau d'onboarding
+"Ajouter à l'écran d'accueil" injecté en JS (détection `Safari` iOS
+spécifiquement, hors Chrome/Firefox iOS qui partagent le même moteur
+WebKit imposé par Apple mais pas le même geste fiable ; hors mode déjà
+standalone via `navigator.standalone`), fermable définitivement
+(mémorisé dans `localStorage`, clé `yoria_bandeau_ios_ferme`, **non
+préfixée par plan** — décrit un état de l'appareil, pas une donnée à
+synchroniser). Contrairement à Android (TWA Play Store), **aucun
+équivalent officiel Apple n'existe** pour faire passer une PWA vers l'App
+Store sans review — installation manuelle via Safari (Partager → Sur
+l'écran d'accueil) reste la seule voie.
 
 **Écran "Consulter un plan" — accordéon "Modifier mon plan"
 (`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
@@ -420,7 +462,10 @@ deux fois la même séance. Local au plan (contrairement à `kmCumulesTotal`
 lui-même, champ GLOBAL du profil coureur).
 
 **Principe** : toute donnée propre à un plan doit être préfixée — une clé
-globale non préfixée est un risque de contamination inter-plans.
+globale non préfixée est un risque de contamination inter-plans. Exception
+volontaire : `yoria_bandeau_ios_ferme` (§3) décrit un état de l'appareil
+lui-même, pas une donnée de plan — ne doit jamais être préfixée ni
+synchronisée.
 
 **Convention `statuses[uid]`** : peut valoir `'—'` explicitement, pas
 seulement `undefined`/absent — tout code qui teste "cette séance a-t-elle
@@ -441,12 +486,42 @@ identifiés.
 
 **Supabase** — tables `plans_original` (copie figée), `plans_actif`
 (version vivante), `plan_donnees`, `integrations` (colonne `v2_gist_id` en
-brut), `abonnements`, `beta_testers`, `signalements`, `badges_debloques`
-(cf. §11, §16). Sync Realtime activée sur `plan_donnees` (anti-écho 3s) —
+brut), `abonnements`, `beta_testers`, `signalements`, `badges_debloques`,
+`decision_events`, `decision_outcomes` (cf. §11, §16), plus deux tables de
+rate limiting `tentatives_connexion_admin` et `tentatives_soumission_beta`
+(cf. §16bis). Sync Realtime activée sur `plan_donnees` (anti-écho 3s) —
 établissement du canal WebSocket non-bloquant (`activerRealtime()` n'est
 pas `await`-é avant le premier `render()`, le canal continue de s'établir
 en arrière-plan). File d'attente de sync en cas d'échec réseau
 (`lk_file_attente_sync`, 5 min, abandon après 10 essais).
+
+**RLS (Row Level Security)** — activée sur toutes les tables applicatives
+sensibles, vérifiée table par table début août 2026 (méthode : SQL Editor,
+requête `select policyname, cmd, qual, with_check from pg_policies where
+tablename = '...'`, plus fiable que l'aperçu replié de l'éditeur de
+policies qui peut tronquer une condition longue). Deux patterns
+légitimes selon le cas :
+- **Lien direct par `user_id`** (`plans_actif`, `plan_donnees`,
+  `decision_events`, `badges_debloques`) : condition `auth.uid() =
+  user_id`, en `USING` pour SELECT/UPDATE/DELETE et `WITH CHECK` pour
+  INSERT (les deux colonnes du système, pas juste une — une valeur `null`
+  dans l'une des deux pour une opération qui la nécessite serait un vrai
+  trou).
+- **Lien indirect** (`decision_outcomes`, qui n'a pas de `user_id` propre,
+  seulement `decision_event_id` → `decision_events.id`) : condition par
+  sous-requête EXISTS vers la table parente.
+- **Lecture seule, écriture serveur uniquement** (`abonnements`) : une
+  seule policy SELECT (`auth.uid() = user_id`), aucune policy
+  INSERT/UPDATE/DELETE côté client — toute écriture passe exclusivement
+  par les endpoints serverless (`service_role`, qui contourne RLS
+  nativement). Absence de policy d'écriture = comportement voulu ici, pas
+  un oubli.
+- **Accès client totalement bloqué** (`beta_testers`) : RLS activée, zéro
+  policy déclarée = aucune donnée ne transite par l'API Data côté client,
+  quelle que soit l'opération. Tout passe par `api/beta.js`/
+  `api/beta-admin.js` en `service_role`. C'est la configuration la plus
+  restrictive possible, cohérente avec le fait qu'aucun point du
+  frontend n'accède directement à cette table.
 
 **`synchroniserVersSupabase()` (`sync-storage.js`)** — merge atomique via
 RPC Postgres `merger_plan_donnees(p_plan_id, p_user_id, p_cle, p_valeur)`
@@ -512,8 +587,8 @@ aucune lecture n'exploite encore cette donnée. `decision_events`
 journalise chaque décision du `RuleEngine` (proposée/appliquée/ignorée,
 contexte complet). `decision_outcomes` lie une décision à la première
 séance ultérieure avec un statut connu (référence `decision_event_id`,
-pas `user_id` directement). RLS strictement par propriétaire. Schéma SQL
-dans `schema-decision-memory.sql`.
+pas `user_id` directement). RLS strictement par propriétaire (vérifiée,
+cf. ci-dessus). Schéma SQL dans `schema-decision-memory.sql`.
 
 **Suppression de compte — toutes les tables applicatives liées à
 `user_id` doivent être en `ON DELETE CASCADE`** vers `auth.users(id)` —
@@ -523,7 +598,10 @@ dans `schema-decision-memory.sql`.
 `decision_events` explicitement en filet de sécurité
 (`TABLES_A_NETTOYER`), avant l'appel à l'Admin API — toute nouvelle table
 applicative liée à `user_id` doit être vérifiée en cascade au moment de
-sa création.
+sa création. Nettoyage complet équivalent aussi implémenté côté
+`api/beta-admin.js` (suppression de compte depuis l'admin, cf. §16bis) —
+étendu à `plans_original`, `plan_donnees` (lien indirect via `plan_id`),
+`integrations`, et `abonnements` (lien par email, pas `user_id`).
 
 ## 6. Profil coureur (`lk_profil_coureur`)
 
@@ -1003,7 +1081,11 @@ ou utiliser les tokens Strava d'un testeur (cf. §15) — les tokens
 restent volontairement locaux, jamais centralisés côté serveur au-delà
 de l'échange OAuth initial. **Ne remplace plus jamais silencieusement
 une activité déjà présente sur une date** (cf. §10, principe "premier
-arrivé, reste").
+arrivé, reste"). **CORS restreint** : `Access-Control-Allow-Origin`
+fixé à `https://yoria.run` (plus de wildcard `*`) sur `/refresh` et
+`/activities` — évite qu'un site tiers puisse appeler ces routes depuis
+le navigateur d'un utilisateur. Logs du callback OAuth : présence du
+code loggée (`!!code`), jamais sa valeur, même tronquée.
 
 **`syncStrava()`** — robuste sans plan existant : le calcul de
 `planStart` (date la plus ancienne entre le début du plan actuel et 8
@@ -1046,15 +1128,18 @@ couvre PAS Strava (cf. ci-dessus).
 
 **Stripe (abonnements)** — Produit "Yoria Premium" (7€/mois + tarif
 annuel), Checkout hébergé (jamais de formulaire carte natif dans la TWA).
-Table `abonnements` (RLS lecture seule, écritures via endpoints
-serverless `service_role`). `api/stripe-checkout.js` retrouve/crée le
-client par `user_id` puis `email`. `api/stripe-webhook.js` : body brut,
-signature HMAC-SHA256 native. Routes déclarées explicitement dans
-`vercel.json`. Statut lu via `window.__abonnementStatutCache__` (une fois
-par session). Abonnements gratuits (beta testeurs) : coupon Stripe 100%
-répétitif via `beta-admin`, liaison automatique au `user_id` si même
-email que la candidature. **Clés live** : actuellement en mode test —
-switch à faire quand le produit sera prêt pour un lancement public.
+Table `abonnements` (RLS lecture seule par propriétaire, écritures via
+endpoints serverless `service_role`, cf. §5). `api/stripe-checkout.js`
+retrouve/crée le client par `user_id` puis `email`.
+`api/stripe-webhook.js` : body brut, signature HMAC-SHA256 vérifiée en
+**temps constant** (comparaison XOR octet par octet, jamais `===` direct
+— évite une fuite d'information par mesure de timing). Routes déclarées
+explicitement dans `vercel.json`. Statut lu via
+`window.__abonnementStatutCache__` (une fois par session). Abonnements
+gratuits (beta testeurs) : coupon Stripe 100% répétitif via `beta-admin`,
+liaison automatique au `user_id` si même email que la candidature. **Clés
+live** : actuellement en mode test — switch à faire quand le produit sera
+prêt pour un lancement public.
 
 **Signalements utilisateurs** — bouton 💬, sélecteur de type
 (Bug/Donnée/Suggestion/Autre) + description libre. Double écriture :
@@ -1069,9 +1154,10 @@ statuts/RPE/notes réels), réimporte DIRECTEMENT
 `traduirePlanVersFormatV1`/`construireAllSessions` depuis
 `v2/engine/v1-bridge.js` (jamais de réimplémentation serveur séparée).
 Section "Décisions du moteur" : 50 dernières lignes de `decision_events`.
-**Principe strict** : ce module ne doit JAMAIS lire ni utiliser les
-tokens Strava d'un testeur — uniquement des données déjà stockées côté
-Yoria.
+Bouton "🗑️ Supprimer ce compte définitivement" (cf. §16bis), avec
+confirmation explicite. **Principe strict** : ce module ne doit JAMAIS
+lire ni utiliser les tokens Strava d'un testeur — uniquement des données
+déjà stockées côté Yoria.
 
 **Module "Sauvegarde"** (`beta-admin`, cf. §5) — export global, export
 ciblé utilisateur (réutilise la recherche par email du module Comptes),
@@ -1162,6 +1248,11 @@ au retour de l'onboarding (même logique que Réglages).
   (keystore critique à ne jamais perdre)
 - **HyperOS (Xiaomi)** : open-intent non résolu, irritant connu, pas
   bloquant pour le public visé actuellement
+- **iOS** : cf. §3 (support PWA) — pas de publication App Store à ce
+  jour, installation via Safari uniquement. Un passage par un wrapper
+  type Capacitor serait nécessaire pour l'App Store (guideline 4.2 Apple
+  à anticiper : app perçue comme "juste un site web" risque le rejet
+  sans ajout de valeur native), non entamé.
 
 ## 14. Mode Forme (v2.6)
 
@@ -1311,7 +1402,9 @@ Consultable a posteriori depuis la section "🏅 Mes courses" de Stats (cf.
   source, plutôt que patchée individuellement à chaque site d'appel** —
   un correctif dispersé sur chaque appelant est fragile et duplique la
   logique. Cf. §10, `lapsSontDejaEffortSeul` ; cf. §7bis pour le principe
-  appliqué au correctif de distance d'effort dans le prédicteur.
+  appliqué au correctif de distance d'effort dans le prédicteur ; cf.
+  §16bis pour l'email d'invitation et le rate limiting factorisés dans
+  `lib/`.
 - **Avant de croire qu'un mécanisme existe déjà dans le code (ex. une
   auto-ouverture, un callback), vérifier positivement sa présence
   plutôt que de se fier à un commentaire qui décrit une intention** — un
@@ -1333,6 +1426,34 @@ Consultable a posteriori depuis la section "🏅 Mes courses" de Stats (cf.
   bord attendus (cumul km, recalcul d'estimation)** — un `grep`
   exhaustif du motif d'écriture reste plus fiable qu'une liste mentale de
   points déjà identifiés. Cf. §5/§7bis/§9.
+- **Sur le plan Vercel Hobby, tout fichier `.js` placé dans `api/`
+  compte comme une fonction serverless distincte, plafond strict de 12
+  par déploiement** — toute logique partagée entre plusieurs endpoints
+  (email, rate limiting, etc.) doit vivre dans `lib/`, jamais dans
+  `api/`, même si elle n'est jamais appelée en HTTP direct. Cf. §2,
+  §16bis.
+- **Avant de conclure qu'un bug provient du code applicatif, consulter
+  les vrais logs runtime Vercel** (`get_runtime_errors`/
+  `get_runtime_logs`, projectId/teamId récupérables via `list_projects`)
+  plutôt que d'enchaîner des hypothèses non vérifiées avec l'utilisateur
+  — la vraie cause exacte (message d'erreur Postgres, code d'erreur
+  Vercel) est souvent immédiatement disponible et évite plusieurs tours
+  de diagnostic à l'aveugle.
+- **Une redirection vers un lien PWA classique ouverte depuis la WebView
+  intégrée d'une app tierce (Gmail, WhatsApp, etc.) ne peut jamais
+  déclencher `beforeinstallprompt`** — limitation universelle des
+  WebViews embarquées, pas un bug applicatif. Pour Android, rediriger
+  vers la fiche Play Store (installation native, fonctionne peu importe
+  le navigateur/WebView d'origine) plutôt que vers l'URL web dans ce
+  contexte précis. Cf. §16bis.
+- **RLS Supabase : toujours vérifier la condition réelle via le SQL
+  Editor** (`select policyname, cmd, qual, with_check from pg_policies
+  where tablename = '...'`) plutôt que l'aperçu replié de l'éditeur de
+  policies dans le dashboard, qui peut tronquer une condition longue
+  derrière un simple chiffre. `qual` porte la condition `USING`
+  (SELECT/UPDATE/DELETE), `with_check` porte la condition `WITH CHECK`
+  (INSERT) — un `null` dans l'une des deux n'est pas forcément un
+  problème, cela dépend de l'opération couverte par la policy. Cf. §5.
 
 ## 15bis. Écrans statiques hors JS (splash, chargement)
 
@@ -1349,9 +1470,101 @@ reproduisant l'icône `icon-512.png`. Slogan "Ton coach running personnel"
 sous le logo (repris du `manifest.json`), Inter italique léger. Masqué
 par `render()` dès le tout premier rendu réel.
 
-## 16. État des chantiers ouverts
+## 16bis. Site beta et administration bêta
 
-Aucun chantier ouvert actuellement.
+**Site public (`public/beta/`)** — one-page à ancres (`#accueil`,
+`#difference`, `#fonctionnalites`, `#inscription`) : les liens de nav
+défilent vers une section de la même page, jamais de vraie navigation
+multi-pages. Nav simplifiée à 2 liens (le 3e, doublon avec le bouton CTA
+"Rejoindre la bêta", retiré). Screenshots compressés (redimensionnés à
+l'échelle d'affichage réelle, ~740px large plutôt que la résolution
+native du téléphone) et un le contenant une donnée personnelle (prénom
+dans un message de coach) flouté avant publication. Meta Open Graph/
+Twitter Card avec image dédiée composée (1200×630, pas un simple
+screenshot étiré). Encart contextuel affiché uniquement si "iPhone" est
+sélectionné dans le formulaire, expliquant l'installation via Safari
+avant même l'envoi.
+
+**Auto-validation des candidatures** (`api/beta.js`) — les 20 premières
+candidatures avec statut `invited`/`active` (comptées tous
+statuts confondus, main ou automatique) passent automatiquement en
+`invited` à la soumission, avec email d'invitation envoyé immédiatement
+(best-effort, un échec d'envoi ne bloque jamais l'inscription déjà
+enregistrée). Au-delà du seuil, repli sur le circuit `pending` classique
+(validation manuelle depuis `beta-admin`). Répartition du lien
+d'installation dans l'email selon la plateforme : URL Play Store directe
+pour Android (installation native fiable même depuis la WebView d'une
+app tierce comme Gmail — cf. principe en §15), URL web + instructions
+Safari détaillées pour iPhone (aucun équivalent Play Store côté Apple).
+
+**Page de remerciement dédiée** (`public/beta/merci.html` +
+`merci.js`) — remplace l'ancien message texte discret en bas du
+formulaire. Contenu déterminé par deux paramètres URL transmis à la
+redirection (`?statut=invited|pending&plateforme=android|iphone`), lus
+côté client. Repli sûr strict : seul `statut=invited` explicite affiche
+le bloc "bienvenue + instructions d'installation" — tout le reste
+(paramètre absent, `pending`, valeur inattendue) reste sur le bloc "en
+attente", pour ne jamais annoncer par erreur un accès qui n'est pas
+réellement actif.
+
+**Suppression de candidature/compte depuis `beta-admin`** — bouton
+"🗑️ Supprimer définitivement" dans la modale de détail d'une candidature :
+supprime la ligne `beta_testers`, puis tente silencieusement de
+supprimer un compte Yoria associé à la même adresse email s'il en existe
+un (cas le plus fréquent : aucun, la candidature de test ne va jamais
+jusqu'à l'onboarding complet — pas traité comme une erreur). Bouton
+séparé "🗑️ Supprimer ce compte" dans les résultats du module Comptes,
+pour le cas d'un compte créé sans jamais avoir candidaté à la bêta
+(recherche par email, indépendante de `beta_testers`). Les deux
+réutilisent la même fonction de nettoyage complet (cf. §5, extension au-
+delà de `decision_events` seul).
+
+**Modules partagés (`lib/`, cf. §2)** :
+- `beta-invitation-email.js` — génération HTML de l'email d'invitation
+  (blocs Android/iOS conditionnels) + envoi Brevo. Un seul point de
+  génération, utilisé par `api/beta.js` (auto-validation) et
+  `api/beta-admin.js` (invitation manuelle) — jamais deux implémentations
+  susceptibles de diverger.
+- `rate-limit.js` — logique générique de comptage de tentatives par IP
+  sur une table Supabase dédiée (fenêtre glissante, seuil configurables
+  par appelant). Utilisé par `api/beta-admin.js` (connexion admin, table
+  `tentatives_connexion_admin`, 5 tentatives/15min, réinitialisé après
+  connexion réussie) et `api/beta.js` (soumission de candidature, table
+  `tentatives_soumission_beta`, 5/15min, jamais réinitialisé — le but
+  est de limiter le nombre de soumissions par IP, réussies ou non).
+  Repli sûr systématique : toute erreur de lecture/écriture Supabase
+  autorise la tentative par défaut plutôt que de bloquer un accès
+  légitime.
+
+## 17. État des chantiers ouverts
+
+**Sécurité — audit et durcissement (démarré, en partie traité)**
+
+Traité cette session :
+- CORS restreint sur les routes Strava (`*` → `https://yoria.run`)
+- Rate limiting sur `beta-admin` (connexion) et `beta` (soumission),
+  5 tentatives/15min par IP, cf. §16bis
+- Signature webhook Stripe vérifiée en temps constant
+- Retrait du fragment de code OAuth Strava des logs
+- RLS vérifiée table par table sur toutes les tables sensibles connues
+  (`plans_actif`, `plan_donnees`, `abonnements`, `beta_testers`,
+  `decision_events`, `decision_outcomes`, `badges_debloques`) — toutes
+  correctement protégées, cf. §5
+
+Reste à faire :
+- **Headers de sécurité HTTP globaux** (Content-Security-Policy, HSTS,
+  X-Content-Type-Options) sur l'ensemble du site — seul
+  `X-Frame-Options` est actuellement présent, uniquement sur
+  `beta-admin`. Protège contre des scénarios XSS/clickjacking sur les
+  autres pages.
+- **Validation d'intégrité du contenu `plan_donnees.data`** (JSONB non
+  structuré) — RLS protège qui peut écrire la ligne, mais rien ne
+  valide le contenu écrit par le client avant insertion. Risque faible
+  (un utilisateur ne peut affecter que ses propres données), mais à
+  garder en tête si une validation de schéma devient pertinente.
+- **2FA sur `beta-admin`** — actuellement mot de passe seul (protégé par
+  rate limiting). À évaluer si l'accès reste aussi sensible une fois la
+  bêta élargie (suppression de comptes, données de tous les testeurs).
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`. Pour le détail méthodologique des séances, voir
