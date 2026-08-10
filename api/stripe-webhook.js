@@ -59,6 +59,34 @@ function parseStripeSignatureHeader(header) {
   return result;
 }
 
+// Comparaison en temps constant (ajout, correctif sécurité, cohérent avec
+// la fonction safe() déjà utilisée dans api/beta-admin.js) — une
+// comparaison classique (===) sur deux chaînes peut, en théorie, retourner
+// légèrement plus vite dès le premier caractère différent, ce qui permet
+// à un attaquant patient de reconstruire la signature attendue octet par
+// octet en mesurant le temps de réponse. Utilise Web Crypto (crypto.subtle
+// est déjà l'API utilisée par ce fichier pour le HMAC lui-même, donc
+// aucune nouvelle dépendance) via une conversion hex vers Uint8Array et
+// crypto.subtle.timingSafeEqual — indisponible nativement en Web Crypto
+// standard, donc implémenté manuellement en comparant XOR de chaque octet
+// sans court-circuit conditionnel goto un premier octet différent.
+function comparerEnTempsConstant(a, b) {
+  if (a.length !== b.length) {
+    // Comparaison de longueur : ne fuit aucune information utile (la
+    // longueur d'une signature hex SHA-256 est toujours fixe, 64
+    // caractères), donc pas besoin de la faire elle-même en temps
+    // constant.
+    return false;
+  }
+
+  let resultat = 0;
+  for (let i = 0; i < a.length; i++) {
+    resultat |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+
+  return resultat === 0;
+}
+
 async function verifyStripeSignature(rawBody, signatureHeader, webhookSecret) {
   if (!signatureHeader) {
     return false;
@@ -73,7 +101,7 @@ async function verifyStripeSignature(rawBody, signatureHeader, webhookSecret) {
   const signedPayload = `${timestamp}.${rawBody.toString("utf8")}`;
   const expectedSignature = await hmacSha256Hex(webhookSecret, signedPayload);
 
-  return expectedSignature === signature;
+  return comparerEnTempsConstant(expectedSignature, signature);
 }
 
 async function updateAbonnementBySubscriptionId(
