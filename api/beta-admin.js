@@ -5,6 +5,20 @@ import { sendBrevoInvitation } from "../lib/beta-invitation-email.js";
 const COOKIE = "yoria_beta_admin";
 const TTL = 28_800;
 
+// Rate limiting sur la connexion admin (ajout, correctif sécurité) — la
+// comparaison du mot de passe était déjà en temps constant
+// (crypto.timingSafeEqual, cf. safe() plus bas), mais rien n'empêchait un
+// grand nombre de tentatives rapides. FENETRE_MS et MAX_TENTATIVES
+// définissent la politique : 5 tentatives par IP sur une fenêtre de 15
+// minutes, au-delà la connexion est refusée (429) même avec le bon mot de
+// passe, jusqu'à expiration de la fenêtre. Stocké dans Supabase (table
+// tentatives_connexion_admin, cf. docs/v2-methodologie/
+// table-rate-limiting-admin.sql) plutôt qu'en mémoire — une fonction
+// serverless Vercel n'a pas d'état persistant fiable entre deux
+// invocations, la mémoire du process serait remise à zéro à tout moment.
+const FENETRE_RATE_LIMIT_MS = 15 * 60 * 1000;
+const MAX_TENTATIVES_RATE_LIMIT = 5;
+
 const STATUSES = new Set([
   "pending",
   "selected",
@@ -91,6 +105,149 @@ const isValidToken = (token, key) => {
     return false;
   }
 };
+
+// Extrait l'IP réelle du visiteur — Vercel transmet la vraie IP via
+// x-forwarded-for (peut contenir plusieurs IP séparées par une virgule si
+// plusieurs proxys intermédiaires, la première est celle du client
+// d'origine). Repli sur une valeur fixe si l'en-tête est absent — cas
+// très improbable derrière Vercel, mais un repli sûr par défaut plutôt
+// que de planter, tout en restant restrictif (une IP "inconnue" partagée
+// par tous les cas limites atteindra vite la limite si abusée).
+function extraireIp(request) {
+  const forwarded = request.headers["x-forwarded-for"];
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  return "ip-inconnue";
+}
+
+// Vérifie et incrémente le compteur de tentatives pour une IP donnée.
+// Retourne { autorise: true } si la tentative peut continuer, ou
+// { autorise: false, reessayerDansMs } si la limite est atteinte. En cas
+// d'erreur Supabase (table absente, réseau, etc.), autorise=true par
+// défaut — un rate limiting qui échoue ne doit jamais bloquer l'accès
+// légitime, seulement le protéger quand il fonctionne (repli sûr côté
+// disponibilité plutôt que côté sécurité stricte, cohérent avec le
+// principe déjà appliqué ailleurs dans ce fichier pour les nettoyages
+// best-effort).
+async function verifierEtIncrementerTentative(config, ip) {
+  try {
+    const maintenant = Date.now();
+
+    const lectureRes = await fetch(
+      `${config.supabaseUrl}/rest/v1/tentatives_connexion_admin?ip=eq.${encodeURIComponent(ip)}&select=*`,
+      {
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+        },
+      },
+    );
+
+    if (!lectureRes.ok) {
+      console.warn("Lecture rate limit échouée, tentative autorisée par défaut.");
+      return { autorise: true };
+    }
+
+    const lignes = await lectureRes.json();
+    const ligne = Array.isArray(lignes) ? lignes[0] : null;
+
+    if (!ligne) {
+      // Première tentative connue pour cette IP.
+      await fetch(`${config.supabaseUrl}/rest/v1/tentatives_connexion_admin`, {
+        method: "POST",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          ip,
+          nombre_tentatives: 1,
+          premiere_tentative_le: new Date(maintenant).toISOString(),
+          derniere_tentative_le: new Date(maintenant).toISOString(),
+        }),
+      });
+      return { autorise: true };
+    }
+
+    const premiereTentativeMs = new Date(ligne.premiere_tentative_le).getTime();
+    const fenetreExpiree = maintenant - premiereTentativeMs > FENETRE_RATE_LIMIT_MS;
+
+    if (fenetreExpiree) {
+      // Fenêtre expirée : on repart de zéro pour cette IP.
+      await fetch(
+        `${config.supabaseUrl}/rest/v1/tentatives_connexion_admin?ip=eq.${encodeURIComponent(ip)}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: config.supabaseKey,
+            Authorization: `Bearer ${config.supabaseKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            nombre_tentatives: 1,
+            premiere_tentative_le: new Date(maintenant).toISOString(),
+            derniere_tentative_le: new Date(maintenant).toISOString(),
+          }),
+        },
+      );
+      return { autorise: true };
+    }
+
+    if (ligne.nombre_tentatives >= MAX_TENTATIVES_RATE_LIMIT) {
+      const reessayerDansMs = FENETRE_RATE_LIMIT_MS - (maintenant - premiereTentativeMs);
+      return { autorise: false, reessayerDansMs };
+    }
+
+    // Encore dans la fenêtre, sous la limite : on incrémente.
+    await fetch(
+      `${config.supabaseUrl}/rest/v1/tentatives_connexion_admin?ip=eq.${encodeURIComponent(ip)}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          nombre_tentatives: ligne.nombre_tentatives + 1,
+          derniere_tentative_le: new Date(maintenant).toISOString(),
+        }),
+      },
+    );
+
+    return { autorise: true };
+  } catch (erreur) {
+    console.warn("Erreur rate limiting, tentative autorisée par défaut :", erreur.message);
+    return { autorise: true };
+  }
+}
+
+// Réinitialise le compteur pour une IP après une connexion réussie —
+// évite qu'un admin légitime qui se trompe 2-3 fois de mot de passe par
+// erreur de frappe reste ensuite pénalisé sur ses tentatives suivantes
+// une fois qu'il a fini par rentrer le bon mot de passe.
+async function reinitialiserTentatives(config, ip) {
+  try {
+    await fetch(
+      `${config.supabaseUrl}/rest/v1/tentatives_connexion_admin?ip=eq.${encodeURIComponent(ip)}`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          Prefer: "return=minimal",
+        },
+      },
+    );
+  } catch (erreur) {
+    console.warn("Réinitialisation rate limit échouée (non bloquant) :", erreur.message);
+  }
+}
 
 async function supabaseRequest(config, path, options = {}) {
   const response = await fetch(
@@ -452,11 +609,27 @@ export default async function handler(request, response) {
     const body = request.body || {};
 
     if (body.action === "login") {
+      const ip = extraireIp(request);
+
+      const { autorise, reessayerDansMs } = await verifierEtIncrementerTentative(config, ip);
+
+      if (!autorise) {
+        const minutesRestantes = Math.ceil(reessayerDansMs / 60000);
+        return json(response, 429, {
+          message: `Trop de tentatives. Réessayez dans ${minutesRestantes} minute${minutesRestantes > 1 ? "s" : ""}.`,
+        });
+      }
+
       if (!safe(body.password || "", config.password)) {
         return json(response, 401, {
           message: "Mot de passe incorrect.",
         });
       }
+
+      // Connexion réussie — on efface le compteur pour cette IP, pour ne
+      // pas pénaliser des tentatives futures légitimes après une erreur
+      // de frappe initiale.
+      await reinitialiserTentatives(config, ip);
 
       response.setHeader(
         "Set-Cookie",
