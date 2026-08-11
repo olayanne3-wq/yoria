@@ -121,5 +121,37 @@ Reste à faire :
   rate limiting). À évaluer si l'accès reste aussi sensible une fois la
   bêta élargie (suppression de comptes, données de tous les testeurs).
 
+**Lancement public**
+- **Passer Stripe en clés live** — actuellement en mode test, switch à
+  faire quand le produit sera prêt (cf. `saisie-et-integrations.md`).
+
+**Publication mobile**
+- **HyperOS (Xiaomi)** — open-intent non résolu, irritant connu, pas
+  bloquant pour le public visé actuellement (cf. `auth-et-publication.md`).
+- **iOS App Store** — pas de publication à ce jour, installation via
+  Safari uniquement. Passage par un wrapper type Capacitor nécessaire
+  (guideline 4.2 Apple à anticiper), non entamé (cf.
+  `auth-et-publication.md`).
+
+**Intégrations montres/tracking**
+- **Coros/Garmin** — piste explorée, non lancée. Garmin écarté (accès
+  partenaire en pause). Coros exporte un `.fit` natif potentiellement
+  compatible avec le pipeline `fit-detection.js` existant — reste à
+  obtenir un vrai fichier `.fit` Coros pour vérifier la présence de
+  marqueurs natifs (cf. `saisie-et-integrations.md`).
+- **GPS via le téléphone** — conclu non viable en PWA pour un usage
+  réel ; nécessiterait une app native au-delà du TWA actuel. L'import
+  Strava reste la voie principale pour un suivi sans montre dédiée.
+
+**Moteur de décision**
+- **"Rebond post-allègement"** — accélération après plusieurs réussites
+  consécutives suivant une réduction de charge. Identifié comme chantier
+  futur, volontairement exclu du périmètre actuel de R-070 (cf.
+  `moteur-decision.md`).
+- **Vision "coach adaptatif à mémoire par coureur"** — `decision_events`
+  et `decision_outcomes` créées et alimentées en écriture seule (cf.
+  `persistance-donnees.md`). Exploitation en lecture conditionnée à la
+  stabilité du moteur sur plusieurs mois et plusieurs utilisateurs réels.
+
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`.
