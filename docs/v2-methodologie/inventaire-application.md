@@ -48,6 +48,10 @@ Tous dans `docs/v2-methodologie/` :
 | `import-fit-intervalles.md` | Détail conception/implémentation de l'import .fit *(fichier déjà existant, inchangé)* |
 | `moteur-decision-architecture.md` | Conception détaillée du moteur de décision *(fichier déjà existant, inchangé)* |
 | `moteur-decision-integration.md` | Plan d'intégration du moteur de décision *(fichier déjà existant, inchangé)* |
+| `source-donnees-seances.md` | Saisie manuelle vs Strava : aucune hiérarchie entre sources, réglage `dataSource`, format des laps synthétiques *(complète `saisie-et-integrations.md`)* |
+| `vision-coach-adaptatif.md` | Vision détaillée du coach à mémoire par coureur (résumé en fin de fichier chapeau, détail complet ici) *(complète `moteur-decision.md`)* |
+| `daniels-running-formula-synthese.md` | Synthèse des principes Daniels' Running Formula pertinents pour le moteur (justification théorique de mécanismes déjà codés) |
+| `jalons-narratifs.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`, `jour-de-course.md` | Les 5 chantiers de contenu narratif du plan (jalons de transition, conseils d'exécution, ressenti/progression, semaine test, jour de course + semaine d'approche) *(complètent `moteur-plan.md`)* |
 
 ## Principes transverses à retenir
 
@@ -150,7 +154,8 @@ Reste à faire :
   `moteur-decision.md`).
 - **Vision "coach adaptatif à mémoire par coureur"** — `decision_events`
   et `decision_outcomes` créées et alimentées en écriture seule (cf.
-  `persistance-donnees.md`). Exploitation en lecture conditionnée à la
+  `persistance-donnees.md`, détail complet dans
+  `vision-coach-adaptatif.md`). Exploitation en lecture conditionnée à la
   stabilité du moteur sur plusieurs mois et plusieurs utilisateurs réels.
 
 Pour l'historique des versions livrées et des correctifs, voir
