@@ -348,6 +348,95 @@ export function injecterCoherenceSemaineTest(plan) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// "Pourquoi cette séance" — explication du rôle physiologique/pédagogique
+// d'une séance, affichée dans un repli séparé côté UI (jamais concaténée
+// dans `contenu`, contrairement aux autres mécanismes narratifs ci-dessus).
+// Champ dédié `seance.pourquoi`, posé sur TOUTE séance (EF, longue, qualité
+// par famille, test, repos) — pas seulement les séances qualité : le
+// principe "quel est le but de cette séance ?" (cf. synthèse Daniels,
+// docs/v2-methodologie/daniels-running-formula-synthese.md §1.1)
+// s'applique aussi à l'EF et au repos, pas seulement au travail intense.
+//
+// Contextualisé par (famille × phase) quand la distinction a un sens
+// pédagogique réel — pas systématiquement sur les 3 phases pour chaque
+// famille (ex. l'EF a la même fonction physiologique du début à la fin
+// d'un plan, inutile de varier ; le seuil/VMA en revanche change de rôle
+// entre Construction et Spécifique). Pas de lien avec l'état du coureur
+// (fatigue/ACWR) dans cette itération — décision explicite : le moteur de
+// décision a déjà son propre mécanisme d'explication pour ses décisions
+// réactives (journaliserDecisionEvent), mélanger les deux systèmes pour un
+// gain marginal sur des séances simplement placées par le générateur n'a
+// pas été jugé pertinent.
+//
+// Une seule variante par clé (pas de banque à tirage aléatoire comme
+// JALONS_TRANSITION/NOTES_PRATIQUES) : le "pourquoi" est une explication
+// stable et pédagogique, pas une note d'ambiance — la reformuler
+// aléatoirement d'une semaine à l'autre n'apporterait rien et rendrait le
+// contenu moins mémorisable pour l'utilisateur qui reviendrait dessus.
+export const POURQUOI_SEANCE = {
+  'ef': {
+    'default': "Une allure facile muscle ton cœur (le débit de chaque battement augmente), développe la circulation sanguine vers tes muscles et renforce ta résistance aux blessures — l'essentiel de la progression se construit ici, pas dans les séances dures."
+  },
+  'ef-recuperation': {
+    'default': "Séance volontairement courte et facile, placée juste après un effort dur — le but est de faire circuler le sang pour aider la récupération, pas d'ajouter de la charge."
+  },
+  'longue': {
+    'default': "La sortie longue développe ton endurance fondamentale et apprend à ton corps à mieux utiliser ses réserves — le pilier de toute préparation, quelle que soit la distance visée."
+  },
+  'seuil': {
+    'Construction': "Ce travail au seuil élève progressivement l'allure que tu peux tenir confortablement — la base sur laquelle viendront s'appuyer les séances plus spécifiques.",
+    'Specifique': "Le seuil améliore ta capacité à évacuer l'acide lactique et à tenir un effort soutenu plus longtemps — directement utile pour la fin de ta course.",
+    'default': "Ce travail au seuil améliore ta capacité à tenir un effort soutenu sur la durée, sans t'épuiser prématurément."
+  },
+  'vma': {
+    'Construction': "Ce travail à haute intensité développe ta capacité aérobie maximale (VMA) — la base physiologique sur laquelle repose toute vitesse future.",
+    'Specifique': "À ce stade, ce travail VMA entretient ta puissance aérobie tout en te préparant à encaisser les changements de rythme d'une vraie course.",
+    'default': "Ce travail à haute intensité développe ta capacité aérobie maximale et ta vitesse."
+  },
+  'allure-course': {
+    'default': "Courir précisément à ton allure objectif entraîne ton corps ET ton mental à reconnaître cette sensation — pour que le jour de la course, cette allure te paraisse familière plutôt qu'imposée."
+  },
+  'test': {
+    'default': "Cette séance confirme si ton allure objectif est réellement tenable sur la durée — pas un contre-la-montre, mais une vérification en conditions proches de la course pour ajuster si besoin avant qu'il ne soit trop tard."
+  },
+  'repos': {
+    'default': "Le repos fait partie intégrante de l'entraînement, pas une pause en dehors de celui-ci — c'est pendant la récupération que ton corps s'adapte réellement à l'effort fourni."
+  }
+};
+
+function determinerCleFamillePourquoi(seance) {
+  if (seance.type === 'ef') {
+    return seance.role === 'recuperation' ? 'ef-recuperation' : 'ef';
+  }
+  if (seance.type === 'longue') return 'longue';
+  if (seance.type === 'repos') return 'repos';
+  if (seance.type === 'qualite') {
+    if (seance.estTest) return 'test';
+    return FAMILLE_SOUS_TYPE[seance.sousType] ?? null;
+  }
+  return null;
+}
+
+export function injecterPourquoiSeance(plan) {
+  for (const semaine of plan.semaines) {
+    for (const seance of Object.values(semaine.assignment)) {
+      // La séance de course (estCourse) est déjà auto-explicative
+      // (genererContenuRace) — pas de "pourquoi" pour elle. La séance test
+      // (estTest, clé 'test' ci-dessus) EN reçoit un, distinct de
+      // l'annonce/veille/lendemain de injecterCoherenceSemaineTest qui
+      // parle du MOMENT, pas du BUT de la séance elle-même.
+      if (seance.estCourse) continue;
+
+      const cle = determinerCleFamillePourquoi(seance);
+      if (!cle || !POURQUOI_SEANCE[cle]) continue;
+
+      const banqueCle = POURQUOI_SEANCE[cle];
+      seance.pourquoi = banqueCle[semaine.phase] ?? banqueCle['default'];
+    }
+  }
+}
+
 export function computeAllures({ refTimeSeconds, refDistanceKm, objectifTimeSeconds, distanceCibleKm }) {
   const paceRef10k = paceFromTime(riegelPredict(refTimeSeconds, refDistanceKm, 10), 10);
 
@@ -406,45 +495,6 @@ export const PLAFONDS_VOLUME = {
 export const VOLUME_MIN_EF_KM = 3;
 export const VOLUME_MIN_LONGUE_KM = 5;
 
-// Table calibrée par niveau (06/08/2026, remplace l'ancienne table à un
-// seul niveau, calée "intermédiaire" à sa création sans méthode
-// systématique documentée). Recalibration par simulation exhaustive :
-// pour chaque cellule [distance][niveau][jours], recherche du volume
-// plancher exact où generatePlan() cesse de refuser le plan
-// (VOLUME_JOURS_INCOMPATIBLE, cf. plus bas), en balayant systématiquement
-// plusieurs placements de jours (dont jours consécutifs), plusieurs temps
-// de référence par niveau (couvrant la variabilité d'allure réelle du
-// niveau, qui influence fortement ce plancher via les plafonds Daniels de
-// genererContenuQualite — un coureur plus rapide plafonne plus haut, à
-// durée de séance égale), plusieurs ampleurs d'objectif (faible/modérée/
-// ambitieuse) et deux durées de plan — en retenant le pire cas (le
-// plancher le plus élevé observé) pour chaque cellule.
-//
-// Les contraintes ponctuelles (blessure-active, douleur-chronique,
-// reprise) ont été explicitement EXCLUES de cette calibration : elles
-// peuvent localement casser la monotonie attendue entre distances
-// voisines (ex. Semi < 10K dans certains cas sous blessure-active, à
-// cause de rotations de sous-types différentes par distance dans
-// ROTATION_SOUS_TYPE) — un vrai comportement du moteur, pas une erreur
-// de simulation, mais qui rendrait la table peu lisible si on le
-// répercutait ici. Un coureur avec l'une de ces contraintes proche de ce
-// plancher reste protégé par le second garde-fou (VOLUME_JOURS_INCOMPATIBLE,
-// calculé après génération réelle du plan, cf. plus bas dans
-// generatePlan()) et par les warnings dédiés à ces contraintes
-// (BLESSURE_ACTIVE, etc., cf. appliquerContraintes()).
-//
-// Les planchers bruts obtenus par simulation ont ensuite été : (1)
-// forcés monotones sur les 4 axes (croissant avec le nombre de jours,
-// avec la distance 5K<=10K<=Semi<=Marathon, avec le niveau
-// debutant<=intermediaire<=confirme) — le moteur n'est PAS toujours
-// strictement monotone lui-même dans les cas limites (écarts de 1-2km
-// observés), cette table lisse ces écarts plutôt que de les reproduire
-// tels quels ; (2) majorés de 15% (arrondi au km supérieur) comme marge
-// de confort au-dessus du strict minimum structurel, pour éviter qu'un
-// plan généré pile à ce volume n'ait des EF/longues à peine au-dessus du
-// plancher absolu (VOLUME_MIN_EF_KM/VOLUME_MIN_LONGUE_KM). Vérifié : ne
-// redescend jamais sous le plancher réel mesuré par simulation, quelle
-// que soit la cellule.
 export const VOLUME_MIN_PAR_JOURS = {
   '5K': {
     debutant:      { 2: 11, 3: 13, 4: 17, 5: 20, 6: 29, 7: 34 },
@@ -941,12 +991,6 @@ const ZONE_PAR_SOUS_TYPE = {
   'allure-course': 'C', 'allure-course-court': 'C', 'test': 'C'
 };
 
-// Calcule la durée maximale (en secondes) autorisée pour le CORPS d'une
-// séance qualité (hors échauffement/retour au calme), selon le plafond
-// Daniels de sa zone. Retourne null si le sous-type n'est pas concerné
-// (allure-course non plafonnée séparément ici — la séance test l'est via
-// genererContenuTest, cf. plus bas) ou si aucune donnée de volume hebdo
-// n'est disponible pour calculer le %.
 function plafondDureeCorpsSec(sousType, volumeHebdoCibleKm, alluresSecZone, tempsRef10KSec) {
   const zone = ZONE_PAR_SOUS_TYPE[sousType];
   if (!zone) return null;
@@ -986,12 +1030,6 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
   const ajuster = (valeur, floor) =>
     facteurReductionCorps < 1 ? Math.max(floor, Math.round(valeur * facteurReductionCorps)) : valeur;
 
-  // Plafond Daniels : calculé une fois pour ce sous-type, réutilisé dans
-  // chaque case concernée pour plafonner reps/durée AVANT application du
-  // facteur de réduction Affûtage/décharge (qui continue de s'appliquer
-  // par-dessus, cohérent avec le fait que ce plafond est un maximum
-  // physiologique du volume hebdo COURANT, déjà réduit pendant Affûtage/
-  // décharge via volumeHebdoCibleKm transmis par l'appelant).
   const alluresZonePourPlafond = { I, T, V, C };
   const plafondCorpsSec = (zoneSousType) =>
     plafondDureeCorpsSec(zoneSousType, volumeHebdoCibleKm, alluresZonePourPlafond[ZONE_PAR_SOUS_TYPE[zoneSousType]], tempsRef10KSec);
@@ -1039,9 +1077,6 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
       series = ajuster(series, 1);
       const plafondSec = plafondCorpsSec('i-30-30');
       if (plafondSec != null) {
-        // Plafonne le nombre total de répétitions d'effort (toutes séries
-        // confondues) — 30s d'effort par rep, la récup intra-série ne
-        // compte pas dans le "volume d'effort" au sens Daniels.
         const repsMaxTotal = Math.max(4, Math.floor(plafondSec / 30));
         while (series * repsParSerie > repsMaxTotal && repsParSerie > 4) repsParSerie--;
         while (series * repsParSerie > repsMaxTotal && series > 1) series--;
@@ -1118,10 +1153,6 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
       const plafondSec = plafondCorpsSec('pyramidale');
       if (plafondSec != null) {
         const plafondMin = plafondSec / 60;
-        // Retire des paliers depuis la fin tant que le total dépasse le
-        // plafond — même logique que le repli du moteur de décision pour
-        // les séances pyramidales (bibliotheque-seances.md, réduction
-        // structurelle), plancher au plus petit palier connu (3 valeurs).
         let paliersReduits = [...paliers];
         while (paliersReduits.reduce((a, b) => a + b, 0) > plafondMin && paliersReduits.length > 3) {
           paliersReduits.pop();
@@ -1142,8 +1173,6 @@ export function genererContenuQualite({ distance, phase, semaineDansPhase, index
       const { base, cap } = PARAMS_NIVEAU[niveau] || PARAMS_NIVEAU.intermediaire;
       let dureeBloc = ajuster(reduireSelonNiveauProgression(base, 2, cap, semaineDansPhase), 5);
       const plafondSec = plafondCorpsSec('seuil-negatif');
-      // Deux blocs enchaînés (T puis T soutenu) : le plafond porte sur le
-      // total des deux blocs (2×dureeBloc), cohérent avec "une séance".
       if (plafondSec != null) dureeBloc = Math.max(5, Math.min(dureeBloc, Math.floor(plafondSec / 60 / 2)));
       const paceBloc2 = T - (T - I) * 0.3;
       kmCorps = kmDepuisMinutes(dureeBloc, T) + kmDepuisMinutes(dureeBloc, paceBloc2);
@@ -1299,11 +1328,6 @@ export function genererContenuLongue({ distance, phase, alluresSec, kmCible }) {
 const POURCENTAGE_CONFIRMATION_ALLURE = { '5K': 0.60, '10K': 0.55, 'Semi': 0.35, 'Marathon': 0.25 };
 const TAMPON_TEST_SEMAINES = { '5K': 1, '10K': 1, 'Semi': 2, 'Marathon': 2 };
 
-// Plafond Daniels (repère "M", zone C) appliqué à la distance de test :
-// même mécanisme que genererContenuQualite (cf. commentaire plus haut,
-// PLAFOND_DANIELS_PAR_ZONE.C). volumeHebdoCibleKm optionnel — si absent,
-// la distance de test générée par POURCENTAGE_CONFIRMATION_ALLURE reste
-// inchangée (comportement historique).
 export function genererContenuTest({ distance, alluresSec, volumeHebdoCibleKm = null }) {
   const distanceCourseKm = KM_BY_DISTANCE[distance] ?? 10;
   const pourcentage = POURCENTAGE_CONFIRMATION_ALLURE[distance] ?? 0.5;
@@ -1749,40 +1773,6 @@ function recalculerRepartitionEFLongue({ assignment, volumeCibleKm, kmQualiteTot
   return { warnings, kmLongue, kmParEF, nbEF, aLongue };
 }
 
-// Poids relatif longue/EF (02/08/2026, remplace RATIO_LONGUE_PAR_JOURS +
-// MARGE_LONGUE_VS_QUALITE_KM — cf. discussion complète avec Laurent).
-//
-// PROBLÈME IDENTIFIÉ : l'ancien système calculait la longue EN PREMIER
-// (ratio par nombre de jours, ou "au moins kmQualiteTotal + 1km" si plus
-// grand), et les EF récupéraient seulement ce qu'il restait, sans aucun
-// plancher symétrique. Deux défauts concrets observés :
-// 1) À volume juste au-dessus du seuil minimum (VOLUME_MIN_PAR_JOURS),
-//    la contrainte "longue >= qualité+marge" pouvait à elle seule
-//    absorber presque tout le volume restant, laissant des EF à
-//    0.4-2km — jamais une vraie séance facile (signalé par Laurent :
-//    "on a des EF ridicules"). Un plancher EF actif a été ajouté en
-//    amont (kmReservePourEF) pour limiter ce cas, mais le vrai souci
-//    restait la logique de calcul elle-même.
-// 2) kmQualiteTotal utilisé pour cette contrainte incluait à tort
-//    l'échauffement/retour au calme des séances qualité (souvent 40-50%
-//    du volume affiché de la séance, ~25min fixes à allure EF, cf.
-//    genererContenuQualite) — ce "faux volume qualité" gonflait
-//    artificiellement la longue sans rapport avec l'intensité réelle
-//    du travail effectué.
-//
-// NOUVELLE APPROCHE : la longue et chaque EF sont traités comme des
-// "parts" d'un même budget (kmRestant), avec la longue pondérée à
-// POIDS_LONGUE fois un EF individuel — garantit PAR CONSTRUCTION que
-// kmLongue >= POIDS_LONGUE * kmParEF, quel que soit le volume ou le
-// nombre de jours, sans avoir besoin d'un ratio empirique par palier ni
-// d'une contrainte séparée sur le cumul qualité (qui créait par ailleurs
-// des sauts de ratio incohérents à certains volumes précis, ex. un ratio
-// de x3.2 au lieu de x1.6 à 7 jours/40km — cf. session de simulation).
-// Valeur 1.6 retenue après simulation exhaustive sur les 4 distances x 3
-// niveaux x 5-6 nombres de jours (3 à 7j), au seuil minimum exact de
-// chaque combinaison (le point le plus tendu) : aucune violation
-// observée (EF toujours >= ~3.4km), ratio stable et cohérent partout —
-// cf. sessions de simulation du 02/08/2026 pour le détail des tableaux.
 const POIDS_LONGUE = 1.6;
 
 export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLongue, nbJours }) {
@@ -1791,22 +1781,10 @@ export function repartirVolumeSemaine({ volumeCibleKm, kmQualiteTotal, nbEF, aLo
 
   if (aLongue) {
     if (nbEF > 0) {
-      // Partage proportionnel : la longue compte pour POIDS_LONGUE
-      // "parts", chaque EF pour 1 part — garantit mathématiquement que
-      // la longue reste toujours POIDS_LONGUE fois plus grande que
-      // chaque EF, sans avoir besoin de contraintes séparées ni de
-      // plancher explicite (le partage par poids suffit à lui seul à
-      // garder les EF substantiels, vérifié en simulation).
       const nbPartsTotal = POIDS_LONGUE + nbEF;
       kmLongue = (kmRestant * POIDS_LONGUE) / nbPartsTotal;
       kmParEF = (kmRestant * 1) / nbPartsTotal;
     } else {
-      // 2 jours/semaine (1 qualité + 1 longue, aucun EF) : tout le
-      // budget restant va à la longue par construction — cf. le
-      // garde-fou VOLUME_LONGUE_EXCESSIVE_2J dans generatePlan(), qui
-      // avertit séparément si cela produit une longue déraisonnable
-      // (au-delà de DUREE_MAX_LONGUE_MIN converti en distance) plutôt
-      // que de la plafonner silencieusement ici.
       kmLongue = kmRestant;
     }
   } else {
@@ -1848,12 +1826,6 @@ function differencierEF({ assignment, kmParEF }) {
 
 export function generatePlan(profil, params) {
   const nbJoursProfil = profil.joursDisponiblesHabituels?.length ?? 0;
-  // Table indexée par niveau depuis le 06/08/2026 (cf. commentaire sur
-  // VOLUME_MIN_PAR_JOURS) — repli sur 'intermediaire' si le niveau du
-  // profil est absent de la table (ex. 'grand-debutant', qui ne passe de
-  // toute façon jamais par ce chemin de génération standard, cf.
-  // placerSemaine) ou non reconnu, plutôt que de laisser passer un accès
-  // undefined silencieux.
   const volumeMinRequis = VOLUME_MIN_PAR_JOURS[params.distance]?.[profil.niveau]?.[nbJoursProfil]
     ?? VOLUME_MIN_PAR_JOURS[params.distance]?.intermediaire?.[nbJoursProfil];
   if (volumeMinRequis !== undefined && params.volumeActuel < volumeMinRequis) {
@@ -1879,11 +1851,6 @@ export function generatePlan(profil, params) {
     Object.entries(allSeconds).map(([k, v]) => [k, formatPace(v)])
   );
 
-  // Temps 10K de référence (secondes), pour le plafond Daniels de la zone I
-  // (repère "min(temps 10K, 8% volume hebdo)") — dérivé via Riegel depuis
-  // tempsReference, cohérent avec computeAllures qui fait le même calcul
-  // pour paceRef10k en interne. Transmis à genererContenuQualite via
-  // tempsRef10KSec ci-dessous.
   const tempsRef10KSec = riegelPredict(
     refTimeSeconds,
     KM_BY_DISTANCE[params.refDistance ?? params.distance],
@@ -1949,24 +1916,6 @@ export function generatePlan(profil, params) {
 
       let kmQualiteTotal = 0;
       const entreeVolumeSemaine = volumesParSemaine.find(v => v.semaine === semaineGlobale);
-      // CORRECTIF (02/08/2026, bug signalé par Laurent — message
-      // VOLUME_JOURS_INCOMPATIBLE identique quel que soit le volume
-      // saisi, même à 100km/semaine). Cause : avec semaineDepart > 1 (cf.
-      // computeVolumeProgression), volumesParSemaine ne contient
-      // AUCUNE entrée pour les semaines de Construction antérieures à la
-      // charnière — c'est voulu (l'appelant ne conserve de toute façon
-      // que les semaines >= charnière, cf. appliquerChangementVolume
-      // dans v2/index.html), mais cette boucle continue de parcourir
-      // TOUTES les semaines depuis la semaine 1 du plan, sans exception.
-      // volumeCibleSemaine retombait donc à 0 pour ces semaines
-      // fantômes, ce qui les faisait passer "sous le seuil" à coup sûr
-      // et déclenchait le garde-fou peu importe le volume réellement
-      // saisi. Une semaine sans entrée dans volumesParSemaine n'est pas
-      // une vraie semaine générée par CETTE progression — elle est
-      // explicitement exclue des statistiques du garde-fou (comme déjà
-      // le cas pour les semaines de décharge/Affûtage) et son contenu
-      // EF/longue garde son volume nul plutôt que d'être recalculé avec
-      // une valeur invalide.
       const semaineHorsProgression = entreeVolumeSemaine === undefined;
       const tauxAffutageSemaine = entreeVolumeSemaine?.fractionPic ?? 1;
       const dechargeSemaine = entreeVolumeSemaine?.estDecharge ?? false;
@@ -2018,21 +1967,6 @@ export function generatePlan(profil, params) {
         const efSousSeuil = nbEF > 0 && kmParEF < VOLUME_MIN_EF_KM;
         if (longueSousSeuil || efSousSeuil) nbSemainesConstructionSousSeuil++;
 
-        // Suggestion "augmente le nombre de jours" pour les préparations à
-        // 2 jours/semaine (02/08/2026, demande de Laurent). À 2 jours, la
-        // structure est 1 séance qualité + 1 longue, SANS AUCUN EF pour
-        // partager le volume — repartirVolumeSemaine() donne alors tout le
-        // reste à la longue par construction, ce qui peut produire des
-        // longues déraisonnables à fort volume (jusqu'à 50+ km observé en
-        // simulation à haut volume). genererContenuLongue() plafonne déjà
-        // la DURÉE affichée (DUREE_MAX_LONGUE_MIN), mais le kilométrage
-        // excédentaire disparaît alors silencieusement du plan sans que le
-        // coureur en soit informé clairement — ici on détecte ce cas en
-        // amont et on avertit, plutôt que de plafonner sans explication.
-        // Seuil : la longue THÉORIQUE (avant tout plafonnement) dépasse le
-        // plafond de durée converti en distance à allure EF — pas un
-        // pourcentage de volume arbitraire, cohérent avec le plafond déjà
-        // utilisé ailleurs pour cette même distance.
         if (nbEF === 0 && aLongue) {
           const dureeMaxLongueMin = DUREE_MAX_LONGUE_MIN[params.distance] ?? 120;
           const kmLongueMaxRaisonnable = (dureeMaxLongueMin * 60) / allSeconds.E;
@@ -2059,15 +1993,6 @@ export function generatePlan(profil, params) {
     };
   }
 
-  // Suggestion (pas un refus) pour les préparations à 2 jours/semaine dont
-  // le volume dépasse ce qu'une seule sortie longue peut raisonnablement
-  // absorber (02/08/2026) — cf. commentaire au point de comptage
-  // ci-dessus. Contrairement à VOLUME_JOURS_INCOMPATIBLE, ce cas ne
-  // bloque jamais la génération : le plan reste généré normalement (avec
-  // sa longue plafonnée en durée par genererContenuLongue), mais on
-  // avertit explicitement que le kilométrage réel ne peut pas tout tenir
-  // dans une seule séance, plutôt que de laisser le plafonnage silencieux
-  // faire disparaître du volume sans explication.
   if (nbSemainesLongueExcessive2j > 0) {
     warningsSemaines.push({
       code: 'VOLUME_LONGUE_EXCESSIVE_2J',
@@ -2117,6 +2042,7 @@ export function generatePlan(profil, params) {
   placerSeanceCourse(plan, allSeconds);
   neutraliserJoursApresCourse(plan);
   injecterApprocheCourse(plan);
+  injecterPourquoiSeance(plan);
 
   return plan;
 }
