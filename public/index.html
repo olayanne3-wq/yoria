@@ -5128,6 +5128,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
             ) : null
           ) : null,
           s.notes ? el("div",{style:{color:"rgba(var(--accent-rgb),0.8)",fontSize:"14px",fontStyle:"italic",marginBottom:"8px"}},"💡 "+s.notes) : null,
+          renderPourquoiToggle(s.pourquoi),
           // Allures/FC cibles remontées ici, hors repli (26/07/2026) — cf.
           // bloc "détail repliable" plus bas qui ne contient plus que le
           // strict accessoire (structure montre déjà en header, allures/FC
@@ -6149,6 +6150,34 @@ function renderStatusRow(uid, dateSeance) {
   return wrapper;
 }
 
+// "Pourquoi cette séance" — repli/dépli au clic, même pattern que le
+// résumé cliquable des répétitions (▼ détail / ▲ masquer, cf.
+// renderBlocRealise). Champ dédié seance.pourquoi (moteur v2,
+// injecterPourquoiSeance dans plan-generator.js, propagé par
+// v1-bridge.js) — jamais concaténé au texte principal contrairement aux
+// autres notes narratives (jalons, notes pratiques), donc rendu séparément
+// ici plutôt que fusionné dans le bloc s.notes déjà existant. Retourne
+// null si aucun pourquoi n'est disponible (séance de course, ou plan
+// généré avant l'ajout de ce mécanisme) — pas de repli vide affiché.
+function renderPourquoiToggle(pourquoi) {
+  if (!pourquoi) return null;
+  const detail = el("div",{style:{display:"none",fontSize:"14px",color:"var(--text2)",lineHeight:"1.5",paddingTop:"8px",marginTop:"4px",borderTop:"1px solid var(--border)"}}, pourquoi);
+  let open = false;
+  const summaryRow = el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--border-soft)",borderRadius:"8px",padding:"8px 10px",cursor:"pointer",marginBottom:"8px"}},
+    el("span",{style:{color:"var(--text2)",fontSize:"13px"}},"🎯 Pourquoi cette séance"),
+    el("span",{class:"muted",style:{fontSize:"12px"}},"▼ détail")
+  );
+  summaryRow.addEventListener("click", avecRetourTactile((e)=>{
+    e.stopPropagation();
+    open = !open;
+    detail.style.display = open ? "block" : "none";
+    summaryRow.lastChild.textContent = open ? "▲ masquer" : "▼ détail";
+  }));
+  const wrap = el("div",{});
+  wrap.appendChild(summaryRow);
+  wrap.appendChild(detail);
+  return wrap;
+}
 // Icône ✏️ compacte pour le header de la carte "Aujourd'hui" (26/07/2026) —
 // remplace visuellement l'ancienne ligne pleine largeur "Saisir ou corriger
 // manuellement" quand la séance n'est pas encore validée. Coloration pleine
@@ -6991,6 +7020,7 @@ function renderWeekDetail(weekNum) {
         effSess.cooldown?el("div",{class:"muted",style:{fontSize:"13px"}},"◀ "+effSess.cooldown):null
       ):null,
       effSess.notes?el("div",{style:{color:"rgba(var(--accent-rgb),0.8)",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+effSess.notes):null,
+      renderPourquoiToggle(effSess.pourquoi),
       // Allures/FC cibles remontées ici, sans repli (26/07/2026) — cohérent
       // avec la carte "Aujourd'hui", seulement si séance non validée et non
       // future (rien à cibler pour une séance qui n'a pas encore de plan
