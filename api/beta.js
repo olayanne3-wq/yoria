@@ -7,7 +7,6 @@ const ALLOWED_LEVELS = new Set([
   "debutant",
   "intermediaire",
   "confirme",
-  "competiteur",
 ]);
 
 const ALLOWED_DISTANCES = new Set([
@@ -15,7 +14,6 @@ const ALLOWED_DISTANCES = new Set([
   "10-km",
   "semi-marathon",
   "marathon",
-  "trail",
   "debutant",
 ]);
 
@@ -154,7 +152,7 @@ export default async function handler(request, response) {
 
   if (
     !Number.isInteger(runsPerWeek) ||
-    runsPerWeek < 1 ||
+    runsPerWeek < 2 ||
     runsPerWeek > 7
   ) {
     return sendJson(response, 400, {
