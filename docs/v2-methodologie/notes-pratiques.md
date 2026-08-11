@@ -46,7 +46,7 @@ Ces textes correspondent exactement à `NOTES_PRATIQUES` dans `plan-generator.js
 
 - **Étoffer la banque** : seulement 2 variantes par famille à ce stade, jamais élargi depuis l'implémentation initiale. Un candidat naturel pour une prochaine session si la répétitivité des notes devient perceptible en usage réel (avec un plan de plusieurs mois, la même paire de variantes finira par se répéter souvent).
 - **Notes contextualisées par phase** : actuellement, la note "seuil" est la même que ce soit en Construction ou en phase Spécifique — une variante qui tiendrait compte de la progression (ex. une note différente pour la toute première séance seuil du plan vs une séance seuil en fin de programme) n'a jamais été envisagée concrètement, seulement une idée en passant.
-- **Lien avec la météo** : les notes pratiques et la note de chaleur (météo) peuvent toutes deux apparaître sur la même séance (ex. une sortie longue avec à la fois "Emporte de quoi boire" et la note de chaleur). Pas de vérification faite sur la redondance potentielle du message dans ce cas précis (les deux notes évoquent l'hydratation par la chaleur, sans se contredire, mais sans non plus être fusionnées intelligemment) — accepté tel quel, pas identifié comme un vrai problème mais jamais formellement vérifié en conditions réelles.
+- **Lien avec la météo** : les notes pratiques peuvent apparaître sur la même séance qu'une autre information contextuelle (ex. hydratation). Pas de vérification faite sur la redondance potentielle du message dans ce cas précis — accepté tel quel, pas identifié comme un vrai problème mais jamais formellement vérifié en conditions réelles.
 
 ## 6. Fichiers concernés
 
@@ -55,4 +55,4 @@ Ces textes correspondent exactement à `NOTES_PRATIQUES` dans `plan-generator.js
 
 ## 7. Statut
 
-Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `jalons-narratifs.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`, `notes-meteo.md`).
+Implémenté et testé. Fait partie d'un ensemble de 5 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `jalons-narratifs.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`).
