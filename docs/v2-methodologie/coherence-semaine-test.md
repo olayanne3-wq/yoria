@@ -58,4 +58,4 @@ Trois catégories, deux variantes chacune.
 
 ## 8. Statut
 
-Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `jalons-narratifs.md`, `notes-meteo.md`).
+Implémenté et testé. Fait partie d'un ensemble de 5 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `jalons-narratifs.md`).
