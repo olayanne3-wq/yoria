@@ -63,4 +63,4 @@ Corrigé côté `v1-bridge.js` (pas dans ce fichier) avec un pattern de repli : 
 
 ## 7. Statut
 
-Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jalons-narratifs.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`, `notes-meteo.md`).
+Implémenté et testé. Fait partie d'un ensemble de 5 chantiers de contenu narratif, tous livrés ensemble (cf. `jalons-narratifs.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`).
