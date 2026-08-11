@@ -160,9 +160,18 @@ export function traduirePlanVersFormatV1(plan) {
       // ta montre" (2.8, demandé le 8 juillet 2026) — undefined pour
       // REPOS/RACE/EF/LONGUE (seules les séances qualité en ont une)
       const structureIntervalles = seance?.structureIntervalles;
+      // pourquoi (ajouté — mécanisme "pourquoi cette séance",
+      // injecterPourquoiSeance dans plan-generator.js) : propagé pour
+      // toute séance qui en a un (EF, longue, qualité, test, repos — tout
+      // sauf la course elle-même, déjà auto-explicative). Comme
+      // kmEstime/structureIntervalles ci-dessus, c'est un champ direct du
+      // plan brut v2, jamais reparsé depuis le texte — évite exactement le
+      // piège déjà documenté dans ce fichier (nouveau champ personnalisé
+      // oublié dans la traduction = silencieusement perdu côté v1).
+      const pourquoi = seance?.pourquoi;
 
       if (!seance || type === 'REPOS') {
-        return { day: jourNom, date: dateStr, type: 'REPOS', warmup: '', session: seance?.contenu || 'Repos', cooldown: '', notes: '', kmEstime: 0 };
+        return { day: jourNom, date: dateStr, type: 'REPOS', warmup: '', session: seance?.contenu || 'Repos', cooldown: '', notes: '', kmEstime: 0, pourquoi };
       }
       if (type === 'RACE') {
         return { day: jourNom, date: dateStr, type: 'RACE', warmup: '', session: seance.contenu, cooldown: '', notes: '', kmEstime };
@@ -176,7 +185,7 @@ export function traduirePlanVersFormatV1(plan) {
         // jour : le champ n'apparaissait jamais malgré une séance bien
         // marquée estTest côté plan brut — cette fonction de traduction
         // v1-bridge ne les connaissait simplement pas encore).
-        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime, structureIntervalles, estTest: seance.estTest, sousType: seance.sousType };
+        return { day: jourNom, date: dateStr, type, warmup, session, cooldown, notes, kmEstime, structureIntervalles, estTest: seance.estTest, sousType: seance.sousType, pourquoi };
       }
       if (seance.type === 'marche-course') {
         // Contenu déjà rédigé de façon lisible par genererContenuMarcheCourse
@@ -189,7 +198,7 @@ export function traduirePlanVersFormatV1(plan) {
       }
       // ef ou longue
       const { session, notes } = parserContenuEfOuLongue(seance.contenu);
-      return { day: jourNom, date: dateStr, type, warmup: '', session, cooldown: '', notes, kmEstime };
+      return { day: jourNom, date: dateStr, type, warmup: '', session, cooldown: '', notes, kmEstime, pourquoi };
     });
 
     return { week: semaine.semaineNum, phase: semaine.phase.toLowerCase(), sessions, volumeCibleKm: semaine.volumeCibleKm };
