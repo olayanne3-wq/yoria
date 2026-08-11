@@ -74,4 +74,4 @@ Ce bug précis est reproduit explicitement dans `test-reperes-qualitatifs.mjs` (
 
 ## 7. Statut
 
-Implémenté et testé. Fait partie d'un ensemble de 6 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `jalons-narratifs.md`, `notes-pratiques.md`, `coherence-semaine-test.md`, `notes-meteo.md`).
+Implémenté et testé. Fait partie d'un ensemble de 5 chantiers de contenu narratif, tous livrés ensemble (cf. `jour-de-course.md`, `jalons-narratifs.md`, `notes-pratiques.md`, `coherence-semaine-test.md`).
