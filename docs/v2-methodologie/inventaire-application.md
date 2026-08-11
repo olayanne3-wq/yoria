@@ -1316,145 +1316,45 @@ Consultable a posteriori depuis la section "🏅 Mes courses" de Stats (cf.
 
 ## 15. Principes transverses à retenir
 
-- **Inventaire à jour à chaque push structurel** (pas pour un simple fix)
-- **Préfixage des données de plan obligatoire** (`clePourPlan()`)
-- **Une seule variable modifiée à la fois** pour la progressive overload
-- **Niveau intermédiaire = valeur historique inchangée** à chaque
-  différenciation par niveau (zéro régression)
-- **Validation historique avant codage** pour toute nouvelle métrique
-- **Jamais d'apostrophe dans une chaîne JS entre guillemets doubles**
-  (échec silencieux du parseur) ; `node --check` systématique avant push
-- **404 sur une route API** → vérifier `vercel.json` en premier
-- **Avant tout changement dans `plan-generator.js`/`plan-forme.js`,
-  relancer `scripts/test-plans-varies.js`**
-- **Toute modification d'un plan existant doit exclure les séances
-  passées**
-- **Cache client async : bien distinguer `undefined` (jamais initialisé)
-  de `null`/valeur connue**
-- **Toute promesse globale attendue ailleurs, et toute variable
-  `let`/`const` lue par une fonction hoisted ou du code exécuté tôt,
-  doit être déclarée de façon synchrone AVANT toute lecture possible**
-  (cf. §3 pour le détail du piège TDZ) — toute variable lue par une même
-  fonction doit être vérifiée individuellement, pas seulement la première
-  trouvée.
-- **Toute fonction de traduction entre formats (`v1-bridge.js` et
-  équivalents) doit être mise à jour à chaque nouveau champ personnalisé**
-- **Toute fonction qui modifie/supprime un plan doit traiter Supabase
-  comme bloquant et Gist comme best-effort**
-- **Aucun outil admin ne doit jamais lire ou utiliser les tokens Strava
-  d'un testeur**
-- **Ne jamais toucher** `public/beta/`, `api/beta.js`, routes `/beta*`
-  sans demande explicite
-- **Toute date "métier" doit être calculée en fuseau LOCAL du
-  navigateur, jamais via `toISOString().slice(0,10)`** (toujours UTC) —
-  utiliser `getFullYear()`/`getMonth()`/`getDate()`. L'UTC explicite
-  reste correct pour les calculs de plage basés sur `dateDebut` du plan.
-- **Un registre d'état de composant (accordéon, toggle...) qui doit
-  survivre à un `render()` complet doit être déclaré au niveau module,
-  jamais à l'intérieur de la fonction qui construit l'écran** — sinon un
-  nouvel objet vide est recréé à chaque appel, perdant silencieusement
-  tout état précédent.
-- **Le positionnement initial d'un élément scrollable (roulette,
-  carrousel...) construit dans un écran qui vient d'être affiché ne doit
-  jamais dépendre d'un délai arbitraire** — vérifier une condition réelle
-  (élément attaché et visible) via polling léger. Tout composant niché
-  dans un groupe accordéon doit prévoir un callback `onOuverture` qui le
-  construit à la demande s'il n'existe pas encore (cf. §4).
-- **En cas de bug d'affichage résistant à plusieurs correctifs
-  successifs, diagnostiquer par tests directs en console**
-  (`getElementById`, `getBoundingClientRect()`,
-  `querySelectorAll(...).length`, `document.body.contains(...)`, valeurs
-  réelles des variables globales exposées) plutôt que par relecture
-  répétée du code. Un outil de mesure réel (Network, Performance,
-  Console) doit être mobilisé dès le premier signalement plutôt qu'après
-  plusieurs itérations de correctifs non concluants. Toujours épuiser
-  l'hypothèse "erreur dans le code qu'on vient d'écrire" avant d'accuser
-  un mécanisme externe (cache, déploiement, CDN).
-- **Toute nouvelle table sensible (tokens, secrets) doit être ajoutée
-  explicitement à la liste noire d'exclusion de `api/backup.js`
-  (`TABLES_EXCLUES`)** — la découverte des tables y est automatique par
-  défaut (liste noire, pas liste blanche), donc l'oubli expose la table
-  par défaut plutôt que de la protéger par défaut.
-- **Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à
-  lancer occasionnellement (ex. avant une mise en production), pas à
-  chaque table ajoutée**.
-- **Toute donnée binaire volumineuse (image, PDF converti) stockée dans
-  `profilCoureur` doit être compressée côté client avant sauvegarde**
-  (cf. §4, implémentation retenue pour le PPS : image plafonnée 1600px,
-  JPEG 0.82-0.85).
-- **Le rendu PDF via `<iframe>`/`<embed>` sur un blob URL n'est pas
-  fiable sur mobile/TWA Android** — pour tout document PDF destiné à un
-  affichage in-app fiable cross-plateforme, convertir en image (canvas +
-  pdf.js) plutôt que tenter un rendu PDF natif. Cf. §4.
-- **Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut
-  révéler un bug latent dans du code existant qui supposait
-  silencieusement un contexte toujours présent** — un changement de flux
-  d'entrée mérite de vérifier les suppositions implicites du code qu'il
-  traverse nouvellement, pas seulement le nouveau code lui-même.
-- **Une contrainte de calcul ajoutée pour corriger un cas peut devenir la
-  priorité DOMINANTE dans les cas serrés et écraser un autre besoin tout
-  aussi légitime** si les deux ne sont pas équilibrés dès la conception —
-  préférer un partage proportionnel garanti par construction (poids
-  relatif) à une cascade de contraintes empiriques appliquées dans un
-  ordre fixe. Cf. §7, `repartirVolumeSemaine`.
-- **Une fonction utilitaire générique appelée par de nombreux points
-  d'appel dans un même fichier doit être corrigée UNE SEULE FOIS, à la
-  source, plutôt que patchée individuellement à chaque site d'appel** —
-  un correctif dispersé sur chaque appelant est fragile et duplique la
-  logique. Cf. §10, `lapsSontDejaEffortSeul` ; cf. §7bis pour le principe
-  appliqué au correctif de distance d'effort dans le prédicteur ; cf.
-  §16bis pour l'email d'invitation et le rate limiting factorisés dans
-  `lib/`.
-- **Avant de croire qu'un mécanisme existe déjà dans le code (ex. une
-  auto-ouverture, un callback), vérifier positivement sa présence
-  plutôt que de se fier à un commentaire qui décrit une intention** — un
-  commentaire peut décrire un comportement jamais complètement implémenté,
-  ou retiré depuis sans mise à jour du commentaire.
-- **Avant de conclure qu'un enchaînement de `<script src>` bloquants est
-  sûr à paralléliser (`defer`), vérifier explicitement tout script INLINE
-  placé entre eux et leur premier point de consommation réelle** — un
-  script inline s'exécute toujours immédiatement au parsing, jamais
-  différé, contrairement aux scripts `src` avec `defer`.
-- **Avant TOUT push d'un fichier vers le repo, vérifier explicitement le
-  tout début et la toute fin du fichier final** (`head -c 100`/
-  `tail -c 100`) — un message de statut d'un outil de lecture/extraction
-  peut rester collé en tête du contenu réel sans qu'aucune vérification
-  de syntaxe interne (`node --check`) ne le détecte, puisqu'il se trouve
-  hors des balises `<script>`.
-- **Tout point qui pose ou retire un statut de séance, ou une saisie de
-  performance, doit être audité contre la liste complète des effets de
-  bord attendus (cumul km, recalcul d'estimation)** — un `grep`
-  exhaustif du motif d'écriture reste plus fiable qu'une liste mentale de
-  points déjà identifiés. Cf. §5/§7bis/§9.
-- **Sur le plan Vercel Hobby, tout fichier `.js` placé dans `api/`
-  compte comme une fonction serverless distincte, plafond strict de 12
-  par déploiement** — toute logique partagée entre plusieurs endpoints
-  (email, rate limiting, etc.) doit vivre dans `lib/`, jamais dans
-  `api/`, même si elle n'est jamais appelée en HTTP direct. Cf. §2,
-  §16bis.
-- **Avant de conclure qu'un bug provient du code applicatif, consulter
-  les vrais logs runtime Vercel** (`get_runtime_errors`/
-  `get_runtime_logs`, projectId/teamId récupérables via `list_projects`)
-  plutôt que d'enchaîner des hypothèses non vérifiées avec l'utilisateur
-  — la vraie cause exacte (message d'erreur Postgres, code d'erreur
-  Vercel) est souvent immédiatement disponible et évite plusieurs tours
-  de diagnostic à l'aveugle.
-- **Une redirection vers un lien PWA classique ouverte depuis la WebView
-  intégrée d'une app tierce (Gmail, WhatsApp, etc.) ne peut jamais
-  déclencher `beforeinstallprompt`** — limitation universelle des
-  WebViews embarquées, pas un bug applicatif. Pour Android, rediriger
-  vers la fiche Play Store (installation native, fonctionne peu importe
-  le navigateur/WebView d'origine) plutôt que vers l'URL web dans ce
-  contexte précis. Cf. §16bis.
-- **RLS Supabase : toujours vérifier la condition réelle via le SQL
-  Editor** (`select policyname, cmd, qual, with_check from pg_policies
-  where tablename = '...'`) plutôt que l'aperçu replié de l'éditeur de
-  policies dans le dashboard, qui peut tronquer une condition longue
-  derrière un simple chiffre. `qual` porte la condition `USING`
-  (SELECT/UPDATE/DELETE), `with_check` porte la condition `WITH CHECK`
-  (INSERT) — un `null` dans l'une des deux n'est pas forcément un
-  problème, cela dépend de l'opération couverte par la policy. Cf. §5.
+**Workflow de développement**
+- Inventaire à jour à chaque push structurel (pas pour un simple fix, qui va dans le changelog) ; `node --check` systématique avant push ; vérifier `head -c 100`/`tail -c 100` du fichier final avant tout push (un message de statut d'outil peut rester collé en tête sans qu'aucune vérification syntaxique ne le détecte, hors balises `<script>`).
+- Avant tout changement dans `plan-generator.js`/`plan-forme.js`, relancer `scripts/test-plans-varies.js`.
+- Jamais d'apostrophe dans une chaîne JS entre guillemets doubles (échec silencieux du parseur). 404 sur une route API → vérifier `vercel.json` en premier.
+- Sur le plan Vercel Hobby, tout fichier `.js` dans `api/` compte comme une fonction serverless distincte (plafond 12/déploiement) — toute logique partagée entre endpoints doit vivre dans `lib/`, jamais dans `api/`, même si jamais appelée en HTTP direct.
+- Avant de conclure qu'un bug vient du code applicatif, consulter les vrais logs runtime Vercel (`get_runtime_errors`/`get_runtime_logs`) plutôt que d'enchaîner des hypothèses non vérifiées — la cause exacte (erreur Postgres, code d'erreur Vercel) est souvent immédiatement disponible.
+- Avant de croire qu'un mécanisme existe déjà dans le code (auto-ouverture, callback), vérifier positivement sa présence plutôt que de se fier à un commentaire qui décrit une intention jamais implémentée ou retirée depuis.
+- En cas de bug d'affichage résistant à plusieurs correctifs, diagnostiquer par tests directs en console (`getElementById`, `getBoundingClientRect()`, valeurs réelles des variables globales) plutôt que par relecture répétée du code — épuiser l'hypothèse "erreur dans le code qu'on vient d'écrire" avant d'accuser un mécanisme externe (cache, CDN).
 
+**Persistance et données**
+- Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
+- Toute fonction qui modifie/supprime un plan doit traiter Supabase comme bloquant et Gist comme best-effort. Toute fonction de traduction entre formats (`v1-bridge.js`) doit être mise à jour à chaque nouveau champ personnalisé, sinon silencieusement perdu.
+- Toute date "métier" doit être calculée en fuseau LOCAL du navigateur (`getFullYear()`/`getMonth()`/`getDate()`), jamais via `toISOString().slice(0,10)` (UTC). Exception : les calculs de plage basés sur `dateDebut` du plan restent en UTC explicite.
+- Toute donnée binaire volumineuse (image, PDF converti) doit être compressée côté client avant sauvegarde — un fichier brut fait exploser le payload JSONB, qui échoue en fire-and-forget sans jamais remonter d'erreur.
+- Cache client async : bien distinguer `undefined` (jamais initialisé) de `null` (valeur connue).
+
+**Sécurité**
+- Aucun outil admin ne doit jamais lire ou utiliser les tokens Strava d'un testeur. Toute nouvelle table sensible (tokens, secrets) doit être ajoutée explicitement à la liste noire d'exclusion de `api/backup.js` (`TABLES_EXCLUES`) — la découverte y est automatique par défaut, l'oubli expose la table plutôt que de la protéger.
+- RLS Supabase : toujours vérifier la condition réelle via le SQL Editor (`select policyname, cmd, qual, with_check from pg_policies where tablename = '...'`) plutôt que l'aperçu replié du dashboard, qui peut tronquer une condition longue. `qual` = USING (SELECT/UPDATE/DELETE), `with_check` = WITH CHECK (INSERT).
+- Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à lancer occasionnellement (avant une mise en production), pas à chaque table ajoutée.
+- Ne jamais toucher `public/beta/`, `api/beta.js`, routes `/beta*` sans demande explicite.
+
+**Génération de plan et calculs**
+- Une seule variable modifiée à la fois pour la progressive overload. Niveau intermédiaire = valeur historique inchangée à chaque différenciation par niveau (zéro régression). Validation historique avant codage pour toute nouvelle métrique.
+- Toute modification d'un plan existant doit exclure les séances déjà passées.
+- Une contrainte de calcul ajoutée pour corriger un cas peut devenir la priorité dominante dans les cas serrés et écraser un autre besoin légitime si les deux ne sont pas équilibrés dès la conception — préférer un partage proportionnel garanti par construction (poids relatif) à une cascade de contraintes empiriques (cf. `repartirVolumeSemaine`).
+- Une fonction utilitaire générique appelée par plusieurs points d'appel doit être corrigée UNE SEULE FOIS à la source, jamais patchée individuellement à chaque site d'appel (cf. `lapsSontDejaEffortSeul`, email d'invitation et rate limiting factorisés dans `lib/`).
+- Tout point qui pose/retire un statut de séance ou une saisie de performance doit être audité contre la liste complète des effets de bord attendus (cumul km, recalcul d'estimation) — un `grep` exhaustif du motif d'écriture reste plus fiable qu'une liste mentale.
+
+**UI et composants**
+- Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, cf. §3) — vérifier chaque variable individuellement, pas seulement la première trouvée.
+- Un registre d'état de composant (accordéon, toggle) qui doit survivre à un `render()` complet doit être déclaré au niveau module, jamais à l'intérieur de la fonction qui construit l'écran.
+- Le positionnement initial d'un élément scrollable ne doit jamais dépendre d'un délai arbitraire — vérifier une condition réelle via polling léger. Tout composant niché dans un groupe accordéon fermé doit prévoir un callback `onOuverture`.
+- Avant de paralléliser des `<script src>` avec `defer`, vérifier tout script INLINE placé entre eux — un script inline s'exécute toujours immédiatement, contrairement aux scripts `src` avec `defer`.
+- Le rendu PDF via `<iframe>`/`<embed>` sur un blob URL n'est pas fiable sur mobile/TWA Android — convertir en image (canvas + pdf.js) pour tout affichage in-app fiable cross-plateforme.
+
+**Installation PWA / mobile**
+- Une redirection vers un lien PWA classique ouverte depuis la WebView intégrée d'une app tierce (Gmail, WhatsApp) ne peut jamais déclencher `beforeinstallprompt` — limitation universelle des WebViews, pas un bug applicatif. Pour Android, rediriger vers la fiche Play Store dans ce contexte (installation native fiable peu importe le navigateur d'origine).
+- Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut révéler un bug latent dans du code existant qui supposait silencieusement un contexte toujours présent — vérifier les suppositions implicites du code traversé, pas seulement le nouveau code.
 ## 15bis. Écrans statiques hors JS (splash, chargement)
 
 **Écran de chargement (logo Y, entre le splash Android natif et le
