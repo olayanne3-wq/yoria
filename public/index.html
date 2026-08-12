@@ -1064,29 +1064,16 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       }
     }
 
-    // Rétro-compatibilité "pourquoi cette séance" (correctif) — un plan
-    // généré AVANT l'ajout de injecterPourquoiSeance() n'a jamais eu ce
-    // traitement (contrairement à un nouveau plan, qui le reçoit dans
-    // generatePlan()). Détecte l'absence sur au moins une séance non-course
-    // et complète directement le plan brut en mémoire via la même fonction
-    // pure du moteur — jamais de régénération complète du plan (inutile ici,
-    // contrairement à la réparation EF/longue ci-dessus qui recalcule tout
-    // un contenu cassé). Best-effort, pas de re-sauvegarde Supabase
-    // immédiate : le prochain enregistrement normal du plan (adaptation,
-    // changement de volume, etc.) le fera naturellement, pas besoin d'un
-    // aller-retour dédié pour un simple champ texte pédagogique.
-    if (planBrut?.semaines && typeof injecterPourquoiSeance === 'function') {
-      try {
-        const manquePourquoi = planBrut.semaines.some(s =>
-          Object.values(s.assignment || {}).some(seance => !seance.estCourse && !seance.pourquoi)
-        );
-        if (manquePourquoi) {
-          injecterPourquoiSeance(planBrut);
-        }
-      } catch (e) {
-        console.warn('Complétion "pourquoi cette séance" échouée, plan conservé tel quel :', e.message);
-      }
-    }
+    // Pas de rattrapage rétroactif pour "pourquoi cette séance" ni pour le
+    // retrait de la phrase redondante de genererContenuTest() — décision
+    // explicite de Laurent : ces deux correctifs étaient purement
+    // cosmétiques (texte affiché) et le coût d'un bloc de code permanent,
+    // exécuté à chaque chargement de plan pour toujours, n'était pas
+    // justifié pour ce bénéfice. Un plan existant affichera l'ancien texte
+    // jusqu'à sa prochaine régénération naturelle (adaptation, changement
+    // de volume, etc.) — contrairement à la réparation EF/longue ci-dessus,
+    // qui reste nécessaire car elle corrige un vrai bug de données
+    // (volume à 0km), pas juste du texte.
 
     window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
     window.__PLANS_DISPONIBLES__ = plansDisponibles;
