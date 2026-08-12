@@ -2740,10 +2740,20 @@ function fmtTime(seconds) {
   }
   return `${totalMin}'${s}"`;
 }
+// CORRECTIF ("la frise ne correspond plus aux séances", signalé par
+// Laurent) — même bug exactement que weeklyReport() ci-dessus :
+// week.sessions.indexOf(s) ne retrouve jamais une séance swappée (venant
+// du contenu d'une autre semaine), et le filtre initial ignorait le swap
+// de toute façon. C'est ce pourcentage qui s'affiche juste à côté de
+// chaque semaine dans la liste (renderWeeks) — sa désynchronisation avec
+// la frise (renderGrilleJoursSemaine, déjà correcte) explique
+// directement le symptôme observé.
 function weekPct(week) {
-  const sess = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
-  const done = sess.filter(s=>statuses[`${week.week}-${week.sessions.indexOf(s)}`]==="✅").length;
-  return sess.length ? Math.round(done/sess.length*100) : 0;
+  const sessAvecIndex = week.sessions
+    .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
+    .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  const done = sessAvecIndex.filter(({index})=>statuses[`${week.week}-${index}`]==="✅").length;
+  return sessAvecIndex.length ? Math.round(done/sessAvecIndex.length*100) : 0;
 }
 function globalPct() {
   const total = ALL_SESSIONS.filter(s=>s.type!=="REPOS"&&s.type!=="RACE").length;
@@ -2833,7 +2843,20 @@ function weekStats(weekNum) {
   // pour un volume saisi de 40km. kmEstime est calculé précisément par le
   // moteur (y compris échauffement/retour au calme), pas à reconstruire
   // depuis un texte libre destiné à l'affichage, pas au calcul.
-  const sessions = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  //
+  // CORRECTIF ("la frise ne correspond plus aux séances", signalé par
+  // Laurent) — ce filtre lisait week.sessions DIRECTEMENT, sans jamais
+  // passer par getEffectiveSession() (déjà utilisée pour l'affichage de
+  // la frise elle-même, cf. renderGrilleJoursSemaine). Une séance
+  // déplacée vers un slot REPOS via swap restait donc comptée comme
+  // REPOS ici (exclue du volume prévu), et inversement un ancien slot de
+  // séance qui a été swappé ailleurs restait compté comme si la séance y
+  // était toujours — désynchronisation entre la frise (correcte) et les
+  // statistiques affichées juste à côté (incorrectes, basées sur
+  // l'ancien contenu pré-swap).
+  const sessions = week.sessions
+    .map((s,i) => getEffectiveSession(week, i) || s)
+    .filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
   const EF_PACE = 6.33; // min/km (6:20/km) — sert uniquement de repli si kmEstime est absent (ancien plan v1 sans cette donnée)
   let plannedKm = week.volumeCibleKm;
   if (plannedKm == null) {
@@ -2867,10 +2890,26 @@ function weekStats(weekNum) {
 function weeklyReport(weekNum) {
   const week = PLAN.find(w=>w.week===weekNum);
   if (!week) return null;
-  const sessions = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
-  const done    = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="✅").length;
-  const adapted = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="⚠️").length;
-  const missed  = sessions.filter(s=>statuses[`${weekNum}-${week.sessions.indexOf(s)}`]==="❌").length;
+  // CORRECTIF ("la frise ne correspond plus aux séances", signalé par
+  // Laurent) — cette fonction utilisait week.sessions.indexOf(s) pour
+  // retrouver l'index d'une séance déjà filtrée, afin de reconstruire son
+  // uid. Ce pattern est structurellement incompatible avec
+  // getEffectiveSession() : si s vient d'un swap (contenu d'une AUTRE
+  // semaine, cf. swapWeek.sessions[swapIdx] dans getEffectiveSession),
+  // week.sessions.indexOf(s) ne le trouve jamais dans CETTE semaine et
+  // renvoie -1 — uid devient "${weekNum}--1", donc statuses[uid] est
+  // toujours undefined pour une séance swappée. En plus de ce bug d'uid,
+  // le filtre initial lisait week.sessions DIRECTEMENT (sans swap du
+  // tout), même désynchronisation que weekStats() ci-dessus. Corrigé en
+  // construisant une seule fois la liste {index, session effective},
+  // l'index (toujours celui d'ORIGINE dans cette semaine, jamais perdu)
+  // sert à reconstruire uid correctement pour chaque entrée.
+  const sessionsAvecIndex = week.sessions
+    .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
+    .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  const done    = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="✅").length;
+  const adapted = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="⚠️").length;
+  const missed  = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="❌").length;
   // Ajouté le 22/07/2026 (demande Laurent) : compteur 😴 (séance
   // volontairement sautée/repos) dans le Bilan semaine du dashboard, même
   // esprit que le compteur déjà affiché sur l'écran Course.
@@ -2881,8 +2920,8 @@ function weeklyReport(weekNum) {
   // Sans ce correctif, le compteur "sautées" ignorait silencieusement le
   // cas le plus courant (oubli de cocher), ne comptant que les rares 😴
   // explicitement cliqués.
-  const skipped = sessions.filter(s => {
-    const uid = `${weekNum}-${week.sessions.indexOf(s)}`;
+  const skipped = sessionsAvecIndex.filter(({index}) => {
+    const uid = `${weekNum}-${index}`;
     const sessionAllSessions = ALL_SESSIONS.find(as => as.uid === uid);
     return (sessionAllSessions?.statutEffectif ?? statuses[uid]) === "😴";
   }).length;
@@ -2896,11 +2935,17 @@ function weeklyReport(weekNum) {
   // Remonté par Laurent le 17/07/2026 en observant un total hebdomadaire
   // anormalement bas (192min) sur une semaine avec 2 séances de qualité.
   const EF_PACE = 6.33; // min/km (6:20/km), même constante que weekStats()
-  const plannedMin = Math.round(sessions.reduce((s,ses) => s + (ses.kmEstime || 0), 0) * EF_PACE);
+  const plannedMin = Math.round(sessionsAvecIndex.reduce((s,{session}) => s + (session.kmEstime || 0), 0) * EF_PACE);
   const weekDates = week.sessions.map(s=>s.date);
   const weekRuns = stravaActivities.filter(a=>a.type==="Run"&&weekDates.includes(a.start_date_local?.slice(0,10)));
   const realMin = Math.round(weekRuns.reduce((s,r)=>s+r.moving_time,0)/60);
-  const efDates = week.sessions.filter(s=>s.type==="EF"||s.type==="LONGUE").map(s=>s.date);
+  // efDates : même correctif — utilise la séance EFFECTIVE (post-swap)
+  // pour identifier les jours EF/LONGUE, avec la vraie date du SLOT
+  // (week.sessions[index].date — la date ne change jamais avec un swap,
+  // seul le contenu affiché change), pas la date du contenu source.
+  const efDates = sessionsAvecIndex
+    .filter(({session})=>session.type==="EF"||session.type==="LONGUE")
+    .map(({index})=>week.sessions[index].date);
   const efRuns = stravaActivities.filter(a=>a.type==="Run"&&efDates.includes(a.start_date_local?.slice(0,10)));
   let avgEfPace = null, avgEfHr = null;
   if (efRuns.length>0) {
@@ -2915,7 +2960,12 @@ function weeklyReport(weekNum) {
   if (weekNum > 1) {
     const prevWeek = PLAN.find(w=>w.week===weekNum-1);
     if (prevWeek) {
-      const prevEfDates = prevWeek.sessions.filter(s=>s.type==="EF"||s.type==="LONGUE").map(s=>s.date);
+      // Même correctif que efDates plus haut : séance EFFECTIVE (post-swap)
+      // pour identifier les jours EF/LONGUE de la semaine précédente.
+      const prevEfDates = prevWeek.sessions
+        .map((s,i) => ({ index:i, session: getEffectiveSession(prevWeek, i) || s }))
+        .filter(({session})=>session.type==="EF"||session.type==="LONGUE")
+        .map(({index})=>prevWeek.sessions[index].date);
       const prevEfRuns = stravaActivities.filter(a=>a.type==="Run"&&prevEfDates.includes(a.start_date_local?.slice(0,10)));
       if (prevEfRuns.length>0) {
         const ps = prevEfRuns.reduce((s,r)=>s+r.average_speed,0)/prevEfRuns.length;
