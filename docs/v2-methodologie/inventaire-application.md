@@ -63,6 +63,7 @@ Tous dans `docs/v2-methodologie/` :
 - Avant de conclure qu'un bug vient du code applicatif, consulter les vrais logs runtime Vercel (`get_runtime_errors`/`get_runtime_logs`) plutôt que d'enchaîner des hypothèses non vérifiées — la cause exacte (erreur Postgres, code d'erreur Vercel) est souvent immédiatement disponible.
 - Avant de croire qu'un mécanisme existe déjà dans le code (auto-ouverture, callback), vérifier positivement sa présence plutôt que de se fier à un commentaire qui décrit une intention jamais implémentée ou retirée depuis.
 - En cas de bug d'affichage résistant à plusieurs correctifs, diagnostiquer par tests directs en console (`getElementById`, `getBoundingClientRect()`, valeurs réelles des variables globales) plutôt que par relecture répétée du code — épuiser l'hypothèse "erreur dans le code qu'on vient d'écrire" avant d'accuser un mécanisme externe (cache, CDN).
+- Face à un bug rapporté comme "toujours pas résolu" après un correctif technique validé, ne pas empiler des correctifs supplémentaires sur la même hypothèse non confirmée — obtenir un fait concret (donnée réelle, capture d'écran, log exact) avant de continuer, quitte à demander explicitement à l'utilisateur de le fournir. Un correctif qui "semble juste" en isolation peut rester sans effet si le vrai problème est ailleurs (ex. écart entre l'intention métier de l'utilisateur et le comportement techniquement correct du code).
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -94,6 +95,9 @@ Tous dans `docs/v2-methodologie/` :
 **Installation PWA / mobile**
 - Une redirection vers un lien PWA classique ouverte depuis la WebView intégrée d'une app tierce (Gmail, WhatsApp) ne peut jamais déclencher `beforeinstallprompt` — limitation universelle des WebViews, pas un bug applicatif. Pour Android, rediriger vers la fiche Play Store dans ce contexte (installation native fiable peu importe le navigateur d'origine).
 - Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut révéler un bug latent dans du code existant qui supposait silencieusement un contexte toujours présent — vérifier les suppositions implicites du code traversé, pas seulement le nouveau code.
+
+**Échanges de séances (swap)**
+- Le modèle de swap (`swappedSessions`) est une vraie ROTATION en chaîne, pas des paires bidirectionnelles indépendantes — `swappedSessions[uid] = uidSource` signifie "cette position affiche le contenu d'origine de `uidSource`". Un échange (`echangerSwap`) permute directement les deux sources actuelles, jamais de "libération" préalable du partenaire. Toute nouvelle logique touchant aux séances swappées doit passer par `getEffectiveSession()`, jamais lire `week.sessions[i]` ou `PLAN` directement — plusieurs bugs (frise désynchronisée des statistiques affichées) sont venus de fonctions qui filtraient les séances sans passer par cette résolution.
 
 ## État des chantiers ouverts
 
@@ -157,6 +161,32 @@ Reste à faire :
   `persistance-donnees.md`, détail complet dans
   `vision-coach-adaptatif.md`). Exploitation en lecture conditionnée à la
   stabilité du moteur sur plusieurs mois et plusieurs utilisateurs réels.
+
+**Nouvelles fonctionnalités envisagées — aucune commencée**
+
+Proches de l'existant :
+- **Badge/récap post-course** — comparer temps réel vs objectif vs
+  estimation du prédicteur à la validation du jour de course.
+- **Historique visuel de progression** — graphique des allures E/T/I
+  dans le temps, ou courbe de volume hebdo (donnée déjà en base via
+  `predHistory`).
+- **Partage/export** d'une séance ou du plan complet en image/texte pour
+  Strava ou un ami.
+
+Plus de travail, forte valeur perçue :
+- **Notifications/rappels** — veille d'une séance qualité, ou séance non
+  marquée 24h après. À vérifier ce que permet une PWA/TWA en push avant
+  de s'engager.
+- **Comparaison avec un ami/groupe** — leaderboard km cumulés sur la
+  semaine. Touche au multi-utilisateur, portée plus large que le reste.
+
+Plus structurant, touche le moteur de plan :
+- **Plan double objectif** — gérer deux courses (ex. semi en septembre +
+  10K en octobre). Le moteur ne gère qu'un objectif à la fois
+  actuellement (cf. `moteur-plan.md`).
+- **Course intermédiaire dans un plan long** — insérer une course de
+  préparation (ex. 10K pendant un plan marathon) sans casser la
+  progression du plan principal.
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`.
