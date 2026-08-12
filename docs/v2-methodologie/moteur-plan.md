@@ -16,7 +16,13 @@ Pipeline de génération :
 6. `repartirVolumeSemaine`
 7. `neutraliserJoursApresCourse` — repos sur tout jour de la dernière
    semaine après le jour de course
-8. `generatePlan` — orchestrateur
+8. Injection du contenu narratif — jalons de transition, notes pratiques,
+   repères qualitatifs, cohérence semaine test, approche course,
+   `injecterPourquoiSeance` (explication du rôle de chaque séance, cf.
+   `pourquoi-seance.md`) — appelée en tout dernier dans `generatePlan()`,
+   après que `estTest`/`estCourse`/`role` soient définitivement posés sur
+   toutes les séances
+9. `generatePlan` — orchestrateur
 
 Adaptation dynamique : `calculerScoreSemaine`, `analyserAdaptations`,
 `appliquerAdaptations`, `regenererStructuresIntervalles` — excluent
@@ -32,7 +38,8 @@ d'approche (garde-fous J-2/J-1, repères J-3/veille) dans
 **v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
 le plan brut (v2) et le format `index.html`. Tout nouveau champ
 personnalisé ajouté sur une séance côté moteur doit être explicitement
-propagé dans cette fonction — sinon silencieusement perdu. Mapping
+propagé dans cette fonction — sinon silencieusement perdu (ex. `pourquoi`,
+cf. `pourquoi-seance.md` §6). Mapping
 `FAMILLE_VERS_TYPE_V1` doit couvrir tout nouveau `sousType`, sinon repli
 vers `SEUIL`.
 
@@ -229,4 +236,3 @@ identique aux tables publiées ; aucune variable interne (`ALL_SESSIONS`,
 `__PLAN_BRUT__`/`__PLAN_GENERE__`/`stravaActivities`/`localStorage`
 accessibles ; instrumentation directe (logs temporaires en prod) reste la
 méthode de diagnostic la plus fiable pour un bug profond.
-
