@@ -9386,9 +9386,31 @@ function getEffectiveSession(week, slotIdx) {
   // fiable contre une TDZ, utilisé ici en dernier recours.
   let swaps = {};
   try { swaps = swappedSessions; } catch (e) { /* TDZ : swappedSessions pas encore déclarée, pas de swap à appliquer */ }
-  if (swaps[uid]) {
-    const swapUid = swaps[uid];
-    const swapParts = swapUid.split("-");
+  // CORRECTIF ("le déplacement déplace une autre séance", signalé par
+  // Laurent) — cette fonction ne suivait qu'UN SEUL saut de swap
+  // (uid -> swapUid), puis retournait directement le contenu BRUT,
+  // non-swappé, du slot cible (swapWeek.sessions[swapIdx]). Avec
+  // libererSwap() (correctif précédent), swappedSessions ne contient
+  // normalement plus jamais de vraies CHAÎNES de swaps (A->B->C) — un swap
+  // libère toujours proprement l'ancien partenaire avant d'en poser un
+  // nouveau, donc un uid ne devrait avoir qu'un seul niveau de saut à tout
+  // moment. Mais un plan chargé AVANT ce correctif peut encore avoir des
+  // données swappedSessions issues de l'ancien bug (entrées orphelines ou
+  // incohérentes) persistées en storage — dans ce cas précis, un seul saut
+  // pouvait retomber sur un contenu qui ne correspond plus à la réalité.
+  // Résolution en boucle (pas juste un saut) avec détection de cycle
+  // (Set des uid déjà visités) pour rester robuste même face à d'anciennes
+  // données corrompues, sans jamais boucler à l'infini.
+  let uidCourant = uid;
+  const dejaVus = new Set([uid]);
+  while (swaps[uidCourant] !== undefined) {
+    const suivant = swaps[uidCourant];
+    if (dejaVus.has(suivant)) break; // cycle détecté (donnée corrompue), on garde la dernière valeur valide
+    dejaVus.add(suivant);
+    uidCourant = suivant;
+  }
+  if (uidCourant !== uid) {
+    const swapParts = uidCourant.split("-");
     const swapWeekNum = parseInt(swapParts[0]);
     const swapIdx = parseInt(swapParts[1]);
     const swapWeek = PLAN.find(w=>w.week===swapWeekNum);
