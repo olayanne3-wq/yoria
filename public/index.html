@@ -4993,11 +4993,16 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   const heroPredHybride = ESTMODEFORME ? null : (() => {
     const progression = Math.min(Math.max((BASE_TIME_REFERENCE - pred.time) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
     const progressionObjectif = Math.min(Math.max((BASE_TIME_REFERENCE - OBJECTIF_REFERENCE) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
-    // Angle sur un demi-cercle de 180° à 0° (gauche vers droite) — la même
-    // convention que la jauge de la maquette validée.
+    // Angle sur un demi-cercle de 180° à 0° (gauche vers droite).
     const angleDeg = (p) => 180 - (p * 180);
     const angleRad = (deg) => deg * Math.PI / 180;
-    const rayonArc = 100, cx = 120, cy = 80;
+    // Jauge agrandie (retour de Laurent : "trop petite dans l'ensemble") —
+    // rayon 130 au lieu de 100, viewBox et hauteur CSS élargis en
+    // conséquence pour que l'arc ne soit plus compressé (le viewBox
+    // précédent, 240x100 avec une hauteur CSS de 70px, écrasait References
+    // verticalement un arc de rayon 100 — l'espace disponible était
+    // structurellement insuffisant, pas juste une question d'échelle).
+    const rayonArc = 130, cx = 150, cy = 110;
     const pointSurArc = (p) => {
       const a = angleRad(angleDeg(p));
       return { x: cx + rayonArc * Math.cos(a), y: cy - rayonArc * Math.sin(a) };
@@ -5010,16 +5015,16 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
 
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("viewBox", "0 0 240 100");
+    svg.setAttribute("viewBox", "0 0 300 145");
     svg.style.width = "100%";
-    svg.style.height = "70px";
+    svg.style.height = "110px";
     svg.style.display = "block";
 
     const arcFond = document.createElementNS(svgNS, "path");
-    arcFond.setAttribute("d", `M 20 80 A ${rayonArc} ${rayonArc} 0 0 1 220 80`);
+    arcFond.setAttribute("d", `M 20 110 A ${rayonArc} ${rayonArc} 0 0 1 280 110`);
     arcFond.setAttribute("fill", "none");
     arcFond.setAttribute("stroke", "var(--border)");
-    arcFond.setAttribute("stroke-width", "12");
+    arcFond.setAttribute("stroke-width", "16");
     arcFond.setAttribute("stroke-linecap", "round");
     svg.appendChild(arcFond);
 
@@ -5027,28 +5032,29 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     arcProgression.setAttribute("d", `M ${depart.x} ${depart.y} A ${rayonArc} ${rayonArc} 0 ${largeArcFlag} 1 ${finProgression.x} ${finProgression.y}`);
     arcProgression.setAttribute("fill", "none");
     arcProgression.setAttribute("stroke", ecartCouleur);
-    arcProgression.setAttribute("stroke-width", "12");
+    arcProgression.setAttribute("stroke-width", "16");
     arcProgression.setAttribute("stroke-linecap", "round");
     svg.appendChild(arcProgression);
 
     const repereObjectif = document.createElementNS(svgNS, "line");
     const angleObjRad = angleRad(angleDeg(progressionObjectif));
-    const rInt = rayonArc - 9, rExt = rayonArc + 9;
+    const rInt = rayonArc - 12, rExt = rayonArc + 12;
     repereObjectif.setAttribute("x1", cx + rInt * Math.cos(angleObjRad));
     repereObjectif.setAttribute("y1", cy - rInt * Math.sin(angleObjRad));
     repereObjectif.setAttribute("x2", cx + rExt * Math.cos(angleObjRad));
     repereObjectif.setAttribute("y2", cy - rExt * Math.sin(angleObjRad));
     repereObjectif.setAttribute("stroke", "var(--text)");
-    repereObjectif.setAttribute("stroke-width", "2");
+    repereObjectif.setAttribute("stroke-width", "3");
     svg.appendChild(repereObjectif);
 
     const labelObjectif = document.createElementNS(svgNS, "text");
     labelObjectif.setAttribute("x", ptObjectif.x);
-    labelObjectif.setAttribute("y", Math.max(10, ptObjectif.y - 12));
+    labelObjectif.setAttribute("y", Math.max(14, ptObjectif.y - 18));
     labelObjectif.setAttribute("text-anchor", "middle");
-    labelObjectif.setAttribute("font-size", "9");
-    labelObjectif.setAttribute("fill", "var(--text-muted)");
-    labelObjectif.textContent = "objectif";
+    labelObjectif.setAttribute("font-size", "12");
+    labelObjectif.setAttribute("font-weight", "700");
+    labelObjectif.setAttribute("fill", "var(--text)");
+    labelObjectif.textContent = "Objectif";
     svg.appendChild(labelObjectif);
 
     // Panneau détail : réutilise heroPred tel quel (fourchette, stats,
@@ -5072,9 +5078,20 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
         el("div",{style:{color:ecartCouleur,fontSize:"13px",fontWeight:"700"}}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap)) : "+"+fmtTime(pred.gap))
       ),
       el("div",{style:{margin:"0 4px"}}, svg),
-      el("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"var(--text-muted)",marginTop:"2px"}},
-        el("span",{},fmtTime(BASE_TIME_REFERENCE)),
-        el("span",{},fmtTime(OBJECTIF_REFERENCE))
+      // Repères d'extrémités en toutes lettres (retour de Laurent : les
+      // temps bruts seuls n'étaient pas clairs sur ce qu'ils représentent).
+      // "Départ" = BASE_TIME_REFERENCE (ta référence de temps au début du
+      // plan), "Objectif" = OBJECTIF_REFERENCE (ce que tu vises) — le mot
+      // au-dessus du temps, pas juste le chiffre seul.
+      el("div",{style:{display:"flex",justifyContent:"space-between",marginTop:"4px"}},
+        el("div",{style:{textAlign:"left"}},
+          el("div",{style:{fontSize:"12px",fontWeight:"600",color:"var(--text2)"}},"Départ"),
+          el("div",{style:{fontSize:"13px",color:"var(--text-muted)"}},fmtTime(BASE_TIME_REFERENCE))
+        ),
+        el("div",{style:{textAlign:"right"}},
+          el("div",{style:{fontSize:"12px",fontWeight:"600",color:"var(--text2)"}},"Objectif"),
+          el("div",{style:{fontSize:"13px",color:"var(--text-muted)"}},fmtTime(OBJECTIF_REFERENCE))
+        )
       ),
       detailPredWrap
     );
