@@ -1064,16 +1064,33 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       }
     }
 
-    // Pas de rattrapage rétroactif pour "pourquoi cette séance" ni pour le
-    // retrait de la phrase redondante de genererContenuTest() — décision
-    // explicite de Laurent : ces deux correctifs étaient purement
-    // cosmétiques (texte affiché) et le coût d'un bloc de code permanent,
-    // exécuté à chaque chargement de plan pour toujours, n'était pas
-    // justifié pour ce bénéfice. Un plan existant affichera l'ancien texte
-    // jusqu'à sa prochaine régénération naturelle (adaptation, changement
-    // de volume, etc.) — contrairement à la réparation EF/longue ci-dessus,
-    // qui reste nécessaire car elle corrige un vrai bug de données
-    // (volume à 0km), pas juste du texte.
+    // Toujours pas de rattrapage rétroactif pour "pourquoi cette séance" —
+    // décision inchangée (cf. discussion avec Laurent : coût de code
+    // permanent trop élevé pour un bénéfice purement cosmétique).
+    //
+    // Correctif ciblé réintroduit UNIQUEMENT pour la phrase redondante de
+    // genererContenuTest() ("sert à confirmer/recalibrer ton allure
+    // objectif") — Laurent la voyait encore sur un plan déjà généré avant
+    // le retrait côté moteur, et contrairement à "pourquoi cette séance"
+    // (une vraie logique de complétion, exécutée sur chaque séance), ce
+    // correctif est un simple remplacement de texte, très léger, qui ne
+    // justifiait pas d'être exclu au même titre. Garde le principe acté :
+    // pas de correctif pour un pur confort cosmétique SAUF demande
+    // explicite de réintroduction, comme ici.
+    if (planBrut?.semaines) {
+      try {
+        const phraseObsolete = ", sert à confirmer/recalibrer ton allure objectif";
+        planBrut.semaines.forEach(s => {
+          Object.values(s.assignment || {}).forEach(seance => {
+            if (seance.contenu && seance.contenu.includes(phraseObsolete)) {
+              seance.contenu = seance.contenu.replace(phraseObsolete, "");
+            }
+          });
+        });
+      } catch (e) {
+        console.warn('Nettoyage phrase redondante séance test échoué, plan conservé tel quel :', e.message);
+      }
+    }
 
     window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
     window.__PLANS_DISPONIBLES__ = plansDisponibles;
