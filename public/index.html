@@ -4996,13 +4996,24 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // Angle sur un demi-cercle de 180° à 0° (gauche vers droite).
     const angleDeg = (p) => 180 - (p * 180);
     const angleRad = (deg) => deg * Math.PI / 180;
-    // Jauge agrandie (retour de Laurent : "trop petite dans l'ensemble") —
-    // rayon 130 au lieu de 100, viewBox et hauteur CSS élargis en
-    // conséquence pour que l'arc ne soit plus compressé (le viewBox
-    // précédent, 240x100 avec une hauteur CSS de 70px, écrasait References
-    // verticalement un arc de rayon 100 — l'espace disponible était
-    // structurellement insuffisant, pas juste une question d'échelle).
-    const rayonArc = 130, cx = 150, cy = 110;
+    const ecartCouleur = pred.gap <= 0 ? "var(--accent2)" : pred.gap <= 30 ? "var(--warn)" : "var(--warn)";
+
+    // Géométrie SVG (correctif : l'arc était tronqué en haut) — le viewBox
+    // précédent (300x145, cy=110, rayon=130) plaçait le sommet de l'arc à
+    // y = cy - rayon = -20, HORS du viewBox (qui commence à y=0) : c'est ce
+    // qui coupait visuellement le haut de la jauge. Ici cy est calé de sorte
+    // que cy - rayon = margeHaut (jamais négatif), et le viewBox est
+    // dimensionné pour contenir exactement l'arc + les labels Départ/
+    // Objectif placés SOUS les extrémités (dans le SVG lui-même, pas en
+    // HTML séparé en dessous — demande explicite de Laurent : "départ et
+    // objectif aux extrémités de la jauge").
+    const rayonArc = 120;
+    const margeHaut = 14, margeCotes = 30, margeBasLabels = 34;
+    const cx = margeCotes + rayonArc;
+    const cy = margeHaut + rayonArc;
+    const largeurViewBox = cx + rayonArc + margeCotes;
+    const hauteurViewBox = cy + margeBasLabels;
+
     const pointSurArc = (p) => {
       const a = angleRad(angleDeg(p));
       return { x: cx + rayonArc * Math.cos(a), y: cy - rayonArc * Math.sin(a) };
@@ -5010,21 +5021,20 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const depart = pointSurArc(0);
     const finProgression = pointSurArc(progression);
     const largeArcFlag = progression > 0.5 ? 1 : 0;
-    const ptObjectif = pointSurArc(progressionObjectif);
-    const ecartCouleur = pred.gap <= 0 ? "var(--accent2)" : pred.gap <= 30 ? "var(--warn)" : "var(--warn)";
+    const arrivee = pointSurArc(1);
 
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("viewBox", "0 0 300 145");
+    svg.setAttribute("viewBox", `0 0 ${largeurViewBox} ${hauteurViewBox}`);
     svg.style.width = "100%";
-    svg.style.height = "110px";
+    svg.style.height = "150px";
     svg.style.display = "block";
 
     const arcFond = document.createElementNS(svgNS, "path");
-    arcFond.setAttribute("d", `M 20 110 A ${rayonArc} ${rayonArc} 0 0 1 280 110`);
+    arcFond.setAttribute("d", `M ${depart.x} ${depart.y} A ${rayonArc} ${rayonArc} 0 0 1 ${arrivee.x} ${arrivee.y}`);
     arcFond.setAttribute("fill", "none");
     arcFond.setAttribute("stroke", "var(--border)");
-    arcFond.setAttribute("stroke-width", "16");
+    arcFond.setAttribute("stroke-width", "18");
     arcFond.setAttribute("stroke-linecap", "round");
     svg.appendChild(arcFond);
 
@@ -5032,30 +5042,62 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     arcProgression.setAttribute("d", `M ${depart.x} ${depart.y} A ${rayonArc} ${rayonArc} 0 ${largeArcFlag} 1 ${finProgression.x} ${finProgression.y}`);
     arcProgression.setAttribute("fill", "none");
     arcProgression.setAttribute("stroke", ecartCouleur);
-    arcProgression.setAttribute("stroke-width", "16");
+    arcProgression.setAttribute("stroke-width", "18");
     arcProgression.setAttribute("stroke-linecap", "round");
     svg.appendChild(arcProgression);
 
-    const repereObjectif = document.createElementNS(svgNS, "line");
-    const angleObjRad = angleRad(angleDeg(progressionObjectif));
-    const rInt = rayonArc - 12, rExt = rayonArc + 12;
-    repereObjectif.setAttribute("x1", cx + rInt * Math.cos(angleObjRad));
-    repereObjectif.setAttribute("y1", cy - rInt * Math.sin(angleObjRad));
-    repereObjectif.setAttribute("x2", cx + rExt * Math.cos(angleObjRad));
-    repereObjectif.setAttribute("y2", cy - rExt * Math.sin(angleObjRad));
-    repereObjectif.setAttribute("stroke", "var(--text)");
-    repereObjectif.setAttribute("stroke-width", "3");
-    svg.appendChild(repereObjectif);
+    // Point de position actuelle sur l'arc (visualise concrètement où se
+    // situe l'estimation, pas seulement l'arc coloré).
+    const pointActuel = document.createElementNS(svgNS, "circle");
+    pointActuel.setAttribute("cx", finProgression.x);
+    pointActuel.setAttribute("cy", finProgression.y);
+    pointActuel.setAttribute("r", "9");
+    pointActuel.setAttribute("fill", "var(--bg)");
+    pointActuel.setAttribute("stroke", ecartCouleur);
+    pointActuel.setAttribute("stroke-width", "4");
+    svg.appendChild(pointActuel);
 
-    const labelObjectif = document.createElementNS(svgNS, "text");
-    labelObjectif.setAttribute("x", ptObjectif.x);
-    labelObjectif.setAttribute("y", Math.max(14, ptObjectif.y - 18));
-    labelObjectif.setAttribute("text-anchor", "middle");
-    labelObjectif.setAttribute("font-size", "12");
-    labelObjectif.setAttribute("font-weight", "700");
-    labelObjectif.setAttribute("fill", "var(--text)");
-    labelObjectif.textContent = "Objectif";
-    svg.appendChild(labelObjectif);
+    // Labels Départ/Objectif directement sous les extrémités de l'arc
+    // (dans le SVG, pas en HTML séparé) — répond explicitement à la
+    // demande de Laurent : "départ et objectif aux extrémités de la
+    // jauge".
+    const labelDepart = document.createElementNS(svgNS, "text");
+    labelDepart.setAttribute("x", depart.x);
+    labelDepart.setAttribute("y", cy + 20);
+    labelDepart.setAttribute("text-anchor", "start");
+    labelDepart.setAttribute("font-size", "12");
+    labelDepart.setAttribute("font-weight", "600");
+    labelDepart.setAttribute("fill", "var(--text2)");
+    labelDepart.textContent = "Départ";
+    svg.appendChild(labelDepart);
+
+    const valeurDepart = document.createElementNS(svgNS, "text");
+    valeurDepart.setAttribute("x", depart.x);
+    valeurDepart.setAttribute("y", cy + 33);
+    valeurDepart.setAttribute("text-anchor", "start");
+    valeurDepart.setAttribute("font-size", "12");
+    valeurDepart.setAttribute("fill", "var(--text-muted)");
+    valeurDepart.textContent = fmtTime(BASE_TIME_REFERENCE);
+    svg.appendChild(valeurDepart);
+
+    const labelArrivee = document.createElementNS(svgNS, "text");
+    labelArrivee.setAttribute("x", arrivee.x);
+    labelArrivee.setAttribute("y", cy + 20);
+    labelArrivee.setAttribute("text-anchor", "end");
+    labelArrivee.setAttribute("font-size", "12");
+    labelArrivee.setAttribute("font-weight", "600");
+    labelArrivee.setAttribute("fill", "var(--text2)");
+    labelArrivee.textContent = "Objectif";
+    svg.appendChild(labelArrivee);
+
+    const valeurArrivee = document.createElementNS(svgNS, "text");
+    valeurArrivee.setAttribute("x", arrivee.x);
+    valeurArrivee.setAttribute("y", cy + 33);
+    valeurArrivee.setAttribute("text-anchor", "end");
+    valeurArrivee.setAttribute("font-size", "12");
+    valeurArrivee.setAttribute("fill", "var(--text-muted)");
+    valeurArrivee.textContent = fmtTime(OBJECTIF_REFERENCE);
+    svg.appendChild(valeurArrivee);
 
     // Panneau détail : réutilise heroPred tel quel (fourchette, stats,
     // sources dépliables) — replié par défaut, ouvert au clic sur la jauge.
@@ -5071,28 +5113,21 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       el("span",{class:"muted",style:{fontSize:"13px"}},"▼ détail")
     );
 
+    // Écart mis en valeur (retour de Laurent : "l'écart est petit et pas
+    // clair") — badge coloré avec fond, pas juste un petit texte à côté du
+    // gros chiffre.
+    const ecartBadge = el("span",{style:{
+      display:"inline-block", background:ecartCouleur+"22", color:ecartCouleur,
+      fontSize:"14px", fontWeight:"700", padding:"3px 10px", borderRadius:"999px"
+    }}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap))+" 🎯" : "+"+fmtTime(pred.gap));
+
     const bloc = el("div",{style:{background:"var(--bg)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"16px",padding:"16px",marginBottom:"12px"}},
       summaryRowPred,
-      el("div",{style:{display:"flex",alignItems:"baseline",gap:"10px",justifyContent:"center",marginBottom:"10px"}},
+      el("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px",marginBottom:"12px"}},
         el("div",{style:{fontSize:"38px",fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
-        el("div",{style:{color:ecartCouleur,fontSize:"13px",fontWeight:"700"}}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap)) : "+"+fmtTime(pred.gap))
+        ecartBadge
       ),
       el("div",{style:{margin:"0 4px"}}, svg),
-      // Repères d'extrémités en toutes lettres (retour de Laurent : les
-      // temps bruts seuls n'étaient pas clairs sur ce qu'ils représentent).
-      // "Départ" = BASE_TIME_REFERENCE (ta référence de temps au début du
-      // plan), "Objectif" = OBJECTIF_REFERENCE (ce que tu vises) — le mot
-      // au-dessus du temps, pas juste le chiffre seul.
-      el("div",{style:{display:"flex",justifyContent:"space-between",marginTop:"4px"}},
-        el("div",{style:{textAlign:"left"}},
-          el("div",{style:{fontSize:"12px",fontWeight:"600",color:"var(--text2)"}},"Départ"),
-          el("div",{style:{fontSize:"13px",color:"var(--text-muted)"}},fmtTime(BASE_TIME_REFERENCE))
-        ),
-        el("div",{style:{textAlign:"right"}},
-          el("div",{style:{fontSize:"12px",fontWeight:"600",color:"var(--text2)"}},"Objectif"),
-          el("div",{style:{fontSize:"13px",color:"var(--text-muted)"}},fmtTime(OBJECTIF_REFERENCE))
-        )
-      ),
       detailPredWrap
     );
 
