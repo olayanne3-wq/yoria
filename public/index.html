@@ -5338,16 +5338,10 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               }},status2==="✅"?"✅ Validée":status2==="⚠️"?"⚠️ Partiel":"❌ Ratée"):null
             )
           ),
-          !isRest && (s.warmup||s.cooldown) ? el("div",{style:{background:"var(--border-soft)",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
-            s.warmup ? el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:s.cooldown?"6px":"0"}},
-              el("span",{style:{color:"var(--text2)",fontSize:"13px",minWidth:"24px"}},"▶"),
-              el("span",{style:{color:"var(--text2)",fontSize:"14px"}},s.warmup)
-            ) : null,
-            s.cooldown ? el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-              el("span",{style:{color:"var(--text2)",fontSize:"13px",minWidth:"24px"}},"◀"),
-              el("span",{style:{color:"var(--text2)",fontSize:"14px"}},s.cooldown)
-            ) : null
-          ) : null,
+          // Bloc échauffement/retour au calme (▶/◀) retiré (retour de
+          // Laurent : redondant avec le popover ⌚ "à programmer sur ta
+          // montre", qui contient déjà cette info — la montre reste la
+          // seule source pour échauffement/retour au calme).
           s.notes ? el("div",{style:{color:"rgba(var(--accent-rgb),0.8)",fontSize:"14px",fontStyle:"italic",marginBottom:"8px"}},"💡 "+s.notes) : null,
           renderPourquoiToggle(s.pourquoi),
           // Allures/FC cibles remontées ici, hors repli (26/07/2026) — cf.
@@ -5966,11 +5960,18 @@ function renderIconeStructureMontre(structure) {
     background:"var(--border-soft)",border:"1px solid var(--border)",
     borderRadius:"6px",padding:"5px 7px",display:"inline-flex"
   }},"⌚");
+  // Largeur élargie (220px -> 280px) et whiteSpace explicite (retour de
+  // Laurent : "les lignes ne soient pas coupées") — certaines lignes
+  // générées (ex. "3 séries de 5 × (30s à 3:45/km / récup 30s)") dépassaient
+  // la largeur précédente. maxWidth borne la largeur sur les très petits
+  // écrans (le popover est positionné en absolute right:0, une largeur fixe
+  // pourrait sinon déborder hors du viewport sur un téléphone étroit).
   const popover = el("div",{style:{
     display:"none",position:"absolute",top:"24px",right:"0",zIndex:"20",
     background:"var(--bg)",boxShadow:"0 4px 16px var(--shadow1), 0 2px 6px var(--shadow2)",
-    border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px",width:"220px"
-  }}, ...lignes.map(l => el("div",{class:"muted",style:{fontSize:"13px",lineHeight:"1.6"}},l)));
+    border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px",
+    width:"280px",maxWidth:"calc(100vw - 32px)"
+  }}, ...lignes.map(l => el("div",{class:"muted",style:{fontSize:"13px",lineHeight:"1.6",whiteSpace:"normal",wordBreak:"break-word"}},l)));
   let open = false;
   icone.addEventListener("click", avecRetourTactile((e)=>{
     e.stopPropagation();
@@ -7229,10 +7230,8 @@ function renderWeekDetail(weekNum) {
         isDoneSession ? el("span",{style:{fontSize:"20px",flexShrink:"0",lineHeight:"1"}}, statutEffectif) : null
       ),
       el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},effSess.session),
-      (effSess.warmup||effSess.cooldown)?el("div",{style:{display:"flex",gap:"12px",marginBottom:"6px",flexWrap:"wrap"}},
-        effSess.warmup?el("div",{class:"muted",style:{fontSize:"13px"}},"▶ "+effSess.warmup):null,
-        effSess.cooldown?el("div",{class:"muted",style:{fontSize:"13px"}},"◀ "+effSess.cooldown):null
-      ):null,
+      // Bloc échauffement/retour au calme (▶/◀) retiré (même correctif que
+      // la carte "Aujourd'hui", cohérence entre les deux vues).
       effSess.notes?el("div",{style:{color:"rgba(var(--accent-rgb),0.8)",fontSize:"14px",marginBottom:"8px",fontStyle:"italic"}},"💡 "+effSess.notes):null,
       renderPourquoiToggle(effSess.pourquoi),
       // Allures/FC cibles remontées ici, sans repli (26/07/2026) — cohérent
