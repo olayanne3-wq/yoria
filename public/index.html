@@ -5332,15 +5332,16 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            // Ligne 2 : distance à gauche, icônes à droite sur la même
-            // ligne (retour de Laurent : les icônes montre/météo/etc.
-            // doivent suivre le kilométrage, pas être seules sur la
-            // ligne). s.kmEstime est la donnée précise du moteur, pas
-            // reparsée depuis le texte (même principe que le reste de
-            // l'app, cf. commentaires sur kmEstime plus haut dans ce
-            // fichier) — 0 ou absent n'affiche rien plutôt que "0km".
-            el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px"}},
-              (s.kmEstime && s.kmEstime > 0) ? el("span",{class:"muted",style:{fontSize:"13px",fontWeight:"600"}},Math.round(s.kmEstime*10)/10+"km") : el("span",{}),
+            // Ligne 2 : distance ET icônes groupées ensemble à la fin de
+            // la ligne (retour de Laurent : pas les deux extrémités
+            // opposées comme un précédent essai — le km doit précéder
+            // directement les icônes, tout collé à droite). s.kmEstime est
+            // la donnée précise du moteur, pas reparsée depuis le texte
+            // (même principe que le reste de l'app, cf. commentaires sur
+            // kmEstime plus haut dans ce fichier) — 0 ou absent n'affiche
+            // rien plutôt que "0km".
+            el("div",{style:{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:"10px"}},
+              (s.kmEstime && s.kmEstime > 0) ? el("span",{class:"muted",style:{fontSize:"13px",fontWeight:"600"}},Math.round(s.kmEstime*10)/10+"km") : null,
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
