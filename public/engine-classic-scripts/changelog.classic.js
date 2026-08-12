@@ -27,7 +27,15 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.39", title:"Installation facilitée sur iPhone, bêta plus rapide", current:true, notes:[
+      { ver:"v2.40", title:"Pourquoi cette séance, dashboard clarifié, échanges de séances fiabilisés", current:true, notes:[
+        "🎯 Chaque séance explique maintenant son rôle dans ta préparation, dans un nouveau repli \"Pourquoi cette séance\"",
+        "📊 Estimation de temps repensée en jauge visuelle, plus lisible en un coup d'œil, avec le détail complet toujours accessible au clic",
+        "🗓️ Carte du jour réorganisée : le descriptif de la séance ne se coupe plus, distance et icônes regroupées clairement",
+        "⌚✏️ Icônes montre et saisie manuelle agrandies avec leur libellé, popovers qui restent toujours visibles à l'écran",
+        "🔄 Correctif important : échanger plusieurs séances d'affilée dans la même semaine fonctionne maintenant de façon fiable et prévisible",
+        "🧹 Bloc \"Allures cibles\" retiré (redondant avec le texte de la séance)",
+      ]},
+      { ver:"v2.39", title:"Installation facilitée sur iPhone, bêta plus rapide", current:false, notes:[
         "📱 Sur iPhone, un guide s'affiche pour ajouter Yoria à ton écran d'accueil comme une vraie application",
         "🚀 Le site d'inscription à la bêta valide désormais automatiquement les premières candidatures, avec un accès immédiat et les instructions d'installation adaptées à ton téléphone",
       ]},
