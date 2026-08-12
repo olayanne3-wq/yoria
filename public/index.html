@@ -5008,7 +5008,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // HTML séparé en dessous — demande explicite de Laurent : "départ et
     // objectif aux extrémités de la jauge").
     const rayonArc = 120;
-    const margeHaut = 14, margeCotes = 30, margeBasLabels = 34;
+    // margeCotes élargie (30 -> 50) : passage de text-anchor "start"/"end" à
+    // "middle" pour Départ/Objectif (centrage réel demandé par Laurent)
+    // signifie que le texte s'étend maintenant des deux côtés du point
+    // d'ancrage plutôt que d'un seul côté vers l'intérieur — sans cette
+    // marge élargie, le mot "Objectif" (le plus large des deux, ~50px en
+    // police 12) déborderait hors du viewBox sur la droite.
+    const margeHaut = 14, margeCotes = 50, margeBasLabels = 34;
     const cx = margeCotes + rayonArc;
     const cy = margeHaut + rayonArc;
     const largeurViewBox = cx + rayonArc + margeCotes;
@@ -5064,7 +5070,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const labelDepart = document.createElementNS(svgNS, "text");
     labelDepart.setAttribute("x", depart.x);
     labelDepart.setAttribute("y", cy + 20);
-    labelDepart.setAttribute("text-anchor", "start");
+    labelDepart.setAttribute("text-anchor", "middle");
     labelDepart.setAttribute("font-size", "12");
     labelDepart.setAttribute("font-weight", "600");
     labelDepart.setAttribute("fill", "var(--text2)");
@@ -5074,7 +5080,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const valeurDepart = document.createElementNS(svgNS, "text");
     valeurDepart.setAttribute("x", depart.x);
     valeurDepart.setAttribute("y", cy + 33);
-    valeurDepart.setAttribute("text-anchor", "start");
+    valeurDepart.setAttribute("text-anchor", "middle");
     valeurDepart.setAttribute("font-size", "12");
     valeurDepart.setAttribute("fill", "var(--text-muted)");
     valeurDepart.textContent = fmtTime(BASE_TIME_REFERENCE);
@@ -5083,7 +5089,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const labelArrivee = document.createElementNS(svgNS, "text");
     labelArrivee.setAttribute("x", arrivee.x);
     labelArrivee.setAttribute("y", cy + 20);
-    labelArrivee.setAttribute("text-anchor", "end");
+    labelArrivee.setAttribute("text-anchor", "middle");
     labelArrivee.setAttribute("font-size", "12");
     labelArrivee.setAttribute("font-weight", "600");
     labelArrivee.setAttribute("fill", "var(--text2)");
@@ -5093,7 +5099,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const valeurArrivee = document.createElementNS(svgNS, "text");
     valeurArrivee.setAttribute("x", arrivee.x);
     valeurArrivee.setAttribute("y", cy + 33);
-    valeurArrivee.setAttribute("text-anchor", "end");
+    valeurArrivee.setAttribute("text-anchor", "middle");
     valeurArrivee.setAttribute("font-size", "12");
     valeurArrivee.setAttribute("fill", "var(--text-muted)");
     valeurArrivee.textContent = fmtTime(OBJECTIF_REFERENCE);
@@ -5131,12 +5137,22 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // environ 62% de la hauteur du SVG plutôt que 50%, empiriquement le bon
     // équilibre entre "dans le creux de l'arc" et "au-dessus des labels du
     // bas" pour ce ratio de rayon/marges.
+    // Police du chiffre central réduite si le temps contient des heures
+    // (retour de Laurent : un temps "1h48'23"" est nettement plus large
+    // que "47'12"" et risquerait de chevaucher les branches de l'arc à
+    // taille fixe — décision actée avec Laurent : réduire la police
+    // plutôt qu'élargir l'arc ou passer sur 2 lignes). Seuil à 3600s (60
+    // minutes), cohérent avec le seuil déjà utilisé par fmtTime()
+    // elle-même pour basculer vers le format "HhMM'SS''".
+    const contientHeures = pred.time && pred.time >= 3600;
+    const tailleChiffreCentral = contientHeures ? "24px" : "32px";
+
     const centreOverlay = el("div",{style:{
       position:"absolute", top:"58%", left:"50%", transform:"translate(-50%,-50%)",
       display:"flex", flexDirection:"column", alignItems:"center", gap:"4px",
       pointerEvents:"none"
     }},
-      el("div",{style:{fontSize:"32px",fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
+      el("div",{style:{fontSize:tailleChiffreCentral,fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
       ecartBadge
     );
 
