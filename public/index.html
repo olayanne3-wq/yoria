@@ -5321,26 +5321,26 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           borderRadius:"12px",padding:"14px",marginBottom:"8px",
           boxShadow:`0 6px 24px ${isDone?statusColorSoft:st.colorSoft}0.13), 0 2px 8px rgba(0,0,0,0.4)`
         }},
-          // Header passé de 1 ligne flex à 2 lignes empilées (retour de
-          // Laurent : le descriptif de la séance était tronqué, comprimé
-          // dans l'espace restant à côté des icônes sur une seule rangée
-          // flex). Ligne 1 : badge + descriptif complet, jamais tronqué
-          // (wrap normal si trop long, plutôt que troncature). Ligne 2 :
-          // les icônes seules (⌚ ✏️ 🌡️ Validée), alignées à droite.
-          el("div",{style:{marginBottom:"8px"}},
-            el("div",{style:{display:"flex",alignItems:"flex-start",gap:"8px",marginBottom:"6px"}},
+          // Header en un seul flex-wrap (retour de Laurent, capture à
+          // l'appui : avec un texte de séance long qui wrap déjà sur 2
+          // lignes, séparer texte et km+icônes dans deux <div> empilés
+          // poussait le groupe km+icônes sur une 3e ligne visuelle, pas la
+          // "2e ligne" voulue. En fusionnant badge + texte + km + icônes
+          // dans UN SEUL conteneur flex-wrap, le navigateur place le
+          // groupe km+icônes directement à la suite du texte dans le flux
+          // — sur la ligne 2 réelle si le texte tient sur 1 ligne, sinon
+          // juste après la fin du texte quel que soit son nombre de
+          // lignes. badge et texte ont flex-basis:100% pour rester
+          // groupés au début (badge collé au texte, jamais séparé par un
+          // retour à la ligne intempestif) ; le groupe km+icônes suit,
+          // poussé à droite via marginLeft:"auto" quand il tient sur la
+          // même ligne que la fin du texte.
+          el("div",{style:{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"8px",marginBottom:"8px"}},
+            el("div",{style:{display:"flex",alignItems:"flex-start",gap:"8px",minWidth:"0"}},
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            // Ligne 2 : distance ET icônes groupées ensemble à la fin de
-            // la ligne (retour de Laurent : pas les deux extrémités
-            // opposées comme un précédent essai — le km doit précéder
-            // directement les icônes, tout collé à droite). s.kmEstime est
-            // la donnée précise du moteur, pas reparsée depuis le texte
-            // (même principe que le reste de l'app, cf. commentaires sur
-            // kmEstime plus haut dans ce fichier) — 0 ou absent n'affiche
-            // rien plutôt que "0km".
-            el("div",{style:{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:"10px"}},
+            el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginLeft:"auto"}},
               (s.kmEstime && s.kmEstime > 0) ? el("span",{class:"muted",style:{fontSize:"13px",fontWeight:"600"}},Math.round(s.kmEstime*10)/10+"km") : null,
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
