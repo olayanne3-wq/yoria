@@ -1462,6 +1462,38 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+
+// CORRECTIF (échanges multiples incohérents, signalé par Laurent) —
+// swappedSessions ne supporte qu'UN SEUL partenaire par uid (paire stricte
+// bidirectionnelle : swappedSessions[A]=B ET swappedSessions[B]=A en même
+// temps, jamais l'un sans l'autre). Deux endroits du code posaient un
+// nouveau swap sans respecter cette contrainte de façon cohérente :
+//   - showMoveMenu nettoyait TOUT swap touchant uidA OU uidB avant de
+//     poser le nouveau — trop large : un swap C↔D existant, sans rapport,
+//     pouvait être effacé silencieusement simplement parce que B était
+//     réutilisé dans un swap B↔C, alors que C↔D n'a jamais impliqué B.
+//   - showRestoreMenu ne nettoyait RIEN avant d'écraser
+//     swappedSessions[uidA]/[uidB] — si uidB avait déjà un partenaire
+//     uidC, cette écriture cassait la bidirectionnalité : swappedSessions
+//     [uidC] continuait de pointer vers uidB, mais swappedSessions[uidB]
+//     pointait maintenant vers uidA, pas vers uidC. Entrée orpheline.
+//
+// Décision actée avec Laurent : un nouvel échange REMPLACE proprement
+// l'ancien pour les uid concernés (dernière action gagne, cohérent avec
+// l'usage naturel d'ajuster sa semaine en plusieurs étapes) — mais
+// UNIQUEMENT le partenaire direct de chaque uid touché, jamais des paires
+// tierces sans lien. libererSwap(uid) retire uid de son couple actuel
+// (s'il en a un) en supprimant les DEUX entrées de la paire — jamais plus,
+// jamais moins. Utilisée aux deux endroits (showMoveMenu, showRestoreMenu)
+// pour garantir un comportement identique, plutôt que deux implémentations
+// divergentes comme avant ce correctif.
+function libererSwap(uid) {
+  const partenaire = swappedSessions[uid];
+  if (partenaire !== undefined) {
+    delete swappedSessions[uid];
+    delete swappedSessions[partenaire];
+  }
+}
 // CORRECTIF (07/08/2026, bug signalé par Laurent : un swap de séance
 // [ex. SORTIE LONGUE déplacée dimanche → samedi] restait affiché
 // correctement en mémoire juste après l'action, mais REDEVENAIT faux
@@ -9440,9 +9472,11 @@ function showSessionMenu(week, slotIdx) {
       undoBtn.style.cssText = btnStyle+"background:rgba(var(--warn-rgb),0.13);color:var(--warn);";
       undoBtn.textContent = "Annuler le deplacement";
       undoBtn.addEventListener("click", () => {
-        const swapUid = swappedSessions[uid];
-        delete swappedSessions[uid];
-        delete swappedSessions[swapUid];
+        // Déjà correct avant ce correctif (paire précise, pas de nettoyage
+        // trop large) — remplacé par libererSwap() pour n'avoir qu'une
+        // seule implémentation de cette logique dans tout le fichier,
+        // plutôt que 3 versions séparées comme avant.
+        libererSwap(uid);
         save(clePourPlan("lk_swapped_sessions"), swappedSessions);
         // CORRECTIF (07/08/2026) — même bug et même fix que les deux
         // chemins de création de swap (cf. leur commentaire pour le
@@ -9602,13 +9636,11 @@ function showMoveMenu(week, slotIdx) {
       const uidB = slot.uid;
       // Si uidA etait deja swappé avec uidB → annuler (retour a l'original)
       const wasAlreadySwapped = swappedSessions[uidA] === uidB;
-      // Annuler tous les swaps impliquant ces deux slots
-      Object.keys(swappedSessions).forEach(k => {
-        if (swappedSessions[k]===uidA || k===uidA ||
-            swappedSessions[k]===uidB || k===uidB) {
-          delete swappedSessions[k];
-        }
-      });
+      // Libère UNIQUEMENT le partenaire direct de chacun (cf. libererSwap,
+      // correctif "échanges multiples incohérents") — jamais de paires
+      // tierces sans rapport avec cette opération.
+      libererSwap(uidA);
+      libererSwap(uidB);
       // Si ce n'est pas un retour a l'original, créer le nouveau swap
       if (!wasAlreadySwapped) {
         swappedSessions[uidA] = uidB;
@@ -9678,6 +9710,12 @@ function showRestoreMenu(week, slotIdx) {
       const uidA = week.week+"-"+slotIdx;
       const uidB = slot.uid;
       delete hiddenSessions[uidA];
+      // Libère UNIQUEMENT le partenaire direct de chacun avant d'écrire le
+      // nouveau swap (correctif "échanges multiples incohérents" — ce
+      // chemin ne nettoyait rien avant, créant des entrées orphelines si
+      // uidB avait déjà un autre partenaire).
+      libererSwap(uidA);
+      libererSwap(uidB);
       swappedSessions[uidA] = uidB;
       swappedSessions[uidB] = uidA;
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
