@@ -4869,104 +4869,21 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
 
   // ── Estimation hybride : gros chiffre + jauge courbe (nouveau design) ────
   // Remplace la version condensée précédente (une simple ligne texte) par un
-  // vrai second design visuel — validé avec Laurent : gros chiffre en
-  // écriture voix (font-voice, cohérent avec le reste de l'identité) au
-  // centre, jauge courbe fine en dessous montrant où se situe l'estimation
-  // entre le pire scénario (BASE_TIME_REFERENCE) et l'objectif
-  // (OBJECTIF_REFERENCE), avec un repère vertical marquant l'objectif —
-  // remplace heroPred dans l'assemblage final ci-dessous (heroPred reste
-  // disponible mais n'est plus utilisé, cf. discussion "trop d'infos
-  // affichées d'un coup, tout le temps" et demande explicite "l'estimation
-  // devrait être plus haut et plus jolie"). Positionné juste après le header,
-  // avant la séance du jour (position validée).
+  // vrai second design visuel — validé avec Laurent : gros chiffre (même
+  // police que le reste du dashboard, pas de police à part) au centre, jauge
+  // courbe fine en dessous montrant où se situe l'estimation entre le pire
+  // scénario (BASE_TIME_REFERENCE) et l'objectif (OBJECTIF_REFERENCE), avec
+  // un repère vertical marquant l'objectif. Le clic déplie heroPred (défini
+  // juste au-dessus) comme panneau détail — PAS un lien externe vers
+  // RACE_URL (premier essai corrigé suite au retour de Laurent : "ça
+  // n'ouvre pas le détail mais le site de l'organisateur"). Positionné juste
+  // après le sélecteur de plan, avant tous les autres blocs (position
+  // validée : "le choix du plan devrait être tout en haut").
   //
   // Le tracé de l'arc utilise pred.time normalisé entre BASE_TIME_REFERENCE
   // (pire scénario, 0%) et OBJECTIF_REFERENCE (meilleur cas visé, 100%) —
   // même logique de normalisation que la barre gradient existante dans
   // heroPred ci-dessus, juste redessinée en arc plutôt qu'en ligne droite.
-  const heroPredHybride = ESTMODEFORME ? null : (() => {
-    const progression = Math.min(Math.max((BASE_TIME_REFERENCE - pred.time) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
-    const progressionObjectif = Math.min(Math.max((BASE_TIME_REFERENCE - OBJECTIF_REFERENCE) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
-    // Angle sur un demi-cercle de 180° à 0° (gauche vers droite) — la même
-    // convention que la jauge de la maquette validée.
-    const angleDeg = (p) => 180 - (p * 180);
-    const angleRad = (deg) => deg * Math.PI / 180;
-    const rayonArc = 100, cx = 120, cy = 80;
-    const pointSurArc = (p) => {
-      const a = angleRad(angleDeg(p));
-      return { x: cx + rayonArc * Math.cos(a), y: cy - rayonArc * Math.sin(a) };
-    };
-    const depart = pointSurArc(0);
-    const finProgression = pointSurArc(progression);
-    const largeArcFlag = progression > 0.5 ? 1 : 0;
-    const ptObjectif = pointSurArc(progressionObjectif);
-    const ecartCouleur = pred.gap <= 0 ? "var(--accent2)" : pred.gap <= 30 ? "var(--warn)" : "var(--warn)";
-
-    const svgNS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("viewBox", "0 0 240 100");
-    svg.style.width = "100%";
-    svg.style.height = "70px";
-    svg.style.display = "block";
-
-    const arcFond = document.createElementNS(svgNS, "path");
-    arcFond.setAttribute("d", `M 20 80 A ${rayonArc} ${rayonArc} 0 0 1 220 80`);
-    arcFond.setAttribute("fill", "none");
-    arcFond.setAttribute("stroke", "var(--border)");
-    arcFond.setAttribute("stroke-width", "12");
-    arcFond.setAttribute("stroke-linecap", "round");
-    svg.appendChild(arcFond);
-
-    const arcProgression = document.createElementNS(svgNS, "path");
-    arcProgression.setAttribute("d", `M ${depart.x} ${depart.y} A ${rayonArc} ${rayonArc} 0 ${largeArcFlag} 1 ${finProgression.x} ${finProgression.y}`);
-    arcProgression.setAttribute("fill", "none");
-    arcProgression.setAttribute("stroke", ecartCouleur);
-    arcProgression.setAttribute("stroke-width", "12");
-    arcProgression.setAttribute("stroke-linecap", "round");
-    svg.appendChild(arcProgression);
-
-    const repereObjectif = document.createElementNS(svgNS, "line");
-    const angleObjRad = angleRad(angleDeg(progressionObjectif));
-    const rInt = rayonArc - 9, rExt = rayonArc + 9;
-    repereObjectif.setAttribute("x1", cx + rInt * Math.cos(angleObjRad));
-    repereObjectif.setAttribute("y1", cy - rInt * Math.sin(angleObjRad));
-    repereObjectif.setAttribute("x2", cx + rExt * Math.cos(angleObjRad));
-    repereObjectif.setAttribute("y2", cy - rExt * Math.sin(angleObjRad));
-    repereObjectif.setAttribute("stroke", "var(--text)");
-    repereObjectif.setAttribute("stroke-width", "2");
-    svg.appendChild(repereObjectif);
-
-    const labelObjectif = document.createElementNS(svgNS, "text");
-    labelObjectif.setAttribute("x", ptObjectif.x);
-    labelObjectif.setAttribute("y", Math.max(10, ptObjectif.y - 12));
-    labelObjectif.setAttribute("text-anchor", "middle");
-    labelObjectif.setAttribute("font-size", "9");
-    labelObjectif.setAttribute("fill", "var(--text-muted)");
-    labelObjectif.textContent = "objectif";
-    svg.appendChild(labelObjectif);
-
-    return el("div",{style:{background:"var(--bg)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"16px",padding:"16px",marginBottom:"12px",cursor:"pointer"}},
-      el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
-        el("div",{class:"muted",style:{fontSize:"12px"}},"🏁 "+RACE_NAME+(DATE_COURSE_REFERENCE?" — "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long"}):"")),
-        el("span",{class:"muted",style:{fontSize:"13px"}},"›")
-      ),
-      el("div",{style:{display:"flex",alignItems:"baseline",gap:"10px",justifyContent:"center",marginBottom:"10px"}},
-        el("div",{style:{fontFamily:"var(--font-voice, Georgia, serif)",fontSize:"38px",fontWeight:"500",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
-        el("div",{style:{color:ecartCouleur,fontSize:"13px",fontWeight:"700"}}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap)) : "+"+fmtTime(pred.gap))
-      ),
-      el("div",{style:{margin:"0 4px"}}, svg),
-      el("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"var(--text-muted)",marginTop:"2px"}},
-        el("span",{},fmtTime(BASE_TIME_REFERENCE)),
-        el("span",{},fmtTime(OBJECTIF_REFERENCE))
-      )
-    );
-  })();
-  if (heroPredHybride) {
-    heroPredHybride.addEventListener("click", () => {
-      if (RACE_URL) window.open(RACE_URL, "_blank");
-    });
-  }
-
   const heroPred = el("div",{style:{background:"linear-gradient(135deg,var(--bg) 0%,var(--border-soft) 100%)",borderRadius:"16px",padding:"16px",marginBottom:"12px",border:"1px solid rgba(var(--accent-rgb),0.2)",marginTop:"8px"}},
     // ── Header : course ──────────────────────────────────────────────────────
     el("div",{style:{marginBottom:"14px"}},
@@ -5072,6 +4989,106 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       );
     })()
   );
+
+  const heroPredHybride = ESTMODEFORME ? null : (() => {
+    const progression = Math.min(Math.max((BASE_TIME_REFERENCE - pred.time) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
+    const progressionObjectif = Math.min(Math.max((BASE_TIME_REFERENCE - OBJECTIF_REFERENCE) / (BASE_TIME_REFERENCE - OBJECTIF_REFERENCE), 0), 1);
+    // Angle sur un demi-cercle de 180° à 0° (gauche vers droite) — la même
+    // convention que la jauge de la maquette validée.
+    const angleDeg = (p) => 180 - (p * 180);
+    const angleRad = (deg) => deg * Math.PI / 180;
+    const rayonArc = 100, cx = 120, cy = 80;
+    const pointSurArc = (p) => {
+      const a = angleRad(angleDeg(p));
+      return { x: cx + rayonArc * Math.cos(a), y: cy - rayonArc * Math.sin(a) };
+    };
+    const depart = pointSurArc(0);
+    const finProgression = pointSurArc(progression);
+    const largeArcFlag = progression > 0.5 ? 1 : 0;
+    const ptObjectif = pointSurArc(progressionObjectif);
+    const ecartCouleur = pred.gap <= 0 ? "var(--accent2)" : pred.gap <= 30 ? "var(--warn)" : "var(--warn)";
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 240 100");
+    svg.style.width = "100%";
+    svg.style.height = "70px";
+    svg.style.display = "block";
+
+    const arcFond = document.createElementNS(svgNS, "path");
+    arcFond.setAttribute("d", `M 20 80 A ${rayonArc} ${rayonArc} 0 0 1 220 80`);
+    arcFond.setAttribute("fill", "none");
+    arcFond.setAttribute("stroke", "var(--border)");
+    arcFond.setAttribute("stroke-width", "12");
+    arcFond.setAttribute("stroke-linecap", "round");
+    svg.appendChild(arcFond);
+
+    const arcProgression = document.createElementNS(svgNS, "path");
+    arcProgression.setAttribute("d", `M ${depart.x} ${depart.y} A ${rayonArc} ${rayonArc} 0 ${largeArcFlag} 1 ${finProgression.x} ${finProgression.y}`);
+    arcProgression.setAttribute("fill", "none");
+    arcProgression.setAttribute("stroke", ecartCouleur);
+    arcProgression.setAttribute("stroke-width", "12");
+    arcProgression.setAttribute("stroke-linecap", "round");
+    svg.appendChild(arcProgression);
+
+    const repereObjectif = document.createElementNS(svgNS, "line");
+    const angleObjRad = angleRad(angleDeg(progressionObjectif));
+    const rInt = rayonArc - 9, rExt = rayonArc + 9;
+    repereObjectif.setAttribute("x1", cx + rInt * Math.cos(angleObjRad));
+    repereObjectif.setAttribute("y1", cy - rInt * Math.sin(angleObjRad));
+    repereObjectif.setAttribute("x2", cx + rExt * Math.cos(angleObjRad));
+    repereObjectif.setAttribute("y2", cy - rExt * Math.sin(angleObjRad));
+    repereObjectif.setAttribute("stroke", "var(--text)");
+    repereObjectif.setAttribute("stroke-width", "2");
+    svg.appendChild(repereObjectif);
+
+    const labelObjectif = document.createElementNS(svgNS, "text");
+    labelObjectif.setAttribute("x", ptObjectif.x);
+    labelObjectif.setAttribute("y", Math.max(10, ptObjectif.y - 12));
+    labelObjectif.setAttribute("text-anchor", "middle");
+    labelObjectif.setAttribute("font-size", "9");
+    labelObjectif.setAttribute("fill", "var(--text-muted)");
+    labelObjectif.textContent = "objectif";
+    svg.appendChild(labelObjectif);
+
+    // Panneau détail : réutilise heroPred tel quel (fourchette, stats,
+    // sources dépliables) — replié par défaut, ouvert au clic sur la jauge.
+    // Pas de lien externe ici : la demande explicite de Laurent était que le
+    // clic montre le détail, pas qu'il quitte l'app vers le site de
+    // l'organisateur (RACE_URL reste accessible via son propre lien dans
+    // heroPred, à l'intérieur du repli).
+    let detailPredOuvert = false;
+    const detailPredWrap = el("div",{style:{display:"none",marginTop:"12px"}}, heroPred);
+
+    const summaryRowPred = el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",cursor:"pointer"}},
+      el("div",{class:"muted",style:{fontSize:"12px"}},"🏁 "+RACE_NAME+(DATE_COURSE_REFERENCE?" — "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long"}):"")),
+      el("span",{class:"muted",style:{fontSize:"13px"}},"▼ détail")
+    );
+
+    const bloc = el("div",{style:{background:"var(--bg)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"16px",padding:"16px",marginBottom:"12px"}},
+      summaryRowPred,
+      el("div",{style:{display:"flex",alignItems:"baseline",gap:"10px",justifyContent:"center",marginBottom:"10px"}},
+        el("div",{style:{fontSize:"38px",fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
+        el("div",{style:{color:ecartCouleur,fontSize:"13px",fontWeight:"700"}}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap)) : "+"+fmtTime(pred.gap))
+      ),
+      el("div",{style:{margin:"0 4px"}}, svg),
+      el("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"var(--text-muted)",marginTop:"2px"}},
+        el("span",{},fmtTime(BASE_TIME_REFERENCE)),
+        el("span",{},fmtTime(OBJECTIF_REFERENCE))
+      ),
+      detailPredWrap
+    );
+
+    summaryRowPred.addEventListener("click", (e) => {
+      e.stopPropagation();
+      detailPredOuvert = !detailPredOuvert;
+      detailPredWrap.style.display = detailPredOuvert ? "block" : "none";
+      summaryRowPred.lastChild.textContent = detailPredOuvert ? "▲ masquer" : "▼ détail";
+    });
+
+    return bloc;
+  })();
+
 
 
   // Bloc Strava du bas de dashboard retiré (02/08/2026, demande de
@@ -5646,7 +5663,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,heroPredHybride,stravaDeconnecteEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
