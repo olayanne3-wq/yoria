@@ -51,7 +51,7 @@ Tous dans `docs/v2-methodologie/` :
 | `source-donnees-seances.md` | Saisie manuelle vs Strava : aucune hiérarchie entre sources, réglage `dataSource`, format des laps synthétiques *(complète `saisie-et-integrations.md`)* |
 | `vision-coach-adaptatif.md` | Vision détaillée du coach à mémoire par coureur (résumé en fin de fichier chapeau, détail complet ici) *(complète `moteur-decision.md`)* |
 | `daniels-running-formula-synthese.md` | Synthèse des principes Daniels' Running Formula pertinents pour le moteur (justification théorique de mécanismes déjà codés) |
-| `jalons-narratifs.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`, `jour-de-course.md` | Les 5 chantiers de contenu narratif du plan (jalons de transition, conseils d'exécution, ressenti/progression, semaine test, jour de course + semaine d'approche) *(complètent `moteur-plan.md`)* |
+| `jalons-narratifs.md`, `notes-pratiques.md`, `reperes-qualitatifs.md`, `coherence-semaine-test.md`, `jour-de-course.md`, `pourquoi-seance.md` | Les 6 chantiers de contenu narratif du plan (jalons de transition, conseils d'exécution, ressenti/progression, semaine test, jour de course + semaine d'approche, explication du rôle de chaque séance) *(complètent `moteur-plan.md`)* |
 
 ## Principes transverses à retenir
 
