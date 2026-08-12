@@ -5304,12 +5304,18 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           borderRadius:"12px",padding:"14px",marginBottom:"8px",
           boxShadow:`0 6px 24px ${isDone?statusColorSoft:st.colorSoft}0.13), 0 2px 8px rgba(0,0,0,0.4)`
         }},
-          el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}},
-            el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+          // Header passé de 1 ligne flex à 2 lignes empilées (retour de
+          // Laurent : le descriptif de la séance était tronqué, comprimé
+          // dans l'espace restant à côté des icônes sur une seule rangée
+          // flex). Ligne 1 : badge + descriptif complet, jamais tronqué
+          // (wrap normal si trop long, plutôt que troncature). Ligne 2 :
+          // les icônes seules (⌚ ✏️ 🌡️ Validée), alignées à droite.
+          el("div",{style:{marginBottom:"8px"}},
+            el("div",{style:{display:"flex",alignItems:"flex-start",gap:"8px",marginBottom:"6px"}},
               badge(s.type),
-              el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700"}},s.session)
+              el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            el("div",{style:{display:"flex",alignItems:"center",gap:"10px"}},
+            el("div",{style:{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:"10px"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
