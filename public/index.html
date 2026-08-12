@@ -1461,74 +1461,19 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 // retiré le 16 juillet 2026, résidu mort, cf. plus bas).
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
-let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: swapUid} swap bidirectionnel
+let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: uidSource} — cf. sourceSwap()/echangerSwap() plus bas dans ce fichier pour le modèle complet
 
-// CORRECTIF (échanges multiples incohérents, signalé par Laurent) —
-// swappedSessions ne supporte qu'UN SEUL partenaire par uid (paire stricte
-// bidirectionnelle : swappedSessions[A]=B ET swappedSessions[B]=A en même
-// temps, jamais l'un sans l'autre). Deux endroits du code posaient un
-// nouveau swap sans respecter cette contrainte de façon cohérente :
-//   - showMoveMenu nettoyait TOUT swap touchant uidA OU uidB avant de
-//     poser le nouveau — trop large : un swap C↔D existant, sans rapport,
-//     pouvait être effacé silencieusement simplement parce que B était
-//     réutilisé dans un swap B↔C, alors que C↔D n'a jamais impliqué B.
-//   - showRestoreMenu ne nettoyait RIEN avant d'écraser
-//     swappedSessions[uidA]/[uidB] — si uidB avait déjà un partenaire
-//     uidC, cette écriture cassait la bidirectionnalité : swappedSessions
-//     [uidC] continuait de pointer vers uidB, mais swappedSessions[uidB]
-//     pointait maintenant vers uidA, pas vers uidC. Entrée orpheline.
-//
-// Décision actée avec Laurent : un nouvel échange REMPLACE proprement
-// l'ancien pour les uid concernés (dernière action gagne, cohérent avec
-// l'usage naturel d'ajuster sa semaine en plusieurs étapes) — mais
-// UNIQUEMENT le partenaire direct de chaque uid touché, jamais des paires
-// tierces sans lien. libererSwap(uid) retire uid de son couple actuel
-// (s'il en a un) en supprimant les DEUX entrées de la paire — jamais plus,
-// jamais moins. Utilisée aux deux endroits (showMoveMenu, showRestoreMenu)
-// pour garantir un comportement identique, plutôt que deux implémentations
-// divergentes comme avant ce correctif.
-function libererSwap(uid) {
-  const partenaire = swappedSessions[uid];
-  if (partenaire !== undefined) {
-    delete swappedSessions[uid];
-    delete swappedSessions[partenaire];
-  }
-}
-
-// CORRECTIF ("les échanges ne se font pas correctement", persistant même
-// après les correctifs de logique ci-dessus) — libererSwap() garantit
-// qu'AUCUNE nouvelle incohérence ne peut apparaître à partir de
-// maintenant, mais ne corrige rien sur les données DÉJÀ écrites en
-// storage par les anciennes versions buguées (nettoyage trop large dans
-// showMoveMenu, absence de nettoyage dans showRestoreMenu — cf.
-// commentaire ci-dessus). Un plan dont swappedSessions contient encore
-// des entrées orphelines ou incohérentes de CETTE période continuera
-// donc de mal se comporter indéfiniment, même avec tous les correctifs
-// de logique en place, tant que ces données précises ne sont pas
-// assainies une fois.
-//
-// nettoyerSwappedSessionsIncoherents() : passe en revue chaque entrée et
-// vérifie la règle de bidirectionnalité stricte
-// (swappedSessions[A]===B implique swappedSessions[B]===A) — toute
-// entrée qui ne la respecte pas est une incohérence issue de l'ancien
-// bug et est supprimée. Appelée une seule fois au chargement (juste après
-// le chargement réel de swappedSessions ci-dessous), avant toute
-// interaction utilisateur — purement corrective, ne change jamais un
-// swap valide existant.
-function nettoyerSwappedSessionsIncoherents() {
-  const uidsIncoherents = [];
-  for (const uid of Object.keys(swappedSessions)) {
-    const partenaire = swappedSessions[uid];
-    if (swappedSessions[partenaire] !== uid) {
-      uidsIncoherents.push(uid);
-    }
-  }
-  if (uidsIncoherents.length > 0) {
-    console.warn('Nettoyage swappedSessions : entrées incohérentes retirées', uidsIncoherents);
-    uidsIncoherents.forEach(uid => { delete swappedSessions[uid]; });
-    save(clePourPlan("lk_swapped_sessions"), swappedSessions);
-  }
-}
+// REFONTE DU MODÈLE DE SWAP (remplace l'ancien modèle en paires
+// bidirectionnelles + libererSwap()/nettoyerSwappedSessionsIncoherents(),
+// retirés). L'ancien modèle "un nouvel échange remplace l'ancien
+// partenaire" ne correspondait pas à l'usage réel de Laurent : il enchaîne
+// plusieurs échanges successifs en attendant une vraie ROTATION en
+// chaîne (comme échanger physiquement des cartes à la main), pas un
+// remplacement de la dernière paire. Cf. sourceSwap()/echangerSwap(),
+// définies juste avant getEffectiveSession() plus bas — le nouveau modèle
+// est plus simple que l'ancien (un seul niveau de lookup, jamais de
+// chaîne à résoudre) car chaque échange écrit directement la source
+// finale, au lieu de composer des paires successives.
 // CORRECTIF (07/08/2026, bug signalé par Laurent : un swap de séance
 // [ex. SORTIE LONGUE déplacée dimanche → samedi] restait affiché
 // correctement en mémoire juste après l'action, mais REDEVENAIT faux
@@ -1548,12 +1493,10 @@ function nettoyerSwappedSessionsIncoherents() {
 // recalcul — jamais au chargement initial seul. Second recalcul ici,
 // juste après le vrai chargement de swappedSessions, pour couvrir ce
 // second cas de TDZ que le correctif du 26/07 ne couvrait pas.
-// Nettoyage des données swappedSessions incohérentes (cf. commentaire de
-// nettoyerSwappedSessionsIncoherents plus haut) — exécuté ici, juste
-// après le vrai chargement de swappedSessions et AVANT le recalcul de
-// ALL_SESSIONS qui suit, pour que ce recalcul parte déjà de données
-// propres plutôt que de refléter une incohérence une fois de plus.
-if (typeof nettoyerSwappedSessionsIncoherents === 'function') nettoyerSwappedSessionsIncoherents();
+// (Nettoyage automatique retiré avec la refonte du modèle de swap —
+// obsolète : l'ancienne notion de "bidirectionnalité stricte" ne
+// s'applique plus au nouveau modèle sourceSwap()/echangerSwap(), qui n'a
+// jamais cette forme d'incohérence par construction.)
 if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
 // plusieurs activités Strava tombent le même jour qu'une séance du plan,
@@ -9496,56 +9439,56 @@ function renderCourse() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Obtenir la session effective sur un slot (apres swap)
+// NOUVEAU MODÈLE DE SWAP (refonte complète — l'ancien modèle en paires
+// bidirectionnelles avec libererSwap() ne correspondait pas à l'usage
+// réel : Laurent enchaîne plusieurs échanges successifs et attend une
+// vraie ROTATION en chaîne, pas un remplacement de la dernière paire.
+// Exemple validé avec Laurent : Lundi(EF)↔Mardi(SEUIL) puis
+// Mardi↔Mercredi(LONG) doit donner Lundi=SEUIL, Mardi=LONG, Mercredi=EF —
+// exactement le résultat d'un échange PHYSIQUE classique appliqué deux
+// fois de suite, comme on échangerait deux cartes à la main. L'ancien
+// modèle "libère l'ancien partenaire avant d'en poser un nouveau"
+// donnait un résultat différent et non voulu.
+//
+// swappedSessions[uid] = uidSource signifie maintenant : "la position uid
+// affiche le contenu D'ORIGINE de la position uidSource". Si l'entrée
+// n'existe pas, la source implicite est uid lui-même (aucun swap actif).
+// Un seul niveau de lookup suffit TOUJOURS avec ce modèle — swappedUid()
+// écrit directement la source finale à chaque échange (cf. échangerSwap()
+// plus bas), jamais une vraie chaîne à résoudre récursivement.
+function sourceSwap(uid) {
+  let swaps = {};
+  try { swaps = swappedSessions; } catch (e) { /* TDZ, pas de swap à appliquer */ }
+  return swaps[uid] !== undefined ? swaps[uid] : uid;
+}
+
+// Échange PHYSIQUE des sources actuellement affichées à uidA et uidB —
+// c'est l'opération élémentaire, appelée une fois par clic "échanger".
+// Testé exhaustivement avant intégration (échange simple, ré-échange qui
+// annule, rotation à 3, rotation à 4, échanges indépendants) : donne
+// toujours le résultat d'un vrai échange physique répété, cf. exemple
+// Lundi/Mardi/Mercredi ci-dessus.
+function echangerSwap(uidA, uidB) {
+  const sourceA = sourceSwap(uidA);
+  const sourceB = sourceSwap(uidB);
+  swappedSessions[uidA] = sourceB;
+  swappedSessions[uidB] = sourceA;
+  // Nettoyage : une entrée qui redevient l'identité (uid affiche sa
+  // propre source d'origine) est retirée — garde swappedSessions minimal,
+  // cohérent avec l'état "aucun swap actif" pour cette position.
+  if (swappedSessions[uidA] === uidA) delete swappedSessions[uidA];
+  if (swappedSessions[uidB] === uidB) delete swappedSessions[uidB];
+}
+
 function getEffectiveSession(week, slotIdx) {
   const uid = week.week+"-"+slotIdx;
-  // BUG corrigé le 22/07/2026 : le premier appel à recalculerAllSessions()
-  // (ligne ~656, "let ALL_SESSIONS = recalculerAllSessions()") a lieu AVANT
-  // que "let swappedSessions" (ligne ~717) ne soit exécutée — en JS,
-  // toute référence à une variable let/const non encore initialisée dans
-  // le MÊME scope lève une vraie ReferenceError ("temporal dead zone"),
-  // y compris via typeof (contrairement à une variable jamais déclarée du
-  // tout, seul cas où typeof protège réellement). Le garde-fou précédent
-  // (typeof swappedSessions !== 'undefined') ne protégeait donc PAS contre
-  // ce cas précis et provoquait un écran blanc au chargement (exception
-  // non rattrapée, bloquant toute l'IIFE englobante). Un tentative de
-  // recalcul immédiat de ALL_SESSIONS avait été ajoutée juste après la
-  // déclaration de swappedSessions pour "rattraper" ce premier appel
-  // prématuré, mais ALL_SESSIONS est de toute façon recalculée à 4 autres
-  // endroits du fichier avant le premier vrai rendu — ce recalcul immédiat
-  // a été retiré, inutile et source du bug. try/catch, seule protection
-  // fiable contre une TDZ, utilisé ici en dernier recours.
-  let swaps = {};
-  try { swaps = swappedSessions; } catch (e) { /* TDZ : swappedSessions pas encore déclarée, pas de swap à appliquer */ }
-  // CORRECTIF ("le déplacement déplace une autre séance", signalé par
-  // Laurent) — cette fonction ne suivait qu'UN SEUL saut de swap
-  // (uid -> swapUid), puis retournait directement le contenu BRUT,
-  // non-swappé, du slot cible (swapWeek.sessions[swapIdx]). Avec
-  // libererSwap() (correctif précédent), swappedSessions ne contient
-  // normalement plus jamais de vraies CHAÎNES de swaps (A->B->C) — un swap
-  // libère toujours proprement l'ancien partenaire avant d'en poser un
-  // nouveau, donc un uid ne devrait avoir qu'un seul niveau de saut à tout
-  // moment. Mais un plan chargé AVANT ce correctif peut encore avoir des
-  // données swappedSessions issues de l'ancien bug (entrées orphelines ou
-  // incohérentes) persistées en storage — dans ce cas précis, un seul saut
-  // pouvait retomber sur un contenu qui ne correspond plus à la réalité.
-  // Résolution en boucle (pas juste un saut) avec détection de cycle
-  // (Set des uid déjà visités) pour rester robuste même face à d'anciennes
-  // données corrompues, sans jamais boucler à l'infini.
-  let uidCourant = uid;
-  const dejaVus = new Set([uid]);
-  while (swaps[uidCourant] !== undefined) {
-    const suivant = swaps[uidCourant];
-    if (dejaVus.has(suivant)) break; // cycle détecté (donnée corrompue), on garde la dernière valeur valide
-    dejaVus.add(suivant);
-    uidCourant = suivant;
-  }
-  if (uidCourant !== uid) {
-    const swapParts = uidCourant.split("-");
-    const swapWeekNum = parseInt(swapParts[0]);
-    const swapIdx = parseInt(swapParts[1]);
-    const swapWeek = PLAN.find(w=>w.week===swapWeekNum);
-    if (swapWeek && swapWeek.sessions[swapIdx]) return swapWeek.sessions[swapIdx];
-  }
+  const uidSource = sourceSwap(uid);
+  if (uidSource === uid) return week.sessions[slotIdx] || null;
+  const sourceParts = uidSource.split("-");
+  const sourceWeekNum = parseInt(sourceParts[0]);
+  const sourceIdx = parseInt(sourceParts[1]);
+  const sourceWeek = PLAN.find(w=>w.week===sourceWeekNum);
+  if (sourceWeek && sourceWeek.sessions[sourceIdx]) return sourceWeek.sessions[sourceIdx];
   return week.sessions[slotIdx] || null;
 }
 
@@ -9624,11 +9567,12 @@ function showSessionMenu(week, slotIdx) {
       undoBtn.style.cssText = btnStyle+"background:rgba(var(--warn-rgb),0.13);color:var(--warn);";
       undoBtn.textContent = "Annuler le deplacement";
       undoBtn.addEventListener("click", () => {
-        // Déjà correct avant ce correctif (paire précise, pas de nettoyage
-        // trop large) — remplacé par libererSwap() pour n'avoir qu'une
-        // seule implémentation de cette logique dans tout le fichier,
-        // plutôt que 3 versions séparées comme avant.
-        libererSwap(uid);
+        // Nouveau modèle (refonte rotation) : "annuler" = cette position
+        // réaffiche son contenu d'origine, sans toucher aux autres
+        // positions d'une éventuelle chaîne plus longue (cohérent avec le
+        // fait qu'un swap n'est plus une paire figée, mais un maillon
+        // indépendant d'une rotation — cf. sourceSwap()/echangerSwap()).
+        delete swappedSessions[uid];
         save(clePourPlan("lk_swapped_sessions"), swappedSessions);
         // CORRECTIF (07/08/2026) — même bug et même fix que les deux
         // chemins de création de swap (cf. leur commentaire pour le
@@ -9786,18 +9730,12 @@ function showMoveMenu(week, slotIdx) {
     btn.addEventListener("click", () => {
       const uidA = week.week+"-"+slotIdx;
       const uidB = slot.uid;
-      // Si uidA etait deja swappé avec uidB → annuler (retour a l'original)
-      const wasAlreadySwapped = swappedSessions[uidA] === uidB;
-      // Libère UNIQUEMENT le partenaire direct de chacun (cf. libererSwap,
-      // correctif "échanges multiples incohérents") — jamais de paires
-      // tierces sans rapport avec cette opération.
-      libererSwap(uidA);
-      libererSwap(uidB);
-      // Si ce n'est pas un retour a l'original, créer le nouveau swap
-      if (!wasAlreadySwapped) {
-        swappedSessions[uidA] = uidB;
-        swappedSessions[uidB] = uidA;
-      }
+      // Nouveau modèle (refonte rotation) : échange physique direct des
+      // sources actuellement affichées à uidA et uidB — cf.
+      // echangerSwap()/sourceSwap(). Un ré-échange de la même paire
+      // annule naturellement (l'algorithme redonne l'identité), pas
+      // besoin de cas particulier comme dans l'ancien modèle.
+      echangerSwap(uidA, uidB);
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       // CORRECTIF (07/08/2026, bug signalé par Laurent : après avoir
       // déplacé une SORTIE LONGUE du dimanche vers un samedi initialement
@@ -9862,14 +9800,8 @@ function showRestoreMenu(week, slotIdx) {
       const uidA = week.week+"-"+slotIdx;
       const uidB = slot.uid;
       delete hiddenSessions[uidA];
-      // Libère UNIQUEMENT le partenaire direct de chacun avant d'écrire le
-      // nouveau swap (correctif "échanges multiples incohérents" — ce
-      // chemin ne nettoyait rien avant, créant des entrées orphelines si
-      // uidB avait déjà un autre partenaire).
-      libererSwap(uidA);
-      libererSwap(uidB);
-      swappedSessions[uidA] = uidB;
-      swappedSessions[uidB] = uidA;
+      // Nouveau modèle (refonte rotation), même échange que showMoveMenu.
+      echangerSwap(uidA, uidB);
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
       save(clePourPlan("lk_swapped_sessions"), swappedSessions);
       // CORRECTIF (07/08/2026) — même bug et même fix que le chemin de
