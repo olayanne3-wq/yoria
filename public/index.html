@@ -2749,9 +2749,26 @@ function fmtTime(seconds) {
 // la frise (renderGrilleJoursSemaine, déjà correcte) explique
 // directement le symptôme observé.
 function weekPct(week) {
-  const sessAvecIndex = week.sessions
-    .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
-    .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  // Défensif (urgence : "l'appli bloque au démarrage" suite au correctif
+  // précédent) — try/catch autour de tout appel à getEffectiveSession()
+  // dans ce fichier de calcul de stats, jamais présent avant. Si
+  // getEffectiveSession lève pour une raison quelconque (donnée
+  // corrompue, cas limite non anticipé), repli sur le comportement
+  // D'ORIGINE (lecture directe de week.sessions, sans tenir compte du
+  // swap) plutôt que de laisser l'exception remonter et casser tout
+  // render() — un pourcentage possiblement désynchronisé du swap est un
+  // bien moindre mal qu'un écran bloqué.
+  let sessAvecIndex;
+  try {
+    sessAvecIndex = week.sessions
+      .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
+      .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  } catch (e) {
+    console.warn('weekPct: repli sans swap suite à une erreur', e.message);
+    sessAvecIndex = week.sessions
+      .map((s,i) => ({ index:i, session:s }))
+      .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  }
   const done = sessAvecIndex.filter(({index})=>statuses[`${week.week}-${index}`]==="✅").length;
   return sessAvecIndex.length ? Math.round(done/sessAvecIndex.length*100) : 0;
 }
@@ -2854,9 +2871,16 @@ function weekStats(weekNum) {
   // était toujours — désynchronisation entre la frise (correcte) et les
   // statistiques affichées juste à côté (incorrectes, basées sur
   // l'ancien contenu pré-swap).
-  const sessions = week.sessions
-    .map((s,i) => getEffectiveSession(week, i) || s)
-    .filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  // Défensif, même principe que weekPct ci-dessus.
+  let sessions;
+  try {
+    sessions = week.sessions
+      .map((s,i) => getEffectiveSession(week, i) || s)
+      .filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  } catch (e) {
+    console.warn('weekStats: repli sans swap suite à une erreur', e.message);
+    sessions = week.sessions.filter(s=>s.type!=="REPOS"&&s.type!=="RACE");
+  }
   const EF_PACE = 6.33; // min/km (6:20/km) — sert uniquement de repli si kmEstime est absent (ancien plan v1 sans cette donnée)
   let plannedKm = week.volumeCibleKm;
   if (plannedKm == null) {
@@ -2904,9 +2928,18 @@ function weeklyReport(weekNum) {
   // construisant une seule fois la liste {index, session effective},
   // l'index (toujours celui d'ORIGINE dans cette semaine, jamais perdu)
   // sert à reconstruire uid correctement pour chaque entrée.
-  const sessionsAvecIndex = week.sessions
-    .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
-    .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  // Défensif, même principe que weekPct/weekStats ci-dessus.
+  let sessionsAvecIndex;
+  try {
+    sessionsAvecIndex = week.sessions
+      .map((s,i) => ({ index:i, session: getEffectiveSession(week, i) || s }))
+      .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  } catch (e) {
+    console.warn('weeklyReport: repli sans swap suite à une erreur', e.message);
+    sessionsAvecIndex = week.sessions
+      .map((s,i) => ({ index:i, session:s }))
+      .filter(({session}) => session.type!=="REPOS" && session.type!=="RACE");
+  }
   const done    = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="✅").length;
   const adapted = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="⚠️").length;
   const missed  = sessionsAvecIndex.filter(({index})=>statuses[`${weekNum}-${index}`]==="❌").length;
@@ -2962,10 +2995,16 @@ function weeklyReport(weekNum) {
     if (prevWeek) {
       // Même correctif que efDates plus haut : séance EFFECTIVE (post-swap)
       // pour identifier les jours EF/LONGUE de la semaine précédente.
-      const prevEfDates = prevWeek.sessions
-        .map((s,i) => ({ index:i, session: getEffectiveSession(prevWeek, i) || s }))
-        .filter(({session})=>session.type==="EF"||session.type==="LONGUE")
-        .map(({index})=>prevWeek.sessions[index].date);
+      let prevEfDates;
+      try {
+        prevEfDates = prevWeek.sessions
+          .map((s,i) => ({ index:i, session: getEffectiveSession(prevWeek, i) || s }))
+          .filter(({session})=>session.type==="EF"||session.type==="LONGUE")
+          .map(({index})=>prevWeek.sessions[index].date);
+      } catch (e) {
+        console.warn('weeklyReport (prevEfDates): repli sans swap suite à une erreur', e.message);
+        prevEfDates = prevWeek.sessions.filter(s=>s.type==="EF"||s.type==="LONGUE").map(s=>s.date);
+      }
       const prevEfRuns = stravaActivities.filter(a=>a.type==="Run"&&prevEfDates.includes(a.start_date_local?.slice(0,10)));
       if (prevEfRuns.length>0) {
         const ps = prevEfRuns.reduce((s,r)=>s+r.average_speed,0)/prevEfRuns.length;
