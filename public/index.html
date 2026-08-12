@@ -5993,15 +5993,15 @@ function renderIconeStructureMontre(structure, avecLibelle = false) {
   if (!lignes) return null;
   const wrap = el("div",{style:{position:"relative"}});
   const icone = avecLibelle
-    ? el("span",{title:"Structure à programmer sur ta montre",style:{
+    ? el("span",{title:"Détail de la séance",style:{
         display:"inline-flex",alignItems:"center",gap:"8px",cursor:"pointer",
         background:"var(--border-soft)",border:"1px solid var(--border)",
         borderRadius:"8px",padding:"7px 12px"
       }},
         el("span",{style:{fontSize:"22px",lineHeight:"1"}},"⌚"),
-        el("span",{style:{color:"var(--text2)",fontSize:"13px",fontWeight:"600"}},"Programmer sur ma montre")
+        el("span",{style:{color:"var(--text2)",fontSize:"13px",fontWeight:"600"}},"Détail séance")
       )
-    : el("span",{title:"Structure à programmer sur ta montre",style:{
+    : el("span",{title:"Détail de la séance",style:{
         color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
         background:"var(--border-soft)",border:"1px solid var(--border)",
         borderRadius:"6px",padding:"5px 7px",display:"inline-flex"
@@ -6010,10 +6010,21 @@ function renderIconeStructureMontre(structure, avecLibelle = false) {
   // Laurent : "les lignes ne soient pas coupées") — certaines lignes
   // générées (ex. "3 séries de 5 × (30s à 3:45/km / récup 30s)") dépassaient
   // la largeur précédente. maxWidth borne la largeur sur les très petits
-  // écrans (le popover est positionné en absolute right:0, une largeur fixe
-  // pourrait sinon déborder hors du viewport sur un téléphone étroit).
+  // écrans.
+  //
+  // Positionnement CORRIGÉ (retour de Laurent : "le popup n'est pas
+  // complètement visible, hors écran à gauche"). Cause : right:"0" ancre
+  // le bord DROIT du popover au bord droit de wrap — un petit élément
+  // (juste la taille de l'icône), lui-même poussé près du bord droit de la
+  // carte via marginLeft:"auto" côté carte "Aujourd'hui". Sur un wrap situé
+  // près du bord droit de l'écran, un popover de 280px ancré à droite de ce
+  // petit wrap peut largement dépasser le bord GAUCHE du viewport. Corrigé
+  // en calculant left dynamiquement à l'OUVERTURE (pas dans le style
+  // statique, la position de wrap dans la page n'est connue qu'au clic) :
+  // aligne le popover sur le bord droit du viewport avec une marge de
+  // sécurité de 16px, jamais sur le bord droit de wrap lui-même.
   const popover = el("div",{style:{
-    display:"none",position:"absolute",top:"24px",right:"0",zIndex:"20",
+    display:"none",position:"fixed",zIndex:"20",
     background:"var(--bg)",boxShadow:"0 4px 16px var(--shadow1), 0 2px 6px var(--shadow2)",
     border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px",
     width:"280px",maxWidth:"calc(100vw - 32px)"
@@ -6022,6 +6033,18 @@ function renderIconeStructureMontre(structure, avecLibelle = false) {
   icone.addEventListener("click", avecRetourTactile((e)=>{
     e.stopPropagation();
     open = !open;
+    if (open) {
+      // position:"fixed" (plus "absolute") : calculé par rapport au
+      // viewport, pas au parent — évite toute dépendance à la position de
+      // wrap dans un conteneur potentiellement scrollé/étroit. Le popover
+      // reste toujours entièrement visible, ancré sous l'icône mais borné
+      // à droite par le viewport avec une marge de 16px.
+      const rect = icone.getBoundingClientRect();
+      const largeurPopover = Math.min(280, window.innerWidth - 32);
+      const left = Math.max(16, Math.min(rect.right - largeurPopover, window.innerWidth - largeurPopover - 16));
+      popover.style.left = left + "px";
+      popover.style.top = (rect.bottom + 6) + "px";
+    }
     popover.style.display = open ? "block" : "none";
   }));
   wrap.appendChild(icone);
