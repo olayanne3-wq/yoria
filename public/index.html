@@ -5546,75 +5546,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  // ── Regroupement des notifications ponctuelles (réorganisation dashboard) ──
-  // Avant cette réorganisation, jusqu'à 8 blocs de statut/proposition
-  // s'empilaient entre le header et la séance du jour (stravaDeconnecteEl,
-  // badgesNotifEl, progressionMarcheCourseEl, blocSuivantEl,
-  // completerTestEl, adaptationEl, alluresDynamiquesEl, moteurDecisionEl,
-  // prochainPalierEl) — retour utilisateur explicite : "trop d'infos
-  // affichées d'un coup, tout le temps". La logique de CHAQUE bloc reste
-  // strictement inchangée ci-dessus (mêmes conditions d'affichage, mêmes
-  // actions, mêmes textes) ; seul l'ASSEMBLAGE final change : ces blocs sont
-  // désormais comptés et repliés derrière un résumé cliquable "N choses à
-  // voir", affiché après la séance du jour plutôt qu'avant. Un clic déplie
-  // la pile complète (les éléments originaux, pas une réécriture) ;
-  // readinessEl n'est PAS inclus ici — il reste dans todayEl (déjà le cas
-  // avant cette réorganisation), car il appelle une action attendue avant
-  // la séance elle-même, pas une notification informative à consulter plus
-  // tard.
-  const blocsAGrouper = [
-    stravaDeconnecteEl, badgesNotifEl, progressionMarcheCourseEl,
-    blocSuivantEl, completerTestEl, adaptationEl, alluresDynamiquesEl,
-    moteurDecisionEl, prochainPalierEl
-  ].filter(b => b !== null);
-
-  let groupeOuvert = false;
-  const groupeDetailEl = el("div",{style:{display:"none",marginTop:"10px",paddingTop:"10px",borderTop:"1px solid var(--border)",flexDirection:"column",gap:"10px"}}, ...blocsAGrouper);
-  const groupeNotificationsEl = blocsAGrouper.length === 0 ? null : el("div",{style:{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"12px",padding:"12px 14px",marginBottom:"12px",cursor:"pointer"}},
-    el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      el("span",{style:{fontSize:"14px",fontWeight:"600",color:"var(--text)"}},"🔔 "+blocsAGrouper.length+(blocsAGrouper.length>1?" choses à voir":" chose à voir")),
-      el("span",{class:"muted",style:{fontSize:"13px"}},"▼")
-    ),
-    groupeDetailEl
-  );
-  if (groupeNotificationsEl) {
-    groupeNotificationsEl.addEventListener("click", (e) => {
-      groupeOuvert = !groupeOuvert;
-      groupeDetailEl.style.display = groupeOuvert ? "flex" : "none";
-      groupeNotificationsEl.querySelector("span:last-child").textContent = groupeOuvert ? "▲" : "▼";
-    });
-  }
-
-  // ── Prédiction condensée (réorganisation dashboard) ─────────────────────
-  // heroPred (bloc complet objectif/estimation/fourchette/stats) déplacé
-  // vers une version condensée en une ligne, cliquable, qui ouvre le même
-  // panneau détaillé qu'avant (aucune information perdue, juste masquée par
-  // défaut) — le bloc complet prenait une place disproportionnée pour une
-  // information consultée surtout ponctuellement, pas à chaque ouverture du
-  // dashboard. pred/RACE_NAME/etc. déjà calculés plus haut dans
-  // renderDashboard (portée de heroPred inchangée) — condensedPred
-  // réutilise ces mêmes variables, pas de recalcul.
-  let predDetailOuvert = false;
-  const predDetailWrap = el("div",{style:{display:"none",marginTop:"10px"}}, heroPred);
-  const ecartTexteEl = el("span",{style:{color:pred.gap<=0?"var(--accent2)":"var(--warn)",fontWeight:"700"}}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap)) : "+"+fmtTime(pred.gap));
-  const predCondenseeEl = ESTMODEFORME ? null : el("div",{style:{background:"linear-gradient(135deg,var(--bg) 0%,var(--border-soft) 100%)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"14px",padding:"12px 14px",marginBottom:"12px",cursor:"pointer"}},
-    el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      el("div",{},
-        el("div",{style:{color:"var(--accent)",fontWeight:"700",fontSize:"13px"}},"🏁 "+RACE_NAME+" — objectif "+fmtTime(raceGoalTime)),
-        el("div",{class:"muted",style:{fontSize:"11.5px",marginTop:"2px"}},"Estimation actuelle "+(pred.time?fmtTime(pred.time):"—")+" ", ecartTexteEl)
-      ),
-      el("span",{class:"muted",style:{fontSize:"13px"}},"›")
-    ),
-    predDetailWrap
-  );
-  if (predCondenseeEl) {
-    predCondenseeEl.addEventListener("click", () => {
-      predDetailOuvert = !predDetailOuvert;
-      predDetailWrap.style.display = predDetailOuvert ? "block" : "none";
-    });
-  }
-
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,todayEl||"",groupeNotificationsEl,predCondenseeEl,bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,stravaDeconnecteEl,selecteurPlanEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,ESTMODEFORME?null:heroPred,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
