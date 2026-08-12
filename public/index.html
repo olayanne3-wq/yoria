@@ -5359,20 +5359,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           // bloc "détail repliable" plus bas qui ne contient plus que le
           // strict accessoire (structure montre déjà en header, allures/FC
           // déjà ici, plus rien d'utile à cacher pour une séance non faite).
-          (!isRest && !isDone && PACE_REFS[s.type]) ? el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",padding:"10px 12px",marginBottom:"8px"}},
-            el("div",{style:{color:"var(--accent)",fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"8px",fontWeight:"700"}},"⚡ Allures cibles"),
-            el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
-              el("span",{class:"muted",style:{fontSize:"14px"}},"Effort"),
-              el("div",{style:{textAlign:"right"}},
-                el("span",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700"}},PACE_REFS[s.type].effort),
-                el("span",{class:"muted",style:{fontSize:"13px",marginLeft:"6px"}},PACE_REFS[s.type].tolerance)
-              )
-            ),
-            el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-              el("span",{class:"muted",style:{fontSize:"14px"}},"Récupération"),
-              el("span",{class:"muted",style:{fontSize:"15px",fontWeight:"700"}},PACE_REFS[s.type].recup)
-            )
-          ) : null,
+          // Bloc "⚡ Allures cibles" retiré (retour de Laurent : redondant
+          // avec l'allure déjà présente dans le texte principal de la
+          // séance, ex. "4:51/km" apparaît deux fois). PACE_REFS[type]
+          // continue d'exister pour d'autres usages éventuels — seul cet
+          // affichage a été retiré, la tolérance/récup qu'il montrait ne
+          // sont plus visibles ici (choix assumé de Laurent : simplifier
+          // plutôt que garder un bloc partiel).
           (!isRest && !isDone && FC_ZONES[s.type]) ? el("div",{style:{background:FC_ZONES[s.type].color+"11",border:"1px solid "+FC_ZONES[s.type].color+"33",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
             el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"FC cible"),
             el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
@@ -7251,20 +7244,8 @@ function renderWeekDetail(weekNum) {
       // avec la carte "Aujourd'hui", seulement si séance non validée et non
       // future (rien à cibler pour une séance qui n'a pas encore de plan
       // proche, cf. décision garde-fou plus haut).
-      (!isDoneSession && s.date<=today() && PACE_REFS[effSess.type]) ? el("div",{style:{background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",padding:"10px 12px",marginBottom:"8px"}},
-        el("div",{style:{color:"var(--accent)",fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"8px",fontWeight:"700"}},"⚡ Allures cibles"),
-        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}},
-          el("span",{class:"muted",style:{fontSize:"14px"}},"Effort"),
-          el("div",{style:{textAlign:"right"}},
-            el("span",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700"}},PACE_REFS[effSess.type].effort),
-            el("span",{class:"muted",style:{fontSize:"13px",marginLeft:"6px"}},PACE_REFS[effSess.type].tolerance)
-          )
-        ),
-        el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-          el("span",{class:"muted",style:{fontSize:"14px"}},"Récupération"),
-          el("span",{class:"muted",style:{fontSize:"15px",fontWeight:"700"}},PACE_REFS[effSess.type].recup)
-        )
-      ) : null,
+      // Bloc "⚡ Allures cibles" retiré (même correctif que la carte
+      // "Aujourd'hui" ci-dessus, cohérence entre les deux vues).
       (!isDoneSession && s.date<=today() && FC_ZONES[effSess.type]) ? el("div",{style:{background:FC_ZONES[effSess.type].color+"11",border:"1px solid "+FC_ZONES[effSess.type].color+"33",borderRadius:"8px",padding:"8px 10px",marginBottom:"8px"}},
         el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"4px"}},"FC cible"),
         el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
