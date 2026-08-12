@@ -3866,10 +3866,14 @@ function renderSelecteurPlan() {
   const plans = window.__PLANS_DISPONIBLES__ || [];
 
   const idActuel = window.__PLAN_BRUT__?.id;
+  // Largeur flexible (flex:1) plutôt que 100% fixe — condensé sur la même
+  // ligne que le bouton "Configurer un plan" (retour de Laurent : les deux
+  // prenaient chacun une ligne pleine largeur, empilés, ce qui prenait plus
+  // de place verticale que nécessaire).
   const select = el("select",{id:"selecteur-plan",name:"selecteur-plan",style:{
     background:"var(--border-soft)",color:"var(--text)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",
     borderRadius:"8px",padding:"6px 10px",fontSize:"14px",fontWeight:"600",
-    width:"100%",cursor:"pointer"
+    flex:"1",minWidth:"0",cursor:"pointer"
   }, onChange: (e) => {
     localStorage.setItem('v2_preview_plan_id', e.target.value);
     location.reload();
@@ -3898,14 +3902,18 @@ function renderSelecteurPlan() {
   // clic direct sur un élément <a>). Rendu plus visible le 8 juillet 2026
   // (vrai bouton avec bordure/fond, pas juste un lien texte discret) —
   // Laurent trouvait la navigation entre l'app et le wizard peu visible.
+  // Condensé sur la même ligne que le sélecteur : libellé raccourci
+  // ("Configurer" au lieu de "🏁 Configurer un plan") et largeur au contenu
+  // (pas display:block pleine largeur) pour tenir à côté du <select> sans
+  // que le tout déborde sur mobile.
   const lienNouveauPlan = el("a",{href:"/v2",style:{
-    display:"block",marginTop:"8px",textAlign:"center",
+    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:"0",
     background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",
-    padding:"8px",color:"var(--accent)",fontSize:"14px",fontWeight:"700",
-    textDecoration:"none",cursor:"pointer"
-  }},"🏁 Configurer un plan");
+    padding:"6px 12px",color:"var(--accent)",fontSize:"14px",fontWeight:"700",
+    textDecoration:"none",cursor:"pointer",whiteSpace:"nowrap"
+  }},"🏁 Configurer");
 
-  return el("div",{style:{padding:"8px 0"}}, select, lienNouveauPlan);
+  return el("div",{style:{padding:"8px 0",display:"flex",gap:"8px",alignItems:"center"}}, select, lienNouveauPlan);
 }
 
 function renderDashboard() {
