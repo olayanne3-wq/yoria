@@ -46,7 +46,7 @@ yoria/
 │       ├── table-rate-limiting-beta.sql     # Schéma table tentatives_soumission_beta (cf. §16bis)
 │       └── (autres docs de contexte : jour-de-course, source-donnees-seances, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~11700 lignes)
+│   ├── index.html                 # App principale (dashboard, ~13000 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── beta/                      # Site candidature bêta publique (cf. §16bis)
@@ -184,10 +184,12 @@ qu'estimation.
 ## Écrans de l'app principale (`index.html`)
 
 Fonctions de rendu (`render*`) :
-- `renderSelecteurPlan` — sélection entre plusieurs plans actifs
+- `renderSelecteurPlan` — sélection entre plusieurs plans actifs, condensé
+  sur la même ligne que le bouton "Configurer plan" (`display:flex`, plus
+  d'empilement pleine largeur)
 - `renderDashboard` — écran d'accueil, résumé de la semaine
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine
-- `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances
+- `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
 - `renderHelp` — aide (cf. plus bas)
@@ -198,15 +200,35 @@ Fonctions de rendu (`render*`) :
 - `ouvrirPpsModale` — modale PPS (cf. plus bas)
 - `renderTestSemiCooperRow` — carte du jour (Mode Forme sans référence, cf. `auth-et-publication.md`)
 
-**Carte "Aujourd'hui" (todayEl)** — principe "rien à ouvrir". Header
-carte : icône ⌚ (`renderIconeStructureMontre`, structure à programmer sur
-montre) affichée uniquement si la séance n'est pas encore validée ; icône
-✏️ (`renderIconeSaisieManuelle`) toujours visible, avant et après
-validation (cf. icône unifiée plus bas). Allures cibles (`PACE_REFS`) et
-FC cibles (`FC_ZONES`) affichées directement sous la séance, sans repli,
-seulement si non encore validée. Dès qu'un statut ✅/⚠️/❌ est posé, le
-bloc "Réalisé" (`renderBlocRealise`) prend le relais : résumé chiffré +
-ligne "X répétitions · Y/Z dans la cible · ▼ détail" qui déplie les laps
+**Carte "Aujourd'hui" (todayEl)** — principe "rien à ouvrir". Header de
+séance en 2 lignes empilées (retour utilisateur : le descriptif complet
+de la séance, potentiellement long, était comprimé/tronqué quand il
+partageait une seule ligne flex avec les icônes) : ligne 1 = badge +
+descriptif complet (`s.session`, jamais tronqué, wrap normal) ; ligne 2 =
+distance (calculée depuis `kmEstime`, jamais reparsée depuis le texte) et
+icônes groupées ensemble à la fin de la ligne (`justifyContent:
+"flex-end"`), dans le même conteneur flex-wrap que badge+texte pour que
+le groupe suive naturellement la fin du texte plutôt que d'être
+systématiquement rejeté sur une 3e ligne visuelle. Icône ⌚
+(`renderIconeStructureMontre`, structure à programmer sur montre, agrandie
+avec libellé "Détail séance" sur cette carte via le paramètre
+`avecLibelle`) affichée uniquement si la séance n'est pas encore validée ;
+icône ✏️ (`renderIconeSaisieManuelle`, également agrandie avec libellé sur
+cette carte) toujours visible, avant et après validation. Popover des deux
+icônes en `position:fixed` avec calcul dynamique de la position au clic
+(borné au viewport, jamais hors écran) plutôt qu'`absolute` ancré sur
+l'icône elle-même. Bloc "🎯 Pourquoi cette séance" (`renderPourquoiToggle`,
+cf. `pourquoi-seance.md`) sous le texte de la séance, repli/dépli au clic
+— retourne `null` si la séance n'a pas de `pourquoi` (séance de course, ou
+plan généré avant l'ajout du mécanisme, non rattrapé rétroactivement).
+Bloc "⚡ Allures cibles" (Effort/Récupération) RETIRÉ (retour utilisateur :
+redondant avec l'allure déjà présente dans le texte principal de la
+séance). Bloc échauffement/retour au calme en clair (▶/◀) également
+RETIRÉ — cette info ne vit plus que dans le popover ⌚, volontairement
+laissé redondant avec la montre selon Laurent ("c'est tout de même
+important"). Dès qu'un statut ✅/⚠️/❌ est posé, le bloc "Réalisé"
+(`renderBlocRealise`) prend le relais : résumé chiffré + ligne "X
+répétitions · Y/Z dans la cible · ▼ détail" qui déplie les laps
 individuels au clic. Stylo ✏️ coloré (fond `var(--accent)` plein, texte
 blanc) quand une saisie manuelle existe (`manualPerf[uid]`), gris neutre
 sinon. Cas sans Strava ET sans saisie manuelle existante : le clic sur
@@ -272,16 +294,23 @@ soit relancé sur un contenu déjà stable.
 
 **`predict10K()` calculé à la demande** — seulement pour
 `dashboard`/`stats`/`course` (`VUES_AVEC_PRED`), pas à chaque `render()`.
+Sur le dashboard, condensé en une jauge courbe (arc SVG, `heroPredHybride`)
+avec chiffre central et repères "Départ"/"Objectif" aux extrémités —
+remplace l'ancien bloc `heroPred` détaillé en affichage direct ; `heroPred`
+reste utilisé mais uniquement comme panneau détail replié, ouvert au clic
+sur la jauge (fourchette, stats, sources).
 
 **Icône ✏️ unifiée (saisie manuelle + import FIT)** — regroupe la saisie
 allure/FC et l'import `.fit` derrière une seule icône
 (`renderIconeSaisieManuelle()`), dans le header de la carte, juste avant
 le badge de statut — identique sur la carte "Aujourd'hui" et le détail
-Semaine. Visible avant ET après validation. Le popover contient le bouton
-d'import `.fit` (si `dataSource === "fit"` et aucune activité déjà
-présente) puis la saisie manuelle, repliée par défaut. Auto-ouverture du
-popover après un clic manuel sur ✅/⚠️/❌ sans activité existante — jamais
-sur validation automatique via synchro (`uidAOuvrirPopoverSaisie`).
+Semaine (paramètre `avecLibelle` optionnel, cf. section carte "Aujourd'hui"
+ci-dessus, réservé à la carte "Aujourd'hui"). Visible avant ET après
+validation. Le popover contient le bouton d'import `.fit` (si `dataSource
+=== "fit"` et aucune activité déjà présente) puis la saisie manuelle,
+repliée par défaut. Auto-ouverture du popover après un clic manuel sur
+✅/⚠️/❌ sans activité existante — jamais sur validation automatique via
+synchro (`uidAOuvrirPopoverSaisie`).
 
 **Saisie manuelle — détail des intervalles réussi/raté** — pour toute
 séance avec `structureIntervalles` (VMA/SEUIL/SPEC), grille de boutons
@@ -312,6 +341,9 @@ la lisibilité (`el("span", {fontSize:"20px"}, statutEffectif)`).
 **Mini-frise semaine** (`L M M J V S D`) — deux dictionnaires locaux
 (`TYPE_SEANCE_COULEUR`, `TYPE_SEANCE_LABEL`), distincts du dictionnaire
 global `STYPES`, couvrent tous les types de séance dont `TEST`.
+`renderGrilleJoursSemaine()` passe par `getEffectiveSession()` (cf.
+section swap ci-dessous) pour refléter le contenu réel après un
+échange.
 
 **Bandeau "Strava déconnecté" sur le dashboard** — affiché seulement si
 `dataSource === "strava"` ET (`stravaAuthInvalide` : token présent mais
@@ -399,6 +431,36 @@ affichant un warning si une fonction attendue est absente au chargement.
 Ne doit lister QUE des fonctions réellement `export`ées ; une fonction
 privée y figurant à tort génère un faux warning permanent.
 
+## Échange de séances (swap) — modèle en rotation
+
+Refonte complète (remplace l'ancien modèle en paires bidirectionnelles) :
+`swappedSessions[uid] = uidSource` signifie "la position `uid` affiche le
+contenu d'origine de la position `uidSource`". Si l'entrée n'existe pas,
+la source implicite est `uid` lui-même (aucun swap actif).
+
+- **`sourceSwap(uid)`** — lookup direct (un seul niveau, jamais de chaîne
+  à résoudre : chaque échange écrit directement la source finale).
+- **`echangerSwap(uidA, uidB)`** — opération élémentaire, appelée une fois
+  par clic "échanger" : permute directement les sources actuelles de
+  `uidA` et `uidB`. Équivaut à un vrai échange physique répété — enchaîner
+  plusieurs clics produit une vraie ROTATION en chaîne (ex. A↔B puis B↔C
+  donne A=contenu de B initial, B=contenu de C initial, C=contenu de A
+  initial — testé et validé explicitement sur ce cas). Nettoie
+  automatiquement toute entrée qui redevient l'identité.
+- **`getEffectiveSession(week, slotIdx)`** — point d'entrée UNIQUE pour
+  lire le contenu affiché d'un slot après swap éventuel. Toute nouvelle
+  fonction qui calcule des statistiques ou un affichage à partir des
+  séances d'une semaine DOIT passer par cette fonction, jamais lire
+  `week.sessions[i]` directement — plusieurs bugs (frise correcte mais
+  statistiques affichées à côté désynchronisées) sont venus d'un filtrage
+  direct sur `week.sessions` qui ignorait le swap.
+
+Utilisée par `renderGrilleJoursSemaine`, `renderWeekDetail`, `weekStats`,
+`weeklyReport`, `weekPct`, `recalculerAllSessions`. Le bouton "Annuler le
+déplacement" (dans `showSessionMenu`) retire uniquement l'entrée du slot
+concerné (`delete swappedSessions[uid]`) — n'affecte pas les autres
+maillons d'une éventuelle chaîne plus longue.
+
 ## Écrans statiques hors JS (splash, chargement)
 
 **Écran de chargement (logo Y, entre le splash Android natif et le
@@ -413,4 +475,3 @@ jamais uniquement sur un rendu desktop. Logo Y sur fond dégradé marine,
 reproduisant l'icône `icon-512.png`. Slogan "Ton coach running personnel"
 sous le logo (repris du `manifest.json`), Inter italique léger. Masqué
 par `render()` dès le tout premier rendu réel.
-
