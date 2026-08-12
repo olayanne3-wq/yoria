@@ -1350,7 +1350,11 @@ export function genererContenuTest({ distance, alluresSec, volumeHebdoCibleKm = 
   const kmEchauffement = kmDepuisMinutes(DUREE_ECHAUFFEMENT_MIN, E);
   const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
   const kmEstime = distanceTestKm + kmEchauffement + kmRetourCalme;
-  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${dureeConfirmationMin}min à allure course (${formatPace(C)}) — ${distanceTestKm}km, sert à confirmer/recalibrer ton allure objectif + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
+  // Phrase "sert à confirmer/recalibrer ton allure objectif" retirée
+  // (retour de Laurent : redondante avec le bloc "Pourquoi cette séance"
+  // depuis l'ajout de POURQUOI_SEANCE.test, qui explique déjà exactement
+  // ça — cf. injecterPourquoiSeance plus haut).
+  const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${dureeConfirmationMin}min à allure course (${formatPace(C)}) — ${distanceTestKm}km + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
   const structureIntervalles = {
     blocs: [{ repetitions: 1, dureeEffortSec: dureeConfirmationMin*60, allure: formatPace(C), dureeRecupSec: 0 }],
     echauffementSec: DUREE_ECHAUFFEMENT_MIN*60,
