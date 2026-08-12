@@ -1494,6 +1494,41 @@ function libererSwap(uid) {
     delete swappedSessions[partenaire];
   }
 }
+
+// CORRECTIF ("les échanges ne se font pas correctement", persistant même
+// après les correctifs de logique ci-dessus) — libererSwap() garantit
+// qu'AUCUNE nouvelle incohérence ne peut apparaître à partir de
+// maintenant, mais ne corrige rien sur les données DÉJÀ écrites en
+// storage par les anciennes versions buguées (nettoyage trop large dans
+// showMoveMenu, absence de nettoyage dans showRestoreMenu — cf.
+// commentaire ci-dessus). Un plan dont swappedSessions contient encore
+// des entrées orphelines ou incohérentes de CETTE période continuera
+// donc de mal se comporter indéfiniment, même avec tous les correctifs
+// de logique en place, tant que ces données précises ne sont pas
+// assainies une fois.
+//
+// nettoyerSwappedSessionsIncoherents() : passe en revue chaque entrée et
+// vérifie la règle de bidirectionnalité stricte
+// (swappedSessions[A]===B implique swappedSessions[B]===A) — toute
+// entrée qui ne la respecte pas est une incohérence issue de l'ancien
+// bug et est supprimée. Appelée une seule fois au chargement (juste après
+// le chargement réel de swappedSessions ci-dessous), avant toute
+// interaction utilisateur — purement corrective, ne change jamais un
+// swap valide existant.
+function nettoyerSwappedSessionsIncoherents() {
+  const uidsIncoherents = [];
+  for (const uid of Object.keys(swappedSessions)) {
+    const partenaire = swappedSessions[uid];
+    if (swappedSessions[partenaire] !== uid) {
+      uidsIncoherents.push(uid);
+    }
+  }
+  if (uidsIncoherents.length > 0) {
+    console.warn('Nettoyage swappedSessions : entrées incohérentes retirées', uidsIncoherents);
+    uidsIncoherents.forEach(uid => { delete swappedSessions[uid]; });
+    save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+  }
+}
 // CORRECTIF (07/08/2026, bug signalé par Laurent : un swap de séance
 // [ex. SORTIE LONGUE déplacée dimanche → samedi] restait affiché
 // correctement en mémoire juste après l'action, mais REDEVENAIT faux
@@ -1513,6 +1548,12 @@ function libererSwap(uid) {
 // recalcul — jamais au chargement initial seul. Second recalcul ici,
 // juste après le vrai chargement de swappedSessions, pour couvrir ce
 // second cas de TDZ que le correctif du 26/07 ne couvrait pas.
+// Nettoyage des données swappedSessions incohérentes (cf. commentaire de
+// nettoyerSwappedSessionsIncoherents plus haut) — exécuté ici, juste
+// après le vrai chargement de swappedSessions et AVANT le recalcul de
+// ALL_SESSIONS qui suit, pour que ce recalcul parte déjà de données
+// propres plutôt que de refléter une incohérence une fois de plus.
+if (typeof nettoyerSwappedSessionsIncoherents === 'function') nettoyerSwappedSessionsIncoherents();
 if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
 // plusieurs activités Strava tombent le même jour qu'une séance du plan,
