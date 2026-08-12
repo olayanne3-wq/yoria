@@ -5341,7 +5341,6 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
             el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginLeft:"auto"}},
-              (s.kmEstime && s.kmEstime > 0) ? el("span",{class:"muted",style:{fontSize:"13px",fontWeight:"600"}},Math.round(s.kmEstime*10)/10+"km") : null,
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
@@ -5352,7 +5351,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               // correction/réimport une fois la séance faite, à la saisie
               // initiale sinon — même popover (renderManualPerfRow) dans
               // les deux cas.
-              (!isRest && !isDone && s.structureIntervalles) ? renderIconeStructureMontre(s.structureIntervalles) : null,
+              (!isRest && !isDone && s.structureIntervalles) ? renderIconeStructureMontre(s.structureIntervalles, true) : null,
               (!isRest) ? renderIconeSaisieManuelle(uid2, s, stravaRun2) : null,
               (()=>{
                 const histTemp = historicalWeatherCache[s.date];
@@ -5983,15 +5982,30 @@ function renderStructureAProgrammer(structure) {
 // ta montre" quand la séance n'est pas encore validée. Réutilise le même
 // contenu (renderStructureAProgrammer) mais dans un popover discret ouvert/
 // fermé au clic sur l'icône, plutôt qu'un bloc toujours présent dans le flux.
-function renderIconeStructureMontre(structure) {
+// avecLibelle (ajouté) : la carte "Aujourd'hui" affiche désormais l'icône
+// agrandie avec le libellé "Programmer sur ma montre" à côté (retour de
+// Laurent : place libérée par le retrait du kilométrage sur cette carte).
+// Le détail Semaine (avecLibelle=false, valeur par défaut) garde l'icône
+// compacte seule, comme avant — plus de contexte disponible dans cette vue
+// (date, badge, etc.) donc le libellé y serait redondant/superflu.
+function renderIconeStructureMontre(structure, avecLibelle = false) {
   const lignes = renderStructureAProgrammer(structure);
   if (!lignes) return null;
   const wrap = el("div",{style:{position:"relative"}});
-  const icone = el("span",{title:"Structure à programmer sur ta montre",style:{
-    color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
-    background:"var(--border-soft)",border:"1px solid var(--border)",
-    borderRadius:"6px",padding:"5px 7px",display:"inline-flex"
-  }},"⌚");
+  const icone = avecLibelle
+    ? el("span",{title:"Structure à programmer sur ta montre",style:{
+        display:"inline-flex",alignItems:"center",gap:"8px",cursor:"pointer",
+        background:"var(--border-soft)",border:"1px solid var(--border)",
+        borderRadius:"8px",padding:"7px 12px"
+      }},
+        el("span",{style:{fontSize:"22px",lineHeight:"1"}},"⌚"),
+        el("span",{style:{color:"var(--text2)",fontSize:"13px",fontWeight:"600"}},"Programmer sur ma montre")
+      )
+    : el("span",{title:"Structure à programmer sur ta montre",style:{
+        color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
+        background:"var(--border-soft)",border:"1px solid var(--border)",
+        borderRadius:"6px",padding:"5px 7px",display:"inline-flex"
+      }},"⌚");
   // Largeur élargie (220px -> 280px) et whiteSpace explicite (retour de
   // Laurent : "les lignes ne soient pas coupées") — certaines lignes
   // générées (ex. "3 séries de 5 × (30s à 3:45/km / récup 30s)") dépassaient
