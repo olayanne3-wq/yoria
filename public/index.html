@@ -5118,16 +5118,33 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // gros chiffre.
     const ecartBadge = el("span",{style:{
       display:"inline-block", background:ecartCouleur+"22", color:ecartCouleur,
-      fontSize:"14px", fontWeight:"700", padding:"3px 10px", borderRadius:"999px"
+      fontSize:"13px", fontWeight:"700", padding:"2px 9px", borderRadius:"999px"
     }}, pred.gap<=0 ? "−"+fmtTime(Math.abs(pred.gap))+" 🎯" : "+"+fmtTime(pred.gap));
+
+    // Chiffre + écart superposés au CENTRE de la jauge, dans le creux de
+    // l'arc (retour de Laurent : "gagner de la place" en évitant de les
+    // empiler au-dessus de la jauge comme avant). Positionné en absolute
+    // dans un conteneur relatif qui enveloppe le SVG — le centre horizontal
+    // (50%) correspond à cx, et le centre vertical est calé pour tomber
+    // dans le creux du demi-cercle plutôt qu'au milieu strict du SVG (qui
+    // inclut aussi la marge des labels Départ/Objectif en bas) : on vise
+    // environ 62% de la hauteur du SVG plutôt que 50%, empiriquement le bon
+    // équilibre entre "dans le creux de l'arc" et "au-dessus des labels du
+    // bas" pour ce ratio de rayon/marges.
+    const centreOverlay = el("div",{style:{
+      position:"absolute", top:"58%", left:"50%", transform:"translate(-50%,-50%)",
+      display:"flex", flexDirection:"column", alignItems:"center", gap:"4px",
+      pointerEvents:"none"
+    }},
+      el("div",{style:{fontSize:"32px",fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
+      ecartBadge
+    );
+
+    const jaugeWrap = el("div",{style:{position:"relative",margin:"0 4px"}}, svg, centreOverlay);
 
     const bloc = el("div",{style:{background:"var(--bg)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"16px",padding:"16px",marginBottom:"12px"}},
       summaryRowPred,
-      el("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px",marginBottom:"12px"}},
-        el("div",{style:{fontSize:"38px",fontWeight:"800",color:"var(--text)",lineHeight:"1"}}, pred.time ? fmtTime(pred.time) : "—"),
-        ecartBadge
-      ),
-      el("div",{style:{margin:"0 4px"}}, svg),
+      jaugeWrap,
       detailPredWrap
     );
 
