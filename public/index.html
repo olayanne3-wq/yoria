@@ -5197,8 +5197,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
 
   const isHot = weatherTemp !== null && weatherTemp > 28;
   // Badge météo discret pour intégration dans la carte séance
+  // Agrandi (13px -> 16px, retour de Laurent : cohérence visuelle avec
+  // l'icône montre agrandie sur la même ligne) — seuls usages de
+  // weatherBadge (lignes plus bas) sont dans la carte "Aujourd'hui", donc
+  // agrandir ici n'affecte pas le détail Semaine (qui a son propre badge
+  // météo distinct, non concerné par ce correctif).
   const weatherBadge = weatherTemp !== null
-    ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"13px",fontWeight:isHot?"700":"400"}},
+    ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"16px",fontWeight:isHot?"700":"400"}},
         (weatherDesc||"🌡️")+" "+weatherTemp+"°C"+(isHot?" 🔥":""))
     : null;
   const weatherEl = null; // Supprimé — météo intégrée dans la carte séance
@@ -5352,7 +5357,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               // initiale sinon — même popover (renderManualPerfRow) dans
               // les deux cas.
               (!isRest && !isDone && s.structureIntervalles) ? renderIconeStructureMontre(s.structureIntervalles, true) : null,
-              (!isRest) ? renderIconeSaisieManuelle(uid2, s, stravaRun2) : null,
+              (!isRest) ? renderIconeSaisieManuelle(uid2, s, stravaRun2, true) : null,
               (()=>{
                 const histTemp = historicalWeatherCache[s.date];
                 if (isDone && histTemp != null) {
@@ -6467,20 +6472,39 @@ function renderPourquoiToggle(pourquoi) {
 // manuellement" quand la séance n'est pas encore validée. Coloration pleine
 // (var(--accent)) si une saisie manuelle existe déjà pour cette séance, pour
 // la distinguer d'un coup d'œil du stylo neutre (aucune saisie).
-function renderIconeSaisieManuelle(uid, s, stravaRun) {
+// avecLibelle (ajouté, même principe que renderIconeStructureMontre) —
+// icône agrandie avec libellé pour la carte "Aujourd'hui" (retour de
+// Laurent : cohérence avec l'icône montre déjà agrandie). Détail Semaine
+// (avecLibelle=false, défaut) garde l'icône compacte, comme avant.
+function renderIconeSaisieManuelle(uid, s, stravaRun, avecLibelle = false) {
   const wrap = el("div",{style:{position:"relative"}});
   const manuelExiste = !!manualPerf[uid];
-  const icone = el("span",{title: manuelExiste ? "Saisie manuelle active" : "Saisir ou corriger manuellement", style:{
-    cursor:"pointer",fontSize:"15px",lineHeight:"1",display:"inline-flex",
-    background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
-    color: manuelExiste ? "#F8FAFC" : "var(--text-muted)",
-    border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
-    borderRadius:"6px",padding:"5px 7px"
-  }},"✏️");
+  const titreIcone = manuelExiste ? "Saisie manuelle active" : "Saisir ou corriger manuellement";
+  const icone = avecLibelle
+    ? el("span",{title: titreIcone, style:{
+        display:"inline-flex",alignItems:"center",gap:"8px",cursor:"pointer",
+        background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
+        color: manuelExiste ? "#F8FAFC" : "var(--text2)",
+        border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
+        borderRadius:"8px",padding:"7px 12px"
+      }},
+        el("span",{style:{fontSize:"22px",lineHeight:"1"}},"✏️"),
+        el("span",{style:{fontSize:"13px",fontWeight:"600"}}, manuelExiste ? "Saisie active" : "Saisie manuelle")
+      )
+    : el("span",{title: titreIcone, style:{
+        cursor:"pointer",fontSize:"15px",lineHeight:"1",display:"inline-flex",
+        background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
+        color: manuelExiste ? "#F8FAFC" : "var(--text-muted)",
+        border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
+        borderRadius:"6px",padding:"5px 7px"
+      }},"✏️");
+  // Positionnement dynamique (même correctif que renderIconeStructureMontre
+  // : évite tout débordement hors du viewport à gauche pour une icône
+  // proche du bord droit de l'écran).
   const popover = el("div",{style:{
-    display:"none",position:"absolute",top:"24px",right:"0",zIndex:"20",
+    display:"none",position:"fixed",zIndex:"20",
     background:"var(--bg)",boxShadow:"0 4px 16px var(--shadow1), 0 2px 6px var(--shadow2)",
-    border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px",width:"240px"
+    border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px",width:"240px",maxWidth:"calc(100vw - 32px)"
   }});
   let open = false;
   icone.addEventListener("click", avecRetourTactile((e)=>{
@@ -6489,6 +6513,11 @@ function renderIconeSaisieManuelle(uid, s, stravaRun) {
     if (open) {
       popover.innerHTML = "";
       popover.appendChild(renderManualPerfRow(uid, s, stravaRun, true));
+      const rect = icone.getBoundingClientRect();
+      const largeurPopover = Math.min(240, window.innerWidth - 32);
+      const left = Math.max(16, Math.min(rect.right - largeurPopover, window.innerWidth - largeurPopover - 16));
+      popover.style.left = left + "px";
+      popover.style.top = (rect.bottom + 6) + "px";
     }
     popover.style.display = open ? "block" : "none";
   }));
