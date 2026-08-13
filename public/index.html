@@ -10680,8 +10680,14 @@ function renderSettings() {
   // courte affichée une fois dans le wizard au moment de créer un plan (cf.
   // écran choix-mode-contenu, v2/index.html). Simple lien vers la modale
   // ouvrirRecommandationsSanteModale() — pas de formulaire, juste du texte
-  // à consulter à tout moment.
-  const recommandationsSanteSection = el("div", {style:{marginBottom:"16px"}},
+  // à consulter à tout moment. Volontairement en dehors de
+  // renderGroupeAccordeonStats (13/08/2026, revirement : un groupe
+  // accordéon "⚕️ Santé" contenant une seule ligne "Recommandations santé"
+  // répétait l'icône et le mot "santé" pour rien, en ajoutant un clic
+  // supplémentaire avant d'accéder au vrai contenu). marginTop:"22px"
+  // reproduit l'espacement qu'aurait donné un groupe accordéon, pour rester
+  // visuellement cohérent avec le reste de l'écran malgré ce contournement.
+  const recommandationsSanteSection = el("div", {style:{marginTop:"22px",marginBottom:"16px"}},
     card(
       el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer"}, onClick: ()=>ouvrirRecommandationsSanteModale()},
         el("div",{style:{display:"flex", alignItems:"center", gap:"10px"}},
@@ -11889,9 +11895,7 @@ function renderSettings() {
       versionSection
     ]),
 
-    renderGroupeAccordeonStats("⚕️","Santé","var(--warn)", [
-      recommandationsSanteSection
-    ])
+    recommandationsSanteSection
   );
 }
 
