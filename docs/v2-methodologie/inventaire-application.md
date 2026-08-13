@@ -30,6 +30,9 @@ personnel semi-marathon le 6 septembre 2026.
   serverless dans `/api/`
 - Backend Supabase (auth + données, projet encore nommé "Run by Léa" côté
   dashboard — cosmétique, aucun impact), intégration Strava
+- Éditeur : Laurent, en nom propre / micro-entreprise (SIRET pas encore
+  attribué au 13/08/2026 — bloquant pour l'activation des clés Stripe
+  live, cf. chantier "Lancement public" plus bas)
 
 ## Table des matières — fichiers détaillés
 
@@ -67,6 +70,7 @@ Tous dans `docs/v2-methodologie/` :
 - Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
 - Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`).
+- Après un `str_replace` qui remplace un `old_str` court (ex. juste `function xxx() {`) par un bloc long, toujours revérifier que la ligne de déclaration d'origine est bien réincluse dans le `new_str` — un remplacement qui "avale" l'en-tête de fonction sans le reproduire casse silencieusement la fonction suivante en JS (pas d'erreur avant l'exécution du fichier entier). La vérification syntaxique de TOUS les blocs `<script>` (pas seulement le plus gros) avant chaque push est ce qui a intercepté ce genre d'erreur (cf. incident `ouvrirPpsModale()`, 13/08/2026, corrigé avant déploiement).
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -80,7 +84,7 @@ Tous dans `docs/v2-methodologie/` :
 - RLS Supabase : toujours vérifier la condition réelle via le SQL Editor (`select policyname, cmd, qual, with_check from pg_policies where tablename = '...'`) plutôt que l'aperçu replié du dashboard, qui peut tronquer une condition longue. `qual` = USING (SELECT/UPDATE/DELETE), `with_check` = WITH CHECK (INSERT).
 - Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à lancer occasionnellement (avant une mise en production), pas à chaque table ajoutée.
 - Ne jamais toucher `public/beta/`, `api/beta.js`, routes `/beta*` sans demande explicite.
-- Toute évolution de la Content-Security-Policy (`vercel.json`, route catch-all `/(.*)`) doit d'abord passer par `Content-Security-Policy-Report-Only` (même valeur, header différent) avant de devenir bloquante — permet de découvrir en conditions réelles (navigation complète : connexion, sync Strava, paiement, import FIT) tous les domaines externes réellement chargés dynamiquement (ex. `browser.sentry-cdn.com`, chargé par le loader `js-de.sentry-cdn.com` et absent du code source) sans jamais casser la prod pendant la découverte.
+- Toute évolution de la Content-Security-Policy (`vercel.json`, route catch-all `/(.*)`) doit d'abord passer par `Content-Security-Policy-Report-Only` (même valeur, header différent) avant de devenir bloquante — permet de découvrir en conditions réelles (connexion, sync Strava, paiement, import FIT) tous les domaines externes réellement chargés dynamiquement (ex. `browser.sentry-cdn.com`, chargé par le loader `js-de.sentry-cdn.com` et absent du code source) sans jamais casser la prod pendant la découverte.
 
 **Génération de plan et calculs**
 - Une seule variable modifiée à la fois pour la progressive overload. Niveau intermédiaire = valeur historique inchangée à chaque différenciation par niveau (zéro régression). Validation historique avant codage pour toute nouvelle métrique.
@@ -96,6 +100,8 @@ Tous dans `docs/v2-methodologie/` :
 - Le positionnement initial d'un élément scrollable ne doit jamais dépendre d'un délai arbitraire — vérifier une condition réelle via polling léger. Tout composant niché dans un groupe accordéon fermé doit prévoir un callback `onOuverture`.
 - Avant de paralléliser des `<script src>` avec `defer`, vérifier tout script INLINE placé entre eux — un script inline s'exécute toujours immédiatement, contrairement aux scripts `src` avec `defer`.
 - Le rendu PDF via `<iframe>`/`<embed>` sur un blob URL n'est pas fiable sur mobile/TWA Android — convertir en image (canvas + pdf.js) pour tout affichage in-app fiable cross-plateforme.
+- Un groupe `renderGroupeAccordeonStats` qui ne contient jamais qu'un seul élément est un signe qu'il ne devrait pas être un groupe du tout — répète inutilement le même libellé/icône (titre du groupe + titre de son unique contenu) et ajoute un clic de dépliage superflu avant d'atteindre le vrai contenu. Insérer l'élément directement dans l'assemblage final, avec `marginTop` reproduisant l'espacement qu'aurait donné le groupe, pour rester visuellement cohérent (cf. `recommandationsSanteSection`, Réglages).
+- Un bandeau destiné à n'être vu qu'une fois (pas un message éphémère qui expire de lui-même comme l'anniversaire) doit utiliser un flag `localStorage` GLOBAL non préfixé par plan (état de CET appareil, pas une donnée de plan à synchroniser Supabase — même famille que `yoria_bandeau_ios_ferme`), avec un bouton fermer explicite qui pose le flag et déclenche `render()`.
 
 **Installation PWA / mobile**
 - Une redirection vers un lien PWA classique ouverte depuis la WebView intégrée d'une app tierce (Gmail, WhatsApp) ne peut jamais déclencher `beforeinstallprompt` — limitation universelle des WebViews, pas un bug applicatif. Pour Android, rediriger vers la fiche Play Store dans ce contexte (installation native fiable peu importe le navigateur d'origine).
@@ -105,6 +111,35 @@ Tous dans `docs/v2-methodologie/` :
 - Le modèle de swap (`swappedSessions`) est une vraie ROTATION en chaîne, pas des paires bidirectionnelles indépendantes — `swappedSessions[uid] = uidSource` signifie "cette position affiche le contenu d'origine de `uidSource`". Un échange (`echangerSwap`) permute directement les deux sources actuelles, jamais de "libération" préalable du partenaire. Toute nouvelle logique touchant aux séances swappées doit passer par `getEffectiveSession()`, jamais lire `week.sessions[i]` ou `PLAN` directement — plusieurs bugs (frise désynchronisée des statistiques affichées) sont venus de fonctions qui filtraient les séances sans passer par cette résolution.
 
 ## État des chantiers ouverts
+
+**Conformité — CGU/CGV et mentions légales (nouveau, 13/08/2026)**
+
+- Page `public/cgu.html` créée (même style visuel que `privacy.html`) :
+  objet du service, statut d'outil d'aide (pas d'avis médical ni garantie
+  de résultat), création de compte, abonnement/résiliation/remboursement
+  (droit de rétractation 14 jours), suppression de compte, propriété
+  intellectuelle, disponibilité, limitation de responsabilité, droit
+  applicable (France).
+- **SIRET et adresse encore en `[À COMPLÉTER]`** dans le document —
+  auto-entreprise pas encore immatriculée. Le document précise
+  explicitement qu'aucun abonnement payant ne peut être activé tant que
+  ces champs ne sont pas renseignés (cohérent avec le chantier Stripe
+  live ci-dessous).
+- **Pas encore liée depuis l'app** (Réglages, wizard) — à faire une fois
+  le contenu validé.
+- ⚠️ Rédaction non validée juridiquement — une relecture professionnelle
+  reste recommandée avant tout lancement public payant, en particulier
+  sur le droit de rétractation et la limitation de responsabilité.
+
+**Recommandations santé (nouveau, 13/08/2026)**
+
+- Mention courte sur l'écran `choix-mode-contenu` du wizard (avant choix
+  du type de plan).
+- Modale complète (`ouvrirRecommandationsSanteModale()`, index.html) :
+  avis médical avant de démarrer, signaux d'alerte à l'effort, limites de
+  l'app. Accessible depuis Réglages (ligne autonome tout en bas, hors
+  accordéon — cf. principe UI ci-dessus) et depuis un bandeau dashboard
+  affiché une seule fois (`localStorage: yoria_bandeau_sante_ferme`).
 
 **Sécurité — audit et durcissement (démarré, en partie traité)**
 
@@ -145,8 +180,14 @@ Reste à faire :
   bêta élargie (suppression de comptes, données de tous les testeurs).
 
 **Lancement public**
-- **Passer Stripe en clés live** — actuellement en mode test, switch à
-  faire quand le produit sera prêt (cf. `saisie-et-integrations.md`).
+- **Immatriculation de l'auto-entreprise** (SIRET) — bloquant légal
+  avant tout abonnement payant réel, indépendamment de l'état technique
+  de Stripe.
+- **Passer Stripe en clés live** — actuellement en mode test. Ne doit
+  être fait qu'une fois le SIRET obtenu et `public/cgu.html` complétée
+  (cf. `saisie-et-integrations.md`).
+- **Lier `public/cgu.html` depuis l'app** (Réglages, wizard) une fois le
+  contenu validé.
 
 **Publication mobile**
 - **HyperOS (Xiaomi)** — open-intent non résolu, irritant connu, pas
