@@ -1109,6 +1109,20 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 // (TDZ) jusqu'à sa ligne d'exécution — la placer ici évite toute
 // ReferenceError, peu importe d'où render() est appelée dans ce fichier.
 let _renderDiffereTimer = null;
+
+// PLAN généré dynamiquement par le moteur v2 (plan-generator.js), traduit
+// vers ce format via v1-bridge.js — cf. docs/v2-methodologie/convergence-v1-v2.md
+// section 5. Déclarée ici, tout en tête de cette IIFE (13/08/2026, CORRECTIF
+// TDZ), et non plus juste avant son ancien emplacement d'usage plus bas —
+// verifierMeteoSeanceDemain() (appelée quelques lignes plus bas, async, avec
+// des await internes) réassigne PLAN une fois sa résolution terminée ; comme
+// la boucle d'événements peut lui rendre la main avant que le fil principal
+// de ce script n'ait atteint l'ancienne ligne de déclaration `let PLAN = ...`,
+// cela déclenchait une ReferenceError "Cannot access 'PLAN' before
+// initialization" (zone morte temporelle d'une déclaration `let`, même
+// pattern que _renderDiffereTimer ci-dessus — cf. son commentaire).
+let PLAN = window.__PLAN_GENERE__;
+
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
 
@@ -1321,11 +1335,10 @@ const READINESS_OPTIONS = [
 // Longue : 6:20/km = 380 s/km
 // Chaleur (+28°C) : 6:40/km = 400 s/km
 
-// PLAN généré dynamiquement par le moteur v2 (plan-generator.js), traduit
-// vers ce format via v1-bridge.js — cf. docs/v2-methodologie/convergence-v1-v2.md
-// section 5. Paramètres repris du profil réel de Laurent (10K, réf 50'21,
-// objectif 48'30, départ 2026-06-22, course 2026-09-06, 30km/semaine).
-let PLAN = window.__PLAN_GENERE__;
+// PLAN déclarée tout en tête de cette IIFE désormais (cf. commentaire
+// là-bas, CORRECTIF TDZ 13/08/2026) — plus ici. Paramètres repris du
+// profil réel de Laurent (10K, réf 50'21, objectif 48'30, départ
+// 2026-06-22, course 2026-09-06, 30km/semaine).
 
 // Recalculable via recalculerAllSessions() plutôt que figée en const :
 // nécessaire pour la future sélection de plan (docs/v2-methodologie/
