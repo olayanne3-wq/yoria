@@ -49,6 +49,9 @@ yoria/
 │   ├── index.html                 # App principale (dashboard, ~13000 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
+│   ├── cgu.html                   # Conditions générales d'utilisation et de vente
+│   │                              # (SIRET/adresse en attente, cf. inventaire
+│   │                              # chantier "Conformité — CGU/CGV")
 │   ├── beta/                      # Site candidature bêta publique (cf. §16bis)
 │   │   ├── index.html             # Page d'inscription (one-page à ancres)
 │   │   ├── script.js
@@ -72,12 +75,20 @@ yoria/
 │           ├── plan-forme.js
 │           ├── badges.js          # Système de badges (récompenses)
 │           ├── predictor.js       # Prédicteur 10K
+│           ├── session-analysis.js
+│           ├── age-category.js    # Catégorie d'âge FFA (calcul pur, extrait
+│           │                      # d'index.html le 13/08/2026) — exposé en
+│           │                      # global via Object.assign(window, ...),
+│           │                      # comme v1-bridge.js, pas via window._xxxModule
 │           ├── fit-detection.js   # Détection d'intervalles depuis un .fit sans marqueurs natifs (cf. §10)
 │           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
 └── vercel.json                    # Routing explicite en whitelist (toute route API
-                                    # doit y être déclarée, sinon 404 silencieux)
+                                    # doit y être déclarée, sinon 404 silencieux) +
+                                    # headers de sécurité globaux (HSTS,
+                                    # X-Content-Type-Options, CSP) sur la route
+                                    # catch-all, cf. inventaire chantier Sécurité
 ```
 
 ## Les deux interfaces
@@ -104,7 +115,16 @@ code qui pourrait la lire — y compris du code placé après un `await` mais
 techniquement situé avant la déclaration dans le fichier. Un `typeof` ne
 protège pas de ce piège. Toute variable lue par une même fonction
 (`recalculerAllSessions()`/`getEffectiveSession()`) doit être vérifiée
-individuellement, pas seulement la première trouvée.
+individuellement, pas seulement la première trouvée. Si une même fonction
+`async` (appelée tôt, avec des `await` internes) déclenche une TDZ sur
+plusieurs variables successives à chaque correctif isolé (`PLAN` puis
+`ALL_SESSIONS` puis `_renderDiffereChargementTimer`, incident du
+13/08/2026), le vrai correctif est de déplacer l'APPEL vers la fin du
+flux synchrone principal (après le premier `render()`, point où toutes
+les déclarations `let`/`const` de niveau module sont garanties
+exécutées) plutôt que de continuer à chasser chaque variable une à une —
+cf. `verifierMeteoSeanceDemain()`, désormais appelée juste après le
+premier `render()` plutôt qu'au tout début du script.
 
 **Toute mutation d'un état source de `ALL_SESSIONS`** (`statuses`,
 `swappedSessions`) doit être suivie d'un `ALL_SESSIONS =
@@ -121,10 +141,13 @@ WebKit imposé par Apple mais pas le même geste fiable ; hors mode déjà
 standalone via `navigator.standalone`), fermable définitivement
 (mémorisé dans `localStorage`, clé `yoria_bandeau_ios_ferme`, **non
 préfixée par plan** — décrit un état de l'appareil, pas une donnée à
-synchroniser). Contrairement à Android (TWA Play Store), **aucun
-équivalent officiel Apple n'existe** pour faire passer une PWA vers l'App
-Store sans review — installation manuelle via Safari (Partager → Sur
-l'écran d'accueil) reste la seule voie.
+synchroniser). Même pattern réutilisé pour le bandeau "Recommandations
+santé" du dashboard (`yoria_bandeau_sante_ferme`, cf.
+`saisie-et-integrations.md` / inventaire chantier "Recommandations
+santé"). Contrairement à Android (TWA Play Store), **aucun équivalent
+officiel Apple n'existe** pour faire passer une PWA vers l'App Store sans
+review — installation manuelle via Safari (Partager → Sur l'écran
+d'accueil) reste la seule voie.
 
 **Écran "Consulter un plan" — accordéon "Modifier mon plan"
 (`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
@@ -159,6 +182,14 @@ original.
   Cycle de décharge peut se désynchroniser légèrement après un changement
   de date — limite mineure acceptée.
 
+**Écran "Choix du type de plan" (`choix-mode-contenu`,
+`public/v2/index.html`)** — tout premier écran du wizard : Objectif
+course / Mode forme / Reprise en douceur. Mention santé courte affichée
+sous les options (13/08/2026, "⚕️ Consulte un médecin avant de démarrer
+un programme d'entraînement...") — texte complet accessible ensuite via
+Réglages ou le bandeau dashboard, cf. inventaire chantier "Recommandations
+santé".
+
 **Navigation du wizard** — `ECRANS_WIZARD` (registre centralisé) +
 `afficherEcranWizard(id)` masque tous les écrans puis affiche seulement
 celui demandé. Swipe horizontal entre étapes d'un même flux
@@ -187,17 +218,22 @@ Fonctions de rendu (`render*`) :
 - `renderSelecteurPlan` — sélection entre plusieurs plans actifs, condensé
   sur la même ligne que le bouton "Configurer plan" (`display:flex`, plus
   d'empilement pleine largeur)
-- `renderDashboard` — écran d'accueil, résumé de la semaine
+- `renderDashboard` — écran d'accueil, résumé de la semaine. Deux
+  bandeaux en tête (après le sélecteur de plan) : anniversaire
+  (`estAnniversaireAujourdhui()`, éphémère, disparaît de lui-même le
+  lendemain, pas de bouton fermer) et recommandations santé (persiste
+  jusqu'à fermeture explicite, cf. bandeaux iOS/santé plus haut).
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
 - `renderHelp` — aide (cf. plus bas)
-- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement
+- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement, recommandations santé (ligne autonome tout en bas, hors accordéon)
 - `renderBadges` — écran détaillé des badges
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
 - `ouvrirPpsModale` — modale PPS (cf. plus bas)
+- `ouvrirRecommandationsSanteModale` — modale santé (texte complet : avis médical, signaux d'alerte à l'effort, limites de l'app), lecture seule, pas de formulaire
 - `renderTestSemiCooperRow` — carte du jour (Mode Forme sans référence, cf. `auth-et-publication.md`)
 
 **Carte "Aujourd'hui" (todayEl)** — principe "rien à ouvrir". Header de
@@ -243,19 +279,19 @@ données / FAQ, rendu en accordéon inchangé). Sélecteur à deux onglets
 segmentés ("Aide" / "Tutos", style pilule) en haut de l'écran — l'onglet
 Tutos affiche une grille de tuiles (2 colonnes, hauteur fixe 112px, icône
 + titre) regroupées par thème (`TUTOS_GROUPES` : Démarrer / Au quotidien /
-Gérer son plan / Suivi / Compte), un clic ouvre le tuto en vue détail. 16
+Gérer son plan / Suivi / Compte), un clic ouvre le tuto en vue détail. 17
 tutos couvrant : créer un plan, test semi-Cooper, choisir sa source de
 données, carte "Aujourd'hui", import .fit, programmer sur montre,
 readiness/RPE, répondre à une proposition d'ajustement, échanger deux
-séances, modifier son plan, estimation de performance, lire les Stats,
-jour de course, Strava, PPS, abonnement. Chaque tuto porte
-`id`/`icon`/`title`/`text` (résumé pour la recherche) et `blocks`
-(paragraphes/titres/liste/image) pour un rendu riche — `text` reste le
-seul champ utilisé par les 7 sections classiques (fallback texte brut si
-`blocks` absent). La recherche (`_helpRecherche`) reste transversale aux
-deux onglets. Reste ouvert : aucun tuto n'a encore d'image (le format
-`blocks` supporte déjà `{type:"img", src, alt, caption}` sans changement
-de code nécessaire).
+séances, course intermédiaire, modifier son plan, estimation de
+performance, lire les Stats, jour de course, Strava, PPS, abonnement.
+Chaque tuto porte `id`/`icon`/`title`/`text` (résumé pour la recherche) et
+`blocks` (paragraphes/titres/liste/image) pour un rendu riche — `text`
+reste le seul champ utilisé par les 7 sections classiques (fallback texte
+brut si `blocks` absent). La recherche (`_helpRecherche`) reste
+transversale aux deux onglets. Reste ouvert : aucun tuto n'a encore
+d'image (le format `blocks` supporte déjà `{type:"img", src, alt,
+caption}` sans changement de code nécessaire).
 
 **Architecture aide** : contenu extrait dans `public/help-content.js`
 (module de données pur, aucun DOM), importé dynamiquement au premier
@@ -366,7 +402,11 @@ pratique / Stratégie) — Météo et Résumé de préparation restent hors
 accordéon. Accepte un callback optionnel `onOuverture`, appelé à chaque
 ouverture du groupe : utile pour tout contenu construit alors que le
 groupe est fermé et qui a besoin d'un traitement différé une fois
-réellement visible.
+réellement visible. Réservé aux groupes ayant réellement PLUSIEURS
+éléments — un groupe à un seul élément (ex. l'ancienne section "Santé")
+n'apporte rien et double le nombre de clics nécessaires ; dans ce cas,
+insérer l'élément directement dans l'assemblage final (cf. inventaire,
+principe UI dédié).
 
 **"🏅 Mes courses" (Stats)** — groupe accordéon listant l'historique des
 résultats de course saisis sur TOUS les plans du compte (pas seulement le
@@ -395,15 +435,17 @@ date d'expiration non retenue (peu fiable sur le gabarit FFA observé) —
 saisie manuelle de la date reste le seul chemin. Alerte visuelle si
 expiration ≤30 jours.
 
-**Onglet Réglages — 6 groupes accordéon** — Compte et abonnement / Profil
-coureur / Records personnels / Intégrations / Export / Version, même
-mécanisme de persistance d'état que Stats/Course. Deux sections restent
-hors accordéon, toujours visibles : la clôture de plan Forme (action
-irréversible) et le thème clair/sombre (bouton icône discret, intégré à
-l'en-tête de l'app — fond blanc fixe derrière ☀️, fond noir fixe derrière
-🌙, indépendant du thème actif pour un contraste constant). Le groupe
-"Profil coureur" affiche un simple rappel PPS en lecture seule (statut +
-date d'expiration).
+**Onglet Réglages — 6 groupes accordéon + 1 ligne autonome** — Compte et
+abonnement / Profil coureur / Records personnels / Intégrations / Export
+/ Version, même mécanisme de persistance d'état que Stats/Course. Deux
+sections restent hors accordéon, toujours visibles : la clôture de plan
+Forme (action irréversible) et le thème clair/sombre (bouton icône
+discret, intégré à l'en-tête de l'app — fond blanc fixe derrière ☀️, fond
+noir fixe derrière 🌙, indépendant du thème actif pour un contraste
+constant). Le groupe "Profil coureur" affiche un simple rappel PPS en
+lecture seule (statut + date d'expiration). Tout en bas de l'écran, hors
+de tout groupe accordéon : ligne "⚕️ Recommandations santé"
+(`recommandationsSanteSection`), ouvre `ouvrirRecommandationsSanteModale()`.
 
 **Records personnels — grille compacte avec validation explicite** —
 chaque distance (5K/10K/Semi/Marathon) affiche directement sa roulette
