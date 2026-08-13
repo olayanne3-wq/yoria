@@ -1142,27 +1142,20 @@ let PLAN = window.__PLAN_GENERE__;
 // n'ait atteint l'ancienne déclaration, bien plus bas.
 let ALL_SESSIONS = recalculerAllSessions();
 
-// CORRECTIF (06/08/2026, chantier "clignotements successifs à
-// l'ouverture") — verifierMeteoSeanceDemain() était appelée au niveau
-// racine du script (ligne ~2294 plus bas), donc AVANT que
-// window.__PLAN_BRUT__ ne soit jamais assigné (uniquement fait à
-// l'intérieur de l'IIFE __PLAN_PRET__ ci-dessus, résolue de façon
-// asynchrone). Son tout premier if (!plan?.dateDebut) return; la faisait
-// donc systématiquement échouer silencieusement au premier chargement —
-// elle ne contribuait en réalité jamais aux flashs regroupés via
-// renderDiffereChargementInitial() (cf. son commentaire plus bas), qui ne
-// s'appuyait donc de fait que sur 2 sources réelles (badges et
-// fetchWeather), dont l'écart de démarrage (badges ne démarre qu'à
-// l'intérieur du premier render(), après toute la chaîne d'auth ;
-// fetchWeather démarre dès le niveau racine, en parallèle) restait plus
-// grand que ce qu'une fenêtre de regroupement de 150ms pouvait absorber,
-// d'où le clignotement résiduel malgré le regroupement des 3 sources.
-// Appelée ici, elle a désormais bien accès à window.__PLAN_BRUT__ (déjà
-// résolu par __PLAN_PRET__ juste au-dessus) et démarre à peu près au même
-// moment que le bloc badges (dans le premier render(), qui suit peu après
-// ce point) plutôt que de rater sa fenêtre — réduit l'écart réel entre les
-// sources plutôt que de continuer à l'agrandir en compensation.
-verifierMeteoSeanceDemain();
+// verifierMeteoSeanceDemain() appelée désormais juste après le premier
+// render() en toute fin de ce script (cf. son nouvel emplacement, CORRECTIF
+// TDZ 13/08/2026) — plus ici. Appelée à cet endroit, elle levait en cascade
+// plusieurs ReferenceError (TDZ) sur des variables déclarées plus bas dans
+// ce fichier (PLAN, ALL_SESSIONS, _renderDiffereChargementTimer...) : cette
+// fonction est async avec plusieurs await internes, donc la boucle
+// d'événements peut lui rendre la main — et donc exécuter la suite de son
+// corps, y compris render() via renderDiffereChargementInitial() — à un
+// moment où le fil principal de ce script n'a pas fini d'exécuter toutes
+// les déclarations `let`/`const` de niveau module qui suivent. Plutôt que
+// de remonter une à une chacune de ces dizaines de variables (fragile, et
+// il en restait toujours une nouvelle à chaque test), le vrai point sûr est
+// la fin du script : après le premier render() (ligne ~13021 désormais),
+// toutes les déclarations globales sont garanties initialisées.
 
 // Deuxième passe de préchargement, cette fois avec le planId maintenant
 // connu (window.__PLAN_BRUT__.id) — remplit localStorage avec les
@@ -13020,7 +13013,20 @@ if (missingFns.length > 0) {
 // cf. inventaire §8bis.
 render();
 
-// Filet de sécurité de DERNIER RECOURS (07/08/2026, v4) — le compteur
+// verifierMeteoSeanceDemain() — déplacée ici le 13/08/2026 (CORRECTIF TDZ,
+// cf. commentaire à son ancien emplacement plus haut dans ce fichier).
+// Appelée juste après ce premier render() : elle a déjà accès à
+// window.__PLAN_BRUT__ (résolu par __PLAN_PRET__ en tout début de script)
+// ET toutes les déclarations `let`/`const` de niveau module sont désormais
+// garanties initialisées (fin du flux synchrone principal), donc plus
+// aucun risque de zone morte temporelle quel que soit le nombre de
+// variables globales que sa chaîne d'appels (renderDiffereChargementInitial
+// → render()) référence. Démarre à peu près au même moment que le
+// chargement des badges (déclenché à l'intérieur de ce même render()),
+// cohérent avec l'intention d'origine du regroupement des 3 sources de
+// chargement (badges/fetchWeather/verifierMeteoSeanceDemain, cf.
+// renderDiffereChargementInitial()).
+verifierMeteoSeanceDemain();
 // explicite window._sourcesChargementInitialRestantes (cf.
 // signalerSourceChargementTerminee()) devrait normalement toujours
 // atteindre 0 par lui-même, chaque source étant enveloppée dans un
