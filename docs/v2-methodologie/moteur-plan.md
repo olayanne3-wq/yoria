@@ -16,13 +16,16 @@ Pipeline de génération :
 6. `repartirVolumeSemaine`
 7. `neutraliserJoursApresCourse` — repos sur tout jour de la dernière
    semaine après le jour de course
-8. Injection du contenu narratif — jalons de transition, notes pratiques,
+8. `placerCourseIntermediaire` — si `params.courseIntermediaire` fourni
+   (cf. section dédiée ci-dessous), après la neutralisation post-course
+   finale, avant l'injection du "pourquoi"
+9. Injection du contenu narratif — jalons de transition, notes pratiques,
    repères qualitatifs, cohérence semaine test, approche course,
    `injecterPourquoiSeance` (explication du rôle de chaque séance, cf.
    `pourquoi-seance.md`) — appelée en tout dernier dans `generatePlan()`,
-   après que `estTest`/`estCourse`/`role` soient définitivement posés sur
-   toutes les séances
-9. `generatePlan` — orchestrateur
+   après que `estTest`/`estCourse`/`estCourseIntermediaire`/`role` soient
+   définitivement posés sur toutes les séances
+10. `generatePlan` — orchestrateur
 
 Adaptation dynamique : `calculerScoreSemaine`, `analyserAdaptations`,
 `appliquerAdaptations`, `regenererStructuresIntervalles` — excluent
@@ -34,6 +37,67 @@ Semi/Marathon (tous les 5km + palier à 35km sur marathon), proportionnel
 pour 5K/10K. Détail complet du pacing par distance et de la semaine
 d'approche (garde-fous J-2/J-1, repères J-3/veille) dans
 `docs/v2-methodologie/jour-de-course.md`.
+
+**Course intermédiaire** (`placerCourseIntermediaire`,
+`calculerNouvelleReferenceCourseIntermediaire`) — course choisie par le
+coureur, insérée dans un plan long avant l'objectif final (5K/10K/Semi
+uniquement, jamais Marathon). Paramètre du wizard/leviers uniquement
+(`params.courseIntermediaire = { date, distance }`), jamais un patch
+a posteriori sur un plan déjà généré : la présence d'une course
+intermédiaire modifie la structure du plan (allègement de sa semaine,
+palier de récupération), donc elle suit le même principe que
+objectif/date de course — toute modification passe par une régénération
+complète.
+
+- `placerCourseIntermediaire(plan, { date, distance }, alluresSec)` —
+  localise la semaine contenant `date`, remplace la séance de ce jour
+  par le contenu de course (réutilise `genererContenuRace()`, comme la
+  course finale), marque `estCourseIntermediaire: true` (distinct
+  d'`estCourse` — n'affecte QUE cette semaine, pas de neutralisation du
+  reste du plan ni d'approche dédiée). Ne déplace jamais la date choisie
+  par le coureur, même si elle tombe sur un jour "repos" du plan généré.
+- Allègement : volume de la semaine ×0.75 (même taux que les décharges
+  existantes), recalcul EF/longue via `recalculerRepartitionEFLongue`.
+- Récupération post-course : `RECUP_COURSE_INTERMEDIAIRE_JOURS`
+  (5K:1, 10K:2, Semi:4 jours), remplace qualité/longue par EF léger sur
+  cette fenêtre, peut déborder sur la semaine suivante.
+- Isolée du moteur de décision (R-070, cf. `moteur-decision.md`) — un
+  événement ponctuel hors du rythme normal de la semaine, pas une séance
+  dont l'issue doit influencer l'analyse tendance/état-coureur.
+- **Recalibrage du prédicteur** : au moment de la saisie du résultat
+  (bannière dédiée sur le dashboard, `public/index.html`, distincte de
+  la bannière post-course finale), `calculerNouvelleReferenceCourseIntermediaire()`
+  convertit le temps via `riegelPredict()` vers un équivalent 10K, puis
+  mélange one-shot pondéré (`POIDS_COURSE_INTERMEDIAIRE = 0.35`) avec la
+  référence actuelle — jamais un remplacement complet (une course ratée
+  un jour sans ne doit pas effondrer toute la référence). Garde-fou
+  `SEUIL_ECART_SUSPECT_COURSE_INTERMEDIAIRE` (22%) : écart trop important
+  → statut `suspect`, rien n'est appliqué. Contrairement aux allures
+  dynamiques (`calculerReferenceCouranteAllures`), une régression
+  s'applique aussi immédiatement (pas de mécanisme "en attente" —  une
+  course intermédiaire est rare, bloquer indéfiniment une confirmation
+  qui n'arrivera probablement jamais n'a pas de sens). N'affecte QUE
+  `paramsOrigine.tempsReference` (donc `BASE_TIME_REFERENCE`, le calcul
+  du prédicteur) — jamais `window.__PLAN_BRUT__.allures` (les paces
+  affichées à l'entraînement), qui reste piloté exclusivement par
+  `verifierEtAppliquerAlluresDynamiques()` et son propre garde-fou. Le
+  recalibrage alimente ce mécanisme en amont sans jamais le
+  court-circuiter.
+- **UI** : trois points d'entrée distincts —
+  1. Wizard (`v2/index.html`, STEP 6 "Date de course") : toggle
+     Ajouter, préremplit une date à mi-parcours par défaut.
+  2. Accordéon "Modifier mon plan" (`v2/index.html`) : 5e levier
+     `courseIntermediaire` aux côtés de objectif/jours/volume/dateCourse,
+     même mécanique de régénération à partir de la semaine suivante
+     (charnière) — la date choisie doit être ≥ charnière et < date de
+     course finale, sinon le bouton Appliquer reste désactivé.
+  3. Dashboard (`public/index.html`) : bannière de saisie du résultat
+     une fois la date passée (`courseInterResultBannerEl`), pattern
+     identique à la bannière post-course finale mais écrit dans
+     `lk_course_intermediaire_result` sous forme d'objet
+     `{date, distance, tempsSec}` (nécessaire pour le recalibrage,
+     contrairement à `lk_race_result` qui ne stocke qu'un nombre de
+     secondes).
 
 **v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
 le plan brut (v2) et le format `index.html`. Tout nouveau champ
@@ -172,7 +236,11 @@ Deux couches :
   SEUIL (0.10, formule Daniels-Gilbert/VDOT — contribue à partir de 3
   séances), combinée à `BASE_TIME_REFERENCE` via `lavendouWeight`
   (décroît 90%→10% sur 8 semaines, garde-fou 50% si pas de séance
-  intensive récente). Source écartée si écart >20% vs référence.
+  intensive récente). Source écartée si écart >20% vs référence. Ne
+  couvre jamais la course intermédiaire (traitement séparé et one-shot,
+  cf. section dédiée dans "Moteur de plan" ci-dessus) — un chrono de
+  course isolé n'a pas la nature d'une séance d'entraînement récurrente
+  que cette couche suppose.
 - **Estimation affichée** (`predict10K()`) : converge par petits pas
   (`PAS_CONVERGENCE_BASE=0.15`, modulé par `fiabilitePlanPonderee()`)
   depuis `BASE_TIME_REFERENCE` vers `borneBrute`, jamais un saut direct —
