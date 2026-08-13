@@ -170,9 +170,12 @@ Reste à faire :
 Proches de l'existant :
 - **Badge/récap post-course** — comparer temps réel vs objectif vs
   estimation du prédicteur à la validation du jour de course.
-- **Historique visuel de progression** — graphique des allures E/T/I
-  dans le temps, ou courbe de volume hebdo (donnée déjà en base via
-  `predHistory`).
+- **Courbe de volume hebdomadaire** — graphique du volume km/semaine
+  dans le temps. Distinct du graphique de progression de l'estimation
+  10K déjà existant (Stats, `predHistory`, courbe + bande de tolérance +
+  tooltip) : ce dernier ne couvre que l'estimation de performance, pas le
+  volume d'entraînement — aucune donnée historique de volume par semaine
+  n'est encore stockée/exposée pour ce graphe.
 - **Partage/export** d'une séance ou du plan complet en image/texte pour
   Strava ou un ami.
 
