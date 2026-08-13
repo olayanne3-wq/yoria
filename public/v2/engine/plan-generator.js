@@ -1651,6 +1651,135 @@ export function neutraliserJoursApresCourse(plan) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Course intermédiaire — course choisie par le coureur, insérée dans un plan
+// long (cf. inventaire-application.md §16, conçu avec Laurent). Distincte de
+// la course finale (estCourse) : n'affecte QUE la semaine où elle tombe
+// (allègement du volume de cette semaine + palier de récupération fixe selon
+// distance), pas de neutralisation du reste du plan, pas d'approche
+// spécifique (injecterApprocheCourse), pas de "pourquoi" dédié. Isolée du
+// moteur de décision (R-070) — décision actée avec Laurent : une course
+// intermédiaire est un événement ponctuel hors du rythme normal de la
+// semaine, pas une séance dont l'issue doit influencer l'analyse tendance/
+// état-coureur.
+//
+// Jamais de Marathon en course intermédiaire (décision Laurent) — distances
+// valides : 5K, 10K, Semi.
+
+export const RECUP_COURSE_INTERMEDIAIRE_JOURS = {
+  '5K': 1,
+  '10K': 2,
+  'Semi': 4
+};
+
+const TAUX_ALLEGEMENT_COURSE_INTERMEDIAIRE = 0.75; // même taux que les décharges/adaptations existantes
+
+// Trouve la semaine du plan contenant dateStr (même logique que phaseAtDate).
+function semaineAtDate(plan, dateStr) {
+  if (!plan?.dateDebut || !Array.isArray(plan.semaines)) return null;
+  const debut = new Date(plan.dateDebut + "T00:00:00Z");
+  const cible = new Date(dateStr + "T00:00:00Z");
+  const semaineNum = Math.floor((cible - debut) / (7*86400000)) + 1;
+  return plan.semaines.find(s => s.semaineNum === semaineNum) ?? null;
+}
+
+// Place la course intermédiaire dans le plan : remplace la séance du jour
+// choisi par le contenu de course (réutilise genererContenuRace, comme la
+// course finale), allège le volume de la semaine, applique le palier de
+// récupération sur les jours suivants (dans la même semaine ET, si le
+// palier déborde, sur les premiers jours de la semaine suivante).
+//
+// Ne déplace jamais la date choisie par le coureur, même si elle tombe sur
+// un jour "repos" dans le plan généré — la date est un choix explicite du
+// coureur, elle est respectée telle quelle (décision actée avec Laurent).
+export function placerCourseIntermediaire(plan, { date, distance }, alluresSec) {
+  const semaine = semaineAtDate(plan, date);
+  if (!semaine) return { warning: { code: 'COURSE_INTERMEDIAIRE_HORS_PLAN', message: "La date choisie tombe en dehors de la durée du plan." } };
+
+  const debutPlan = new Date(plan.dateDebut + 'T00:00:00Z');
+  const jourIndex = Math.round((new Date(date + 'T00:00:00Z') - debutPlan) / 86400000) % 7;
+
+  const jourCourse = semaine.assignment[jourIndex];
+  if (!jourCourse) return { warning: { code: 'COURSE_INTERMEDIAIRE_JOUR_INTROUVABLE', message: "Impossible de localiser ce jour dans la semaine du plan." } };
+
+  const { sousType, contenu, kmEstime } = genererContenuRace({ distance, alluresSec });
+  jourCourse.type = 'race-intermediaire';
+  jourCourse.sousType = sousType;
+  jourCourse.contenu = contenu;
+  jourCourse.kmEstime = kmEstime;
+  jourCourse.estCourseIntermediaire = true;
+  jourCourse.distanceCourseIntermediaireKm = KM_BY_DISTANCE[distance];
+  delete jourCourse.indexQualite;
+  delete jourCourse.restrictionsAllure;
+
+  // Allègement de la semaine en cours uniquement — recalcule EF/longue avec
+  // le volume réduit, même mécanique que appliquerAdaptations.
+  if (semaine.volumeCibleKm != null) {
+    const nouveauVolume = Math.round(semaine.volumeCibleKm * TAUX_ALLEGEMENT_COURSE_INTERMEDIAIRE * 10) / 10;
+    let kmQualiteTotal = jourCourse.kmEstime ?? 0;
+    for (const [j, s] of Object.entries(semaine.assignment)) {
+      if (Number(j) === jourIndex) continue;
+      if (s.type === 'qualite') kmQualiteTotal += s.kmEstime ?? 0;
+    }
+    const assignmentSansCourse = Object.fromEntries(
+      Object.entries(semaine.assignment).filter(([j]) => Number(j) !== jourIndex)
+    );
+    recalculerRepartitionEFLongue({
+      assignment: assignmentSansCourse,
+      volumeCibleKm: nouveauVolume,
+      kmQualiteTotal,
+      distance: plan.distance,
+      phase: semaine.phase,
+      alluresSec,
+      nbJours: Object.keys(semaine.assignment).length - 1
+    });
+    semaine.volumeCibleKm = nouveauVolume;
+  }
+
+  appliquerRecuperationCourseIntermediaire(plan, semaine, jourIndex, distance, alluresSec);
+
+  return { warning: null };
+}
+
+// Remplace les séances qualité/longue par du EF léger sur la fenêtre de
+// récupération (RECUP_COURSE_INTERMEDIAIRE_JOURS selon distance), à partir
+// du lendemain de la course — peut déborder sur la semaine suivante.
+function appliquerRecuperationCourseIntermediaire(plan, semaineCourse, jourCourseIndex, distance, alluresSec) {
+  const nbJoursRecup = RECUP_COURSE_INTERMEDIAIRE_JOURS[distance];
+  if (!nbJoursRecup) return;
+
+  const semainesTriees = [...plan.semaines].sort((a, b) => a.semaineNum - b.semaineNum);
+  const idxSemaineCourse = semainesTriees.findIndex(s => s.semaineNum === semaineCourse.semaineNum);
+
+  let offsetGlobal = jourCourseIndex + 1; // premier jour de récup = lendemain
+  let idxSemaine = idxSemaineCourse;
+
+  for (let i = 0; i < nbJoursRecup; i++) {
+    if (offsetGlobal >= 7) {
+      offsetGlobal -= 7;
+      idxSemaine += 1;
+    }
+    const semaineCible = semainesTriees[idxSemaine];
+    if (!semaineCible) break;
+
+    const jour = semaineCible.assignment[offsetGlobal];
+    if (jour && (jour.type === 'qualite' || jour.type === 'longue')) {
+      jour.type = 'ef';
+      jour.sousType = undefined;
+      jour.structureIntervalles = undefined;
+      jour.role = 'recuperation-course-intermediaire';
+      const kmCibleRecup = (30 * 60) / alluresSec.E; // 30min léger, indépendant du volume cible de la semaine
+      const { contenu, kmEstime } = genererContenuEF({ alluresSec, kmCible: kmCibleRecup, role: 'recuperation' });
+      jour.contenu = contenu;
+      jour.kmEstime = kmEstime;
+      delete jour.indexQualite;
+      delete jour.restrictionsAllure;
+    }
+
+    offsetGlobal += 1;
+  }
+}
+
 export const NOTES_APPROCHE_COURSE = {
   'j3': [
     "J-3 : footing léger uniquement, rien de plus.",
