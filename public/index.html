@@ -4969,6 +4969,55 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     );
   })();
 
+  // Bannière saisie résultat course intermédiaire (cf. inventaire-
+  // application.md §16, conçu avec Laurent) — même pattern que la bannière
+  // post-course finale juste en dessous (raceResult), mais écrit dans
+  // lk_course_intermediaire_result sous forme d'objet {date, distance,
+  // tempsSec} (pas juste un nombre de secondes comme lk_race_result — la
+  // date/distance sont nécessaires pour calculerNouvelleReferenceCourseIntermediaire,
+  // cf. plan-generator.js). Ne s'affiche que si : la course intermédiaire
+  // planifiée a une date déjà passée ET aucun résultat n'a encore été saisi
+  // pour CETTE date précise (comparaison sur la date, pas juste "un résultat
+  // existe déjà" — si le coureur régénère son plan avec une nouvelle date de
+  // course intermédiaire après en avoir déjà saisi une pour l'ancienne, ce
+  // bloc doit réapparaître pour la nouvelle).
+  const courseInterResultBannerEl = (() => {
+    const courseInter = window.__PLAN_BRUT__?.paramsOrigine?.courseIntermediaire ?? null;
+    if (!courseInter || ESTMODEFORME) return null;
+
+    const resultatDejaSaisi = load(clePourPlan("lk_course_intermediaire_result"), null);
+    if (resultatDejaSaisi?.date === courseInter.date) return null; // déjà saisi pour cette course précise
+
+    if (today() < courseInter.date) return null; // date pas encore atteinte
+
+    const inp = document.createElement("input");
+    inp.type = "time"; inp.step = "1";
+    inp.style.cssText = "flex:1;background:var(--border-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:16px;";
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "OK";
+    saveBtn.style.cssText = "background:var(--warn);border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;";
+    saveBtn.addEventListener("click", () => {
+      const parts = inp.value.split(":");
+      if (parts.length >= 2) {
+        const secs = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + (parseInt(parts[2]) || 0);
+        if (!isNaN(secs) && secs > 0) {
+          save(clePourPlan("lk_course_intermediaire_result"), { date: courseInter.date, distance: courseInter.distance, tempsSec: secs });
+          verifierEtAppliquerCourseIntermediaire();
+          render();
+        }
+      }
+    });
+    const inputRow = document.createElement("div");
+    inputRow.style.cssText = "display:flex;gap:8px;";
+    inputRow.appendChild(inp); inputRow.appendChild(saveBtn);
+
+    const card = el("div",{style:{background:"rgba(var(--warn-rgb),0.05)",border:"1px solid rgba(var(--warn-rgb),0.3)",borderRadius:"12px",padding:"14px 16px",marginBottom:"16px"}},
+      el("div",{style:{color:"var(--text)",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}},`🏁 Comment s'est passé ton ${courseInter.distance} intermédiaire du ${courseInter.date} ?`)
+    );
+    card.appendChild(inputRow);
+    return card;
+  })();
+
   // Banniere post-course
   const raceResult = load(clePourPlan("lk_race_result"), null);
   if (!ESTMODEFORME && today() >= DATE_COURSE_REFERENCE && raceResult) {
@@ -5922,7 +5971,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
