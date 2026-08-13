@@ -9181,6 +9181,7 @@ function renderCourse() {
       (()=>{
         const inp = document.createElement("input");
         inp.type = "text"; inp.placeholder = "Lien GPX ou carte du parcours...";
+        inp.id = "race-parcours-url"; inp.name = "race-parcours-url"; // 13/08/2026 : Chrome DevTools (Issues) signale un champ de formulaire sans id/name, gêne l'autofill du navigateur
         inp.style.cssText = "width:100%;background:var(--border-soft);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;box-sizing:border-box;";
         inp.value = raceParcoursUrl || "";
         inp.addEventListener("input", (e)=>{ raceParcoursUrl=e.target.value; save(clePourPlan("lk_race_parcours"),raceParcoursUrl); });
