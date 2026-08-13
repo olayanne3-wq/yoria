@@ -5936,6 +5936,24 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     );
   })();
 
+  // Bandeau anniversaire sur le dashboard (13/08/2026, demande de Laurent
+  // — le message "🎂 Joyeux anniversaire !" existait déjà mais uniquement
+  // dans Paramètres, section Profil, cf. estAnniversaireAujourdhui() et son
+  // usage historique plus bas dans ce fichier). Rendu plus visible ici, en
+  // haut du dashboard — pas dismissible (contrairement à badgesNotifEl
+  // ci-dessus) car limité à la journée même : pas besoin d'un bouton
+  // fermer pour quelque chose qui disparaît de lui-même le lendemain.
+  const anniversaireDashEl = estAnniversaireAujourdhui(profilCoureur.dateNaissance)
+    ? el("div",{style:{
+        background:"rgba(var(--accent-rgb),0.13)", border:"1px solid rgba(var(--accent-rgb),0.27)",
+        borderRadius:"10px", padding:"12px 14px", marginBottom:"12px",
+        display:"flex", alignItems:"center", gap:"10px"
+      }},
+        el("span",{style:{fontSize:"20px"}},"🎂"),
+        el("div",{style:{color:"var(--accent)",fontWeight:"700",fontSize:"14px"}},"Joyeux anniversaire !")
+      )
+    : null;
+
   // Bandeau "Strava déconnecté" sur le dashboard (02/08/2026, demande de
   // Laurent : "parfois Strava est déconnecté [...] si on ne va pas dans
   // les paramètres on ne le voit pas") — couvre les DEUX cas distincts de
@@ -5970,7 +5988,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,anniversaireDashEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
