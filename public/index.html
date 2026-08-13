@@ -2126,6 +2126,47 @@ async function convertirPdfPpsEnImage(dataUrl) {
 // dès l'import (cf. convertirPdfPpsEnImage) — l'aperçu n'affiche donc
 // plus jamais qu'une <img>, jamais d'iframe/embed PDF (non fiable sur
 // mobile/TWA).
+// ── Modale Recommandations santé (13/08/2026) ───────────────────────────
+// Texte complet accessible depuis Réglages (rappel court dans le wizard,
+// cf. écran choix-mode-contenu de v2/index.html) — même pattern de modale
+// que ouvrirPpsModale() ci-dessus (overlay plein écran, fond sombre),
+// mais lecture seule : pas de formulaire, juste du texte.
+function ouvrirRecommandationsSanteModale() {
+  const fermer = () => { document.body.removeChild(overlay); };
+  const overlay = el("div",{style:{
+    position:"fixed", inset:"0", background:"rgba(0,0,0,0.92)", zIndex:"9999",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start",
+    padding:"20px", overflowY:"auto"
+  }, onClick: (e)=>{ if (e.target === overlay) fermer(); }},
+    el("div",{style:{width:"100%", maxWidth:"480px", display:"flex", flexDirection:"column", gap:"14px"}},
+      el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between"}},
+        el("div",{style:{color:"#fff", fontSize:"18px", fontWeight:"800"}},"⚕️ Recommandations santé"),
+        el("button",{style:{
+          padding:"8px 20px", borderRadius:"20px", border:"none",
+          background:"#fff", color:"#000", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+        }, onClick: fermer}, "Fermer")
+      ),
+      el("div",{style:{color:"rgba(255,255,255,0.85)", fontSize:"14px", lineHeight:"1.6", display:"flex", flexDirection:"column", gap:"16px"}},
+        el("p",{},"Yoria génère des plans d'entraînement adaptatifs à partir des informations que tu renseignes (profil, objectif, historique). Ces plans sont des outils d'aide à l'entraînement, pas un avis médical."),
+        el("div",{},
+          el("div",{style:{color:"#fff", fontWeight:"700", marginBottom:"4px"}},"Avant de commencer"),
+          el("p",{},"Consulte un médecin avant de démarrer ou reprendre une activité sportive, en particulier si tu as un antécédent cardiaque, une blessure récente, une pathologie chronique, ou si tu reprends après une longue interruption. Le Parcours/Pass Prévention Santé (PPS) demandé pour t'inscrire à une course répond à cette même logique — pense à le tenir à jour (section 🩺 PPS).")
+        ),
+        el("div",{},
+          el("div",{style:{color:"#fff", fontWeight:"700", marginBottom:"4px"}},"Pendant ton entraînement"),
+          el("p",{},"Écoute ton corps avant les recommandations de l'app. Une douleur inhabituelle, un essoufflement anormal, des vertiges ou une gêne thoracique doivent toujours faire arrêter l'effort immédiatement — un plan généré automatiquement ne peut pas remplacer ce que tu ressens sur le moment.")
+        ),
+        el("div",{},
+          el("div",{style:{color:"#fff", fontWeight:"700", marginBottom:"4px"}},"Reste vigilant"),
+          el("p",{},"Yoria ajuste ton plan à partir de tes séances et de ton ressenti déclaré, mais ne peut ni te suivre médicalement, ni détecter une urgence. Pour toute question de santé, un professionnel reste le bon interlocuteur.")
+        )
+      )
+    )
+  );
+  document.body.appendChild(overlay);
+}
+
+
 function ouvrirPpsModale() {
   const fermer = () => {
     document.body.removeChild(overlay);
@@ -10607,6 +10648,24 @@ function renderSettings() {
     )
   );
 
+  // ── Recommandations santé (13/08/2026) ──────────────────────────────────
+  // Rappel discret et permanent dans Réglages, en complément de la mention
+  // courte affichée une fois dans le wizard au moment de créer un plan (cf.
+  // écran choix-mode-contenu, v2/index.html). Simple lien vers la modale
+  // ouvrirRecommandationsSanteModale() — pas de formulaire, juste du texte
+  // à consulter à tout moment.
+  const recommandationsSanteSection = el("div", {style:{marginBottom:"16px"}},
+    card(
+      el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer"}, onClick: ()=>ouvrirRecommandationsSanteModale()},
+        el("div",{style:{display:"flex", alignItems:"center", gap:"10px"}},
+          el("span",{style:{fontSize:"18px"}},"⚕️"),
+          el("div",{style:{fontSize:"14px", color:"var(--text)", fontWeight:"700"}},"Recommandations santé")
+        ),
+        el("span",{style:{color:"var(--text-muted)",fontSize:"18px"}},"›")
+      )
+    )
+  );
+
   // ── Records personnels par distance (v2.3, 12 juillet 2026 ; saisie h/min/sec
   // séparée depuis v2.14, 18/07/2026) ────────────────────────────────────────
   // Un temps de référence par distance, mémorisé une fois pour toutes dans
@@ -11749,7 +11808,7 @@ function renderSettings() {
     ]),
 
     renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
-      profileSection, niveauSection, sexeSection, ppsDocumentSection
+      profileSection, niveauSection, sexeSection, ppsDocumentSection, recommandationsSanteSection
     ]),
 
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
