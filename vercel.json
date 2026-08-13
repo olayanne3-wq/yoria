@@ -88,7 +88,7 @@
       "headers": {
         "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
         "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js-de.sentry-cdn.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://oppwuzbcnhchtokxpzla.supabase.co wss://oppwuzbcnhchtokxpzla.supabase.co https://*.strava.com https://sentry.io https://*.sentry.io https://*.ingest.sentry.io https://*.stripe.com; frame-src https://*.stripe.com; frame-ancestors 'self'"
+        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js-de.sentry-cdn.com https://browser.sentry-cdn.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://oppwuzbcnhchtokxpzla.supabase.co wss://oppwuzbcnhchtokxpzla.supabase.co https://*.strava.com https://sentry.io https://*.sentry.io https://*.ingest.sentry.io https://*.stripe.com; frame-src https://*.stripe.com; frame-ancestors 'self'"
       }
     }
   ]
