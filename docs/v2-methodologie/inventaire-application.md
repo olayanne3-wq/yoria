@@ -66,6 +66,7 @@ Tous dans `docs/v2-methodologie/` :
 - Face à un bug rapporté comme "toujours pas résolu" après un correctif technique validé, ne pas empiler des correctifs supplémentaires sur la même hypothèse non confirmée — obtenir un fait concret (donnée réelle, capture d'écran, log exact) avant de continuer, quitte à demander explicitement à l'utilisateur de le fournir. Un correctif qui "semble juste" en isolation peut rester sans effet si le vrai problème est ailleurs (ex. écart entre l'intention métier de l'utilisateur et le comportement techniquement correct du code).
 - Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
+- Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`).
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -79,6 +80,7 @@ Tous dans `docs/v2-methodologie/` :
 - RLS Supabase : toujours vérifier la condition réelle via le SQL Editor (`select policyname, cmd, qual, with_check from pg_policies where tablename = '...'`) plutôt que l'aperçu replié du dashboard, qui peut tronquer une condition longue. `qual` = USING (SELECT/UPDATE/DELETE), `with_check` = WITH CHECK (INSERT).
 - Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à lancer occasionnellement (avant une mise en production), pas à chaque table ajoutée.
 - Ne jamais toucher `public/beta/`, `api/beta.js`, routes `/beta*` sans demande explicite.
+- Toute évolution de la Content-Security-Policy (`vercel.json`, route catch-all `/(.*)`) doit d'abord passer par `Content-Security-Policy-Report-Only` (même valeur, header différent) avant de devenir bloquante — permet de découvrir en conditions réelles (navigation complète : connexion, sync Strava, paiement, import FIT) tous les domaines externes réellement chargés dynamiquement (ex. `browser.sentry-cdn.com`, chargé par le loader `js-de.sentry-cdn.com` et absent du code source) sans jamais casser la prod pendant la découverte.
 
 **Génération de plan et calculs**
 - Une seule variable modifiée à la fois pour la progressive overload. Niveau intermédiaire = valeur historique inchangée à chaque différenciation par niveau (zéro régression). Validation historique avant codage pour toute nouvelle métrique.
@@ -89,7 +91,7 @@ Tous dans `docs/v2-methodologie/` :
 - Une donnée de performance ponctuelle et rare (ex. course intermédiaire) ne doit jamais être injectée dans un pipeline pondéré conçu pour des mesures répétées (ex. moyenne SPEC/SEUIL/VMA du prédicteur) — un mélange one-shot dédié, avec ses propres garde-fous, est plus sûr qu'une 4e source dans un système calibré pour un usage différent (cf. `calculerNouvelleReferenceCourseIntermediaire`, `moteur-plan.md`).
 
 **UI et composants**
-- Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, détaillé dans `architecture-generale.md`) — vérifier chaque variable individuellement, pas seulement la première trouvée.
+- Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, détaillé dans `architecture-generale.md`) — vérifier chaque variable individuellement, pas seulement la première trouvée. Si un même appel `async` déclenche une TDZ sur plusieurs variables successives à chaque correctif, voir le principe dédié dans "Workflow de développement" ci-dessus (déplacer l'appel plutôt que chasser chaque variable).
 - Un registre d'état de composant (accordéon, toggle) qui doit survivre à un `render()` complet doit être déclaré au niveau module, jamais à l'intérieur de la fonction qui construit l'écran.
 - Le positionnement initial d'un élément scrollable ne doit jamais dépendre d'un délai arbitraire — vérifier une condition réelle via polling léger. Tout composant niché dans un groupe accordéon fermé doit prévoir un callback `onOuverture`.
 - Avant de paralléliser des `<script src>` avec `defer`, vérifier tout script INLINE placé entre eux — un script inline s'exécute toujours immédiatement, contrairement aux scripts `src` avec `defer`.
@@ -116,13 +118,23 @@ Traité :
   (`plans_actif`, `plan_donnees`, `abonnements`, `beta_testers`,
   `decision_events`, `decision_outcomes`, `badges_debloques`) — toutes
   correctement protégées, détail dans `persistance-donnees.md`
+- **Headers de sécurité HTTP globaux** — HSTS (`max-age` 2 ans,
+  `includeSubDomains`, `preload`), `X-Content-Type-Options: nosniff`, et
+  une Content-Security-Policy bloquante, tous trois posés sur la route
+  catch-all (`vercel.json`, `/(.*)`) donc actifs sur l'ensemble du site.
+  CSP calibrée via une phase `Report-Only` préalable en conditions
+  réelles (connexion, sync Strava, paiement test Stripe) : couvre
+  Supabase (REST + WebSocket Realtime), Strava, Sentry (loader +
+  `browser.sentry-cdn.com`, chargé dynamiquement et absent du code
+  source — repéré uniquement grâce au report-only), Stripe (Checkout +
+  frame), jsDelivr, cdnjs, esm.sh, Google Fonts. `'unsafe-inline'` et
+  `'unsafe-eval'` nécessaires vu le volume de JS/CSS inline dans
+  `index.html` (pas de refonte en nonce/hash envisagée). Import FIT
+  (`cdn.jsdelivr.net/fit-file-parser`) couvert par construction dans
+  `script-src` mais pas encore vérifié en conditions réelles contre la
+  CSP bloquante — à valider à la prochaine occasion d'import `.fit`.
 
 Reste à faire :
-- **Headers de sécurité HTTP globaux** (Content-Security-Policy, HSTS,
-  X-Content-Type-Options) sur l'ensemble du site — seul
-  `X-Frame-Options` est actuellement présent, uniquement sur
-  `beta-admin`. Protège contre des scénarios XSS/clickjacking sur les
-  autres pages.
 - **Validation d'intégrité du contenu `plan_donnees.data`** (JSONB non
   structuré) — RLS protège qui peut écrire la ligne, mais rien ne
   valide le contenu écrit par le client avant insertion. Risque faible
