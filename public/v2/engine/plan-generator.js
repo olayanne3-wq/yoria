@@ -422,11 +422,13 @@ export function injecterPourquoiSeance(plan) {
   for (const semaine of plan.semaines) {
     for (const seance of Object.values(semaine.assignment)) {
       // La séance de course (estCourse) est déjà auto-explicative
-      // (genererContenuRace) — pas de "pourquoi" pour elle. La séance test
-      // (estTest, clé 'test' ci-dessus) EN reçoit un, distinct de
-      // l'annonce/veille/lendemain de injecterCoherenceSemaineTest qui
-      // parle du MOMENT, pas du BUT de la séance elle-même.
-      if (seance.estCourse) continue;
+      // (genererContenuRace) — pas de "pourquoi" pour elle. Même chose pour
+      // la course intermédiaire (estCourseIntermediaire), qui réutilise le
+      // même genererContenuRace. La séance test (estTest, clé 'test'
+      // ci-dessus) EN reçoit un, distinct de l'annonce/veille/lendemain de
+      // injecterCoherenceSemaineTest qui parle du MOMENT, pas du BUT de la
+      // séance elle-même.
+      if (seance.estCourse || seance.estCourseIntermediaire) continue;
 
       const cle = determinerCleFamillePourquoi(seance);
       if (!cle || !POURQUOI_SEANCE[cle]) continue;
@@ -477,6 +479,71 @@ export function calculerReferenceCouranteAllures({ estimationActuelle, estimatio
   }
 
   return { nouvelleReference: null, statut: 'regression_en_attente', messageUtilisateur: null };
+}
+
+// ---------------------------------------------------------------------------
+// Recalibrage de BASE_TIME_REFERENCE suite à une course intermédiaire (cf.
+// inventaire-application.md §16, conçu avec Laurent). Une course
+// intermédiaire est un événement PONCTUEL et RARE, contrairement aux
+// séances SEUIL/VMA/SPEC qui alimentent en continu le prédicteur — elle ne
+// rentre donc jamais dans le pipeline pondéré de predictor.js (poids
+// SPEC/SEUIL/VMA), qui suppose des mesures répétées, pas un chrono isolé.
+//
+// Traitement en deux temps, séparé du prédicteur :
+// 1. Ici (pure) : mélange one-shot pondéré (jamais un remplacement complet
+//    — une course ratée un jour sans ne doit pas effondrer toute la
+//    référence, décision actée avec Laurent) entre l'ancienne référence et
+//    l'estimation tirée de la course, avec la même asymétrie
+//    progression/régression que calculerReferenceCouranteAllures
+//    ci-dessus : une progression s'applique immédiatement, une régression
+//    nécessite confirmation (ici : redemandée à la prochaine course
+//    intermédiaire ou au cycle normal de allures dynamiques, pas de
+//    mécanisme de confirmation dédié — une deuxième course intermédiaire
+//    étant rare, on ne bloque pas indéfiniment une régression légitime).
+// 2. Côté index.html (à écrire) : n'affecte QUE paramsOrigine.tempsReference
+//    (donc BASE_TIME_REFERENCE, le calcul du prédicteur) — jamais
+//    window.__PLAN_BRUT__.allures (les paces affichées à l'entraînement),
+//    qui reste piloté exclusivement par verifierEtAppliquerAlluresDynamiques
+//    et son garde-fou de confirmation sur 2 semaines paires consécutives.
+//    Le recalibrage de la référence ici alimente ce mécanisme en amont
+//    (la prochaine comparaison de allures dynamiques verra une base à jour)
+//    sans jamais le court-circuiter.
+//
+// Conversion via riegelPredict (pas la formule Daniels-Gilbert utilisée
+// pour SEUIL dans predictor.js) : une course chronométrée est un effort
+// proche du maximum sur SA distance, contrairement au seuil qui est un
+// effort sous-maximal — Riegel est donc justifié ici, cf. le même
+// raisonnement déjà documenté pour estimerReferenceDepuisSemiCooper.
+export const POIDS_COURSE_INTERMEDIAIRE = 0.35;
+export const SEUIL_ECART_SUSPECT_COURSE_INTERMEDIAIRE = 0.22; // 22%, cohérent avec le garde-fou 20% de predictor.js (léger relâchement : ici une seule mesure isolée, pas une moyenne de plusieurs séances)
+
+export function calculerNouvelleReferenceCourseIntermediaire({ tempsCourseSec, distanceCourseKm, referenceActuelleSec }) {
+  const estimation10K = riegelPredict(tempsCourseSec, distanceCourseKm, 10);
+
+  const ecartRelatif = Math.abs(estimation10K - referenceActuelleSec) / referenceActuelleSec;
+  if (ecartRelatif > SEUIL_ECART_SUSPECT_COURSE_INTERMEDIAIRE) {
+    return {
+      nouvelleReference: null,
+      statut: 'suspect',
+      messageUtilisateur: `Résultat très éloigné de ta référence actuelle (${fmtMinSec(referenceActuelleSec)}) — écart jugé trop important pour ajuster automatiquement ton estimation. Vérifie que la distance et le temps saisis sont corrects.`
+    };
+  }
+
+  const nouvelleReference = referenceActuelleSec * (1 - POIDS_COURSE_INTERMEDIAIRE) + estimation10K * POIDS_COURSE_INTERMEDIAIRE;
+
+  if (nouvelleReference < referenceActuelleSec) {
+    return {
+      nouvelleReference,
+      statut: 'progression',
+      messageUtilisateur: `Estimation resserrée suite à ta course intermédiaire (${fmtMinSec(referenceActuelleSec)} → ${fmtMinSec(nouvelleReference)}).`
+    };
+  }
+
+  return {
+    nouvelleReference,
+    statut: 'regression',
+    messageUtilisateur: `Estimation ajustée suite à ta course intermédiaire (${fmtMinSec(referenceActuelleSec)} → ${fmtMinSec(nouvelleReference)}) — un résultat isolé, à confirmer par les séances à venir.`
+  };
 }
 
 function fmtMinSec(totalSeconds) {
@@ -2175,6 +2242,30 @@ export function generatePlan(profil, params) {
   placerSeanceCourse(plan, allSeconds);
   neutraliserJoursApresCourse(plan);
   injecterApprocheCourse(plan);
+
+  // Course intermédiaire (cf. inventaire-application.md §16, conçu avec
+  // Laurent) — paramètre optionnel du wizard, jamais modifiable après coup
+  // depuis le dashboard (revirement du 13/08/2026 : la présence d'une
+  // course intermédiaire modifie la STRUCTURE du plan — allègement de sa
+  // semaine, palier de récupération — donc elle doit être un paramètre
+  // d'entrée de generatePlan() comme la date de course finale ou
+  // l'objectif, pas un patch a posteriori sur un plan déjà figé ; toute
+  // modification ultérieure passe par une régénération complète du plan,
+  // exactement comme changer d'objectif ou de date de course).
+  // Placé ici, APRÈS placerSeanceCourse/neutraliserJoursApresCourse/
+  // injecterApprocheCourse : ces trois fonctions ne touchent que la
+  // DERNIÈRE semaine du plan (course finale), donc aucun conflit possible
+  // avec une course intermédiaire placée n'importe où avant cette dernière
+  // semaine. Placé AVANT injecterPourquoiSeance : cette dernière boucle sur
+  // toutes les séances et doit voir estCourseIntermediaire déjà posé pour
+  // l'exclure (comme estCourse, cf. le filtre dans injecterPourquoiSeance).
+  if (params.courseIntermediaire?.date && params.courseIntermediaire?.distance) {
+    const resultatPlacement = placerCourseIntermediaire(plan, params.courseIntermediaire, allSeconds);
+    if (resultatPlacement.warning) {
+      warnings.push(resultatPlacement.warning);
+    }
+  }
+
   injecterPourquoiSeance(plan);
 
   return plan;
