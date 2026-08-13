@@ -1110,21 +1110,37 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 // ReferenceError, peu importe d'où render() est appelée dans ce fichier.
 let _renderDiffereTimer = null;
 
-// PLAN généré dynamiquement par le moteur v2 (plan-generator.js), traduit
-// vers ce format via v1-bridge.js — cf. docs/v2-methodologie/convergence-v1-v2.md
-// section 5. Déclarée ici, tout en tête de cette IIFE (13/08/2026, CORRECTIF
-// TDZ), et non plus juste avant son ancien emplacement d'usage plus bas —
-// verifierMeteoSeanceDemain() (appelée quelques lignes plus bas, async, avec
-// des await internes) réassigne PLAN une fois sa résolution terminée ; comme
-// la boucle d'événements peut lui rendre la main avant que le fil principal
-// de ce script n'ait atteint l'ancienne ligne de déclaration `let PLAN = ...`,
-// cela déclenchait une ReferenceError "Cannot access 'PLAN' before
-// initialization" (zone morte temporelle d'une déclaration `let`, même
-// pattern que _renderDiffereTimer ci-dessus — cf. son commentaire).
-let PLAN = window.__PLAN_GENERE__;
-
 await window.__PLAN_PRET__; // attend que le premier script ait chargé/généré le plan
 await window.__AUTH_PRET__; // attend la session ET le premier préchargement (sans planId)
+
+// PLAN généré dynamiquement par le moteur v2 (plan-generator.js), traduit
+// vers ce format via v1-bridge.js — cf. docs/v2-methodologie/convergence-v1-v2.md
+// section 5. Déclarée ici (13/08/2026, CORRECTIF TDZ), juste après les deux
+// await ci-dessus plutôt que tout en tête de l'IIFE (essai précédent
+// incorrect : window.__PLAN_GENERE__ n'est garanti rempli qu'APRÈS
+// window.__PLAN_PRET__, donc une déclaration antérieure à cet await
+// capturait `undefined`, cassant recalculerAllSessions() plus bas via
+// PLAN.flatMap). Reste néanmoins bien AVANT l'appel à
+// verifierMeteoSeanceDemain() juste en dessous — cette dernière est async
+// avec des await internes ; la boucle d'événements peut lui rendre la main
+// avant que le fil principal de ce script n'ait atteint une déclaration
+// plus tardive, d'où l'ancienne ReferenceError "Cannot access 'PLAN'
+// before initialization" (zone morte temporelle d'un `let`, même pattern
+// que _renderDiffereTimer ci-dessus).
+let PLAN = window.__PLAN_GENERE__;
+
+// ALL_SESSIONS — même raisonnement TDZ que PLAN ci-dessus (13/08/2026,
+// CORRECTIF). recalculerAllSessions() (function classique, hoisted, donc
+// utilisable dès le début du scope même si sa définition apparaît plus bas
+// dans ce fichier) ne dépend que de PLAN (déjà valide au-dessus) et de
+// `statuses`, protégée par son propre try/catch interne pour le tout
+// premier appel (cf. commentaire de recalculerAllSessions()). Sans ce
+// déplacement, verifierMeteoSeanceDemain() (appelée juste en dessous)
+// pouvait lever "Cannot access 'ALL_SESSIONS' before initialization" pour
+// la même raison exacte que PLAN : elle réassigne ALL_SESSIONS après ses
+// propres await, potentiellement avant que le fil principal de ce script
+// n'ait atteint l'ancienne déclaration, bien plus bas.
+let ALL_SESSIONS = recalculerAllSessions();
 
 // CORRECTIF (06/08/2026, chantier "clignotements successifs à
 // l'ouverture") — verifierMeteoSeanceDemain() était appelée au niveau
@@ -1395,7 +1411,8 @@ function recalculerAllSessions() {
     return {...effSess, date: s.date, week:w.week, phase:w.phase, uid, statutEffectif};
   }));
 }
-let ALL_SESSIONS = recalculerAllSessions();
+// ALL_SESSIONS déclarée tout en tête de cette IIFE désormais (cf.
+// commentaire là-bas, CORRECTIF TDZ 13/08/2026) — plus ici.
 
 const INTERVAL_SESSION_DATES = new Set(
   ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
