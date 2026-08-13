@@ -27,7 +27,14 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.41", title:"Course intermédiaire dans un plan long", current:true, notes:[
+      { ver:"v2.42", title:"Sécurité renforcée, recommandations santé, conditions d'utilisation", current:true, notes:[
+        "🔒 Sécurité du site renforcée en profondeur (protection contre plusieurs types d'attaques web courantes)",
+        "⚕️ Nouvelles recommandations santé, consultables à tout moment depuis Réglages — pense à consulter un médecin avant de démarrer un programme d'entraînement",
+        "📄 Ajout des conditions générales d'utilisation",
+        "🏅 L'aide explique maintenant comment ajouter une course intermédiaire à ton plan",
+        "🎂 Le message d'anniversaire est désormais visible directement sur le dashboard, en plus de Réglages",
+      ]},
+      { ver:"v2.41", title:"Course intermédiaire dans un plan long", current:false, notes:[
         "🏃 Nouveau levier dans le wizard et l'accordéon \"Modifier mon plan\" : planifie une course intermédiaire (5K/10K/Semi) avant ton objectif final",
         "📉 Sa semaine est automatiquement allégée, avec une récupération dédiée juste après selon la distance choisie",
         "🎯 Le résultat de cette course, une fois saisi, affine légèrement ton estimation de référence",
