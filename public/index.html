@@ -5995,6 +5995,33 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
+  // Bandeau "Recommandations santé" — affiché une seule fois au premier
+  // lancement (13/08/2026, demande de Laurent : le lien vers la modale,
+  // désormais tout en bas de Paramètres dans son propre groupe "⚕️ Santé",
+  // était trop caché pour être vu sans démarche active). Même pattern de
+  // flag localStorage non préfixé que 'yoria_bandeau_ios_ferme' plus bas
+  // dans ce fichier — décrit un état de CET appareil, pas une donnée de
+  // plan à synchroniser via Supabase (cf. inventaire §5). Contrairement au
+  // bandeau anniversaire ci-dessus (pas de bouton fermer, disparaît de
+  // lui-même le lendemain), celui-ci reste tant qu'il n'est pas fermé
+  // explicitement — pas de date d'expiration naturelle.
+  const recommandationsSanteDashEl = localStorage.getItem('yoria_bandeau_sante_ferme') !== '1'
+    ? el("div",{style:{
+        background:"rgba(var(--warn-rgb),0.13)", border:"1px solid rgba(var(--warn-rgb),0.27)",
+        borderRadius:"10px", padding:"12px 14px", marginBottom:"12px",
+        display:"flex", alignItems:"center", gap:"10px", cursor:"pointer"
+      }, onClick: ()=>ouvrirRecommandationsSanteModale()},
+        el("span",{style:{fontSize:"18px"}},"⚕️"),
+        el("div",{style:{flex:"1"}},
+          el("div",{style:{color:"var(--warn)",fontWeight:"700",fontSize:"14px"}},"Recommandations santé"),
+          el("div",{style:{color:"var(--warn)",fontSize:"12px",opacity:"0.85"}},"À lire avant de démarrer ton entraînement")
+        ),
+        el("button",{style:{background:"none",border:"none",color:"var(--warn)",fontSize:"16px",cursor:"pointer",padding:"0",lineHeight:"1",flexShrink:"0"},
+          onClick:(e)=>{ e.stopPropagation(); localStorage.setItem('yoria_bandeau_sante_ferme','1'); render(); }
+        },"×")
+      )
+    : null;
+
   // Bandeau "Strava déconnecté" sur le dashboard (02/08/2026, demande de
   // Laurent : "parfois Strava est déconnecté [...] si on ne va pas dans
   // les paramètres on ne le voit pas") — couvre les DEUX cas distincts de
@@ -6029,7 +6056,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,anniversaireDashEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,anniversaireDashEl,recommandationsSanteDashEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -11808,7 +11835,7 @@ function renderSettings() {
     ]),
 
     renderGroupeAccordeonStats("🏃","Profil coureur","var(--accent2)", [
-      profileSection, niveauSection, sexeSection, ppsDocumentSection, recommandationsSanteSection
+      profileSection, niveauSection, sexeSection, ppsDocumentSection
     ]),
 
     renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
@@ -11860,6 +11887,10 @@ function renderSettings() {
 
     renderGroupeAccordeonStats("ℹ️","Version","var(--text-muted)", [
       versionSection
+    ]),
+
+    renderGroupeAccordeonStats("⚕️","Santé","var(--warn)", [
+      recommandationsSanteSection
     ])
   );
 }
