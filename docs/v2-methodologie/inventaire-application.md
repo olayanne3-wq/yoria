@@ -64,6 +64,8 @@ Tous dans `docs/v2-methodologie/` :
 - Avant de croire qu'un mécanisme existe déjà dans le code (auto-ouverture, callback), vérifier positivement sa présence plutôt que de se fier à un commentaire qui décrit une intention jamais implémentée ou retirée depuis.
 - En cas de bug d'affichage résistant à plusieurs correctifs, diagnostiquer par tests directs en console (`getElementById`, `getBoundingClientRect()`, valeurs réelles des variables globales) plutôt que par relecture répétée du code — épuiser l'hypothèse "erreur dans le code qu'on vient d'écrire" avant d'accuser un mécanisme externe (cache, CDN).
 - Face à un bug rapporté comme "toujours pas résolu" après un correctif technique validé, ne pas empiler des correctifs supplémentaires sur la même hypothèse non confirmée — obtenir un fait concret (donnée réelle, capture d'écran, log exact) avant de continuer, quitte à demander explicitement à l'utilisateur de le fournir. Un correctif qui "semble juste" en isolation peut rester sans effet si le vrai problème est ailleurs (ex. écart entre l'intention métier de l'utilisateur et le comportement techniquement correct du code).
+- Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
+- Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -84,6 +86,7 @@ Tous dans `docs/v2-methodologie/` :
 - Une contrainte de calcul ajoutée pour corriger un cas peut devenir la priorité dominante dans les cas serrés et écraser un autre besoin légitime si les deux ne sont pas équilibrés dès la conception — préférer un partage proportionnel garanti par construction (poids relatif) à une cascade de contraintes empiriques (cf. `repartirVolumeSemaine`, dans `moteur-plan.md`).
 - Une fonction utilitaire générique appelée par plusieurs points d'appel doit être corrigée UNE SEULE FOIS à la source, jamais patchée individuellement à chaque site d'appel — un correctif dispersé sur chaque appelant est fragile et duplique la logique.
 - Tout point qui pose/retire un statut de séance ou une saisie de performance doit être audité contre la liste complète des effets de bord attendus (cumul km, recalcul d'estimation) — un `grep` exhaustif du motif d'écriture reste plus fiable qu'une liste mentale.
+- Une donnée de performance ponctuelle et rare (ex. course intermédiaire) ne doit jamais être injectée dans un pipeline pondéré conçu pour des mesures répétées (ex. moyenne SPEC/SEUIL/VMA du prédicteur) — un mélange one-shot dédié, avec ses propres garde-fous, est plus sûr qu'une 4e source dans un système calibré pour un usage différent (cf. `calculerNouvelleReferenceCourseIntermediaire`, `moteur-plan.md`).
 
 **UI et composants**
 - Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, détaillé dans `architecture-generale.md`) — vérifier chaque variable individuellement, pas seulement la première trouvée.
@@ -184,9 +187,6 @@ Plus structurant, touche le moteur de plan :
 - **Plan double objectif** — gérer deux courses (ex. semi en septembre +
   10K en octobre). Le moteur ne gère qu'un objectif à la fois
   actuellement (cf. `moteur-plan.md`).
-- **Course intermédiaire dans un plan long** — insérer une course de
-  préparation (ex. 10K pendant un plan marathon) sans casser la
-  progression du plan principal.
 
 Pour l'historique des versions livrées et des correctifs, voir
 `changelog.classic.js`.
