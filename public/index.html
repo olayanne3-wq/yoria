@@ -10692,7 +10692,26 @@ function renderSettings() {
       el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer"}, onClick: ()=>ouvrirRecommandationsSanteModale()},
         el("div",{style:{display:"flex", alignItems:"center", gap:"10px"}},
           el("span",{style:{fontSize:"18px"}},"⚕️"),
-          el("div",{style:{fontSize:"14px", color:"var(--text)", fontWeight:"700"}},"Recommandations santé")
+          el("div",{style:{fontSize:"13px", color:"var(--text)", fontWeight:"600"}},"Recommandations santé")
+        ),
+        el("span",{style:{color:"var(--text-muted)",fontSize:"18px"}},"›")
+      )
+    )
+  );
+
+  // ── Conditions générales d'utilisation (13/08/2026) ─────────────────────
+  // Lien vers public/cgu.html, ouvert dans un nouvel onglet (même pattern
+  // que le lien Stripe Checkout plus bas dans ce fichier, window.open avec
+  // "_blank") — page statique hors SPA, pas de rendu inline nécessaire.
+  // SIRET/adresse de l'éditeur encore en [À COMPLÉTER] dans le document
+  // tant que l'auto-entreprise n'est pas immatriculée (cf. inventaire,
+  // chantier "Conformité — CGU/CGV").
+  const cguSection = el("div", {style:{marginBottom:"16px"}},
+    card(
+      el("div",{style:{display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer"}, onClick: ()=>window.open("/cgu.html","_blank")},
+        el("div",{style:{display:"flex", alignItems:"center", gap:"10px"}},
+          el("span",{style:{fontSize:"18px"}},"📄"),
+          el("div",{style:{fontSize:"13px", color:"var(--text)", fontWeight:"600"}},"Conditions générales d'utilisation")
         ),
         el("span",{style:{color:"var(--text-muted)",fontSize:"18px"}},"›")
       )
@@ -11895,7 +11914,8 @@ function renderSettings() {
       versionSection
     ]),
 
-    recommandationsSanteSection
+    recommandationsSanteSection,
+    cguSection
   );
 }
 
