@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.40", title:"Pourquoi cette séance, dashboard clarifié, échanges de séances fiabilisés", current:true, notes:[
+      { ver:"v2.41", title:"Course intermédiaire dans un plan long", current:true, notes:[
+        "🏃 Nouveau levier dans le wizard et l'accordéon \"Modifier mon plan\" : planifie une course intermédiaire (5K/10K/Semi) avant ton objectif final",
+        "📉 Sa semaine est automatiquement allégée, avec une récupération dédiée juste après selon la distance choisie",
+        "🎯 Le résultat de cette course, une fois saisi, affine légèrement ton estimation de référence",
+      ]},
+      { ver:"v2.40", title:"Pourquoi cette séance, dashboard clarifié, échanges de séances fiabilisés", current:false, notes:[
         "🎯 Chaque séance explique maintenant son rôle dans ta préparation, dans un nouveau repli \"Pourquoi cette séance\"",
         "📊 Estimation de temps repensée en jauge visuelle, plus lisible en un coup d'œil, avec le détail complet toujours accessible au clic",
         "🗓️ Carte du jour réorganisée : le descriptif de la séance ne se coupe plus, distance et icônes regroupées clairement",
