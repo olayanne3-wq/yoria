@@ -113,6 +113,19 @@ export const HELP_SECTIONS = [
           { type: "p", text: "Une séance déjà validée, notée, ou dont le jour est passé sans saisie ne peut plus être échangée — logique, puisqu'un effort réel y est déjà associé." },
         ]
       },
+      { id: "course-intermediaire", icon: "🏅", title: "Ajouter une course intermédiaire",
+        text: "Si une course s'intercale avant ton objectif final (5K/10K/Semi uniquement), ajoute-la depuis le wizard, l'accordéon \"Modifier mon plan\", ou en la retirant/décalant — la semaine correspondante est allégée et ton résultat aide à recalibrer ton estimation.",
+        blocks: [
+          { type: "p", text: "Si tu prépares un objectif sur un plan un peu long, il peut être utile d'y intercaler une autre course avant l'échéance finale — histoire de te tester en conditions réelles, ou simplement parce que l'occasion se présente. Yoria gère ça sans bouleverser le reste du plan." },
+          { type: "p", text: "Attention, cette possibilité concerne uniquement les objectifs 5K, 10K et Semi — un plan Marathon ne propose pas de course intermédiaire." },
+          { type: "h", text: "Où l'ajouter" },
+          { type: "p", text: "Trois façons d'y accéder, selon le moment : à la création du plan, l'étape \"Date de course\" du wizard propose un toggle pour en ajouter une, avec une date pré-remplie à mi-parcours par défaut. Sur un plan déjà généré, l'accordéon \"Modifier mon plan\" (écran de résumé) propose un 5e levier dédié, aux côtés de Objectif/Jours/Volume/Date de course — la date choisie doit se situer entre la semaine suivante et ta date de course finale." },
+          { type: "p", text: "Une fois ajoutée, la semaine qui contient cette course est automatiquement allégée pour te permettre d'aborder l'épreuve dans de bonnes conditions, avec quelques jours de récupération légère juste après (1 à 4 jours selon la distance)." },
+          { type: "h", text: "Après la course" },
+          { type: "p", text: "Une fois la date passée, une bannière apparaît sur le dashboard pour saisir ton résultat — le même principe que la bannière de fin de plan, mais dédiée à cette course intermédiaire. Ce temps sert à affiner ton estimation de performance en cours de route, sans jamais la remplacer complètement : un seul résultat, même décevant, ne fait donc pas s'effondrer toute ta progression accumulée." },
+          { type: "p", text: "Et si finalement tu ne veux plus la faire, tu peux la retirer ou changer sa date à tout moment depuis l'accordéon \"Modifier mon plan\", tant que la nouvelle date reste cohérente avec le reste du plan." },
+        ]
+      },
       { id: "modifier-plan", icon: "✏️", title: "Modifier son plan (objectif, jours, volume, date)",
         text: "Sur l'écran de résumé de ton plan, la section \"Modifier mon plan\" propose 4 leviers indépendants (Objectif, Jours, Volume, Date de course), chacun avec une simulation en direct de l'impact avant de cliquer sur Appliquer.",
         blocks: [
@@ -304,7 +317,7 @@ export const HELP_SECTIONS = [
 export const TUTOS_GROUPES = [
   { label: "Démarrer", icon: "🚀", itemIds: ["creer-plan", "test-cooper", "source-donnees"] },
   { label: "Au quotidien", icon: "🏃", itemIds: ["carte-aujourdhui", "import-fit", "programmer-montre", "readiness-rpe"] },
-  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement", "echanger-seance", "modifier-plan"] },
+  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement", "echanger-seance", "course-intermediaire", "modifier-plan"] },
   { label: "Suivi", icon: "📈", itemIds: ["estimation-performance", "lire-stats", "jour-course"] },
   { label: "Compte", icon: "⚙️", itemIds: ["gerer-strava", "gerer-pps", "gerer-abonnement"] },
 ];
