@@ -2480,18 +2480,18 @@ function coordonneesMeteoActuelles() {
   return { lat: derniereAvecGps.start_latlng[0], lon: derniereAvecGps.start_latlng[1] };
 }
 
-// Compteur explicite des 3 sources connues du chargement initial (07/08/2026,
-// v4 du chantier "clignotements successifs à l'ouverture") — cf. commentaire
-// détaillé sur renderDiffereChargementInitial() plus bas dans ce fichier
-// pour l'historique complet. Décrémenté à la FIN de chacune des 3 fonctions
-// (fetchWeather/verifierMeteoSeanceDemain/bloc badges dans render()), sur
-// TOUS leurs chemins de sortie (succès, échec, retour anticipé) — la
-// fenêtre doit se fermer même si une source échoue, pas seulement si elle
-// réussit, donc cet appel est fait dans un `finally` plutôt qu'après le
-// dernier appel utile de chaque fonction (qui pourrait être sauté par un
-// `return` anticipé).
+// Compteur explicite des sources connues du chargement initial (badges,
+// fetchWeather, verifierMeteoSeanceDemain, + rebuildPredHistory quand elle
+// se déclenche) — la fenêtre ne se ferme qu'une fois que toutes les
+// sources DÉMARRÉES se sont manifestées (résolues OU échouées). Modèle
+// incrémenter-au-démarrage / décrémenter-à-la-fin plutôt qu'un total fixe
+// deviné à l'avance : robuste à l'ordre d'exécution réel du script
+// (rebuildPredHistory() peut s'exécuter avant la déclaration de ce
+// compteur si predHistory est vide/obsolète — cf. son commentaire).
+window._sourcesChargementInitialTotal = (window._sourcesChargementInitialTotal ?? 0) + 3; // badges + fetchWeather + verifierMeteoSeanceDemain
+window._sourcesChargementInitialRestantes = window._sourcesChargementInitialTotal;
 function signalerSourceChargementTerminee() {
-  window._sourcesChargementInitialRestantes = Math.max(0, (window._sourcesChargementInitialRestantes ?? 3) - 1);
+  window._sourcesChargementInitialRestantes = Math.max(0, (window._sourcesChargementInitialRestantes ?? window._sourcesChargementInitialTotal ?? 3) - 1);
 }
 
 async function fetchWeather() {
@@ -3813,7 +3813,24 @@ function rebuildPredHistory() {
   // — appelée ici pour le cas où la reconstruction était nécessaire.
   verifierEtAppliquerAlluresDynamiques();
   verifierEtAppliquerCourseIntermediaire();
-  render();
+  // CORRECTIF FLASH ISOLÉ AU CHARGEMENT : quand predHistory est vide/absent
+  // (nouveau chargement de session sans historique en cache), ce render()
+  // devient le tout premier rendu de l'app, avant même que les autres
+  // sources du regroupement de chargement (badges/fetchWeather/
+  // verifierMeteoSeanceDemain) ne soient comptées. render() direct ici
+  // affiche bien le dashboard sans fondu (fenêtre pas encore fermée), mais
+  // un second render() de regroupement à 150ms survient ensuite dès qu'une
+  // des 3 autres sources se résout — ce second redessin complet du DOM
+  // produit un flash visuel même sans animation CSS. Fusionner avec le
+  // même regroupement élimine ce second redessin séparé : incrémente le
+  // total attendu de 1 (cf. window._sourcesChargementInitialTotal, déclaré
+  // plus bas — rebuildPredHistory() ne se déclenche que conditionnellement,
+  // donc ce total ne compte cette 4e source que quand elle s'exécute
+  // réellement) avant de se signaler terminée comme les 3 autres sources.
+  window._sourcesChargementInitialTotal = (window._sourcesChargementInitialTotal ?? 0) + 1;
+  window._sourcesChargementInitialRestantes = (window._sourcesChargementInitialRestantes ?? 0) + 1;
+  renderDiffereChargementInitial();
+  signalerSourceChargementTerminee();
 }
 
 // Reconstruire l'historique si manquant ou incomplet
@@ -12640,7 +12657,10 @@ let _renderDiffereChargementTimer = null;
 // les 3 sources : la fenêtre ne se ferme qu'une fois que les 3 se sont
 // manifestées (résolues OU échouées, peu importe), quelle que soit leur
 // latence individuelle — plus de délai fixe qui peut couper trop tôt.
-window._sourcesChargementInitialRestantes = 3;
+// Compteur des sources connues du chargement initial — déclaré une seule
+// fois, plus haut dans ce fichier (cf. window._sourcesChargementInitialTotal
+// et signalerSourceChargementTerminee()) : la fenêtre ne se ferme qu'une
+// fois que toutes les sources DÉMARRÉES se sont manifestées.
 function renderDiffereChargementInitial() {
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
@@ -12648,7 +12668,7 @@ function renderDiffereChargementInitial() {
     // Ce render() de regroupement reste sans fondu (fenêtre encore active,
     // cf. commentaire sur window._fenetreChargementInitialActive dans
     // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, et
-    // seulement si les 3 sources se sont déjà toutes manifestées (sinon
+    // seulement si toutes les sources se sont déjà manifestées (sinon
     // une source encore en cours, potentiellement lente, redéclenchera
     // ce même mécanisme plus tard et devra encore trouver la fenêtre
     // ouverte).
