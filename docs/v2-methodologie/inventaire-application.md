@@ -47,6 +47,7 @@ Tous dans `docs/v2-methodologie/` :
 | `saisie-et-integrations.md` | Saisie manuelle, RPE, statuts de séance, import FIT, intégrations externes (Strava, météo, coach, Stripe) |
 | `auth-et-publication.md` | Authentification Supabase, onboarding, publication Play Store, Mode Forme, jour de course |
 | `site-beta-admin.md` | Site public de candidature bêta, administration bêta, modules partagés `lib/` |
+| `securite.md` | Audit et durcissement sécurité : traité / reste à faire |
 | `bibliotheque-seances.md` | Méthodologie des types de séances qualité *(fichier déjà existant, inchangé)* |
 | `import-fit-intervalles.md` | Détail conception/implémentation de l'import .fit *(fichier déjà existant, inchangé)* |
 | `moteur-decision-architecture.md` | Conception détaillée du moteur de décision *(fichier déjà existant, inchangé)* |
@@ -85,7 +86,7 @@ Tous dans `docs/v2-methodologie/` :
 - RLS Supabase : toujours vérifier la condition réelle via le SQL Editor (`select policyname, cmd, qual, with_check from pg_policies where tablename = '...'`) plutôt que l'aperçu replié du dashboard, qui peut tronquer une condition longue. `qual` = USING (SELECT/UPDATE/DELETE), `with_check` = WITH CHECK (INSERT).
 - Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à lancer occasionnellement (avant une mise en production), pas à chaque table ajoutée.
 - Ne jamais toucher `public/beta/`, `api/beta.js`, routes `/beta*` sans demande explicite.
-- Toute évolution de la Content-Security-Policy (`vercel.json`, route catch-all `/(.*)`) doit d'abord passer par `Content-Security-Policy-Report-Only` (même valeur, header différent) avant de devenir bloquante — permet de découvrir en conditions réelles (connexion, sync Strava, paiement, import FIT) tous les domaines externes réellement chargés dynamiquement (ex. `browser.sentry-cdn.com`, chargé par le loader `js-de.sentry-cdn.com` et absent du code source) sans jamais casser la prod pendant la découverte.
+- Toute évolution de la Content-Security-Policy doit d'abord passer par un mode non bloquant de test (Report-Only) avant de devenir bloquante — détail de la méthode dans `securite.md`.
 
 **Génération de plan et calculs**
 - Une seule variable modifiée à la fois pour la progressive overload. Niveau intermédiaire = valeur historique inchangée à chaque différenciation par niveau (zéro régression). Validation historique avant codage pour toute nouvelle métrique.
@@ -152,47 +153,17 @@ Tous dans `docs/v2-methodologie/` :
   l'app. Accessible depuis Réglages (ligne autonome tout en bas, hors
   accordéon — cf. principe UI ci-dessus) et depuis un bandeau dashboard
   affiché une seule fois (`localStorage: yoria_bandeau_sante_ferme`).
-  Même contenu dupliqué en page statique `/sante.html` (créée le
+  Même contenu dupliqué en page statique `/sante.html`, créée
   pour permettre un lien depuis le site bêta, qui n'a pas
-  accès au système de modales de l'app principale).
+  accès au système de modales de l'app principale.
 
-**Sécurité — audit et durcissement (démarré, en partie traité)**
+**Sécurité — audit et durcissement**
 
-Traité :
-- CORS restreint sur les routes Strava (`*` → `https://yoria.run`)
-- Rate limiting sur `beta-admin` (connexion) et `beta` (soumission),
-  5 tentatives/15min par IP — détail dans `site-beta-admin.md`
-- Signature webhook Stripe vérifiée en temps constant
-- Retrait du fragment de code OAuth Strava des logs
-- RLS vérifiée table par table sur toutes les tables sensibles connues
-  (`plans_actif`, `plan_donnees`, `abonnements`, `beta_testers`,
-  `decision_events`, `decision_outcomes`, `badges_debloques`) — toutes
-  correctement protégées, détail dans `persistance-donnees.md`
-- **Headers de sécurité HTTP globaux** — HSTS (`max-age` 2 ans,
-  `includeSubDomains`, `preload`), `X-Content-Type-Options: nosniff`, et
-  une Content-Security-Policy bloquante, tous trois posés sur la route
-  catch-all (`vercel.json`, `/(.*)`) donc actifs sur l'ensemble du site.
-  CSP calibrée via une phase `Report-Only` préalable en conditions
-  réelles (connexion, sync Strava, paiement test Stripe) : couvre
-  Supabase (REST + WebSocket Realtime), Strava, Sentry (loader +
-  `browser.sentry-cdn.com`, chargé dynamiquement et absent du code
-  source — repéré uniquement grâce au report-only), Stripe (Checkout +
-  frame), jsDelivr, cdnjs, esm.sh, Google Fonts. `'unsafe-inline'` et
-  `'unsafe-eval'` nécessaires vu le volume de JS/CSS inline dans
-  `index.html` (pas de refonte en nonce/hash envisagée). Import FIT
-  (`cdn.jsdelivr.net/fit-file-parser`) couvert par construction dans
-  `script-src` mais pas encore vérifié en conditions réelles contre la
-  CSP bloquante — à valider à la prochaine occasion d'import `.fit`.
-
-Reste à faire :
-- **Validation d'intégrité du contenu `plan_donnees.data`** (JSONB non
-  structuré) — RLS protège qui peut écrire la ligne, mais rien ne
-  valide le contenu écrit par le client avant insertion. Risque faible
-  (un utilisateur ne peut affecter que ses propres données), mais à
-  garder en tête si une validation de schéma devient pertinente.
-- **2FA sur `beta-admin`** — actuellement mot de passe seul (protégé par
-  rate limiting). À évaluer si l'accès reste aussi sensible une fois la
-  bêta élargie (suppression de comptes, données de tous les testeurs).
+Détail complet (traité / reste à faire) dans `securite.md`. En bref :
+headers HTTP globaux (HSTS, CSP, nosniff) posés et calibrés, RLS
+auditée table par table, CORS/rate limiting/signature webhook en place.
+Reste : validation d'intégrité `plan_donnees.data`, 2FA sur `beta-admin`
+à évaluer.
 
 **Lancement public**
 - **Immatriculation de l'auto-entreprise** (SIRET) — bloquant légal
