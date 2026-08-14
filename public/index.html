@@ -2223,11 +2223,9 @@ function ouvrirCguModale() {
 // ── Modale Politique de confidentialité (14/08/2026) ─────────────────────
 // Duplique le texte de public/privacy.html. SOURCE DE VÉRITÉ =
 // public/privacy.html — toute mise à jour doit être répercutée ICI aussi.
-// Note : privacy.html porte encore l'ancien nom "Run by Léa" par endroits
-// (non corrigé ici, hors périmètre de cette demande — cf. inventaire).
 function ouvrirPrivacyModale() {
   ouvrirModaleTexte("🔒 Politique de confidentialité", [
-    { paragraphes: ["Run by Léa — dernière mise à jour : 13 juillet 2026", "Run by Léa est une application personnelle de planification d'entraînement running. Cette page explique quelles données sont collectées, pourquoi, et comment elles sont protégées."] },
+    { paragraphes: ["Yoria — dernière mise à jour : 14 août 2026", "Yoria est une application de planification d'entraînement running. Cette page explique quelles données sont collectées, pourquoi, et comment elles sont protégées."] },
     { titre: "1. Données collectées", paragraphes: [
       "Lors de la création d'un compte et de l'utilisation de l'application, les données suivantes peuvent être collectées : Compte (email et mot de passe, stocké de façon sécurisée et chiffrée, jamais en clair) ; Profil coureur (prénom, nom, année de naissance, poids, taille, fréquence cardiaque maximale, records personnels) ; Données d'entraînement (plans générés, séances réalisées ou manquées, notes personnelles, objectifs de course) ; Localisation (position GPS approximative, utilisée uniquement pour la météo locale, non stockée de façon permanente, non partagée) ; Données Strava en option (si connecté, accès aux activités de course pour comparer aux performances réelles)."
     ]},
@@ -2241,7 +2239,7 @@ function ouvrirPrivacyModale() {
     ]},
     { titre: "5. Tes droits", paragraphes: ["Tu peux à tout moment : consulter et modifier tes données depuis les Réglages ; déconnecter ton compte Strava depuis les Réglages ; demander la suppression complète de ton compte et de tes données en nous contactant."] },
     { titre: "6. Conservation des données", paragraphes: ["Tes données sont conservées tant que ton compte est actif. En cas de suppression de compte, l'ensemble de tes données personnelles est supprimé de nos serveurs."] },
-    { titre: "7. Application à usage restreint", paragraphes: ["Run by Léa est actuellement développée pour un usage personnel et familial restreint. Elle peut évoluer vers un usage plus large ; cette politique sera mise à jour en conséquence le cas échéant."] },
+    { titre: "7. Application en phase bêta", paragraphes: ["Yoria est actuellement en phase de bêta privée, accessible sur candidature via le site. Cette phase permet de tester l'application en conditions réelles avant un lancement public plus large. Cette politique sera mise à jour en conséquence à mesure que le service évolue."] },
     { titre: "Contact", paragraphes: ["Pour toute question concernant tes données ou pour demander la suppression de ton compte, tu peux nous contacter par mail à olayanne.site@gmail.com"] }
   ]);
 }
