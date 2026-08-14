@@ -1,184 +1,511 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="robots" content="noindex,nofollow">
-  <title>Yoria — Administration bêta</title>
-  <link rel="stylesheet" href="/beta-admin/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="description"
+    content="Rejoignez la bêta privée de Yoria, le coach running intelligent qui adapte vos entraînements à votre progression."
+  >
+
+  <meta name="theme-color" content="#7140dd">
+
+  <title>Yoria — Rejoignez la bêta privée</title>
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://yoria.run/beta">
+  <meta property="og:title" content="Yoria — Le coach running qui s'adapte à vous">
+  <meta property="og:description" content="Rejoignez la bêta privée de Yoria, le coach running intelligent qui adapte vos entraînements à votre progression.">
+  <meta property="og:image" content="https://yoria.run/beta/assets/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="fr_FR">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Yoria — Le coach running qui s'adapte à vous">
+  <meta name="twitter:description" content="Rejoignez la bêta privée de Yoria, le coach running intelligent qui adapte vos entraînements à votre progression.">
+  <meta name="twitter:image" content="https://yoria.run/beta/assets/og-image.jpg">
+
+  <link rel="icon" type="image/svg+xml" href="/beta/assets/logo-yoria.svg">
+  <link rel="stylesheet" href="/beta/styles.css">
 </head>
+
 <body>
-<div class="shell">
-  <aside>
-    <div class="brand"><b>Y</b><span><strong>Yoria</strong><small>Administration bêta</small></span></div>
-    <nav>
-      <button class="nav active" data-view="dashboard">⌂ Tableau de bord</button>
-      <button class="nav" data-view="applications">◎ Candidatures</button>
-      <button class="nav" data-view="selected">✓ Sélectionnés</button>
-      <button class="nav" data-view="invited">✉ Invités</button>
-      <button class="nav" data-view="signalements">🐛 Signalements</button>
-      <button class="nav" data-view="accounts">👤 Comptes</button>
-      <button class="nav" data-view="backup">💾 Sauvegarde</button>
-      <button class="nav" data-view="cascades">🔗 Cascades</button>
-      <button class="nav" data-view="statistics">↗ Statistiques</button>
-    </nav>
-    <a class="site-link" href="/beta" target="_blank" rel="noopener">Voir le site bêta</a>
-  </aside>
+  <header class="header">
+    <div class="container nav">
+      <a class="brand" href="#accueil" aria-label="Accueil Yoria">
+        <img
+          class="brand-logo"
+          src="/beta/assets/logo-yoria.svg"
+          alt="Logo Yoria"
+          width="48"
+          height="48"
+        >
+        <span class="brand-copy">
+          <strong>Yoria</strong>
+          <small>Coach running adaptatif</small>
+        </span>
+      </a>
+
+      <!-- Navigation par onglets (14/08/2026, demande explicite de
+           Laurent : remplace le scroll continu par des sections
+           indépendantes affichées une à la fois, cf. attacherOnglets()
+           dans script.js). data-onglet référence l'id de la <section>
+           correspondante — garder les deux synchronisés si une section
+           est ajoutée/retirée. Bouton "Rejoindre la bêta" retiré : l'onglet
+           Inscription le remplace. -->
+      <nav aria-label="Navigation principale" class="onglets-nav">
+        <a href="#accueil" data-onglet="accueil" class="onglet-lien">Accueil</a>
+        <a href="#difference" data-onglet="difference" class="onglet-lien">Pourquoi Yoria</a>
+        <a href="#fonctionnalites" data-onglet="fonctionnalites" class="onglet-lien">Fonctionnalités</a>
+        <a href="#inscription" data-onglet="inscription" class="onglet-lien">Inscription</a>
+      </nav>
+    </div>
+  </header>
 
   <main>
-    <header>
-      <div><p>Bêta privée</p><h1 id="title">Tableau de bord</h1></div>
-      <div class="actions">
-        <button id="refresh" class="secondary" hidden>Actualiser</button>
-        <button id="logout" class="ghost" hidden>Se déconnecter</button>
-      </div>
-    </header>
-
-    <section id="login" class="login">
-      <form id="login-form" class="login-card">
-        <div class="lock">🔐</div>
-        <h2>Accès administrateur</h2>
-        <p>Saisissez le mot de passe administrateur.</p>
-        <label>Mot de passe<input id="password" type="password" autocomplete="current-password" required></label>
-        <button class="primary" type="submit">Se connecter</button>
-        <div id="login-status" class="status"></div>
-      </form>
-    </section>
-
-    <section id="admin" hidden>
-      <div id="loading" class="notice" hidden>Chargement…</div>
-      <div id="error" class="notice error" hidden></div>
-
-      <section class="view active" data-panel="dashboard">
-        <div class="stats">
-          <article><span>Total</span><strong id="s-total">0</strong></article>
-          <article><span>En attente</span><strong id="s-pending">0</strong></article>
-          <article><span>Sélectionnés</span><strong id="s-selected">0</strong></article>
-          <article><span>Invités</span><strong id="s-invited">0</strong></article>
-          <article><span>Actifs</span><strong id="s-active">0</strong></article>
-          <article><span>Refusés</span><strong id="s-rejected">0</strong></article>
-        </div>
-        <div class="grid2">
-          <article class="card"><h2>Candidatures récentes</h2><div id="recent" class="list"></div></article>
-          <article class="card"><h2>Profil du panel</h2><div id="distribution" class="distribution"></div></article>
-        </div>
-      </section>
-
-      <section class="view" data-panel="applications">
-        <div class="filters">
-          <input id="search" type="search" placeholder="Rechercher prénom ou e-mail">
-          <select id="status-filter">
-            <option value="all">Tous les statuts</option><option value="pending">En attente</option>
-            <option value="selected">Sélectionnés</option><option value="invited">Invités</option>
-            <option value="active">Actifs</option><option value="rejected">Refusés</option>
-          </select>
-          <select id="platform-filter">
-            <option value="all">Toutes les plateformes</option><option value="android">Android</option><option value="iphone">iPhone</option>
-          </select>
-        </div>
-        <div class="card table-wrap">
-          <table>
-            <thead><tr><th>Candidat</th><th>Plateforme</th><th>Niveau</th><th>Sorties</th><th>Distance</th><th>Strava</th><th>Statut</th><th>Date</th><th></th></tr></thead>
-            <tbody id="tbody"></tbody>
-          </table>
-          <div id="empty" class="empty" hidden>Aucune candidature.</div>
-        </div>
-      </section>
-
-      <section class="view" data-panel="selected"><div id="selected-list" class="list"></div></section>
-      <section class="view" data-panel="invited"><div id="invited-list" class="list"></div></section>
-
-      <section class="view" data-panel="signalements">
-        <div class="filters">
-          <select id="signalement-type-filter">
-            <option value="all">Tous les types</option>
-            <option value="bug">🐛 Bug</option>
-            <option value="donnee_incorrecte">📊 Donnée incorrecte</option>
-            <option value="suggestion">💡 Suggestion</option>
-            <option value="autre">❓ Autre</option>
-            <option value="collision_moteur">🔀 Collision moteur</option>
-          </select>
-          <select id="signalement-statut-filter">
-            <option value="all">Tous les statuts</option>
-            <option value="nouveau">Nouveau</option>
-            <option value="en_cours">En cours</option>
-            <option value="resolu">Résolu</option>
-          </select>
-        </div>
-        <div class="card table-wrap">
-          <table>
-            <thead><tr><th>Type</th><th>Message</th><th>Contexte</th><th>E-mail</th><th>Statut</th><th>Date</th></tr></thead>
-            <tbody id="signalements-tbody"></tbody>
-          </table>
-          <div id="signalements-empty" class="empty" hidden>Aucun signalement.</div>
-        </div>
-      </section>
-
-      <section class="view" data-panel="accounts">
-        <div class="filters">
-          <input id="account-email" type="search" placeholder="Adresse e-mail du testeur">
-          <button id="account-search" class="secondary">Rechercher</button>
-        </div>
-        <div id="account-status" class="notice" hidden></div>
-        <div id="account-result"></div>
-      </section>
-
-      <section class="view" data-panel="backup">
-        <div class="card">
-          <h2>Export global</h2>
-          <p><small>Découvre automatiquement toutes les tables de la base (via introspection PostgREST) et exporte l'intégralité de leur contenu en un fichier JSON téléchargeable. Filet de sécurité en cas de désastre complet — le plan Supabase actuel (Free) ne fait aucune sauvegarde automatique.</small></p>
-          <button id="backup-global-btn" class="secondary">📦 Télécharger l'export global</button>
-          <div id="backup-global-status" class="notice" hidden></div>
-        </div>
-
-        <div class="card">
-          <h2>Export ciblé par utilisateur</h2>
-          <p><small>Exporte uniquement les données d'un testeur précis (retrouvé par e-mail), y compris ses décisions du moteur. Le scénario le plus probable en pratique : un testeur signale un souci sur son plan.</small></p>
-          <div class="filters">
-            <input id="backup-user-email" type="search" placeholder="Adresse e-mail du testeur">
-            <button id="backup-user-btn" class="secondary">Exporter cet utilisateur</button>
+    <div class="onglet-panneau" data-onglet-panneau="accueil">
+    <section class="hero" id="accueil">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <div class="eyebrow-row">
+            <span class="pill">Bêta privée</span>
+            <span class="availability">
+              <span class="availability-dot"></span>
+              Inscriptions ouvertes
+            </span>
           </div>
-          <div id="backup-user-status" class="notice" hidden></div>
+
+          <h1>
+            Le coach running qui
+            <span>s’adapte vraiment à vous.</span>
+          </h1>
+
+          <p class="hero-intro">
+            Yoria analyse chaque séance et ajuste votre plan en conséquence —
+            avec, à chaque fois, une explication claire de pourquoi.
+            Pas une boîte noire : un raisonnement que vous pouvez suivre.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button" href="#inscription">
+              Je deviens bêta-testeur
+            </a>
+
+            <a class="text-link" href="#difference">
+              Voir comment ça marche
+              <span aria-hidden="true">→</span>
+            </a>
+          </div>
+
+          <div class="hero-trust">
+            <div>
+              <strong>Gratuit</strong>
+              <span>pendant toute la bêta</span>
+            </div>
+            <div>
+              <strong>Tous niveaux</strong>
+              <span>du débutant au confirmé</span>
+            </div>
+            <div>
+              <strong>Avec ou sans Strava</strong>
+              <span>saisie manuelle possible</span>
+            </div>
+          </div>
         </div>
 
-        <div class="card">
-          <h2>Réinjection</h2>
-          <p><small>Réimporte un fichier JSON exporté précédemment (global ou ciblé). Écrase les lignes existantes ayant le même identifiant (upsert). Si l'export cible un utilisateur dont le compte a depuis été supprimé, le compte est recréé automatiquement avec le même identifiant avant réinjection des données.</small></p>
-          <input id="backup-file-input" type="file" accept="application/json">
-          <label style="display:block;margin-top:10px;">
-            Limiter à un seul utilisateur <small>(optionnel — uniquement pour un export global ; laisser vide pour tout réinjecter)</small>
-            <input id="backup-reinject-email" type="search" placeholder="Adresse e-mail à isoler dans cet export">
-          </label>
-          <label id="backup-reinject-userid-wrap" style="display:none;margin-top:10px;">
-            Identifiant utilisateur <small>(le compte a été supprimé et n'a pas d'abonnement enregistré — colle son "user_id", visible dans une ligne de l'export JSON pour cet utilisateur)</small>
-            <input id="backup-reinject-userid" type="text" placeholder="uuid, ex. 3f2e1a9c-...">
-          </label>
-          <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
-          <div id="backup-reinject-status" class="notice" hidden></div>
-          <div id="backup-reinject-report"></div>
-        </div>
-      </section>
+        <div class="hero-visual">
+          <div class="visual-glow visual-glow-one"></div>
+          <div class="visual-glow visual-glow-two"></div>
 
-      <section class="view" data-panel="cascades">
-        <div class="card">
-          <h2>Diagnostic des cascades ON DELETE</h2>
-          <p><small>Vérifie que chaque table applicative liée à un utilisateur (colonne <code>user_id</code>/<code>id_utilisateur</code>) supprime bien ses lignes automatiquement quand le compte Auth est supprimé (<code>ON DELETE CASCADE</code>) — sinon <code>api/delete-account.js</code> échoue en erreur de contrainte. À lancer occasionnellement (ex. avant une mise en production), pas à chaque table ajoutée.</small></p>
-          <button id="cascades-run-btn" class="secondary">🔍 Lancer le diagnostic</button>
-          <div id="cascades-status" class="notice" hidden></div>
-          <div id="cascades-result"></div>
-        </div>
-      </section>
+          <div class="screenshots">
+            <img
+              src="/beta/assets/yoria-dashboard.jpg"
+              alt="Tableau de bord de l’application Yoria"
+            >
 
-      <section class="view" data-panel="statistics"><div id="statistics" class="grid2"></div></section>
+            <img
+              src="/beta/assets/yoria-stats.jpg"
+              alt="Statistiques de progression dans Yoria"
+            >
+
+            <img
+              src="/beta/assets/yoria-semaine.jpg"
+              alt="Planning hebdomadaire de Yoria"
+            >
+          </div>
+
+          <div class="floating-card floating-card-top">
+            <span class="floating-icon">↗</span>
+            <div>
+              <strong>Progression détectée</strong>
+              <small>Votre plan évolue avec vous</small>
+            </div>
+          </div>
+
+          <div class="floating-card floating-card-bottom">
+            <span class="floating-icon">✓</span>
+            <div>
+              <strong>Séance analysée</strong>
+              <small>Adaptation automatique du plan</small>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
+    </div>
+
+    <div class="onglet-panneau" data-onglet-panneau="difference">
+    <section class="section difference-section" id="difference">
+      <div class="container difference-grid">
+        <div class="difference-copy">
+          <span class="section-kicker">Pourquoi Yoria est différente</span>
+          <h2>Un plan ne devrait jamais rester figé.</h2>
+          <p>
+            Votre forme change. Votre emploi du temps change. Vos sensations
+            aussi. Yoria ajuste votre préparation en conséquence — et vous
+            montre toujours pourquoi, séance par séance.
+          </p>
+
+          <ul class="check-list">
+            <li>Chaque séance influence la suivante : un fractionné plus dur que prévu peut alléger la sortie du lendemain, avec toujours une explication claire de ce qui a motivé le changement.</li>
+            <li>La fatigue et la progression sont mesurées à partir de vos séances réelles (allure, fréquence cardiaque, ressenti), pas devinées à partir d'un calendrier théorique figé à l'avance.</li>
+            <li>Le plan reste sous votre contrôle : Yoria propose un ajustement et l'explique, mais rien ne change sans que vous puissiez le voir venir.</li>
+          </ul>
+        </div>
+
+        <div class="decision-card">
+          <div class="decision-head">
+            <img
+              src="/beta/assets/logo-yoria.svg"
+              alt=""
+              width="42"
+              height="42"
+            >
+            <div>
+              <strong>Décision Yoria</strong>
+              <span>Après votre dernière sortie</span>
+            </div>
+          </div>
+
+          <div class="decision-flow">
+            <div>
+              <span>1</span>
+              <p><strong>Sortie analysée</strong>Charge plus élevée que prévu</p>
+            </div>
+            <div>
+              <span>2</span>
+              <p><strong>Fatigue détectée</strong>Récupération encore incomplète</p>
+            </div>
+            <div>
+              <span>3</span>
+              <p><strong>Séance adaptée</strong>Intensité réduite, objectif conservé</p>
+            </div>
+          </div>
+
+          <div class="decision-result">
+            <span>Demain</span>
+            <strong>45 min en endurance facile</strong>
+            <small>À la place d’une séance intense — expliqué en une phrase, jamais imposé sans raison</small>
+          </div>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <div class="onglet-panneau" data-onglet-panneau="fonctionnalites">
+    <section class="section features-section" id="fonctionnalites">
+      <div class="container">
+        <div class="section-heading">
+          <span class="section-kicker">Une expérience complète</span>
+          <h2>Tout ce qu’il vous faut pour progresser avec confiance.</h2>
+          <p>
+            Yoria rassemble votre plan, vos séances et votre progression dans
+            une seule application simple à utiliser.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article>
+            <span class="feature-number">01</span>
+            <h3>Plans personnalisés</h3>
+            <p>
+              Le plan part de votre objectif, du nombre de jours où vous
+              pouvez courir et de votre niveau actuel — pas d'un modèle
+              générique décliné pour tout le monde. La répartition entre
+              sorties faciles, séances de qualité et repos évolue avec vous
+              d'une semaine à l'autre.
+            </p>
+          </article>
+
+          <article>
+            <span class="feature-number">02</span>
+            <h3>Explication de chaque ajustement</h3>
+            <p>
+              Quand une séance est modifiée, Yoria indique ce qui a motivé
+              le changement — une fatigue accumulée, une séance manquée, une
+              progression plus rapide que prévu. Vous voyez le raisonnement,
+              pas seulement le résultat.
+            </p>
+          </article>
+
+          <article>
+            <span class="feature-number">03</span>
+            <h3>Import Strava ou saisie manuelle</h3>
+            <p>
+              Vos sorties Strava sont récupérées automatiquement (distance,
+              allure, fréquence cardiaque). Sans Strava, la saisie manuelle
+              après chaque séance reste rapide et donne les mêmes
+              ajustements de plan.
+            </p>
+          </article>
+
+          <article>
+            <span class="feature-number">04</span>
+            <h3>Prévision de chrono</h3>
+            <p>
+              À partir de vos séances de qualité récentes, Yoria estime le
+              temps que vous pourriez réaliser sur votre distance cible
+              aujourd'hui, et suit comment cette estimation évolue au fil
+              des semaines d'entraînement.
+            </p>
+          </article>
+
+          <article>
+            <span class="feature-number">05</span>
+            <h3>Jour de course préparé</h3>
+            <p>
+              À l'approche de l'objectif : stratégie d'allure adaptée au
+              parcours, météo du jour, horaires et check-list de dernière
+              minute réunis au même endroit pour aborder le départ
+              sereinement.
+            </p>
+          </article>
+
+          <article>
+            <span class="feature-number">06</span>
+            <h3>Suivi de charge d'entraînement</h3>
+            <p>
+              Un repère visuel simple montre si le volume et l'intensité des
+              dernières semaines s'accumulent trop vite ou restent trop bas
+              — pour ajuster avant la blessure ou la stagnation, pas après.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <div class="onglet-panneau" data-onglet-panneau="inscription">
+    <section class="section signup-section" id="inscription">
+      <div class="container signup-shell">
+        <div class="signup-aside">
+          <span class="pill pill-light">Bêta privée</span>
+
+          <h2>Participez à la construction de Yoria.</h2>
+
+          <p>
+            Nous recherchons des coureurs de tous niveaux pour tester
+            l’application en conditions réelles et nous aider à l’améliorer.
+          </p>
+
+          <div class="signup-benefits">
+            <div>
+              <span>✓</span>
+              <p><strong>Accès anticipé</strong>Découvrez Yoria avant son lancement public.</p>
+            </div>
+            <div>
+              <span>✓</span>
+              <p><strong>Accès gratuit</strong>Utilisez l’application gratuitement pendant la bêta.</p>
+            </div>
+            <div>
+              <span>✓</span>
+              <p><strong>Votre avis compte</strong>Influencez directement les futures fonctionnalités.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="signup-card">
+          <div class="signup-heading">
+            <span class="form-step">Candidature bêta</span>
+            <h2>Parlez-nous un peu de vous.</h2>
+            <p>Le formulaire prend environ une minute.</p>
+          </div>
+
+          <form id="beta-form">
+            <div class="form-grid">
+              <label>
+                <span>Prénom *</span>
+                <input
+                  type="text"
+                  name="firstName"
+                  autocomplete="given-name"
+                  placeholder="Votre prénom"
+                  required
+                >
+              </label>
+
+              <label>
+                <span>Adresse e-mail *</span>
+                <input
+                  type="email"
+                  name="email"
+                  autocomplete="email"
+                  placeholder="vous@exemple.fr"
+                  required
+                >
+              </label>
+
+              <fieldset>
+                <legend>Votre téléphone *</legend>
+                <div class="choice-row">
+                  <label class="radio-option">
+                    <input type="radio" name="platform" value="android" required>
+                    <span>Android</span>
+                  </label>
+
+                  <label class="radio-option">
+                    <input type="radio" name="platform" value="iphone" required>
+                    <span>iPhone</span>
+                  </label>
+                </div>
+
+                <div id="encart-ios" class="encart-ios" hidden>
+                  <strong>📱 Sur iPhone :</strong>
+                  Yoria s'installe via Safari — pas de téléchargement sur
+                  l'App Store. Une fois votre candidature acceptée, l'e-mail
+                  d'invitation vous expliquera comment faire (c'est rapide,
+                  environ 30 secondes).
+                </div>
+              </fieldset>
+
+              <label>
+                <span>Niveau de course *</span>
+                <select name="runningLevel" required>
+                  <option value="">Sélectionnez votre niveau</option>
+                  <option value="debutant">Débutant</option>
+                  <option value="intermediaire">Intermédiaire</option>
+                  <option value="confirme">Confirmé</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Nombre de sorties par semaine *</span>
+                <select name="runsPerWeek" required>
+                  <option value="">Sélectionnez</option>
+                  <option value="2">2 sorties</option>
+                  <option value="3">3 sorties</option>
+                  <option value="4">4 sorties</option>
+                  <option value="5">5 sorties</option>
+                  <option value="6">6 sorties</option>
+                  <option value="7">7 sorties</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Distance favorite *</span>
+                <select name="favoriteDistance" required>
+                  <option value="">Sélectionnez</option>
+                  <option value="5-km">5 km</option>
+                  <option value="10-km">10 km</option>
+                  <option value="semi-marathon">Semi-marathon</option>
+                  <option value="marathon">Marathon</option>
+                  <option value="debutant">Je débute</option>
+                </select>
+              </label>
+
+              <fieldset>
+                <legend>Utilisez-vous Strava ? *</legend>
+                <div class="choice-row">
+                  <label class="radio-option">
+                    <input type="radio" name="usesStrava" value="oui" required>
+                    <span>Oui</span>
+                  </label>
+
+                  <label class="radio-option">
+                    <input type="radio" name="usesStrava" value="non" required>
+                    <span>Non</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <label class="full-width">
+                <span>Un mot pour nous <small>(optionnel)</small></span>
+                <textarea
+                  name="message"
+                  rows="5"
+                  maxlength="1500"
+                  placeholder="Parlez-nous de vos objectifs ou de ce que vous attendez de Yoria."
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="honeypot" aria-hidden="true">
+              <label>
+                Ne pas remplir ce champ
+                <input
+                  type="text"
+                  name="website"
+                  tabindex="-1"
+                  autocomplete="off"
+                >
+              </label>
+            </div>
+
+            <label class="consent">
+              <input type="checkbox" name="consent" required>
+              <span>
+                J’accepte que mes informations soient utilisées pour être
+                recontacté dans le cadre de la bêta Yoria.
+              </span>
+            </label>
+
+            <button class="button submit-button" type="submit">
+              Envoyer ma candidature
+            </button>
+
+            <p id="form-status" class="form-status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+    </div>
   </main>
-</div>
 
-<div id="modal" class="modal" hidden>
-  <div class="backdrop" data-close></div>
-  <article class="modal-card"><button class="close" data-close>×</button><div id="modal-content"></div></article>
-</div>
+  <footer>
+    <div class="container footer-content">
+      <a class="brand footer-brand" href="#accueil" aria-label="Accueil Yoria">
+        <img
+          class="brand-logo"
+          src="/beta/assets/logo-yoria.svg"
+          alt="Logo Yoria"
+          width="42"
+          height="42"
+        >
+        <span class="brand-copy">
+          <strong>Yoria</strong>
+          <small>Construisons le futur du coaching running.</small>
+        </span>
+      </a>
 
-<script src="/beta-admin/script.js"></script>
+      <!-- Liens légaux (14/08/2026, demande explicite de Laurent) — ouvrent
+           désormais une modale en surimpression (ouvrirModaleLegale(),
+           script.js) plutôt qu'un nouvel onglet sans bouton retour.
+           SOURCE DE VÉRITÉ du contenu reste public/cgu.html,
+           public/privacy.html, public/sante.html — toute mise à jour de
+           texte doit être répercutée aux deux endroits (page statique +
+           script.js). -->
+      <div class="footer-legal" aria-label="Liens légaux" style="display:flex; gap:20px; flex-wrap:wrap;">
+        <a href="/cgu.html" data-modale-legale="cgu">Conditions générales</a>
+        <a href="/privacy.html" data-modale-legale="privacy">Confidentialité</a>
+        <a href="/sante.html" data-modale-legale="sante">Recommandations santé</a>
+      </div>
+
+      <span>© 2026 Yoria.run</span>
+    </div>
+  </footer>
+
+  <script src="/beta/script.js"></script>
 </body>
 </html>
