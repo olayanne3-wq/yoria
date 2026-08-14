@@ -9831,13 +9831,26 @@ function getAvailableSlots(week, excludeIdx) {
     // un jour PASSÉ (donc auto-😴, cf. statutEffectif dans
     // recalculerAllSessions) est traité comme "déjà réalisé" au même
     // titre qu'un vrai statut — on ne swap jamais un jour révolu.
-    const estPasseNonSaisi = s.date < today() && (!statuses[uid] || statuses[uid] === "—");
+    //
+    // ASSOUPLI (14/08/2026, demande explicite de Laurent : "je ne peux
+    // pas déplacer une séance passée, j'aimerais que ça soit possible, au
+    // moins sur la semaine en cours") — un jour passé SANS aucune trace
+    // réelle d'activité (statut/note/RPE/saisie manuelle, cf. juste
+    // au-dessus) n'est plus bloqué par sa seule date s'il appartient à la
+    // semaine EN COURS. Reste bloqué pour toute semaine ANTÉRIEURE
+    // (demande explicite de Laurent, limitée à la semaine courante). La
+    // vraie protection reste inchangée : une trace d'activité réelle
+    // bloque toujours, peu importe la semaine — seule la date brute seule
+    // (sans rien d'autre) ne bloque plus pour la semaine en cours.
+    const estPasseNonSaisi = s.date < today()
+      && (!statuses[uid] || statuses[uid] === "—")
+      && week.week !== currentWeek();
     const aTraceActivite = ["✅","⚠️","❌"].includes(statuses[uid])
       || !!sessionNotes[uid]
       || !!sessionRpe[uid]
       || !!manualPerf[uid]
       || estPasseNonSaisi;
-    if (aTraceActivite) return null; // séance déjà réalisée, annotée, ou jour révolu — jamais une cible d'échange
+    if (aTraceActivite) return null; // séance déjà réalisée, annotée, ou jour révolu (hors semaine en cours) — jamais une cible d'échange
     if (effective.type === "REPOS") return {idx:i, uid, date:s.date, label:"Repos"};
     if (hiddenSessions[uid]) return {idx:i, uid, date:s.date, label:effective.type+" (masquee)"};
     // Jour actif normal — libellé avec le vrai type de séance présente,
@@ -9956,8 +9969,13 @@ function showSessionMenu(week, slotIdx) {
     // bloque aussi le déplacement — le bouton "Supprimer cette séance"
     // garde sa propre règle (isDone seul), sémantique différente. Étendu
     // le même jour : un jour PASSÉ sans statut (donc auto-😴) bloque aussi.
+    // ASSOUPLI (14/08/2026) — même exemption que getAvailableSlots
+    // (cf. son commentaire détaillé) : un jour passé sans trace réelle
+    // d'activité ne bloque plus s'il appartient à la semaine en cours.
     const dateSlot = week.sessions[slotIdx]?.date;
-    const estPasseNonSaisi = dateSlot && dateSlot < today() && (!statuses[uid] || statuses[uid] === "—");
+    const estPasseNonSaisi = dateSlot && dateSlot < today()
+      && (!statuses[uid] || statuses[uid] === "—")
+      && week.week !== currentWeek();
     const aTraceActivite = isDone || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid] || estPasseNonSaisi;
     if (!aTraceActivite) {
       const moveBtn = document.createElement("button");
