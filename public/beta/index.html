@@ -324,6 +324,30 @@
               <p><strong>Votre avis compte</strong>Influencez directement les futures fonctionnalités.</p>
             </div>
           </div>
+
+          <!-- QR code Play Store (14/08/2026, demande explicite de
+               Laurent) — pointe vers la fiche Play Store Android
+               (app.vercel.plan_10k_alpha.twa), même URL que celle codée
+               en dur dans lib/beta-invitation-email.js (PLAY_STORE_URL) —
+               à garder synchronisée si le package venait à changer.
+               Généré à la volée via api.qrserver.com (service externe
+               gratuit, pas de clé API, pas de dépendance ajoutée au
+               projet) plutôt qu'une librairie JS ou une image statique à
+               maintenir. Affiché comme raccourci pour l'installation une
+               fois la candidature acceptée — l'inscription elle-même se
+               fait toujours via le formulaire ci-contre. -->
+          <div class="qr-android">
+            <img
+              src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dapp.vercel.plan_10k_alpha.twa"
+              alt="QR code vers la fiche Play Store de Yoria"
+              width="140"
+              height="140"
+            >
+            <div>
+              <strong>Sur Android</strong>
+              <p>Scannez pour ouvrir la fiche Play Store — utile une fois votre candidature acceptée.</p>
+            </div>
+          </div>
         </div>
 
         <div class="signup-card">

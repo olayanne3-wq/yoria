@@ -1305,3 +1305,45 @@ footer {
     padding: 12px 0;
   }
 }
+
+/* ── QR code Play Store (14/08/2026) ─────────────────────────────────────
+   Bloc dans signup-aside, à côté du formulaire d'inscription. Fond clair
+   sur le fond sombre de .signup-section pour un bon contraste avec le
+   QR code (blanc/noir), cohérent avec .signup-benefits juste au-dessus. */
+.qr-android {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.qr-android img {
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.qr-android strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #ffffff;
+  font-size: 0.92rem;
+}
+
+.qr-android p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .qr-android {
+    flex-direction: column;
+    text-align: center;
+  }
+}
