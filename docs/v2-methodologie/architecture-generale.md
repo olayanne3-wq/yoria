@@ -79,7 +79,7 @@ yoria/
 │           ├── predictor.js       # Prédicteur 10K
 │           ├── session-analysis.js
 │           ├── age-category.js    # Catégorie d'âge FFA (calcul pur, extrait
-│           │                      # d'index.html le 13/08/2026) — exposé en
+│           │                      # d'index.html) — exposé en
 │           │                      # global via Object.assign(window, ...),
 │           │                      # comme v1-bridge.js, pas via window._xxxModule
 │           ├── fit-detection.js   # Détection d'intervalles depuis un .fit sans marqueurs natifs (cf. §10)
@@ -120,8 +120,8 @@ protège pas de ce piège. Toute variable lue par une même fonction
 individuellement, pas seulement la première trouvée. Si une même fonction
 `async` (appelée tôt, avec des `await` internes) déclenche une TDZ sur
 plusieurs variables successives à chaque correctif isolé (`PLAN` puis
-`ALL_SESSIONS` puis `_renderDiffereChargementTimer`, incident du
-13/08/2026), le vrai correctif est de déplacer l'APPEL vers la fin du
+`ALL_SESSIONS` puis `_renderDiffereChargementTimer`), le vrai correctif
+est de déplacer l'APPEL vers la fin du
 flux synchrone principal (après le premier `render()`, point où toutes
 les déclarations `let`/`const` de niveau module sont garanties
 exécutées) plutôt que de continuer à chasser chaque variable une à une —
@@ -189,7 +189,7 @@ original.
 **Écran "Choix du type de plan" (`choix-mode-contenu`,
 `public/v2/index.html`)** — tout premier écran du wizard : Objectif
 course / Mode forme / Reprise en douceur. Mention santé courte affichée
-sous les options (13/08/2026, "⚕️ Consulte un médecin avant de démarrer
+sous les options ("⚕️ Consulte un médecin avant de démarrer
 un programme d'entraînement...") — texte complet accessible ensuite via
 Réglages ou le bandeau dashboard, cf. inventaire chantier "Recommandations
 santé".
@@ -495,8 +495,8 @@ privée y figurant à tort génère un faux warning permanent.
 
 Refonte complète (remplace l'ancien modèle en dictionnaire
 `swappedSessions[uid] = uidSource`, qui pouvait perdre ou dupliquer une
-séance lors d'une annulation partielle sur une rotation à 3+ maillons —
-bug découvert et corrigé le 14/08/2026). `swapPairs = [{a: uid, b: uid},
+séance lors d'une annulation partielle sur une rotation à 3+ maillons).
+`swapPairs = [{a: uid, b: uid},
 ...]` — une liste de paires ATOMIQUES, jamais un dictionnaire à
 demi-cohérent. Chaque paire est un échange complet et réversible en bloc.
 
