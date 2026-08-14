@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.42", title:"Sécurité renforcée, recommandations santé, conditions d'utilisation", current:true, notes:[
+      { ver:"v2.43", title:"Échange de séances fiabilisé en profondeur, conditions et confidentialité accessibles partout", current:true, notes:[
+        "🔄 Correctif important : le système d'échange de séances a été entièrement reconstruit pour ne plus jamais faire disparaître ou dupliquer une séance, même après plusieurs échanges d'affilée dans la même semaine",
+        "📅 Une séance passée sans statut de la semaine en cours peut maintenant être déplacée, comme n'importe quelle autre séance",
+        "📄🔒 Conditions générales d'utilisation et politique de confidentialité accessibles en un tap depuis Réglages, avec un vrai bouton fermer",
+      ]},
+      { ver:"v2.42", title:"Sécurité renforcée, recommandations santé, conditions d'utilisation", current:false, notes:[
         "🔒 Sécurité du site renforcée en profondeur (protection contre plusieurs types d'attaques web courantes)",
         "⚕️ Nouvelles recommandations santé, consultables à tout moment depuis Réglages — pense à consulter un médecin avant de démarrer un programme d'entraînement",
         "📄 Ajout des conditions générales d'utilisation",
