@@ -470,25 +470,17 @@
         </span>
       </a>
 
-      <!-- Liens légaux (14/08/2026, demande explicite de Laurent) — vers
-           les pages statiques racine (hors périmètre /beta), en nouvel
-           onglet puisque ce site bêta est un HTML statique sans le
-           système de modales JS de l'app principale. sante.html créée à
-           cette occasion (aucune page statique équivalente n'existait
-           avant, seulement la modale ouvrirRecommandationsSanteModale()
-           dans l'app) — source de vérité désormais partagée entre les
-           deux, à garder synchronisés.
-           IMPORTANT : <div>, pas <nav> — styles.css a une règle
-           générique "nav { display: flex; ... }" (header) et une règle
-           mobile "@media (max-width:760px) { nav { display: none; } }"
-           qui cache TOUTE balise <nav> de la page sur mobile, y compris
-           celle-ci si elle utilisait <nav>. C'est ce qui causait la
-           disparition des 3 liens sur téléphone (bug identifié et
-           corrigé le 14/08/2026, cf. changelog). -->
+      <!-- Liens légaux (14/08/2026, demande explicite de Laurent) — ouvrent
+           désormais une modale en surimpression (ouvrirModaleLegale(),
+           script.js) plutôt qu'un nouvel onglet sans bouton retour.
+           SOURCE DE VÉRITÉ du contenu reste public/cgu.html,
+           public/privacy.html, public/sante.html — toute mise à jour de
+           texte doit être répercutée aux deux endroits (page statique +
+           script.js). -->
       <div class="footer-legal" aria-label="Liens légaux" style="display:flex; gap:20px; flex-wrap:wrap;">
-        <a href="/cgu.html" target="_blank" rel="noopener">Conditions générales</a>
-        <a href="/privacy.html" target="_blank" rel="noopener">Confidentialité</a>
-        <a href="/sante.html" target="_blank" rel="noopener">Recommandations santé</a>
+        <a href="/cgu.html" data-modale-legale="cgu">Conditions générales</a>
+        <a href="/privacy.html" data-modale-legale="privacy">Confidentialité</a>
+        <a href="/sante.html" data-modale-legale="sante">Recommandations santé</a>
       </div>
 
       <span>© 2026 Yoria.run</span>

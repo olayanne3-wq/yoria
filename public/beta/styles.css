@@ -1103,3 +1103,140 @@ footer {
     gap: 16px;
   }
 }
+
+/* ── Modale légale (14/08/2026) ────────────────────────────────────────
+   CGU / Confidentialité / Recommandations santé, ouvertes en
+   surimpression (cf. script.js, ouvrirModaleLegale()) plutôt qu'en
+   nouvel onglet — demande explicite de Laurent (pas de bouton retour
+   sur un onglet séparé). Préfixe "ml-" pour rester isolé du reste du
+   CSS existant. */
+.ml-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(23, 19, 41, 0.72);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+
+.ml-panel {
+  width: 100%;
+  max-width: 640px;
+  margin: auto;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.ml-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+}
+
+.ml-titre {
+  font-size: 1.05rem;
+  font-weight: 850;
+  color: var(--text);
+}
+
+.ml-fermer {
+  flex: 0 0 auto;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--purple);
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ml-fermer:hover {
+  background: var(--purple-dark);
+}
+
+.ml-corps {
+  padding: 22px;
+  max-height: 70vh;
+  overflow-y: auto;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.ml-corps h3 {
+  margin: 22px 0 8px;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.ml-corps h3:first-child {
+  margin-top: 0;
+}
+
+.ml-corps p {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+
+.ml-updated {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ml-avertissement {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--purple-soft);
+}
+
+.ml-avertissement strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--purple-dark);
+}
+
+.ml-avertissement p {
+  margin: 0;
+  color: var(--text);
+}
+
+.ml-contact {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 760px) {
+  .ml-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .ml-panel {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .ml-corps {
+    max-height: calc(92vh - 60px);
+  }
+}
