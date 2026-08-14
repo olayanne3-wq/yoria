@@ -12662,9 +12662,11 @@ let _renderDiffereChargementTimer = null;
 // et signalerSourceChargementTerminee()) : la fenêtre ne se ferme qu'une
 // fois que toutes les sources DÉMARRÉES se sont manifestées.
 function renderDiffereChargementInitial() {
+  console.log(`[DEBUG renderDiffereChargementInitial] appelée à t+${Math.round(performance.now())}ms — sourcesRestantes=${window._sourcesChargementInitialRestantes} total=${window._sourcesChargementInitialTotal}`, new Error().stack.split('\n').slice(1,3).join(' | '));
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
   _renderDiffereChargementTimer = setTimeout(() => {
+    console.log(`[DEBUG renderDiffereChargementInitial] timer 150ms déclenché à t+${Math.round(performance.now())}ms — sourcesRestantes=${window._sourcesChargementInitialRestantes}`);
     // Ce render() de regroupement reste sans fondu (fenêtre encore active,
     // cf. commentaire sur window._fenetreChargementInitialActive dans
     // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, et
@@ -12675,11 +12677,14 @@ function renderDiffereChargementInitial() {
     render();
     if (window._sourcesChargementInitialRestantes <= 0) {
       window._fenetreChargementInitialActive = false;
+      console.log(`[DEBUG] fenêtre fermée à t+${Math.round(performance.now())}ms`);
     }
   }, 150);
 }
 
 function render() {
+  // DEBUG TEMPORAIRE — à retirer une fois le diagnostic terminé.
+  console.log(`[DEBUG render] appel #${(window._debugRenderCount = (window._debugRenderCount||0)+1)} à t+${Math.round(performance.now())}ms — fenetreActive=${window._fenetreChargementInitialActive} sourcesRestantes=${window._sourcesChargementInitialRestantes} total=${window._sourcesChargementInitialTotal}`, new Error().stack.split('\n').slice(1,4).join(' | '));
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
   // juste après reconstruirait inutilement le même contenu (double flash).
