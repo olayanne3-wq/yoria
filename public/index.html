@@ -16,48 +16,23 @@ window.sentryOnLoad = function () {
   });
 };
 </script>
-<!-- CORRECTIF (06/08/2026, suite de la recherche sur le clignotement à
-     l'ouverture — persistant malgré les correctifs du 04/08 sur la police/
-     les 8 scripts moteur, et du 06/08 sur jsPDF) — ce Loader Script Sentry
-     était resté en <script src> classique bloquant, placé en tout premier
-     dans le <head>, avant même l'import map et la police : le navigateur
-     devait le télécharger et l'exécuter entièrement avant de pouvoir
-     continuer à parser le reste de la page, retardant TOUT ce qui suit
-     (y compris les correctifs déjà faits plus bas, qui ne peuvent agir
-     qu'une fois ce blocage initial levé). defer sans risque : le Loader
-     Script Sentry est conçu pour être chargé de façon asynchrone par
-     défaut (c'est tout l'intérêt de ce Loader Script par rapport à un
-     SDK classique, il bufferise les appels avant sa propre
-     initialisation) ; window.sentryOnLoad reste défini avant lui (ordre
-     inchangé) et Sentry.setUser() n'est appelé que bien plus tard, dans
-     le .then() de monterEcranAuth() — aucune dépendance de timing
-     précoce sur ce script. -->
+<!-- Loader Script Sentry en <script defer> (pas bloquant) : conçu pour être
+     chargé de façon asynchrone par défaut, il bufferise les appels avant sa
+     propre initialisation. window.sentryOnLoad reste défini avant lui, et
+     Sentry.setUser() n'est appelé que bien plus tard dans monterEcranAuth()
+     — aucune dépendance de timing précoce sur ce script. -->
 <script defer src="https://js-de.sentry-cdn.com/1598be66558d46e63cc4443c635738e7.min.js" crossorigin="anonymous"></script>
-<!-- Import map ajoutée le 03/08/2026 : fit-file-parser@3.0.2 (chargé par
-     chargerFitParser(), plus bas dans ce fichier) déclare une vraie
-     dépendance npm vers le package `buffer` (vérifié dans son
-     package.json publié : "dependencies": {"buffer": "^6.0.3"}), et son
-     fichier dist/binary.js fait `import { Buffer } from 'buffer'`. Le
-     fichier ESM brut servi par cdn.jsdelivr.net/.../dist/fit-parser.js
-     n'est PAS bundlé/polyfillé (contrairement à un service comme
-     esm.run) — un navigateur sans bundler ne sait donc pas résoudre le
-     spécificateur nu "buffer", d'où l'erreur "Failed to resolve module
-     specifier 'buffer'" bloquant tout import FIT (natif comme via le
-     repli fit-detection.js), découverte le 03/08/2026 lors du premier
-     test réel d'upload sur le compte test.
-     Le seul usage réel de Buffer dans binary.js est
-     `Buffer.from(temp).toString('utf-8')` (décodage UTF-8 d'un tableau
-     d'octets, vérifié en inspectant le fichier source réellement
-     publié) — remplacé ici par un TextDecoder natif du navigateur,
-     plutôt que d'importer le vrai polyfill npm `buffer` (bien plus
-     volumineux pour un seul besoin trivial). DOIT rester avant le
-     premier <script type="module"> de ce fichier (ligne ~642) — un
-     import map n'est appliqué que s'il est déjà présent dans le DOM
-     avant qu'un module ne soit évalué, il ne peut pas être ajouté
-     dynamiquement après coup. Non testé en conditions réelles par
-     Claude au moment de l'écriture (limite d'environnement : impossible
-     de simuler un vrai navigateur dans le sandbox utilisé) — à valider
-     sur le compte test avant tout déploiement plus large. -->
+<!-- Import map : fit-file-parser@3.0.2 (chargé par chargerFitParser())
+     dépend du package npm `buffer` (`import { Buffer } from 'buffer'`
+     dans dist/binary.js). Le fichier ESM brut servi par cdn.jsdelivr.net
+     n'est pas bundlé/polyfillé, donc un navigateur sans bundler ne peut
+     pas résoudre le spécificateur nu "buffer". Le seul usage réel de
+     Buffer dans binary.js est `Buffer.from(temp).toString('utf-8')`
+     (décodage UTF-8) — remplacé ici par un TextDecoder natif, plutôt que
+     d'importer le vrai polyfill npm `buffer`. DOIT rester avant le
+     premier <script type="module"> de ce fichier — un import map n'est
+     appliqué que s'il est déjà présent dans le DOM avant qu'un module ne
+     soit évalué, il ne peut pas être ajouté dynamiquement après coup. -->
 <script type="importmap">
 {
   "imports": {
@@ -346,21 +321,11 @@ input[type=text], input[type=number], input[type=password] {
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
-// Dimensions en pixels absolus calculées en JS (07/08/2026) — cf.
-// commentaire détaillé ci-dessus. Synchrone, exécuté immédiatement (pas
-// de DOMContentLoaded, l'élément #logo-ecran-chargement existe déjà
-// juste au-dessus dans le flux du document au moment où ce script
-// s'exécute) — garantit que le logo a la bonne taille dès le tout
-// premier paint, sans flash d'une mauvaise taille suivi d'une correction.
-// Slogan (07/08/2026, demande de Laurent) — repris tel quel de
-// manifest.json (description de la PWA), sans la partie technique "plan
-// généré par le moteur v2" qui n'a pas sa place sur cet écran. Positionné
-// à top:50% (même ancrage que le logo, cf. translate(-50%,0) qui ne
-// centre QUE horizontalement — verticalement l'élément part de ce point
-// vers le bas) + un margin-top calculé ici en JS pour rester juste sous
-// le logo quelle que soit sa taille réelle (72.5% + une marge fixe de
-// 24px), plutôt qu'une valeur fixe qui se déconnecterait du logo si sa
-// taille venait à changer.
+// Dimensions en pixels calculées en JS, synchrone (pas de DOMContentLoaded)
+// pour garantir la bonne taille dès le premier paint. Slogan repris de
+// manifest.json sans la partie technique "plan généré par le moteur v2".
+// Position top:50% + margin-top calculé en JS pour rester sous le logo
+// quelle que soit sa taille réelle, plutôt qu'une valeur fixe.
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
   var img = document.getElementById('logo-ecran-chargement');
@@ -388,11 +353,9 @@ input[type=text], input[type=number], input[type=password] {
 ============================================================ -->
 <div id="ecran-auth-hote"></div>
 
-<!-- Le <script src=".../supabase.min.js"> UMD a été retiré le 19/07/2026
-     (étape 3, conversion module) — auth.js (module ES) fait désormais son
-     propre `import { createClient } from 'https://esm.sh/@supabase/
-     supabase-js@2'`, indépendant de ce SDK global. Plus utilisé nulle
-     part ailleurs dans ce fichier (vérifié). -->
+<!-- Le SDK Supabase UMD global n'est plus utilisé : auth.js (module ES)
+     fait son propre `import { createClient } from '.../supabase-js@2'`,
+     indépendant de tout SDK global. -->
 <!-- auth.classic.js et sync-storage.classic.js retirés le 19/07/2026 —
      étape 3 du chantier de conversion module (cf. mémoire de session, le
      point le plus délicat car window.__AUTH_PRET__ lui-même dépend de ces
@@ -439,20 +402,11 @@ input[type=text], input[type=number], input[type=password] {
 <script defer src="/engine-classic-scripts/decision-engine-rules.classic.js"></script>
 <script defer src="/engine-classic-scripts/decision-engine-apply.classic.js"></script>
 <script>
-// window.__AUTH_PRET__ créée ici, de façon SYNCHRONE, avant même l'IIFE
-// async ci-dessous — corrige une race condition découverte le 21/07/2026
-// sur v2/index.html (écran "Consulter un plan existant" jamais affiché
-// malgré un plan bien présent en base) et reproduite ici à l'identique.
-// Cause : window.__AUTH_PRET__ n'était assignée qu'après plusieurs
-// `await import(...)` dans l'IIFE async plus bas ; tout code qui exécute
-// `await window.__AUTH_PRET__` avant que ce point ne soit atteint reçoit
-// `undefined`, et `await undefined` ne bloque jamais (JS résout
-// immédiatement une valeur non-promise) — l'attente de l'authentification
-// est donc silencieusement sautée. Symptôme observé : le dashboard
-// retombe sur le plan de repli par défaut (estPlanRepli:true) au lieu du
-// vrai plan Forme fraîchement créé, malgré sa présence réelle en base
-// (chargerPlansSupabase() s'exécutant avec window.__UTILISATEUR__.id
-// encore undefined, retournant [] à tort).
+// window.__AUTH_PRET__ créée ici, de façon SYNCHRONE, avant l'IIFE async
+// ci-dessous — toute déclaration plus tardive (après un `await import(...)`
+// dans l'IIFE) ferait que `await window.__AUTH_PRET__` reçoit `undefined`
+// avant ce point (JS résout immédiatement une valeur non-promise),
+// sautant silencieusement l'attente de l'authentification.
 window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = resolve; });
 (async () => {
   // Cache des modules auth.js et sync-storage.js (19/07/2026, étape 3 du
@@ -493,19 +447,13 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   };
 
   // Démarre le montage de l'écran d'auth dès que possible ; la promesse
-  // se résout avec l'utilisateur dès qu'une session est active (existante
-  // au chargement, ou obtenue via le formulaire).
-  //
-  // Une fois connecté, précharge toutes les données Supabase de
-  // l'utilisateur dans localStorage AVANT de résoudre window.__AUTH_PRET__
-  // — ainsi, quand le script principal plus bas exécute ses ~22 lignes
-  // `let x = load(clePourPlan("lk_..."), défaut)`, les données viennent
-  // déjà de Supabase plutôt que d'un éventuel ancien état local. Le plan
-  // actif n'étant pas encore connu à ce stade (window.__PLAN_BRUT__ se
-  // prépare en parallèle, cf. script suivant), on précharge d'abord sans
-  // planId — les données préfixées par plan seront chargées séparément
-  // une fois le plan connu (cf. bloc juste avant render(), fin de fichier).
-  // Chantier v2.5 migration, 13 juillet 2026 — voir inventaire §8bis.
+  // se résout avec l'utilisateur dès qu'une session est active. Une fois
+  // connecté, précharge toutes les données Supabase dans localStorage
+  // AVANT de résoudre window.__AUTH_PRET__ — les lectures `load(clePourPlan(...))`
+  // du script principal lisent alors déjà les données Supabase, pas un
+  // ancien état local. Précharge d'abord sans planId (plan pas encore
+  // connu) ; les données préfixées par plan sont chargées séparément une
+  // fois le plan connu (cf. bloc juste avant render(), fin de fichier).
   LkAuth.monterEcranAuth('ecran-auth-hote').then(async function (user) {
     window.__UTILISATEUR__ = user;
     // Sentry (20/07/2026, corrigé le 21/07/2026 après un crash) — le
@@ -542,24 +490,18 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     await LkSync.migrerDonneesExistantes(user.id, null);
     const resultatPrechargement = await LkSync.precharger(user.id, null);
 
-    // Onboarding profil (v2.8, §17.7) — affiché une seule fois si le
-    // niveau n'a jamais été renseigné (nouveau compte, ou compte existant
-    // migré avant l'ajout de ce champ). Utilise directement localStorage
-    // ici : profilCoureur/migrerVersProfilCoureur() ne sont définis que
-    // plus loin dans ce fichier (après ce script), donc on ne peut pas
-    // encore s'appuyer dessus à ce stade du chargement.
+    // Onboarding profil — affiché une seule fois si le niveau n'a jamais
+    // été renseigné (nouveau compte, ou compte existant migré avant
+    // l'ajout de ce champ). Utilise directement localStorage ici :
+    // profilCoureur/migrerVersProfilCoureur() ne sont définis que plus
+    // loin dans ce fichier.
     //
-    // Garde-fou ajouté le 20/07/2026 (bug remonté par Laurent : onboarding
-    // redéclenché sur un compte existant, niveau écrasé à null en base
-    // après validation). Cause : quand le préchargement Supabase échoue
-    // (réseau, RLS, timeout — cf. sync-storage.js precharger()),
-    // localStorage n'est jamais réhydraté avec le vrai profil. Le test
-    // ci-dessous traitait alors ce localStorage vide comme "profil jamais
-    // renseigné", déclenchait l'onboarding, puis écrasait le vrai profil
-    // Supabase avec un profil minimal une fois validé. Ne JAMAIS
-    // déclencher l'onboarding si resultatPrechargement signale un échec
-    // — mieux vaut laisser l'utilisateur sur un dashboard potentiellement
-    // vide temporairement (rechargera correctement au prochain essai)
+    // Ne JAMAIS déclencher l'onboarding si resultatPrechargement signale
+    // un échec du préchargement Supabase (réseau, RLS, timeout) — sinon
+    // un localStorage jamais réhydraté serait traité comme "profil jamais
+    // renseigné", déclenchant l'onboarding puis écrasant le vrai profil
+    // Supabase avec un profil minimal une fois validé. Mieux vaut laisser
+    // l'utilisateur sur un dashboard potentiellement vide temporairement
     // que risquer d'écraser des données réelles.
     const profilBrut = JSON.parse(localStorage.getItem('lk_profil_coureur') || 'null');
     if ((!profilBrut || !profilBrut.niveau) && !resultatPrechargement.echecChargementProfil) {
@@ -635,25 +577,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
     window.__resoudreAuthPret__(user);
 
-    // CORRECTIF (01/08/2026, bug signalé par Laurent : un record saisi à
-    // l'onboarding n'apparaissait pas dans Réglages tant que la page
-    // n'était pas rechargée complètement, ex. changement d'onglet
-    // provoquant un rechargement navigateur) — cause : ce bloc est un
-    // script de type module, donc DIFFÉRÉ par le navigateur même s'il
-    // apparaît en premier dans le HTML, alors que le script classique
-    // plus bas (`let profilCoureur = migrerVersProfilCoureur()`)
-    // s'exécute lui IMMÉDIATEMENT à sa rencontre — donc EN RÉALITÉ AVANT
-    // ce bloc-ci, malgré l'ordre inverse dans le fichier. La variable
-    // globale profilCoureur capturait ainsi le localStorage D'AVANT
-    // l'écriture de l'onboarding. IMPORTANT : depuis ce module séparé,
-    // seul window.profilCoureur (exposé explicitement ligne ~1353) est
+    // Ce bloc est un script de type module, donc DIFFÉRÉ par le
+    // navigateur même s'il apparaît en premier dans le HTML, alors que le
+    // script classique plus bas (`let profilCoureur = migrerVersProfilCoureur()`)
+    // s'exécute IMMÉDIATEMENT à sa rencontre — donc EN RÉALITÉ AVANT ce
+    // bloc-ci, malgré l'ordre inverse dans le fichier. Depuis ce module
+    // séparé, seul window.profilCoureur (exposé explicitement) est
     // atteignable — réassigner window.profilCoureur = nouvelObjet ne
-    // suffirait PAS, car renderSettings() (même script classique que la
-    // déclaration `let profilCoureur`) lit la fermeture lexicale locale,
-    // pas window.profilCoureur. Object.assign() MUTE l'objet existant en
-    // place plutôt que de le remplacer — comme window.profilCoureur et
-    // la variable locale profilCoureur pointent vers le MÊME objet, cette
-    // mutation est visible des deux côtés, y compris par renderSettings().
+    // suffirait pas, car renderSettings() lit la fermeture lexicale
+    // locale de `let profilCoureur`, pas window.profilCoureur.
+    // Object.assign() MUTE l'objet existant en place plutôt que de le
+    // remplacer — comme window.profilCoureur et la variable locale
+    // pointent vers le MÊME objet, la mutation est visible des deux
+    // côtés, y compris par renderSettings().
     if (window.profilCoureur) {
       try {
         const profilFrais = JSON.parse(localStorage.getItem('lk_profil_coureur') || 'null');
@@ -923,56 +859,30 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
 
     window.__PLAN_BRUT__ = planBrut;
 
-    // Réparation rétroactive (06/08/2026, bug signalé par Laurent — EF et
-    // longue à 0min sur la semaine EN COURS, pas seulement les semaines
-    // précédentes). Cause racine : semaineDepartVolume (paramètre
-    // transitoire du levier Volume, cf. plan-generator.js et v2/index.html)
-    // pouvait rester "collé" dans paramsOrigine d'un plan déjà sauvegardé
-    // AVANT le correctif appliqué à v2/index.html — ce correctif empêche
-    // la pollution de se PRODUIRE à l'avenir, mais ne répare pas un plan
-    // déjà cassé en base. Si semaineDepartVolume traîne encore ici, il
-    // pollue TOUTE régénération future de ce plan (y compris la semaine
-    // courante, si elle est antérieure à cette charnière obsolète) —
-    // computeVolumeProgression() (plan-generator.js) ne produit aucune
-    // entrée de volume pour les semaines avant semaineDepart, donc
-    // volumeCibleKm retombe à null/0 pour elles, et repartirVolumeSemaine
-    // donne 0km à l'EF et à la longue.
+    // Réparation rétroactive : si semaineDepartVolume (paramètre transitoire
+    // du levier Volume) traîne encore dans paramsOrigine d'un plan déjà
+    // sauvegardé, il pollue toute régénération future (computeVolumeProgression
+    // ne produit aucune entrée avant semaineDepart, donc volumeCibleKm
+    // retombe à 0 pour l'EF et la longue). Nettoyage silencieux : retire le
+    // champ et régénère depuis paramsOrigine propre. Best-effort : si la
+    // régénération échoue, garde le plan tel quel plutôt que de bloquer
+    // le chargement.
     //
-    // Nettoyage silencieux : si le champ est présent, on le retire des
-    // paramsOrigine sauvegardés et on régénère le plan à partir de
-    // paramsOrigine propre — restaure une vraie progression de volume dès
-    // la semaine 1, cohérent avec ce qu'aurait dû être ce plan depuis le
-    // début (le levier Volume n'a de sens QUE le temps de son propre appel
-    // à generatePlan(), jamais comme état durable). Best-effort : si la
-    // régénération échoue pour une raison quelconque (plan invalide,
-    // paramsOrigine absent), on garde le plan tel quel plutôt que de
-    // bloquer le chargement de l'app.
-    // RÉPARATION DÉFINITIVE (06/08/2026) — détection DIRECTE des semaines
-    // cassées par leur symptôme réel (volumeCibleKm absent/nul avec EF ou
-    // longue à 0km), plutôt que par la présence de semaineDepartVolume dans
-    // paramsOrigine. Nécessaire car ce champ peut avoir déjà disparu de
-    // paramsOrigine (ex. après un usage ultérieur du levier Volume, dont le
-    // correctif de v2/index.html retire bien semaineDepartVolume avant
-    // sauvegarde) SANS que les semaines déjà cassées avant ce nettoyage
-    // n'aient jamais été réparées — volumeCibleKm est un champ figé DANS
-    // CHAQUE SEMAINE du plan déjà sauvegardé, indépendant de paramsOrigine,
-    // donc une détection basée uniquement sur paramsOrigine.semaineDepartVolume
-    // manquait ce cas (bug persistant signalé par Laurent malgré le premier
-    // correctif — la condition de déclenchement ne se déclenchait jamais).
+    // Détection DIRECTE des semaines cassées par leur symptôme réel
+    // (volumeCibleKm absent/nul avec EF ou longue à 0km), plutôt que par la
+    // seule présence de semaineDepartVolume dans paramsOrigine — ce champ
+    // peut avoir déjà disparu sans que les semaines cassées AVANT sa
+    // disparition n'aient été réparées (volumeCibleKm est figé par semaine,
+    // indépendant de paramsOrigine).
     //
     // Réparation semaine par semaine (pas une régénération globale) :
     // reconstruit uniquement le contenu EF/longue des semaines cassées, à
-    // partir du volume hebdo qu'elles AURAIENT dû avoir selon la vraie
-    // progression recalculée depuis paramsOrigine — jamais les séances
-    // qualité (jamais cassées par ce bug, cf. diagnostic avec Laurent) ni
-    // les autres semaines (non affectées, laissées intactes).
+    // partir du volume hebdo recalculé depuis paramsOrigine — jamais les
+    // séances qualité (non affectées par ce bug) ni les autres semaines.
     //
-    // Protection identique au correctif précédent : une semaine
-    // STRICTEMENT PASSÉE (tous ses jours avant aujourd'hui) n'est jamais
-    // réparée automatiquement, même si cassée — seul un avertissement le
-    // signale, pour ne jamais réécrire une séance déjà vécue par le
-    // coureur. Semaine en cours et futures : réparées (risque assumé par
-    // Laurent pour la semaine en cours, cf. échange du 06/08/2026).
+    // Une semaine STRICTEMENT PASSÉE n'est jamais réparée automatiquement,
+    // même si cassée — seul un avertissement le signale, pour ne jamais
+    // réécrire une séance déjà vécue par le coureur.
     if (planBrut?.profilOrigine && planBrut?.paramsOrigine && Array.isArray(planBrut?.semaines)) {
       try {
         const semainesCasseesIdx = [];
@@ -1186,30 +1096,21 @@ if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
   await LkSync.migrerDonneesExistantes(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
   await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
 
-  // Realtime — ajouté le 13 juillet 2026. Un changement fait sur un autre
-  // appareil (même compte) déclenche ce callback : on relit les données
-  // fraîches depuis Supabase (precharger, qui écrase localStorage), puis
-  // on ré-exécute les mêmes lectures que celles faites au chargement
-  // (statuses, notes, etc.) avant de redemander un rendu. Pas de retry
-  // ni de gestion d'erreur poussée ici — un échec silencieux n'est pas
-  // grave, le prochain rechargement de page rattrapera de toute façon.
+  // Realtime — un changement fait sur un autre appareil (même compte)
+  // déclenche ce callback : on relit les données fraîches depuis Supabase
+  // (precharger, qui écrase localStorage), puis on ré-exécute les mêmes
+  // lectures que celles faites au chargement (statuses, notes, etc.)
+  // avant de redemander un rendu. Pas de retry ni de gestion d'erreur
+  // poussée — un échec silencieux n'est pas grave, le prochain
+  // rechargement de page rattrapera.
   //
-  // CORRECTIF (04/08/2026, recherche approfondie sur le clignotement à
-  // l'ouverture signalé par Laurent, confirmé par test Performance +
-  // Screenshots : vraie page blanche de ~750ms à ~1.85s avant le premier
-  // affichage) — ce `await` bloquait le render() final juste après (plus
-  // bas dans ce script) : établir un canal WebSocket (activerRealtime
-  // appelle supabase.channel(...).subscribe()) est structurellement plus
-  // lent qu'un simple fetch REST (handshake de connexion), et la synchro
-  // temps réel entre appareils est un BONUS — utile si un autre appareil
-  // modifie quelque chose pendant que cette session est ouverte, mais
-  // absolument pas un prérequis pour afficher le dashboard une première
-  // fois avec les données déjà préchargées par le await precharger()
-  // juste au-dessus. Retiré ce await : le canal continue de s'établir en
-  // arrière-plan (fire-and-forget), sans plus retarder le premier
-  // render(). Non testé en conditions réelles par Claude (limite
-  // d'environnement) — à valider par Laurent avant de considérer ce
-  // correctif acquis.
+  // L'établissement du canal WebSocket (activerRealtime, supabase.channel
+  // ...subscribe()) n'est jamais attendu (await) avant le render() final :
+  // c'est structurellement plus lent qu'un simple fetch REST, et la
+  // synchro temps réel est un BONUS, pas un prérequis pour afficher le
+  // dashboard avec les données déjà préchargées par precharger(). Le
+  // canal s'établit en arrière-plan (fire-and-forget), sans retarder le
+  // premier render().
   LkSync.activerRealtime(window.__PLAN_BRUT__.id, async () => {
     await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
     statuses = load(clePourPlan("lk_statuses"), {});
@@ -1359,26 +1260,21 @@ const READINESS_OPTIONS = [
 // 2026-06-22, course 2026-09-06, 30km/semaine).
 
 // Recalculable via recalculerAllSessions() plutôt que figée en const :
-// nécessaire pour la future sélection de plan (docs/v2-methodologie/
+// nécessaire pour la sélection de plan (docs/v2-methodologie/
 // convergence-v1-v2.md, section 7) — si un autre plan est chargé après le
 // démarrage, ALL_SESSIONS doit être reconstruite depuis le nouveau PLAN,
 // pas rester sur l'ancien.
-// BUG corrigé le 22/07/2026 (signalé par Laurent : "déplacement manuel
-// bug") : ALL_SESSIONS était construite depuis w.sessions[i] BRUT, sans
-// jamais tenir compte de swappedSessions — seul renderWeekDetail()
-// (l'affichage de la carte) appliquait le swap via getEffectiveSession().
-// Conséquence : après un déplacement manuel (ex. séance VMA glissée vers
-// un jour repos), l'écran montrait bien le nouveau placement, mais TOUT
-// le reste de l'app (moteur de décision, INTERVAL_SESSION_DATES, matching
-// Strava/structureIntervalles, prédicteur 10K, stats) continuait de lire
-// l'ancien placement — 67 usages de ALL_SESSIONS dans ce fichier, aucun
-// n'était au courant du swap. Corrigé à la source : recalculerAllSessions()
-// applique désormais getEffectiveSession() lui-même, une seule fois, pour
-// que tous les consommateurs en bénéficient automatiquement sans devoir
-// être modifiés un par un. La date du slot affiché (s.date) est conservée
-// (c'est le jour calendaire réel où la séance doit être faite/a été
-// faite), seul le CONTENU de la séance (type, structureIntervalles,
-// contenu, kmEstime...) vient du swap le cas échéant.
+//
+// recalculerAllSessions() applique getEffectiveSession() lui-même, une
+// seule fois, pour que TOUS les consommateurs (moteur de décision,
+// INTERVAL_SESSION_DATES, matching Strava/structureIntervalles,
+// prédicteur 10K, stats) voient le contenu swappé sans devoir être
+// modifiés individuellement — construire ALL_SESSIONS depuis
+// w.sessions[i] brut désynchroniserait ces ~67 usages du swap réel. La
+// date du slot affiché (s.date) est conservée (jour calendaire réel où
+// la séance doit être faite/a été faite), seul le CONTENU de la séance
+// (type, structureIntervalles, contenu, kmEstime...) vient du swap le
+// cas échéant.
 function recalculerAllSessions() {
   // statutEffectif ajouté le 22/07/2026 (suite discussion avec Laurent sur
   // le badge 😴) : "😴" (repos/sauté) auto-appliqué UNIQUEMENT à
@@ -1494,37 +1390,20 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 
-// ── REFONTE MODÈLE DE SWAP (14/08/2026) ──────────────────────────────────
-// Remplace définitivement swappedSessions (dictionnaire {uid: uidSource}).
-// Bug de fond découvert le 14/08/2026 (signalé par Laurent : une SORTIE
-// LONGUE disparue après "Annuler le déplacement" sur une rotation à 3
-// séances — symptôme observé : 3 EF au lieu de 5 séances variées dans la
-// semaine). Cause racine : le bouton "Annuler le déplacement" faisait
-// `delete swappedSessions[uid]` sur UNE SEULE position — correct pour un
-// swap simple à 2, mais dans une rotation à 3+ maillons ça casse la
-// chaîne : un contenu se retrouve dupliqué à deux endroits, un autre
-// disparaît complètement. Reproduit et confirmé par simulation avant ce
-// correctif (Lundi<->Mardi puis Mardi<->Mercredi, puis annuler sur
-// Mardi seul → Mercredi disparaît, Mardi devient un doublon de Lundi).
-// Le commentaire de la refonte du 07/08/2026 affirmait à tort que ce
-// nouveau modèle "n'a jamais cette forme d'incohérence par construction"
-// — faux, la simulation le contredit. D'où cette seconde refonte, cette
-// fois structurellement incassable plutôt qu'un nouveau patch de plus.
-//
-// NOUVEAU MODÈLE : swapPairs = [{a: uid, b: uid}, ...], une liste
-// d'échanges ATOMIQUES (jamais un dictionnaire à demi-cohérent). Chaque
-// paire est un événement complet et réversible EN BLOC — annuler un swap
-// retire toujours les DEUX côtés ensemble, jamais un seul.
-// sourceSwap(uid) résout la position d'origine en parcourant swapPairs
-// à L'ENVERS (de la paire la plus récente à la plus ancienne) — "remonte
-// le temps" depuis la position actuelle. Testé exhaustivement (swap
-// simple, ré-swap qui annule/toggle, rotation à 3, rotation à 4,
-// annulation d'un maillon dans une rotation à 3+) : résultat toujours
-// identique à un vrai échange physique, ET aucune disparition/duplication
-// possible par construction — un uid ne peut jamais être répété deux fois
-// dans les positions "a"/"b" d'une même paire active simultanément d'une
-// façon qui romprait l'unicité (chaque paire ne fait qu'échanger deux
-// positions entre elles, jamais créer ou détruire un contenu).
+// ── MODÈLE DE SWAP ──────────────────────────────────────────────────────
+// swapPairs = [{a: uid, b: uid}, ...], une liste d'échanges ATOMIQUES
+// (jamais un dictionnaire {uid: uidSource} — un dictionnaire ne peut pas
+// annuler proprement un maillon dans une rotation à 3+ sans casser la
+// chaîne). Chaque paire est un événement complet et réversible EN BLOC —
+// annuler un swap retire toujours les DEUX côtés ensemble, jamais un seul.
+// sourceSwap(uid) résout la position d'origine en parcourant swapPairs à
+// L'ENVERS (de la paire la plus récente à la plus ancienne). Testé
+// exhaustivement (swap simple, ré-swap qui annule/toggle, rotation à 3,
+// rotation à 4, annulation d'un maillon dans une rotation à 3+) :
+// résultat toujours identique à un vrai échange physique, aucune
+// disparition/duplication possible par construction — un uid ne peut
+// jamais être répété deux fois dans les positions "a"/"b" d'une même
+// paire active simultanément.
 let swapPairs = load(clePourPlan("lk_swap_pairs"), null);
 
 // Migration automatique depuis l'ancien format swappedSessions
@@ -1609,25 +1488,16 @@ let stravaExpires = load("lk_strava_expires", 0);
 let stravaActivities = load("lk_strava_activities", []);
 window.stravaActivities = stravaActivities; // exposition pour scripts externes (moteur de décision)
 
-// Relecture explicite — 05/08/2026, bug signalé par Laurent (synchro Strava
-// absente à l'ouverture, "perdue" après un F5). Les déclarations ci-dessus
-// s'exécutent APRÈS `await window.__AUTH_PRET__` (ligne ~778, plus haut
-// dans ce même script) dans l'ordre séquentiel du fichier, donc load() lit
-// déjà en principe un localStorage rempli par le préchargement Supabase.
-//
-// CORRECTIF DU 05/08/2026 (1ère tentative) : un bloc de relecture avait été
-// placé juste après `await window.__AUTH_PRET__` (ligne ~778), AVANT cette
-// déclaration `let stravaToken` — cassait immédiatement toute la page en
-// écran blanc (ReferenceError: Cannot access 'stravaToken' before
-// initialization, TDZ). Déplacé ici, après la déclaration, comme il
-// aurait dû l'être dès le départ.
-//
-// Cette relecture reste utile ici (pas juste redondante avec les lignes
-// ci-dessus) : si un jour ce bloc de déclarations est déplacé avant
-// le await (refactor futur), ou si load() est appelée dans un contexte où
-// le préchargement n'a pas fini d'écrire synchroniquement, cette passe de
-// contrôle explicite retente une lecture fraîche avant qu'autoSync() (plus
-// bas dans ce fichier) ne teste `if (stravaToken && ...)`.
+// Relecture explicite : les déclarations ci-dessus s'exécutent APRÈS
+// `await window.__AUTH_PRET__` dans l'ordre séquentiel du fichier, donc
+// load() lit déjà en principe un localStorage rempli par le
+// préchargement Supabase — mais cette passe de contrôle explicite reste
+// utile si ce bloc de déclarations est un jour déplacé avant le await, ou
+// si load() est appelée dans un contexte où le préchargement n'a pas
+// fini d'écrire synchroniquement : elle retente une lecture fraîche
+// avant qu'autoSync() ne teste `if (stravaToken && ...)`. Cette
+// déclaration `let stravaToken` doit rester AVANT tout bloc de relecture
+// équivalent (sinon TDZ, ReferenceError).
 if (!stravaToken) {
   stravaToken = load("lk_strava_token", null);
   stravaRefresh = load("lk_strava_refresh", null);
@@ -1810,36 +1680,29 @@ function obtenirSeancesPlanifieesManquees() {
   };
 }
 
-// ── État complet du moteur de décision, calcul unique partagé (§9.1 doc ────
+// ── État complet du moteur de décision, calcul unique partagé (§9.1 doc
 // intégration : "le coach IA devient un habillage du moteur, jamais un
 // second décideur") — utilisé à la fois par moteurDecisionEl (carte de
-// proposition, ligne ~2275) et fetchCoachMsg (prompt du coach IA). Un seul
-// calcul, jamais deux exécutions séparées qui pourraient diverger.
-// Retourne { runnerState, engagementState, decision } ou null si les scripts
-// du moteur ne sont pas chargés, pas d'activités, ou erreur de calcul —
+// proposition) et fetchCoachMsg (prompt du coach IA). Un seul calcul,
+// jamais deux exécutions séparées qui pourraient diverger. Retourne
+// { runnerState, engagementState, decision } ou null si les scripts du
+// moteur ne sont pas chargés, pas d'activités, ou erreur de calcul —
 // jamais d'exception qui remonterait au dashboard.
 //
-// weekAnalysis/trendAnalysis (Modules 3/4) branchés dans l'input du 17/07/2026
-// (session ultérieure) — décision explicite de Laurent : ajouter ces données
-// à l'input, sans qu'aucune règle ne les consomme dans un premier temps
-// (cf. inventaire §32). Complété plus tard dans la même session ultérieure :
-// R-062 (cf. decision-engine-rules.classic.js) consomme désormais
+// weekAnalysis/trendAnalysis (Modules 3/4) branchés dans l'input :
+// R-062 (decision-engine-rules.classic.js) consomme
 // trendAnalysis.signauxDetectes (signal FATIGUE_CROISSANTE) — weekAnalysis
 // reste inconsommé pour l'instant. evaluerRegles() ignore silencieusement
-// tout champ qu'aucune règle ne lit — aucun risque de régression sur les
-// décisions déjà produites par les règles existantes.
-// analyserSemaineActuelle()/analyserTendance() (déclarées plus bas dans ce
-// fichier, hoisting JS standard donc accessibles ici sans souci d'ordre)
-// peuvent retourner null (pas assez de semaines, script non chargé) — dans
-// ce cas weekAnalysis/trendAnalysis restent simplement null dans l'input,
-// comme sessionAnalysis l'est déjà pour EngineInput (cf. doc archi, champ
-// optionnel "absent si pas de séance récente à évaluer").
+// tout champ qu'aucune règle ne lit — aucun risque de régression.
+// analyserSemaineActuelle()/analyserTendance() (déclarées plus bas,
+// hoisting JS) peuvent retourner null (pas assez de semaines, script non
+// chargé) — dans ce cas weekAnalysis/trendAnalysis restent null dans
+// l'input, comme sessionAnalysis pour EngineInput.
 //
-// RPE unifié (17/07/2026, même chantier) : adapterHistoriqueAvecRpe()
-// remplace adapterHistoriqueComplet() ici — le Module 1 (fatigue/ACWR)
-// bénéficie désormais du RPE saisi via renderStatusRow(), plus seulement
-// TRIMP sur FC. Cohérent avec la même correction appliquée à
-// obtenirRatioACWRActuel()/obtenirHistoriqueACWR() juste au-dessus.
+// adapterHistoriqueAvecRpe() remplace adapterHistoriqueComplet() ici —
+// le Module 1 (fatigue/ACWR) bénéficie du RPE saisi via renderStatusRow(),
+// plus seulement TRIMP sur FC. Cohérent avec la même correction appliquée
+// à obtenirRatioACWRActuel()/obtenirHistoriqueACWR() juste au-dessus.
 function calculerEtatMoteurDecision() {
   if (typeof DecisionEngineAdapter === 'undefined' || typeof DecisionEngineRunnerState === 'undefined'
       || typeof DecisionEngineEngagement === 'undefined' || typeof DecisionEngineRules === 'undefined') return null;
@@ -2989,24 +2852,15 @@ function weekStats(weekNum) {
   // Distance et durée prévues : utilisent kmEstime (par séance) et
   // volumeCibleKm (par semaine), propagés depuis le moteur v2 via
   // v1-bridge.js — plus la peine de reparser le texte des séances.
-  // Bug corrigé le 7 juillet 2026 : l'ancien parsing par regex
-  // (/(\d+)(?:[–\-](\d+))?\s*min/) ne gérait pas les formats "N×Xmin"
-  // (ex. "3×6min" comptait comme 6min réels, pas 18min), sous-comptant
-  // fortement les séances qualité — 27km affichés au lieu de 40km réels
-  // pour un volume saisi de 40km. kmEstime est calculé précisément par le
-  // moteur (y compris échauffement/retour au calme), pas à reconstruire
-  // depuis un texte libre destiné à l'affichage, pas au calcul.
+  // kmEstime est calculé précisément par le moteur (y compris
+  // échauffement/retour au calme), un parsing par regex sur le texte des
+  // séances ne gère pas correctement les formats "N×Xmin".
   //
-  // CORRECTIF ("la frise ne correspond plus aux séances", signalé par
-  // Laurent) — ce filtre lisait week.sessions DIRECTEMENT, sans jamais
-  // passer par getEffectiveSession() (déjà utilisée pour l'affichage de
-  // la frise elle-même, cf. renderGrilleJoursSemaine). Une séance
-  // déplacée vers un slot REPOS via swap restait donc comptée comme
-  // REPOS ici (exclue du volume prévu), et inversement un ancien slot de
-  // séance qui a été swappé ailleurs restait compté comme si la séance y
-  // était toujours — désynchronisation entre la frise (correcte) et les
-  // statistiques affichées juste à côté (incorrectes, basées sur
-  // l'ancien contenu pré-swap).
+  // Ce filtre passe par getEffectiveSession() (comme renderGrilleJoursSemaine
+  // pour la frise elle-même) plutôt que de lire week.sessions directement —
+  // sinon une séance déplacée vers un slot REPOS via swap resterait comptée
+  // comme REPOS (exclue du volume prévu), désynchronisant la frise des
+  // statistiques affichées juste à côté.
   // Défensif, même principe que weekPct ci-dessus.
   let sessions;
   try {
@@ -3719,39 +3573,27 @@ function fcStatus(type, avgHr) {
   return "🟡";
 }
 
-// ── Branchement Module 2 (SessionAnalyzer) — 17/07/2026, révisé le 17/07 ───
+// ── Branchement Module 2 (SessionAnalyzer) ──────────────────────────────
 // Pour une séance qualité (VMA/SPEC/SEUIL/TEST) prévue à une date donnée,
 // retrouve l'activité Strava du même jour et produit un SessionAnalysis via
 // DecisionEngineSessionAnalysis. Périmètre restreint aux séances qualité,
-// cf. en-tête de decision-engine-session-analysis.classic.js (décision
-// Laurent 17/07/2026).
+// cf. en-tête de decision-engine-session-analysis.classic.js.
 //
-// RÉVISION (17/07/2026, discussion complète avec Laurent) : la dimension
-// "volume" (distance totale des laps d'effort) a été retirée du module et
-// remplacée par un vrai comptage de répétitions dans la zone d'allure
-// (analyserRepetitions), pour la raison suivante : la montre continue
-// d'enregistrer les créneaux prévus (30s effort/30s récup) même en cas
-// d'abandon partiel — une répétition "marchée" reste un lap distinct, donc
-// la distance totale peut rester proche de la cible même avec une
-// répétition complètement ratée au milieu de la séance. Le signal fiable
-// est donc le TAUX DE RÉPÉTITIONS DANS LA ZONE, pas la distance globale.
-// Réutilise EXACTEMENT la même logique que autoValidate()/validateReason()
-// (§6097-6178 index.html) : okPace/repOk/repWarn de SESSION_TARGETS — pour
-// qu'il n'existe qu'UNE seule définition de "séance de qualité réussie"
-// dans toute l'app (cf. discussion : "ça reste 2 sources" — corrigé ici).
+// Le signal de réussite est le TAUX DE RÉPÉTITIONS DANS LA ZONE D'ALLURE
+// (analyserRepetitions), pas la distance totale des laps d'effort — la
+// montre enregistre les créneaux prévus même en cas d'abandon partiel,
+// donc la distance seule peut rester proche de la cible avec une
+// répétition ratée. Réutilise la même logique que autoValidate()/
+// validateReason() (okPace/repOk/repWarn de SESSION_TARGETS) : une seule
+// définition de "séance de qualité réussie" dans toute l'app.
 //
-// FC basse : ne pénalise plus (cf. analyserEcartFC révisée) — seule une FC
-// trop haute reste un signal négatif.
+// FC basse : ne pénalise plus (cf. analyserEcartFC) — seule une FC trop
+// haute reste un signal négatif. Allure : reste symétrique (trop rapide
+// et trop lent pénalisent pareil).
 //
-// Allure : reste symétrique (trop rapide et trop lent pénalisent pareil) —
-// asymétrie envisagée mais reportée faute de données réelles pour la
-// calibrer (décision Laurent 17/07/2026 : "on verra l'asymétrique des
-// allures si nécessaire plus tard").
-//
-// Utilise getLapsAffichage(activite, seance.structureIntervalles) (déjà
-// validée ailleurs dans l'app) pour isoler précisément les laps d'EFFORT —
-// jamais l'échauffement, la récupération courte/longue, ni le retour au
-// calme.
+// Utilise getLapsAffichage(activite, seance.structureIntervalles) pour
+// isoler précisément les laps d'EFFORT — jamais l'échauffement, la
+// récupération, ni le retour au calme.
 //
 // Retourne null si le module n'est pas chargé, si la séance n'est pas une
 // séance qualité, si aucune activité Strava ne correspond à cette date, ou
@@ -3860,25 +3702,18 @@ function economyLabel(score, n) {
 function runByLeaIcon(size, radius) {
   return window._sessionAnalysisModule.runByLeaIcon(size, radius);
 }
-// Bug trouvé le 03/08/2026 (premier test réel, compte de test) : quand
-// activity.laps provient de la détection par signal sur un fichier .fit
-// sans marqueurs structurés natifs (cf. adapterFitVersFormatActivite(),
+// Quand activity.laps provient de la détection par signal sur un fichier
+// .fit sans marqueurs structurés natifs (cf. adapterFitVersFormatActivite(),
 // fit-detection.js), ce tableau ne contient QUE des blocs d'effort —
 // jamais de récup entre eux (décision de conception "Chemin B direct",
 // cf. docs/v2-methodologie/import-fit-intervalles.md section 2). Le
 // module getLapsAffichage() (session-analysis.js) fait avancer un
 // CURSEUR dans activity.laps en supposant une alternance effort/récup
-// native (bloc.dureeRecupSec fait avancer le curseur d'un cran
-// supplémentaire pour "sauter" une récup qui, ici, n'existe pas dans le
-// tableau) — avec des laps d'effort seuls, le curseur se désynchronise
-// après la 1ère répétition et ne retrouve qu'une fraction des
-// répétitions réellement détectées (vérifié : 2 laps retrouvés sur 6
-// réellement détectés, aux positions attendues par un curseur déréglé,
-// pas un sous-ensemble filtré par allure).
-// Corrigé une seule fois ici (plutôt que dans chacun des 9+ appelants de
-// ce wrapper dans ce fichier) : quand activity.lapsSontDejaEffortSeul
-// est vrai, on retourne activity.laps tel quel, sans repasser par le
-// curseur du module.
+// native — avec des laps d'effort seuls, ce curseur se désynchroniserait
+// après la 1ère répétition. Corrigé une seule fois ici (plutôt que dans
+// chacun des 9+ appelants de ce wrapper) : quand
+// activity.lapsSontDejaEffortSeul est vrai, on retourne activity.laps tel
+// quel, sans repasser par le curseur du module.
 function getLapsAffichage(activity, structureIntervalles) {
   if (activity?.lapsSontDejaEffortSeul) return activity.laps || [];
   return window._sessionAnalysisModule.getLapsAffichage(activity, structureIntervalles, ALL_SESSIONS, SESSION_TARGETS);
@@ -3944,31 +3779,17 @@ function predict10K() {
   return window._predictorModule.predict10K(construireCtxPredicteur());
 }
 
-// rebuildPredHistory() reste un wrapper LOCAL (pas dans le module) : mute
-// isRebuilding/lastRebuildDate (variables let de ce script), appelle
-// render(), et réassigne predHistory en entier depuis le résultat PUR de
-// rebuildPredHistorySequentielle() — un module ES ne peut pas réassigner
-// une variable let du scope appelant à travers un paramètre, cf. en-tête
-// de predictor.js.
-// BUG CRITIQUE CORRIGÉ (31/07/2026, signalé par Laurent : "je suis sur un
-// compte et rien dans paramètres je ne peux pas me déconnecter") —
-// nbSaisiesManuelles() était appelée à deux endroits (ci-dessous et plus
-// bas, ligne ~2821) mais n'était définie NULLE PART dans ce fichier :
-// ReferenceError immédiat au chargement, qui interrompait l'exécution du
-// script à ce point précis — tout le code situé après (y compris les
-// accordéons de Réglages et le bouton de déconnexion, bien plus loin dans
-// le fichier) restait donc dans un état "jamais initialisé"
-// (TDZ — temporal dead zone), provoquant une seconde erreur en cascade
-// dès qu'un render() y accédait. Aucun rapport avec le chantier des
-// accordéons en cours au moment où ce bug a été signalé — préexistant,
-// juste jamais remarqué avant car son point d'appel (rebuildPredHistory,
-// exécuté au chargement) ne plantait bien que si predHistory devait être
-// reconstruit ce jour-là (pas systématique). Compte le nombre de séances
-// ayant une saisie manuelle enregistrée (cf. manualPerf, juste au-dessus).
+// nbSaisiesManuelles() compte le nombre de séances ayant une saisie
+// manuelle enregistrée (cf. manualPerf, juste au-dessus).
 function nbSaisiesManuelles() {
   return Object.keys(manualPerf || {}).length;
 }
 
+// rebuildPredHistory() reste un wrapper LOCAL (pas dans le module) : mute
+// isRebuilding/lastRebuildDate, appelle render(), et réassigne
+// predHistory en entier depuis le résultat PUR de
+// rebuildPredHistorySequentielle() — un module ES ne peut pas réassigner
+// une variable let du scope appelant à travers un paramètre.
 function rebuildPredHistory() {
   if ((!stravaActivities.length && !nbSaisiesManuelles()) || isRebuilding) return;
   isRebuilding = true;
@@ -4664,25 +4485,22 @@ function renderDashboard() {
     );
   })();
 
-  // ── Proposition d'adaptation dynamique (étape 4, doc convergence) ────────
-  // Décidé avec Laurent le 8 juillet 2026 : détection AUTOMATIQUE (comme le
-  // statut lui-même), mais application seulement sur confirmation explicite
-  // — pas d'automatisme silencieux sur une vraie modification du plan.
-  // "Ignorer" ne mémorise le refus que pour CETTE semaine précise (pas
-  // définitif pour tout le plan) — si une nouvelle semaine tombe plus tard
-  // dans la même situation, une nouvelle proposition apparaît normalement.
-  // ── Garde-fou d'exclusion adaptation comportementale / moteur physio
-  // (27/07/2026, cf. inventaire §16) ──────────────────────────────────────
+  // ── Proposition d'adaptation dynamique (étape 4, doc convergence) ──────
+  // Détection AUTOMATIQUE (comme le statut lui-même), mais application
+  // seulement sur confirmation explicite — pas d'automatisme silencieux
+  // sur une vraie modification du plan. "Ignorer" ne mémorise le refus
+  // que pour CETTE semaine précise (pas définitif pour tout le plan).
+  //
+  // ── Garde-fou d'exclusion adaptation comportementale / moteur physio ───
   // Calcul LÉGER, en lecture seule, de la semaine actuellement ciblée par
   // une décision reduire_charge du moteur physio (si elle existe et n'est
   // pas déjà ignorée) — nécessaire ici, AVANT adaptationEl, pour qu'il
   // puisse se taire sur cette même semaine plutôt que de proposer une
   // action concurrente. Ne journalise rien (journaliserDecisionEvent reste
-  // strictement dans moteurDecisionEl, pas dupliqué ici) et ne calcule que
-  // ce qui est nécessaire pour la comparaison de semaineNum — le calcul
-  // complet (readiness, modulation, cibleInfo réelle) reste dans
-  // moteurDecisionEl plus bas, qui est la seule source de vérité pour
-  // l'affichage/application de la décision physio elle-même.
+  // strictement dans moteurDecisionEl) et ne calcule que ce qui est
+  // nécessaire pour la comparaison de semaineNum — le calcul complet
+  // (readiness, modulation, cibleInfo réelle) reste dans moteurDecisionEl
+  // plus bas, seule source de vérité pour la décision physio elle-même.
   const semaineCiblePhysioActive = (() => {
     if (!window.__PLAN_BRUT__ || window.__PLAN_BRUT__.estPlanRepli) return null;
     if (typeof DecisionEngineApply === 'undefined') return null;
@@ -6134,21 +5952,15 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  // Bandeau "Strava déconnecté" sur le dashboard (02/08/2026, demande de
-  // Laurent : "parfois Strava est déconnecté [...] si on ne va pas dans
-  // les paramètres on ne le voit pas") — couvre les DEUX cas distincts de
-  // déconnexion, jusque-là visibles uniquement via des indicateurs
-  // discrets (Réglages pour stravaAuthInvalide, texte en bas de page pour
-  // !stravaToken) :
+  // Bandeau "Strava déconnecté" sur le dashboard — couvre les DEUX cas
+  // distincts de déconnexion, sinon visibles uniquement via des
+  // indicateurs discrets (Réglages pour stravaAuthInvalide, texte en bas
+  // de page pour !stravaToken) :
   // 1) stravaAuthInvalide : un token existe mais a été révoqué/a expiré
   //    (positionné par syncStrava()/le refresh du token) — déjà affiché
   //    dans Réglages via le bouton "🔄 Reconnecter Strava".
   // 2) !stravaToken : aucun token du tout (jamais connecté, ou révoqué au
-  //    point d'être entièrement supprimé) — CORRECTIF (même jour, bug
-  //    signalé par Laurent : le bandeau ne s'affichait pas dans ce cas
-  //    précis, seule la condition stravaAuthInvalide était couverte au
-  //    premier jet, alors que c'était justement le cas concerné :
-  //    "Strava non connecté" affiché en bas sans aucun bandeau visible).
+  //    point d'être entièrement supprimé).
   // Affiché seulement si dataSource === "strava" (pas de sens d'alerter
   // quelqu'un qui utilise la saisie manuelle ou l'import FIT). Même lien
   // /api/strava/auth que le bouton équivalent de Réglages — aucune
@@ -6530,29 +6342,23 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
   nouveauPlan.nom = planCourant.nom;
   nouveauPlan.statuses = planCourant.statuses;
 
-  // ── Garde-fou : préserver les séances déjà passées (17/07/2026) ──────────
-  // Demande explicite de Laurent : une régénération de plan (changement de
-  // palier, ou toute future régénération complète) ne doit JAMAIS modifier
-  // le contenu des séances dont la date est déjà passée — même si le nouveau
-  // plan généré (nouveauPlan) les définit différemment. Trouvé en pratique
-  // le 17/07/2026 : une séance "2×8×30-30" observée dans l'app était devenue
-  // "4×30-30" après une régénération antérieure, changeant rétroactivement
-  // ce que Laurent avait réellement couru par rapport à ce que l'app affiche
-  // désormais avoir été prévu — trompeur pour l'analyse a posteriori (dont
-  // le Module 2 du moteur de décision, qui compare la séance réalisée à ce
-  // que le plan dit avoir été prévu ce jour-là).
+  // ── Garde-fou : préserver les séances déjà passées ─────────────────────
+  // Une régénération de plan (changement de palier, ou toute future
+  // régénération complète) ne doit JAMAIS modifier le contenu des
+  // séances dont la date est déjà passée — même si le nouveau plan généré
+  // (nouveauPlan) les définit différemment, pour ne pas changer
+  // rétroactivement ce qui a été réellement couru par rapport à ce que
+  // l'app affiche avoir été prévu (trompeur pour l'analyse a posteriori,
+  // dont le Module 2 du moteur de décision).
   //
   // Principe : pour chaque semaine du plan, si TOUTES ses séances ont une
   // date strictement antérieure à aujourd'hui, on reprend cette semaine
   // telle qu'elle existait dans planCourant (l'ancien plan), pas celle du
   // nouveauPlan fraîchement généré. Une semaine partiellement passée (ex.
   // semaine en cours) suit le nouveauPlan en entier — un mélange jour par
-  // jour au sein d'une même semaine serait plus risqué à maintenir cohérent
-  // (numérotation, structure) pour un gain marginal (seuls les jours déjà
-  // passés de cette semaine seraient concernés, généralement 0-6 jours).
+  // jour serait plus risqué à maintenir cohérent pour un gain marginal.
   // Même calcul de date que déjà utilisé ailleurs pour convertir
-  // semaine.semaineNum + jourIndex en date réelle (cf. ~ligne 837,
-  // vérifierMeteoPourSeance).
+  // semaine.semaineNum + jourIndex en date réelle (cf. vérifierMeteoPourSeance).
   (function preserverSemainesPassees() {
     const debutCourant = new Date(planCourant.dateDebut + 'T00:00:00Z');
     const aujourdhui = new Date();
@@ -6599,25 +6405,24 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
   render();
 }
 
-// Rangée de boutons de statut (✅/❌/⚠️/😴), réutilisable — extraite le
-// 8 juillet 2026 pour aussi l'utiliser sur la carte "Aujourd'hui" du
-// dashboard (Laurent signale qu'il fallait aller dans le détail de semaine
-// juste pour valider la séance du jour, pourtant déjà affichée).
-// ══════════════════════════════════════════════════════════════════════════════
-// TEST SEMI-COOPER — capture du résultat (Mode Forme sans référence, 21/07/2026)
-// ══════════════════════════════════════════════════════════════════════════════
-// Bloc dédié, volontairement séparé du système manualPerf général (qui gère
-// la saisie manuelle récurrente pour toutes les séances qualité d'un plan
-// course tout au long de sa durée) — le test semi-Cooper est un événement
-// unique par bloc généré sans référence, une seule donnée à capter (distance
-// parcourue en 6min), pas besoin de la même infrastructure.
+// Rangée de boutons de statut (✅/❌/⚠️/😴), réutilisable — aussi utilisée
+// sur la carte "Aujourd'hui" du dashboard pour valider la séance du jour
+// sans passer par le détail de semaine.
+// ══════════════════════════════════════════════════════════════════════
+// TEST SEMI-COOPER — capture du résultat (Mode Forme sans référence)
+// ══════════════════════════════════════════════════════════════════════
+// Bloc dédié, volontairement séparé du système manualPerf général (qui
+// gère la saisie manuelle récurrente pour toutes les séances qualité d'un
+// plan course) — le test semi-Cooper est un événement unique, une seule
+// donnée à capter (distance parcourue en 6min), pas besoin de la même
+// infrastructure.
 //
 // Détection Strava : réutilise getLapsAffichage(activite, structureIntervalles)
-// déjà utilisé pour toutes les séances qualité — la structureIntervalles du
-// test (1 seul bloc, 1 répétition, dureeRecupSec:0) fait que le lap détecté
-// correspond exactement à l'effort de 6min, à condition que l'utilisateur ait
-// programmé sa montre en 3 laps manuels (échauffement/effort/retour au calme),
-// comme pour toute autre séance qualité.
+// déjà utilisé pour toutes les séances qualité — la structureIntervalles
+// du test (1 seul bloc, 1 répétition, dureeRecupSec:0) fait que le lap
+// détecté correspond exactement à l'effort de 6min, à condition que
+// l'utilisateur ait programmé sa montre en 3 laps manuels (échauffement/
+// effort/retour au calme), comme pour toute autre séance qualité.
 function renderTestSemiCooperRow(uid, seance, stravaRun) {
   if (statuses[uid] && statuses[uid] !== '—') return null; // déjà validé, plus rien à afficher ici
 
@@ -7395,23 +7200,19 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
 // Distance totale d'effort (hors récups/échauffement) déduite d'une
 // structureIntervalles, utilisée quand l'utilisateur ne précise que
 // l'allure en saisie manuelle (docs/source-donnees-seances.md, section 4).
-// CORRECTIF (17/07/2026, trouvé en testant le Module 2 avec Laurent) : cette
-// fonction ne lisait QUE bloc.distanceM, ignorant silencieusement tout bloc
-// défini en DURÉE (bloc.dureeEffortSec + bloc.allure, ex. "5×30s-30s @
-// 4:18/km" — protocole courant en VMA, type 30-30). Résultat : total restait
-// à 0 pour toute séance en durée, la fonction retournait null, et
-// analyserSeanceQualite() (Module 2) affichait systématiquement "Volume non
-// disponible" pour ces séances. Ajout du calcul distance = (durée/allure)
+// Gère les blocs définis en distance (bloc.distanceM) ET les blocs
+// définis en durée (bloc.dureeEffortSec + bloc.allure, ex. "5×30s-30s @
+// 4:18/km", protocole courant en VMA type 30-30) : distance = durée/allure
 // quand distanceM est absent mais dureeEffortSec + allure sont présents.
-// Distance totale d'une séance de qualité à partir d'une durée totale RÉELLE
-// saisie par le coureur (pas les durées prévues au plan), en répartissant le
-// temps entre : blocs d'effort (allure du bloc, connue), récup entre
-// répétitions (allure EF du coureur, __PLAN_BRUT__.allures.E — décision
-// actée le 17/07/2026, test de validation sur une vraie séance VMA du
-// coureur : écart de 5m sur 5202m réels), et tout le reste du temps saisi
-// (échauffement + retour au calme) également à l'allure EF. Volontairement
-// distinct de distanceEffortStructure() (qui ne calcule QUE les blocs
-// d'effort, jamais utilisée seule pour une distance totale de séance).
+//
+// Distance totale d'une séance de qualité à partir d'une durée totale
+// RÉELLE saisie par le coureur (pas les durées prévues au plan), en
+// répartissant le temps entre : blocs d'effort (allure du bloc, connue),
+// récup entre répétitions (allure EF du coureur, __PLAN_BRUT__.allures.E),
+// et tout le reste du temps saisi (échauffement + retour au calme)
+// également à l'allure EF. Volontairement distinct de
+// distanceEffortStructure() (qui ne calcule QUE les blocs d'effort,
+// jamais utilisée seule pour une distance totale de séance).
 function distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFStr) {
   if (!structureIntervalles?.blocs?.length || !dureeTotaleSec) return null;
   const nettoye = (allureEFStr||"6:10/km").replace('/km','').trim();
@@ -7455,23 +7256,17 @@ function distanceTotaleAvecRecup(structureIntervalles, dureeTotaleSec, allureEFS
 // attendue de structureIntervalles, dans le même format qu'un vrai lap
 // Strava (distance, average_speed, average_heartrate), pour que
 // weightedAvgByEffortDuration() (predictor.js) puisse les consommer
-// directement au lieu de fabriquer un "lap virtuel" unique à la volée
-// (chantier "unifier les saisies manuelles avec le format Strava/FIT",
-// conçu avec Laurent le 07/08/2026, cf. inventaire §16).
+// directement au lieu de fabriquer un "lap virtuel" unique à la volée.
 //
-// Un intervalle marqué ✕ (raté, cf. grille réussi/raté du 05/08/2026)
-// produit quand même un lap (pour l'affichage/comptage km), mais porte
-// `_reussi:false` — weightedAvgByEffortDuration() doit filtrer sur ce
-// champ avant de pondérer la vitesse : on n'a qu'une seule allure globale
-// saisie à la main, l'attribuer telle quelle à une répétition ratée
-// gonflerait artificiellement l'estimation (décision actée avec Laurent :
-// pas de donnée fiable sur un raté, mieux vaut l'exclure que deviner une
-// pénalité arbitraire).
+// Un intervalle marqué ✕ (raté) produit quand même un lap (pour
+// l'affichage/comptage km), mais porte `_reussi:false` —
+// weightedAvgByEffortDuration() doit filtrer sur ce champ avant de
+// pondérer la vitesse : attribuer l'allure globale saisie à une
+// répétition ratée gonflerait artificiellement l'estimation.
 //
-// speedMs : vitesse globale saisie (m/s,= 1000/paceSec) — même valeur
+// speedMs : vitesse globale saisie (m/s, =1000/paceSec) — même valeur
 // pour tous les laps réussis, aucune allure par intervalle n'est demandée
-// au coureur (charge de saisie disproportionnée, décision déjà actée le
-// 05/08/2026).
+// au coureur (charge de saisie disproportionnée).
 // intervallesState : tableau de booléens (réussi/raté), même ordre que la
 // grille de boutons ✓/✕ du formulaire.
 //
@@ -7836,27 +7631,23 @@ function renderWeekDetail(weekNum) {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
 // STATS
-// ══════════════════════════════════════════════════════════════════════════════
-// Groupe accordéon thématique pour l'onglet Stats (31/07/2026, demande de
-// Laurent — d'abord de simples en-têtes non repliables, puis transformés
-// en accordéon pour plus de clarté). Replié par défaut (décision explicite
-// de Laurent : "tous repliés", l'utilisateur ouvre ce qui l'intéresse).
-// contenuElements : tableau d'éléments DOM déjà construits (peut contenir
-// des null, filtrés ici) — pas de re-render global au clic, juste un
-// toggle display sur le conteneur local, même pattern que le panneau
-// détail sources de la carte Estimation (cf. `detailOpen` ligne ~3946).
-// Registre de l'état ouvert/fermé des groupes accordéon, indexé par titre
-// (31/07/2026) — sans ce registre, l'état "ouvert" (variable locale à
-// chaque appel de renderGroupeAccordeonStats) serait perdu à chaque
-// render() global (app.innerHTML="" + reconstruction, cf. render()).
-// Pour Stats/Course ce n'était pas gênant (aucun champ de ces onglets ne
-// déclenche un render() automatique en cours de saisie), mais Paramètres
-// si (ex. changer la date de naissance ou l'objectif déclenche un render()
-// pour rafraîchir catégorie FFA/allure affichée) — sans ce correctif,
-// modifier un champ du groupe "Profil coureur" aurait refermé ce même
-// groupe juste après l'avoir ouvert, surprenant pour l'utilisateur.
+// ══════════════════════════════════════════════════════════════════════
+// Groupe accordéon thématique pour l'onglet Stats, replié par défaut
+// (l'utilisateur ouvre ce qui l'intéresse). contenuElements : tableau
+// d'éléments DOM déjà construits (peut contenir des null, filtrés ici) —
+// pas de re-render global au clic, juste un toggle display sur le
+// conteneur local, même pattern que le panneau détail sources de la
+// carte Estimation (cf. `detailOpen`).
+//
+// Registre de l'état ouvert/fermé des groupes accordéon, indexé par
+// titre — sans ce registre, l'état "ouvert" (variable locale à chaque
+// appel de renderGroupeAccordeonStats) serait perdu à chaque render()
+// global (app.innerHTML="" + reconstruction). Nécessaire dès qu'un champ
+// peut déclencher un render() automatique en cours de saisie (ex. sur
+// Paramètres, changer la date de naissance) — sans ce registre, modifier
+// un champ refermerait le groupe accordéon juste après l'avoir ouvert.
 const etatGroupesAccordeon = {};
 
 function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements, onOuverture) {
@@ -9145,29 +8936,21 @@ function renderBadges() {
   return el("div",{style:{padding:"0 16px 100px"}}, barreGlobaleEl, ...sectionsEl);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
 // STRATÉGIE DE COURSE (partagée)
-// ══════════════════════════════════════════════════════════════════════════════
-// Sortie de renderCourse() le 19/07/2026 pour être réutilisable aussi par la
-// carte de séance RACE dans la vue Semaine (bug : les deux endroits
-// affichaient des segments/allures différents, la vue Semaine ayant sa
-// propre version simplifiée à 2 segments non calibrée).
+// ══════════════════════════════════════════════════════════════════════
+// Sortie de renderCourse() pour être réutilisable aussi par la carte de
+// séance RACE dans la vue Semaine — un seul calcul, jamais deux versions
+// des segments/allures qui pourraient diverger.
 //
 // Calcule les segments à partir de définitions avec un ÉCART relatif
 // (offsetSecKm) pour tous les segments SAUF le dernier — le dernier
 // segment est calibré mathématiquement pour compenser exactement l'écart
 // accumulé, garantissant que la somme des temps de tous les segments
 // corresponde TOUJOURS exactement au temps objectif, quelle que soit la
-// stratégie choisie pour les segments intermédiaires.
-//
-// Bug corrigé le 11 juillet 2026 : l'ancienne version fixait une allure
-// PLUS LENTE que l'objectif sur le premier segment (marge de sécurité au
-// départ), mais le second segment restait exactement à l'allure cible
-// moyenne, sans jamais compenser la perte de temps du premier — le temps
-// total dépassait systématiquement l'objectif (33s de trop mesurées sur
-// un 10K à 48:30, repéré par Laurent). Cette fonction élimine
-// structurellement ce risque : le dernier segment absorbe toujours
-// exactement l'écart nécessaire.
+// stratégie choisie pour les segments intermédiaires. Élimine
+// structurellement le risque qu'une marge de sécurité sur un segment
+// initial fasse dépasser le temps total sans jamais être compensée.
 function calculerSplitsCalibres(distanceKm, tempsObjectifSec, definitionsSegmentsIntermediaires, dernierNote) {
   const paceMoyen = tempsObjectifSec / distanceKm;
   let tempsUtilise = 0, distUtilisee = 0;
@@ -9819,29 +9602,23 @@ function getAvailableSlots(week, excludeIdx) {
     if (i === excludeIdx) return null;
     const effective = getEffectiveSession(week, i);
     if (!effective) return null;
-    // BUG évité le 22/07/2026 (discussion avec Laurent) : statuses[uid]
-    // seul ne suffit pas — une séance peut avoir une note (sessionNotes),
-    // un RPE (sessionRpe) ou une saisie manuelle (manualPerf) déjà
-    // enregistrés SANS statut ✅/⚠️/❌ posé (ex. note ajoutée avant même
-    // de courir). Ces données restent indexées par uid (position
-    // calendaire), pas par le contenu de la séance — un swap les
-    // laisserait accrochées au mauvais jour après échange. Toute trace
-    // d'activité réelle, peu importe sa forme, bloque désormais le swap
-    // dans les deux sens (source ET destination). Étendu le même jour :
-    // un jour PASSÉ (donc auto-😴, cf. statutEffectif dans
+    // statuses[uid] seul ne suffit pas pour bloquer un swap — une séance
+    // peut avoir une note (sessionNotes), un RPE (sessionRpe) ou une
+    // saisie manuelle (manualPerf) déjà enregistrés SANS statut ✅/⚠️/❌
+    // posé. Ces données restent indexées par uid (position calendaire),
+    // pas par le contenu de la séance — un swap les laisserait accrochées
+    // au mauvais jour après échange. Toute trace d'activité réelle bloque
+    // désormais le swap dans les deux sens (source ET destination). Un
+    // jour PASSÉ (donc auto-😴, cf. statutEffectif dans
     // recalculerAllSessions) est traité comme "déjà réalisé" au même
-    // titre qu'un vrai statut — on ne swap jamais un jour révolu.
+    // titre qu'un vrai statut.
     //
-    // ASSOUPLI (14/08/2026, demande explicite de Laurent : "je ne peux
-    // pas déplacer une séance passée, j'aimerais que ça soit possible, au
-    // moins sur la semaine en cours") — un jour passé SANS aucune trace
-    // réelle d'activité (statut/note/RPE/saisie manuelle, cf. juste
-    // au-dessus) n'est plus bloqué par sa seule date s'il appartient à la
-    // semaine EN COURS. Reste bloqué pour toute semaine ANTÉRIEURE
-    // (demande explicite de Laurent, limitée à la semaine courante). La
-    // vraie protection reste inchangée : une trace d'activité réelle
-    // bloque toujours, peu importe la semaine — seule la date brute seule
-    // (sans rien d'autre) ne bloque plus pour la semaine en cours.
+    // Un jour passé SANS aucune trace réelle d'activité n'est pas bloqué
+    // par sa seule date s'il appartient à la semaine EN COURS. Reste
+    // bloqué pour toute semaine ANTÉRIEURE. La vraie protection reste
+    // inchangée : une trace d'activité réelle bloque toujours, peu
+    // importe la semaine — seule la date brute seule ne bloque plus pour
+    // la semaine en cours.
     const estPasseNonSaisi = s.date < today()
       && (!statuses[uid] || statuses[uid] === "—")
       && week.week !== currentWeek();
@@ -10872,35 +10649,28 @@ function renderSettings() {
     )
   );
 
-  // ── Records personnels par distance (v2.3, 12 juillet 2026 ; saisie h/min/sec
-  // séparée depuis v2.14, 18/07/2026) ────────────────────────────────────────
+  // ── Records personnels par distance ─────────────────────────────────────
   // Un temps de référence par distance, mémorisé une fois pour toutes dans
-  // profilCoureur.records — le wizard n'a plus besoin de le redemander à
-  // chaque nouveau plan, il choisit automatiquement le record le plus
-  // pertinent pour la distance visée (avec repli sur Riegel si aucun
+  // profilCoureur.records — le wizard choisit automatiquement le record le
+  // plus pertinent pour la distance visée (repli sur Riegel si aucun
   // record exact n'existe, cf. section 2.3 du doc de convergence).
   //
   // Saisie par 3 champs numériques (h/min/sec) plutôt qu'un champ texte
-  // libre "mm:ss" — plus facile à remplir au clavier (surtout mobile,
-  // pavé numérique direct) et supprime toute ambiguïté de format sur les
-  // temps ≥ 1h (Semi/Marathon). Le format texte stocké (compatible
-  // parseTimeToSeconds du moteur, "mm:ss" ou "h:mm:ss") ne change pas —
-  // seule la saisie change, pas le schéma de données ni ce que consomme
-  // le reste de l'app (Riegel, wizard).
+  // libre "mm:ss" — plus facile au clavier (mobile, pavé numérique direct)
+  // et supprime toute ambiguïté de format sur les temps ≥ 1h. Le format
+  // texte stocké (compatible parseTimeToSeconds du moteur) ne change pas.
   //
   // Réutilisée telle quelle par l'onboarding (auth.classic.js /
-  // v2/engine/auth.js) — factorisée ici plutôt que dupliquée, cf. principe
-  // "un seul fichier modifié couvre tous les modes" (inventaire, section
-  // Key learnings).
-  // ── Composant roulette (wheel picker) — 31/07/2026 ─────────────────────
+  // v2/engine/auth.js) — factorisée ici plutôt que dupliquée.
+  //
+  // ── Composant roulette (wheel picker) ───────────────────────────────────
   // Même principe que public/v2/index.html (cf. son en-tête pour le détail
   // complet) : une colonne scrollable par unité, item centré dans la
   // fenêtre de sélection = valeur retenue, calcul direct de scrollTop
   // (jamais scrollIntoView, peu fiable sur un conteneur pas encore
-  // affiché — cf. Réglages caché derrière d'autres onglets au chargement).
-  // Porté ici séparément du wizard (fichier distinct, pas de dépendance
-  // inter-fichiers) — hauteurs différentes (picker 120px/item 36px/pad
-  // 42px ici, vs 150/44/53 côté wizard), cf. CSS .roulette-* de ce fichier.
+  // affiché). Porté ici séparément du wizard (fichier distinct, pas de
+  // dépendance inter-fichiers) — hauteurs différentes (picker 120px/item
+  // 36px/pad 42px ici, vs 150/44/53 côté wizard), cf. CSS .roulette-*.
   function creerColonneRouletteRecglages(conteneurId, valeurs, valeurInitiale, onSelect){
     const conteneur = document.getElementById(conteneurId);
     if (!conteneur) return null;
@@ -11019,28 +10789,22 @@ function renderSettings() {
     const colS = creerColonneRouletteRecglages(idPrefix + '-rouletteS', Array.from({length:60},(_,i)=>i), sInit, v => declencherInput(inputS, v));
     roulettesActivesReglages[idPrefix] = { h: colH, m: colM, s: colS };
 
-    // Boutons +/- (31/07/2026, demande de Laurent) — incrémentent/
-    // décrémentent la colonne d'une unité, avec bouclage (0 <-> max) plutôt
-    // que de bloquer aux bornes : cohérent avec le geste de scroll de la
-    // roulette elle-même, qui permet déjà de boucler en swipant au-delà
-    // des extrémités. definirValeur() seule ne déclenche jamais onSelect
-    // (elle repositionne juste visuellement le scroll, cf. son
-    // commentaire) — on appelle donc explicitement declencherInput() en
-    // plus, pour que la nouvelle valeur soit bien persistée comme si
-    // l'utilisateur avait scrollé lui-même.
+    // Boutons +/- incrémentent/décrémentent la colonne d'une unité, avec
+    // bouclage (0 <-> max) plutôt que de bloquer aux bornes : cohérent
+    // avec le geste de scroll de la roulette elle-même. definirValeur()
+    // seule ne déclenche jamais onSelect (elle repositionne juste
+    // visuellement le scroll) — on appelle donc explicitement
+    // declencherInput() en plus, pour que la nouvelle valeur soit bien
+    // persistée comme si l'utilisateur avait scrollé lui-même.
     //
-    // CORRECTIF (31/07/2026, bug signalé par Laurent : "le chiffre se met
-    // en gras dans la liste mais ne se met pas au centre") — la valeur
-    // était bien mise à jour (classe .actif posée sur le bon item), mais
-    // le scroll animé (definirValeur(v, true) -> scrollTo({behavior:
-    // 'smooth'})) entre en conflit avec scroll-snap-type:y mandatory posé
-    // en CSS sur .roulette-colonne : le navigateur tente de "recorriger"
-    // la position vers l'ancrage snap le plus proche PENDANT l'animation,
-    // ce qui peut annuler/bloquer le mouvement avant qu'il n'atteigne sa
-    // cible. Passé à animer=false (scrollTop direct, instantané) — même
-    // mode déjà utilisé pour le positionnement initial de la roulette
-    // (cf. api.definirValeur(valeurInitiale, false) plus haut), qui ne
-    // souffre pas de ce conflit.
+    // animer=false (scrollTop direct, instantané) plutôt qu'un scroll
+    // animé : scrollTo({behavior:'smooth'}) entre en conflit avec
+    // scroll-snap-type:y mandatory posé en CSS sur .roulette-colonne — le
+    // navigateur tente de recorriger la position vers l'ancrage snap le
+    // plus proche PENDANT l'animation, ce qui peut annuler le mouvement
+    // avant sa cible. Même mode déjà utilisé pour le positionnement
+    // initial de la roulette (cf. api.definirValeur(valeurInitiale, false)
+    // plus haut).
     function cablerBoutonIncrement(idBouton, colApi, inputCible, maxValeur) {
       const btn = document.getElementById(idBouton);
       if (!btn || !colApi) return;
@@ -11090,32 +10854,26 @@ function renderSettings() {
     return hNum > 0 ? `${hNum}:${mm}:${ss}` : `${mNum}:${ss}`;
   };
 
-  // Construit les 3 champs h/min/sec pour une distance donnée — remplacés
-  // par une roulette à défilement le 31/07/2026 (demande de Laurent, même
-  // composant que public/v2/index.html — cf. son en-tête pour le détail
-  // du principe general). Les inputs number d'origine restent dans le DOM
-  // en <input type="hidden">, avec les MÊMES ids (idPrefix+"-h/-m/-s") —
-  // le bouton "Enregistrer" (plus bas dans ce fichier) les lit directement
+  // Construit les 3 champs h/min/sec pour une distance donnée (roulette à
+  // défilement, même composant que public/v2/index.html — cf. son en-tête
+  // pour le détail du principe général). Les inputs number d'origine
+  // restent dans le DOM en <input type="hidden">, avec les MÊMES ids
+  // (idPrefix+"-h/-m/-s") — le bouton "Enregistrer" les lit directement
   // via document.getElementById, aucune modification nécessaire côté
   // lecture.
   //
   // idPrefix sert à générer des ids uniques (ex. "rec-temps-10K" ->
   // "rec-temps-10K-h/-m/-s").
   //
-  // NOTE : le commentaire précédent de cette fonction affirmait qu'elle
-  // était "réutilisée telle quelle par l'onboarding" — vérifié inexact le
-  // 31/07/2026 : v2/engine/auth.js a en réalité sa PROPRE logique de
-  // saisie h/min/sec dupliquée (commentaire explicite dans ce fichier :
-  // "pas d'accès à window.creerChampsTempsHMS d'index.html, chargé après
-  // ce module"), pour ne pas créer de dépendance d'ordre de chargement
+  // v2/engine/auth.js a sa PROPRE logique de saisie h/min/sec dupliquée
+  // (pas d'accès à window.creerChampsTempsHMS d'index.html, chargé après
+  // ce module), pour ne pas créer de dépendance d'ordre de chargement
   // entre les deux fichiers. La roulette de l'onboarding est donc portée
-  // séparément dans auth.js, avec son propre CSS/JS — cohérent avec cette
-  // contrainte déjà actée, pas une régression de ce chantier.
-  // Bornes de la colonne heures par distance (31/07/2026, demande de
-  // Laurent : 24h identique pour les 4 distances jugé abusé — un 5K ne
-  // dépasse jamais 1h en pratique, même marché). Valeurs pensées pour
+  // séparément dans auth.js, avec son propre CSS/JS.
+  //
+  // Bornes de la colonne heures par distance : valeurs pensées pour
   // couvrir les cas extrêmes réalistes (marche/course incluse), pas la
-  // moyenne : 5K/10K restent courts par nature, Semi/Marathon peuvent
+  // moyenne — 5K/10K restent courts par nature, Semi/Marathon peuvent
   // légitimement dépasser plusieurs heures pour un débutant ou une
   // approche marche/course. Repli sur 9h si la distance n'est pas
   // reconnue (garde-fou, ne devrait jamais arriver avec les 4 clés
@@ -11279,38 +11037,15 @@ function renderSettings() {
     boutonsValidation.appendChild(btnEffacer);
     wrap.appendChild(boutonsValidation);
 
-    // Positionnement différé de la roulette au bon moment (31/07/2026,
-    // bug corrigé après plusieurs tentatives) — au tout premier rendu
-    // d'un écran (mais pas aux suivants), le chiffre actif restait
-    // bloqué visuellement sur "00" malgré des données correctes en
-    // interne : scrollTop assigné ne prenait pas effet. Ni setTimeout(0),
-    // ni un double requestAnimationFrame, ni un délai fixe de 100ms
-    // n'ont suffi à résoudre ça de façon fiable — un appel manuel via la
-    // console, après quelques secondes, fonctionnait pourtant toujours,
-    // ce qui écartait un problème de logique du composant lui-même.
-    // Résolu en vérifiant une vraie condition avant d'agir plutôt qu'en
-    // devinant un délai : l'élément doit être RÉELLEMENT visible
-    // (offsetParent non null, signe qu'aucun ancêtre n'est display:none
-    // et que l'élément est bien attaché au document) — condition
-    // vérifiée en boucle toutes les 16ms, jusqu'à confirmation (abandon
-    // après 2s si jamais atteinte, cas anormal qui ne devrait pas se
-    // produire en pratique).
-    // CORRECTIF (01/08/2026, bug signalé par Laurent : roulette de record
-    // invisible/vide dans la section "Records personnels", un groupe
-    // accordéon) — diagnostic en direct (console) a montré un cas
-    // inattendu : offsetParent restait null indéfiniment sur cet élément
-    // alors que getBoundingClientRect() renvoyait des dimensions et une
-    // position parfaitement normales (largeur/hauteur non nulles,
-    // document.body.contains() true, toute la chaîne d'ancêtres avec
-    // display/visibility corrects). La cause exacte de cette divergence
-    // offsetParent vs getBoundingClientRect dans ce contexte précis
-    // (accordéon) n'a pas pu être identifiée malgré plusieurs
-    // vérifications ciblées (position, content-visibility, doublon de
-    // nœud, élément détaché — toutes écartées) — remplacé par un test basé
-    // sur getBoundingClientRect().width > 0, seul critère confirmé fiable
-    // dans ce cas par des tests directs en console. offsetParent reste en
-    // repli secondaire (OU logique) pour ne rien casser ailleurs où
-    // l'ancien test fonctionnait déjà correctement.
+    // Positionnement différé de la roulette au bon moment : au tout
+    // premier rendu d'un écran, scrollTop assigné trop tôt ne prenait pas
+    // effet. Résolu en vérifiant une vraie condition avant d'agir plutôt
+    // qu'en devinant un délai : test basé sur getBoundingClientRect().width
+    // > 0 (seul critère fiable dans un contexte d'accordéon, où
+    // offsetParent peut rester null malgré un élément bien visible et
+    // attaché), vérifié en boucle toutes les 16ms, abandon après 2s.
+    // offsetParent reste en repli secondaire (OU logique) pour ne rien
+    // casser ailleurs où l'ancien test fonctionnait déjà.
     (function attendreEtInitialiser(tentative) {
       const conteneurTest = document.getElementById(idPrefix + '-rouletteM');
       const visible = conteneurTest && (conteneurTest.offsetParent !== null || conteneurTest.getBoundingClientRect().width > 0);
@@ -11859,26 +11594,18 @@ function renderSettings() {
 
   const hasRes=!!load(clePourPlan("lk_race_result"),null);
 
-  // CORRECTIF MANUEL TEMPORAIRE (07/08/2026, demande explicite de
-  // Laurent) — le badge "km cumulés" (profilCoureur.kmCumulesTotal) peut
-  // rester figé après le premier passage à un statut sur une séance : cf.
-  // recalculerKmComptesPourUid(), qui n'ajuste le cumul QUE lors d'un
-  // changement de statut, jamais si la distance Strava associée change
-  // ensuite (resynchronisation, correction sur Strava...). Contrairement
-  // au résumé de préparation (onglet Course), qui relit stravaActivities
-  // en direct à chaque affichage, ce cumul est un compteur PERSISTANT —
-  // sans un vrai mécanisme de recalcul automatique (non implémenté,
-  // discussion avec Laurent : correction ponctuelle suffisante pour
-  // l'instant plutôt qu'un chantier de recalcul systématique à chaque
-  // synchro), ce bouton permet de le resynchroniser manuellement à la
-  // demande. Reconstruit kmComptesParUid ET kmCumulesTotal depuis zéro, à
-  // partir des SEULES séances validées du PLAN ACTUEL (pas tous plans
-  // confondus comme le veut le badge en principe — limitation actée avec
-  // Laurent, il n'a qu'un seul plan à ce jour ; parcourir tous les plans
-  // du compte nécessiterait de recharger leurs statuses/manualPerf
-  // respectifs depuis Supabase, un vrai chantier à part). Bouton
-  // volontairement discret (style secondaire, pas d'icône), à retirer
-  // si un vrai mécanisme de recalcul automatique est développé plus tard.
+  // CORRECTIF MANUEL TEMPORAIRE — le badge "km cumulés"
+  // (profilCoureur.kmCumulesTotal) peut rester figé après le premier
+  // passage à un statut sur une séance : recalculerKmComptesPourUid()
+  // n'ajuste le cumul QUE lors d'un changement de statut, jamais si la
+  // distance Strava associée change ensuite. Ce bouton resynchronise
+  // manuellement à la demande, en reconstruisant kmComptesParUid ET
+  // kmCumulesTotal depuis zéro, à partir des SEULES séances validées du
+  // PLAN ACTUEL (pas tous plans confondus comme le veut le badge en
+  // principe — limitation acceptée tant qu'un seul plan actif par
+  // compte). Bouton volontairement discret (style secondaire, pas
+  // d'icône), à retirer si un vrai mécanisme de recalcul automatique est
+  // développé plus tard.
   const recalcKmSection = el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"🔧 Maintenance"),
     el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
@@ -12101,23 +11828,15 @@ function compressActivities(activities) {
 }
 
 // Système de backup v1 (getBackupData/gistSave/gistLoad/gistForceRestore,
-// plan10k_backup.json) retiré complètement le 11 juillet 2026 — Laurent
-// demande un vrai nettoyage après avoir trouvé un bug de fond (commit
-// f96797a) : ce vieux Gist global (jamais préfixé par plan, conçu à
-// l'époque pour un seul plan) contaminait à tort les statuts d'un nouveau
-// plan avec ceux d'un autre plan, dès que le nouveau avait des statuts
-// vides. Audit complet effectué avant de retirer : TOUTES les vraies
-// données que ce système sauvegardait ont déjà un vrai foyer légitime
+// plan10k_backup.json) retiré : ce vieux Gist global (jamais préfixé par
+// plan) contaminait les statuts d'un nouveau plan avec ceux d'un autre.
+// Toutes les vraies données qu'il sauvegardait ont un foyer légitime
 // ailleurs — statuses/notesList/sessionNotes/raceGoalTime/raceHoraires/
-// raceParcoursUrl/checklistItems/hiddenSessions/swappedSessions sont déjà
-// préfixées par plan (clePourPlan(), système construit pendant la
-// convergence v1/v2) ; runnerWeight/runnerHeight/runnerFcMax/runnerPps sont
-// déjà des clés globales simples (caractéristiques personnelles de Laurent,
-// pas liées à un plan) ; stravaActivities/predHistory ont déjà leurs
-// propres clés (lk_strava_activities, lk_pred_history préfixée). Ce système
-// était donc entièrement redondant, sans plus rien apporter d'unique.
-//
-// scheduleSave() retirée aussi (n'existait que pour temporiser les appels à
+// raceParcoursUrl/checklistItems/hiddenSessions/swappedSessions sont
+// préfixées par plan (clePourPlan()) ; runnerWeight/runnerHeight/
+// runnerFcMax/runnerPps sont des clés globales simples ; stravaActivities/
+// predHistory ont leurs propres clés préfixées. Ce système était donc
+// entièrement redondant.
 // gistSave()) — plus aucun appelant utile une fois gistSave() retirée.
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -12148,29 +11867,20 @@ async function ensureFreshToken() {
   } catch { return false; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Import FIT (v2.15, 18/07/2026) — première étape du chantier "sources de
-// données supplémentaires" (Garmin/Coros/import FIT-GPX, cf. inventaire).
-// Décision actée : viser .fit plutôt que .gpx pur, car .fit contient
-// nativement des laps (Activity > Session > Lap > Record) — exactement ce
-// dont dépend déjà getLapsAffichage()/getEffortLaps() pour décomposer une
+// ─────────────────────────────────────────────────────────────────────
+// Import FIT — cible .fit plutôt que .gpx pur, car .fit contient
+// nativement des laps (Activity > Session > Lap > Record), exactement ce
+// dont dépend getLapsAffichage()/getEffortLaps() pour décomposer une
 // séance qualité (échauffement/effort/récup/retour au calme). Un GPX pur
-// n'a aucune notion de lap ; sans elle, la décomposition de séance qualité
-// serait perdue ou reposerait sur une heuristique fragile déjà écartée une
-// fois pour Strava (cf. commentaire historique au-dessus de getLapsAffichage,
-// tentative n°2 "filtrer par durée" abandonnée).
+// n'a aucune notion de lap.
 //
-// Librairie : fit-file-parser (npm, maintenue, parse un .fit directement
-// côté navigateur). PAS de build UMD/global (vérifié contre le package.json
-// publié sur registry.npmjs.org : "type":"module", exports { import, require }
-// uniquement, aucun champ browser/unpkg/jsdelivr) — contrairement à ce
-// qu'affichent certains exemples GitHub d'anciennes versions/forks, qui
-// supposaient un global window.FitParser inexistant sur les versions
-// actuelles. Chargée via import() dynamique depuis jsDelivr (qui sait
-// servir n'importe quel fichier ESM d'un package npm), au moment du
-// premier import — pas de <script src> statique dans le <head>, pour ne
-// pas payer ce coût réseau sur des pages qui n'utilisent jamais l'import
-// FIT. Mise en cache dans _fitParserModule après le premier chargement.
+// Librairie : fit-file-parser (npm, parse un .fit directement côté
+// navigateur). PAS de build UMD/global ("type":"module", exports
+// { import, require } uniquement, aucun champ browser/unpkg/jsdelivr) —
+// chargée via import() dynamique depuis jsDelivr, au moment du premier
+// import (pas de <script src> statique dans le <head>, pour ne pas payer
+// ce coût réseau sur des pages qui n'utilisent jamais l'import FIT). Mise
+// en cache dans _fitParserModule après le premier chargement.
 let _fitParserModule = null;
 async function chargerFitParser() {
   if (_fitParserModule) return _fitParserModule;
@@ -12199,26 +11909,20 @@ async function chargerFitDetection() {
 // schéma qu'un objet `activity` Strava (type, sport_type, start_date_local,
 // average_speed, average_heartrate, distance, moving_time, laps[]) — une
 // fois adapté, l'activité importée traverse EXACTEMENT le même chemin que
-// Strava : getLapsAffichage(), detecterTypeEffort(), autoValidate(),
-// matchActivitiesToPlan(), le Module 2 (SessionAnalyzer). Zéro nouvelle
-// branche d'analyse à maintenir.
+// Strava. Zéro nouvelle branche d'analyse à maintenir.
 //
 // Champs FIT natifs utilisés (noms du protocole FIT, différents des noms
 // Strava) : avg_speed (m/s), avg_heart_rate (bpm), total_distance (m),
-// total_elapsed_time (s), start_time. À VÉRIFIER au premier test réel avec
-// un fichier .fit exporté d'une vraie montre — le nommage exact peut varier
-// légèrement selon le firmware/fabricant (Garmin/Coros/Polar/Suunto). Le
-// point d'ajustement, si besoin, est cette seule fonction — rien en aval à
-// toucher.
+// total_elapsed_time (s), start_time. Le nommage exact peut varier selon
+// le firmware/fabricant (Garmin/Coros/Polar/Suunto) — le point d'ajustement,
+// si besoin, est cette seule fonction.
+//
 // Recalcule une vitesse moyenne fiable à partir de distance/temps, plutôt
-// que de faire confiance au champ avg_speed natif du fichier FIT — audit du
-// 18/07/2026 sur un vrai export Amazfit/Zepp : avg_speed rapporté = 2.0 m/s
-// (8'20/km) alors que total_distance/total_elapsed_time donnent 2.667 m/s
-// (6'15/km, cohérent avec la somme des 8 laps réels de la séance). Écart
-// significatif et trompeur — avg_speed semble inclure des phases d'arrêt/
-// pause dans son calcul sur ce fabricant, contrairement à distance/temps qui
-// restent cohérents entre eux. Appliqué à la fois au niveau activité et à
-// chaque lap, par prudence (même fabricant, même défaut probable partout).
+// que de faire confiance au champ avg_speed natif du fichier FIT — sur
+// certains fabricants (constaté sur Amazfit/Zepp), avg_speed semble
+// inclure des phases d'arrêt/pause dans son calcul, contrairement à
+// distance/temps qui restent cohérents entre eux. Appliqué à la fois au
+// niveau activité et à chaque lap, par prudence.
 function vitesseFiable(distance, tempsSec, avgSpeedFit) {
   if (tempsSec > 0 && distance > 0) return distance / tempsSec;
   return avgSpeedFit ?? 0; // repli si distance/temps manquants (ne devrait pas arriver)
@@ -12905,39 +12609,23 @@ function renderDiffere() {
 }
 
 // CORRECTIF FLASH — regroupement des re-renders automatiques du
-// CHARGEMENT INITIAL uniquement (06/08/2026, suite du chantier
-// "clignotements successifs à l'ouverture") — 3 sources indépendantes se
-// terminent chacune par un re-render au chargement : le bloc badges (dans
-// render(), juste au-dessus), fetchWeather() et verifierMeteoSeanceDemain()
-// (toutes deux définies plus haut, appelées au niveau racine du script).
-// Leurs latences réseau respectives varient et dépassent facilement la
-// fenêtre de 50ms de renderDiffere() (déjà réduite depuis 250ms le
-// 04/08/2026, cf. son commentaire ci-dessus — élargir CETTE fenêtre
-// générale retarderait aussi les mises à jour réactives à un clic
-// utilisateur, ce qui avait déjà été signalé comme pire) : chacune peut
-// donc arriver isolément et produire son propre flash, plusieurs flashs
-// successifs plutôt qu'un seul regroupé.
+// CHARGEMENT INITIAL uniquement. 3 sources indépendantes se terminent
+// chacune par un re-render au chargement (badges dans render(),
+// fetchWeather(), verifierMeteoSeanceDemain()) : leurs latences réseau
+// dépassent facilement la fenêtre de 50ms de renderDiffere(), donc
+// chacune peut produire son propre flash isolé plutôt qu'un seul
+// regroupé.
 //
 // renderDiffereChargementInitial() est un timer SÉPARÉ, à fenêtre plus
 // large (150ms) que renderDiffere() (50ms), utilisé UNIQUEMENT par ces 3
-// sources connues du chargement — jamais par renderDiffere() ni par
-// aucune mise à jour réactive à une action utilisateur (celles-ci gardent
-// 50ms, inchangé). Réduit de 600ms à 150ms le 06/08/2026 (retour de
-// Laurent : "démarrage plus lent" après un premier essai à 600ms) — ce
-// timer repart à zéro à CHAQUE résolution d'une des 3 sources (clearTimeout
-// + nouveau setTimeout), donc son délai s'ajoute après la résolution de la
-// PLUS LENTE des 3, pas un délai fixe depuis le chargement : à 600ms, un
-// écart de plusieurs centaines de ms entre la source la plus rapide et la
-// plus lente (fréquent entre un badge en cache local et une météo qui
-// dépend du réseau) faisait que le rendu final n'intervenait que
-// longtemps après que tout soit déjà résolu. 150ms reste largement
-// suffisant pour absorber un écart de quelques dizaines de ms entre 2
-// sources qui se résolvent presque en même temps (le cas qui produit
-// réellement le clignotement), sans ajouter de retard perceptible dans le
-// cas plus fréquent où les 3 sources ont déjà bien plus de 150ms d'écart
-// entre elles (le regroupement n'aide alors de toute façon pas, chaque
-// flash reste distinct quelle que soit la fenêtre — seul un vrai
-// mécanisme d'attente explicite, plus complexe, changerait ce cas).
+// sources connues du chargement — jamais par une mise à jour réactive à
+// une action utilisateur (celles-ci gardent 50ms). Ce timer repart à zéro
+// à chaque résolution d'une des 3 sources (clearTimeout + nouveau
+// setTimeout), donc son délai s'ajoute après la résolution de la PLUS
+// LENTE des 3, pas un délai fixe depuis le chargement. 150ms absorbe un
+// écart de quelques dizaines de ms entre 2 sources qui se résolvent
+// presque en même temps, sans retard perceptible quand les 3 sources ont
+// déjà bien plus de 150ms d'écart entre elles.
 let _renderDiffereChargementTimer = null;
 // Compteur explicite des 3 sources connues du chargement initial
 // (badges, fetchWeather, verifierMeteoSeanceDemain) — 07/08/2026, v4.
@@ -13227,29 +12915,19 @@ function render() {
   }
 }
 
-// ── Vérification des fonctions critiques ────────────────────────────────────
-// CORRECTIF (07/08/2026) : getEffortLaps retirée de cette liste — c'est
-// une fonction PRIVÉE de session-analysis.js (jamais `export`ée,
-// volontairement, cf. son en-tête : "appelée uniquement par
-// getLapsAffichage() en interne, jamais appelée directement depuis
-// index.html"). Sa présence ici la rendait structurellement TOUJOURS
-// "manquante" (typeof y est nécessairement 'undefined', ce module ne
-// l'exporte jamais) — un faux warning affiché à chaque chargement de
-// page depuis l'extraction du module le 31/07/2026, sans lien avec un
-// vrai problème. getLapsAffichage() (la fonction publique qui l'utilise
-// en interne) reste dans la liste, elle est le vrai point de vérification.
-// Depuis l'encapsulation en IIFE async (section 7, sélection de plan), ces
-// fonctions ne sont plus sur window mais dans la portée locale de l'IIFE.
-// Correctif 27/07/2026 : l'ancienne implémentation utilisait eval(fn) sur
-// une liste fixe de noms — jamais une entrée utilisateur, donc pas un
-// risque de sécurité réel, mais bloqué par la Content Security Policy du
-// site (script-src sans unsafe-eval), rendant ce check silencieusement
-// inopérant (l'exception catch masquait le blocage, faisant croire à des
-// fonctions "manquantes" qui ne l'étaient pas forcément). Remplacé par des
-// références DIRECTES à chaque fonction — aucun eval, fonctionne sous
-// n'importe quelle CSP, et une vraie fonction manquante lèverait une
-// ReferenceError explicite à la déclaration de ce tableau plutôt que
-// d'être avalée silencieusement.
+// ── Vérification des fonctions critiques ────────────────────────────────
+// getEffortLaps n'est pas dans cette liste : c'est une fonction PRIVÉE de
+// session-analysis.js (jamais `export`ée, appelée uniquement par
+// getLapsAffichage() en interne). getLapsAffichage() (la fonction
+// publique qui l'utilise) reste dans la liste, elle est le vrai point de
+// vérification.
+// Depuis l'encapsulation en IIFE async (section 7, sélection de plan),
+// ces fonctions ne sont plus sur window mais dans la portée locale de
+// l'IIFE.
+// Références DIRECTES à chaque fonction (pas d'eval) — fonctionne sous
+// n'importe quelle CSP (script-src sans unsafe-eval), et une vraie
+// fonction manquante lève une ReferenceError explicite à la déclaration
+// de ce tableau.
 const CRITICAL_FNS_REFS = {
   syncStrava: typeof syncStrava !== 'undefined' ? syncStrava : undefined,
   predict10K: typeof predict10K !== 'undefined' ? predict10K : undefined,
