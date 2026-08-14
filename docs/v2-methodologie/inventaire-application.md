@@ -31,7 +31,7 @@ personnel semi-marathon le 6 septembre 2026.
 - Backend Supabase (auth + données, projet encore nommé "Run by Léa" côté
   dashboard — cosmétique, aucun impact), intégration Strava
 - Éditeur : Laurent, en nom propre / micro-entreprise (SIRET pas encore
-  attribué au 13/08/2026 — bloquant pour l'activation des clés Stripe
+  attribué — bloquant pour l'activation des clés Stripe
   live, cf. chantier "Lancement public" plus bas)
 
 ## Table des matières — fichiers détaillés
@@ -70,7 +70,7 @@ Tous dans `docs/v2-methodologie/` :
 - Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
 - Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`).
-- Après un `str_replace` qui remplace un `old_str` court (ex. juste `function xxx() {`) par un bloc long, toujours revérifier que la ligne de déclaration d'origine est bien réincluse dans le `new_str` — un remplacement qui "avale" l'en-tête de fonction sans le reproduire casse silencieusement la fonction suivante en JS (pas d'erreur avant l'exécution du fichier entier). La vérification syntaxique de TOUS les blocs `<script>` (pas seulement le plus gros) avant chaque push est ce qui a intercepté ce genre d'erreur (cf. incident `ouvrirPpsModale()`, 13/08/2026, corrigé avant déploiement).
+- Après un `str_replace` qui remplace un `old_str` court (ex. juste `function xxx() {`) par un bloc long, toujours revérifier que la ligne de déclaration d'origine est bien réincluse dans le `new_str` — un remplacement qui "avale" l'en-tête de fonction sans le reproduire casse silencieusement la fonction suivante en JS (pas d'erreur avant l'exécution du fichier entier). La vérification syntaxique de TOUS les blocs `<script>` (pas seulement le plus gros) avant chaque push est ce qui a intercepté ce genre d'erreur (cf. incident `ouvrirPpsModale()`, corrigé avant déploiement).
 - Un modèle de données qui a déjà nécessité plusieurs correctifs successifs sur le même mécanisme est un signal qu'il faut réévaluer l'architecture elle-même plutôt que d'empiler un énième patch — un commentaire affirmant qu'un modèle "n'a jamais telle forme d'incohérence par construction" doit être vérifié par une simulation reproductible avant d'être cru, pas simplement recopié d'un précédent commentaire (cf. refonte du modèle de swap, ci-dessous).
 
 **Persistance et données**
@@ -110,22 +110,21 @@ Tous dans `docs/v2-methodologie/` :
 
 **Échanges de séances (swap)**
 - Le modèle de swap (`swapPairs`) est une liste de paires atomiques
-  `{a: uid, b: uid}` — jamais un dictionnaire `{uid: uidSource}` (ancien
-  modèle `swappedSessions`, remplacé le 14/08/2026 suite à un bug
-  structurel : une rotation à 3+ maillons pouvait perdre une séance ou en
+  `{a: uid, b: uid}` — jamais un dictionnaire `{uid: uidSource}` (modèle
+  plus fragile : une rotation à 3+ maillons peut perdre une séance ou en
   dupliquer une autre lors d'une annulation partielle). `sourceSwap(uid)`
   résout la position d'origine en parcourant `swapPairs` À L'ENVERS
   (paire la plus récente en premier). `echangerSwap()` ajoute une paire
   (toggle si la même paire existe déjà) ; `annulerSwapSur(uid)` retire la
   DERNIÈRE paire touchant ce uid EN BLOC (les deux côtés ensemble, jamais
-  un seul — c'est ce point précis qui corrige le bug). Migration
-  automatique et silencieuse depuis l'ancien `lk_swapped_sessions` au
-  premier chargement (`lk_swap_pairs`) ; ancienne clé conservée en
-  storage comme filet de sécurité. Toute nouvelle logique touchant aux
-  séances swappées doit passer par `getEffectiveSession()`, jamais lire
-  `week.sessions[i]` ou `PLAN` directement — plusieurs bugs (frise
-  désynchronisée des statistiques affichées) sont venus de fonctions qui
-  filtraient les séances sans passer par cette résolution.
+  un seul). Migration automatique et silencieuse depuis l'ancien
+  `lk_swapped_sessions` au premier chargement (`lk_swap_pairs`) ;
+  ancienne clé conservée en storage comme filet de sécurité. Toute
+  nouvelle logique touchant aux séances swappées doit passer par
+  `getEffectiveSession()`, jamais lire `week.sessions[i]` ou `PLAN`
+  directement — plusieurs bugs (frise désynchronisée des statistiques
+  affichées) sont venus de fonctions qui filtraient les séances sans
+  passer par cette résolution.
 - Un jour PASSÉ sans aucune trace d'activité (statut/note/RPE/saisie) est
   déplaçable uniquement s'il appartient à la semaine EN COURS
   (`currentWeek()`) — bloqué pour toute semaine antérieure. Toute vraie
@@ -133,7 +132,7 @@ Tous dans `docs/v2-methodologie/` :
 
 ## État des chantiers ouverts
 
-**Conformité — CGU/CGV et mentions légales (nouveau, 13/08/2026)**
+**Conformité — CGU/CGV et mentions légales**
 
 - Page `public/cgu.html` créée (même style visuel que `privacy.html`) :
   objet du service, statut d'outil d'aide (pas d'avis médical ni garantie
@@ -166,7 +165,7 @@ Tous dans `docs/v2-methodologie/` :
   accordéon — cf. principe UI ci-dessus) et depuis un bandeau dashboard
   affiché une seule fois (`localStorage: yoria_bandeau_sante_ferme`).
   Même contenu dupliqué en page statique `/sante.html` (créée le
-  14/08/2026 pour permettre un lien depuis le site bêta, qui n'a pas
+  pour permettre un lien depuis le site bêta, qui n'a pas
   accès au système de modales de l'app principale).
 
 **Sécurité — audit et durcissement (démarré, en partie traité)**
@@ -223,7 +222,7 @@ Reste à faire :
   (guideline 4.2 Apple à anticiper), non entamé (cf.
   `auth-et-publication.md`). Mentionné comme "à l'étude pour une
   prochaine version" côté page d'inscription bêta et mail d'invitation
-  iOS (14/08/2026) — communication uniquement, aucun développement
+  iOS — communication uniquement, aucun développement
   entamé.
 - **QR code Play Store** — ajouté sur la page d'inscription bêta
   (section Inscription) et dans le mail d'invitation Android
