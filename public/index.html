@@ -7495,14 +7495,12 @@ function renderWeekDetail(weekNum) {
         isToday?el("span",{style:{background:"rgba(var(--accent-rgb),0.2)",color:"var(--accent)",fontSize:"13px",fontWeight:"700",padding:"1px 5px",borderRadius:"3px"}},"AUJOURD\'HUI"):null,
         badge(effSess.type),
         el("div",{style:{flex:"1"}}),
-        // Refonte ergonomique (26/07/2026, cohérente avec la carte
-        // "Aujourd'hui") : icône ⌚ compacte affichée uniquement pour
-        // une séance non encore validée ET pas future. L'icône ✏️
-        // (saisie manuelle/import) a été déplacée le 03/08/2026 à côté
-        // des boutons de statut (— ✅ ❌ ⚠️ 😴, plus bas dans la carte) —
-        // remarque de Laurent : séparée du statut dans le header, elle
-        // n'était pas naturelle à trouver.
-        (!isDoneSession && s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE" && effSess.structureIntervalles) ? renderIconeStructureMontre(effSess.structureIntervalles) : null,
+        // Icône ⌚ compacte affichée pour toute séance qualité non encore
+        // validée, y compris future — permet de préparer sa montre
+        // plusieurs jours à l'avance, pas seulement le jour même.
+        // L'icône ✏️ (saisie manuelle/import) est séparée, à côté des
+        // boutons de statut (— ✅ ❌ ⚠️ 😴, plus bas dans la carte).
+        (!isDoneSession && effSess.type!=="REPOS" && effSess.type!=="RACE" && effSess.structureIntervalles) ? renderIconeStructureMontre(effSess.structureIntervalles) : null,
         // Icône ✏️ (03/08/2026, demande de Laurent : "en haut à droite,
         // juste à gauche du statut validé") — visible avant ET après
         // validation (contrairement à l'icône ⌚ juste au-dessus, qui
