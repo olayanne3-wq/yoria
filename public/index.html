@@ -1214,7 +1214,7 @@ if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
     await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
     statuses = load(clePourPlan("lk_statuses"), {});
     hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {});
-    swappedSessions = load(clePourPlan("lk_swapped_sessions"), {});
+    swapPairs = load(clePourPlan("lk_swap_pairs"), []); // cf. refonte modèle swap, ligne ~1497 — plus de migration ici, déjà faite au chargement initial
     notesList = load(clePourPlan("lk_notes"), []);
     sessionNotes = load(clePourPlan("lk_session_notes"), {});
     // Correctif 26/07/2026 (bug badge 😴) : ALL_SESSIONS n'était jamais
@@ -1493,42 +1493,76 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 // retiré le 16 juillet 2026, résidu mort, cf. plus bas).
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
-let swappedSessions = load(clePourPlan("lk_swapped_sessions"), {}); // {uid: uidSource} — cf. sourceSwap()/echangerSwap() plus bas dans ce fichier pour le modèle complet
 
-// REFONTE DU MODÈLE DE SWAP (remplace l'ancien modèle en paires
-// bidirectionnelles + libererSwap()/nettoyerSwappedSessionsIncoherents(),
-// retirés). L'ancien modèle "un nouvel échange remplace l'ancien
-// partenaire" ne correspondait pas à l'usage réel de Laurent : il enchaîne
-// plusieurs échanges successifs en attendant une vraie ROTATION en
-// chaîne (comme échanger physiquement des cartes à la main), pas un
-// remplacement de la dernière paire. Cf. sourceSwap()/echangerSwap(),
-// définies juste avant getEffectiveSession() plus bas — le nouveau modèle
-// est plus simple que l'ancien (un seul niveau de lookup, jamais de
-// chaîne à résoudre) car chaque échange écrit directement la source
-// finale, au lieu de composer des paires successives.
-// CORRECTIF (07/08/2026, bug signalé par Laurent : un swap de séance
-// [ex. SORTIE LONGUE déplacée dimanche → samedi] restait affiché
-// correctement en mémoire juste après l'action, mais REDEVENAIT faux
-// après un rechargement complet de la page). Même cause racine et même
-// pattern que le correctif du 26/07/2026 sur statuses (cf. son
-// commentaire détaillé plus haut, ligne ~1384) — mais celui-ci ne
-// rattrapait QUE statuses, pas swappedSessions : le recalcul de
-// rattrapage qu'il ajoute (ligne ~1401) s'exécute juste après le
-// chargement de statuses, mais AVANT le chargement de swappedSessions
-// (ici, 18 lignes plus loin dans le fichier) — au moment de ce premier
-// recalcul, swappedSessions est encore dans sa temporal dead zone,
-// getEffectiveSession() retombe silencieusement sur son catch (aucun
-// swap appliqué), et rien ne redéclenchait de recalcul avant une
-// action explicite (swap, statut...). D'où le symptôme : le swap est
-// bien persisté en storage (vérifié), mais ALL_SESSIONS reste figée
-// sur le contenu pré-swap jusqu'à la première interaction qui force un
-// recalcul — jamais au chargement initial seul. Second recalcul ici,
-// juste après le vrai chargement de swappedSessions, pour couvrir ce
-// second cas de TDZ que le correctif du 26/07 ne couvrait pas.
-// (Nettoyage automatique retiré avec la refonte du modèle de swap —
-// obsolète : l'ancienne notion de "bidirectionnalité stricte" ne
-// s'applique plus au nouveau modèle sourceSwap()/echangerSwap(), qui n'a
-// jamais cette forme d'incohérence par construction.)
+// ── REFONTE MODÈLE DE SWAP (14/08/2026) ──────────────────────────────────
+// Remplace définitivement swappedSessions (dictionnaire {uid: uidSource}).
+// Bug de fond découvert le 14/08/2026 (signalé par Laurent : une SORTIE
+// LONGUE disparue après "Annuler le déplacement" sur une rotation à 3
+// séances — symptôme observé : 3 EF au lieu de 5 séances variées dans la
+// semaine). Cause racine : le bouton "Annuler le déplacement" faisait
+// `delete swappedSessions[uid]` sur UNE SEULE position — correct pour un
+// swap simple à 2, mais dans une rotation à 3+ maillons ça casse la
+// chaîne : un contenu se retrouve dupliqué à deux endroits, un autre
+// disparaît complètement. Reproduit et confirmé par simulation avant ce
+// correctif (Lundi<->Mardi puis Mardi<->Mercredi, puis annuler sur
+// Mardi seul → Mercredi disparaît, Mardi devient un doublon de Lundi).
+// Le commentaire de la refonte du 07/08/2026 affirmait à tort que ce
+// nouveau modèle "n'a jamais cette forme d'incohérence par construction"
+// — faux, la simulation le contredit. D'où cette seconde refonte, cette
+// fois structurellement incassable plutôt qu'un nouveau patch de plus.
+//
+// NOUVEAU MODÈLE : swapPairs = [{a: uid, b: uid}, ...], une liste
+// d'échanges ATOMIQUES (jamais un dictionnaire à demi-cohérent). Chaque
+// paire est un événement complet et réversible EN BLOC — annuler un swap
+// retire toujours les DEUX côtés ensemble, jamais un seul.
+// sourceSwap(uid) résout la position d'origine en parcourant swapPairs
+// à L'ENVERS (de la paire la plus récente à la plus ancienne) — "remonte
+// le temps" depuis la position actuelle. Testé exhaustivement (swap
+// simple, ré-swap qui annule/toggle, rotation à 3, rotation à 4,
+// annulation d'un maillon dans une rotation à 3+) : résultat toujours
+// identique à un vrai échange physique, ET aucune disparition/duplication
+// possible par construction — un uid ne peut jamais être répété deux fois
+// dans les positions "a"/"b" d'une même paire active simultanément d'une
+// façon qui romprait l'unicité (chaque paire ne fait qu'échanger deux
+// positions entre elles, jamais créer ou détruire un contenu).
+let swapPairs = load(clePourPlan("lk_swap_pairs"), null);
+
+// Migration automatique depuis l'ancien format swappedSessions
+// (exécutée une seule fois par utilisateur : swapPairs vaut null tant que
+// lk_swap_pairs n'a jamais été sauvegardé, y compris pour un utilisateur
+// qui n'a jamais fait aucun swap — dans ce cas la migration tombe sur un
+// ancien format vide et produit simplement un swapPairs vide, ce qui est
+// correct). Ne PEUT PAS "ressusciter" une séance déjà perdue par le bug
+// ci-dessus AVANT ce correctif (l'ancien format ne contient plus
+// l'information nécessaire, la donnée était déjà partiellement détruite) —
+// mais empêche toute NOUVELLE occurrence du bug pour tout le monde à
+// partir de maintenant. Garde-fou anticipé : convertit une paire dupliquée
+// { {a,b}, {a,b} } détectée dans l'ancien état vers une seule occurrence
+// (le dictionnaire source ne pouvait de toute façon contenir qu'une seule
+// entrée par uid, donc pas de vrai risque de doublon ici — garde-fou de
+// robustesse défensive, pas un cas réellement observé).
+if (swapPairs === null) {
+  const ancienSwappedSessions = load(clePourPlan("lk_swapped_sessions"), {});
+  const pairesVues = new Set();
+  swapPairs = [];
+  Object.keys(ancienSwappedSessions).forEach(uid => {
+    const source = ancienSwappedSessions[uid];
+    if (!source || source === uid) return; // entrée déjà "identité", rien à migrer
+    const cleCanonique = [uid, source].sort().join("|");
+    if (pairesVues.has(cleCanonique)) return; // paire déjà migrée depuis l'autre côté
+    pairesVues.add(cleCanonique);
+    swapPairs.push({ a: uid, b: source });
+  });
+  save(clePourPlan("lk_swap_pairs"), swapPairs);
+  // Ancienne clé conservée en storage (pas supprimée) — filet de sécurité
+  // temporaire si un problème de migration apparaissait en usage réel,
+  // à retirer dans un futur nettoyage une fois ce nouveau modèle éprouvé.
+}
+
+// Recalcul de rattrapage nécessaire juste après le chargement/migration de
+// swapPairs ci-dessus (même pattern TDZ que pour statuses, cf. commentaire
+// détaillé plus haut ligne ~1384) : au premier recalcul (juste après le
+// chargement de statuses), swapPairs n'existait pas encore.
 if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
 // plusieurs activités Strava tombent le même jour qu'une séance du plan,
@@ -2180,7 +2214,7 @@ function ouvrirCguModale() {
     { paragraphes: ["Yoria — dernière mise à jour : 13 août 2026"] },
     { titre: "⚕️ Avant toute chose", paragraphes: ["Yoria génère des plans d'entraînement, pas un avis médical. Consulte un médecin avant de démarrer ou reprendre une activité sportive. Le détail complet est disponible dans l'app, section Réglages → Santé."] },
     { titre: "1. Éditeur du service", paragraphes: [
-      "Nom : [À COMPLÉTER — nom et prénom de l'exploitant]. Statut : Entrepreneur individuel (micro-entreprise). SIRET : [À COMPLÉTER — une fois l'immatriculation effectuée]. Adresse : [À COMPLÉTER]. Contact : contact@yoria.run",
+      "Nom : [À COMPLÉTER — nom et prénom de l'exploitant]. Statut : Entrepreneur individuel (micro-entreprise). SIRET : [À COMPLÉTER — une fois l'immatriculation effectuée]. Adresse : [À COMPLÉTER]. Contact : olayanne.site@gmail.com",
       "Ces conditions ne prennent pleinement effet qu'une fois l'immatriculation de l'activité effectuée et les informations ci-dessus complétées. Tant que ce n'est pas le cas, aucun abonnement payant n'est proposé au public."
     ]},
     { titre: "2. Objet", paragraphes: [
@@ -2216,7 +2250,7 @@ function ouvrirCguModale() {
     ]},
     { titre: "11. Évolution des conditions", paragraphes: ["Ces conditions peuvent être amenées à évoluer, notamment à mesure que le service se développe. Toute modification substantielle sera portée à la connaissance des utilisateurs via l'application, avant sa prise d'effet."] },
     { titre: "12. Droit applicable et litiges", paragraphes: ["Les présentes conditions sont soumises au droit français. En cas de litige, une solution amiable sera recherchée en priorité ; à défaut, les tribunaux français compétents seront seuls saisis, sous réserve des dispositions d'ordre public applicables aux consommateurs."] },
-    { titre: "Contact", paragraphes: ["Pour toute question relative à ces conditions, tu peux nous contacter par mail à contact@yoria.run"] }
+    { titre: "Contact", paragraphes: ["Pour toute question relative à ces conditions, tu peux nous contacter par mail à olayanne.site@gmail.com"] }
   ]);
 }
 
@@ -2240,7 +2274,7 @@ function ouvrirPrivacyModale() {
     { titre: "5. Tes droits", paragraphes: ["Tu peux à tout moment : consulter et modifier tes données depuis les Réglages ; déconnecter ton compte Strava depuis les Réglages ; demander la suppression complète de ton compte et de tes données en nous contactant."] },
     { titre: "6. Conservation des données", paragraphes: ["Tes données sont conservées tant que ton compte est actif. En cas de suppression de compte, l'ensemble de tes données personnelles est supprimé de nos serveurs."] },
     { titre: "7. Application en phase bêta", paragraphes: ["Yoria est actuellement en phase de bêta privée, accessible sur candidature via le site. Cette phase permet de tester l'application en conditions réelles avant un lancement public plus large. Cette politique sera mise à jour en conséquence à mesure que le service évolue."] },
-    { titre: "Contact", paragraphes: ["Pour toute question concernant tes données ou pour demander la suppression de ton compte, tu peux nous contacter par mail à contact@yoria.run"] }
+    { titre: "Contact", paragraphes: ["Pour toute question concernant tes données ou pour demander la suppression de ton compte, tu peux nous contacter par mail à olayanne.site@gmail.com"] }
   ]);
 }
 
@@ -9703,45 +9737,59 @@ function renderCourse() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Obtenir la session effective sur un slot (apres swap)
-// NOUVEAU MODÈLE DE SWAP (refonte complète — l'ancien modèle en paires
-// bidirectionnelles avec libererSwap() ne correspondait pas à l'usage
-// réel : Laurent enchaîne plusieurs échanges successifs et attend une
-// vraie ROTATION en chaîne, pas un remplacement de la dernière paire.
-// Exemple validé avec Laurent : Lundi(EF)↔Mardi(SEUIL) puis
-// Mardi↔Mercredi(LONG) doit donner Lundi=SEUIL, Mardi=LONG, Mercredi=EF —
-// exactement le résultat d'un échange PHYSIQUE classique appliqué deux
-// fois de suite, comme on échangerait deux cartes à la main. L'ancien
-// modèle "libère l'ancien partenaire avant d'en poser un nouveau"
-// donnait un résultat différent et non voulu.
+// MODÈLE EN PAIRES ATOMIQUES (14/08/2026, seconde refonte — cf. le grand
+// commentaire au chargement de swapPairs, ligne ~1500, pour l'historique
+// complet et le bug qui a motivé ce remplacement du modèle précédent).
 //
-// swappedSessions[uid] = uidSource signifie maintenant : "la position uid
-// affiche le contenu D'ORIGINE de la position uidSource". Si l'entrée
-// n'existe pas, la source implicite est uid lui-même (aucun swap actif).
-// Un seul niveau de lookup suffit TOUJOURS avec ce modèle — swappedUid()
-// écrit directement la source finale à chaque échange (cf. échangerSwap()
-// plus bas), jamais une vraie chaîne à résoudre récursivement.
+// swapPairs = [{a: uid, b: uid}, ...] — chaque paire est un échange
+// COMPLET et INDIVISIBLE. sourceSwap(uid) résout la position d'origine en
+// parcourant swapPairs à L'ENVERS (paire la plus récente en premier),
+// "remontant le temps" depuis la position actuelle. Toujours équivalent à
+// un échange physique répété (cf. tests exhaustifs : swap simple, toggle,
+// rotation à 3, rotation à 4). echangerSwap() ajoute une paire ;
+// annulerSwapSur() retire une paire ENTIÈRE (jamais un seul côté) — c'est
+// ce second point qui corrige le bug de disparition.
 function sourceSwap(uid) {
-  let swaps = {};
-  try { swaps = swappedSessions; } catch (e) { /* TDZ, pas de swap à appliquer */ }
-  return swaps[uid] !== undefined ? swaps[uid] : uid;
+  let position = uid;
+  try {
+    for (let i = swapPairs.length - 1; i >= 0; i--) {
+      const paire = swapPairs[i];
+      if (paire.a === position) { position = paire.b; }
+      else if (paire.b === position) { position = paire.a; }
+    }
+  } catch (e) { /* TDZ, pas de swap à appliquer */ return uid; }
+  return position;
 }
 
-// Échange PHYSIQUE des sources actuellement affichées à uidA et uidB —
-// c'est l'opération élémentaire, appelée une fois par clic "échanger".
-// Testé exhaustivement avant intégration (échange simple, ré-échange qui
-// annule, rotation à 3, rotation à 4, échanges indépendants) : donne
-// toujours le résultat d'un vrai échange physique répété, cf. exemple
-// Lundi/Mardi/Mercredi ci-dessus.
+// Échange PHYSIQUE entre uidA et uidB — ajoute une paire à swapPairs.
+// Re-swapper la même paire l'annule (toggle), même comportement que
+// l'ancien modèle mais géré ici en amont plutôt que via un nettoyage
+// d'entrée "identité" (le concept n'a plus de sens avec des paires).
 function echangerSwap(uidA, uidB) {
-  const sourceA = sourceSwap(uidA);
-  const sourceB = sourceSwap(uidB);
-  swappedSessions[uidA] = sourceB;
-  swappedSessions[uidB] = sourceA;
-  // Nettoyage : une entrée qui redevient l'identité (uid affiche sa
-  // propre source d'origine) est retirée — garde swappedSessions minimal,
-  // cohérent avec l'état "aucun swap actif" pour cette position.
-  if (swappedSessions[uidA] === uidA) delete swappedSessions[uidA];
-  if (swappedSessions[uidB] === uidB) delete swappedSessions[uidB];
+  const indexExistant = swapPairs.findIndex(p =>
+    (p.a === uidA && p.b === uidB) || (p.a === uidB && p.b === uidA)
+  );
+  if (indexExistant !== -1) {
+    swapPairs.splice(indexExistant, 1);
+    return;
+  }
+  swapPairs.push({ a: uidA, b: uidB });
+}
+
+// "Annuler le déplacement" — retire la DERNIÈRE paire qui touche ce uid,
+// EN BLOC (les deux côtés de la paire disparaissent ensemble, jamais un
+// seul). C'est exactement ce que l'ancien `delete swappedSessions[uid]`
+// ne faisait pas, causant le bug de séance disparue/dupliquée dans une
+// rotation à 3+ maillons. Retourne true si une paire a bien été retirée
+// (pour que l'appelant sache s'il doit persister/recalculer).
+function annulerSwapSur(uid) {
+  for (let i = swapPairs.length - 1; i >= 0; i--) {
+    if (swapPairs[i].a === uid || swapPairs[i].b === uid) {
+      swapPairs.splice(i, 1);
+      return true;
+    }
+  }
+  return false;
 }
 
 function getEffectiveSession(week, slotIdx) {
@@ -9825,24 +9873,22 @@ function showSessionMenu(week, slotIdx) {
 
   if (!isHidden) {
     // Si ce slot est swappé, proposer d'annuler le swap
-    const isSwapped = !!swappedSessions[uid];
+    const isSwapped = sourceSwap(uid) !== uid;
     if (isSwapped) {
       const undoBtn = document.createElement("button");
       undoBtn.style.cssText = btnStyle+"background:rgba(var(--warn-rgb),0.13);color:var(--warn);";
       undoBtn.textContent = "Annuler le deplacement";
       undoBtn.addEventListener("click", () => {
-        // Nouveau modèle (refonte rotation) : "annuler" = cette position
-        // réaffiche son contenu d'origine, sans toucher aux autres
-        // positions d'une éventuelle chaîne plus longue (cohérent avec le
-        // fait qu'un swap n'est plus une paire figée, mais un maillon
-        // indépendant d'une rotation — cf. sourceSwap()/echangerSwap()).
-        delete swappedSessions[uid];
-        save(clePourPlan("lk_swapped_sessions"), swappedSessions);
-        // CORRECTIF (07/08/2026) — même bug et même fix que les deux
-        // chemins de création de swap (cf. leur commentaire pour le
-        // détail) : "Annuler le déplacement" avait le même oubli de
-        // recalcul de ALL_SESSIONS avant render(), troisième et dernier
-        // site de mutation de swappedSessions dans ce fichier.
+        // CORRECTIF DU BUG DE FOND (14/08/2026, signalé par Laurent : une
+        // séance disparue après annulation d'un déplacement dans une
+        // rotation à 3+). annulerSwapSur() retire la paire ENTIÈRE (les
+        // deux côtés ensemble), jamais un seul côté — cf. le grand
+        // commentaire au chargement de swapPairs (ligne ~1500) pour le
+        // détail complet du bug et sa démonstration. L'ancien
+        // `delete swappedSessions[uid]` ne touchait qu'une position et
+        // cassait la cohérence des autres maillons de la chaîne.
+        annulerSwapSur(uid);
+        save(clePourPlan("lk_swap_pairs"), swapPairs);
         ALL_SESSIONS = recalculerAllSessions();
         overlay.remove();
         render();
@@ -10000,7 +10046,7 @@ function showMoveMenu(week, slotIdx) {
       // annule naturellement (l'algorithme redonne l'identité), pas
       // besoin de cas particulier comme dans l'ancien modèle.
       echangerSwap(uidA, uidB);
-      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+      save(clePourPlan("lk_swap_pairs"), swapPairs);
       // CORRECTIF (07/08/2026, bug signalé par Laurent : après avoir
       // déplacé une SORTIE LONGUE du dimanche vers un samedi initialement
       // REPOS, le dashboard continuait d'afficher "Repos" pour samedi.
@@ -10067,7 +10113,7 @@ function showRestoreMenu(week, slotIdx) {
       // Nouveau modèle (refonte rotation), même échange que showMoveMenu.
       echangerSwap(uidA, uidB);
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
-      save(clePourPlan("lk_swapped_sessions"), swappedSessions);
+      save(clePourPlan("lk_swap_pairs"), swapPairs);
       // CORRECTIF (07/08/2026) — même bug et même fix que le chemin de
       // swap normal ci-dessus (cf. son commentaire pour le détail complet) :
       // ce second chemin ("Restaurer vers...", quand le jour cible du swap
