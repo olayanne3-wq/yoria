@@ -2490,27 +2490,18 @@ function coordonneesMeteoActuelles() {
 // compteur si predHistory est vide/obsolète — cf. son commentaire).
 window._sourcesChargementInitialTotal = (window._sourcesChargementInitialTotal ?? 0) + 3; // badges + fetchWeather + verifierMeteoSeanceDemain
 window._sourcesChargementInitialRestantes = window._sourcesChargementInitialTotal;
-// CORRECTIF FLASH TARDIF : la fenêtre doit se fermer au moment précis où
-// la DERNIÈRE source démarrée se termine — pas au moment où un render()
-// de regroupement antérieur constate que le compteur est déjà à 0. Les 3
-// (ou 4) sources ne se résolvent pas forcément dans le même ordre qu'elles
-// ont démarré (ex. fetchWeather, plus lente à cause du réseau, peut finir
-// après badges et verifierMeteoSeanceDemain qui sont rapides) : si la
-// fermeture est décidée dans renderDiffereChargementInitial() (déclenchée
-// par la source la plus rapide qui atteint 0 EN PREMIER dans les faits),
-// elle ferme la fenêtre AVANT que la source la plus lente n'ait fini son
-// propre render() de regroupement, qui s'exécute alors avec le fondu
-// réactivé — flash isolé et tardif, observé et confirmé par instrumentation.
-// Fermer ici, dans signalerSourceChargementTerminee() elle-même (appelée
-// dans le `finally` de chaque source, donc après TOUT le travail de cette
-// source, y compris son propre appel à renderDiffereChargementInitial()
-// s'il a lieu) garantit que la fenêtre ne se ferme qu'une fois que la
-// VRAIE dernière source a fini, quel que soit l'ordre réel de résolution.
+// Décrémente uniquement — ne ferme JAMAIS la fenêtre ici. Chaque source
+// planifie son propre render() de regroupement via
+// renderDiffereChargementInitial() (setTimeout 150ms) AVANT de se signaler
+// terminée : au moment où cette fonction s'exécute, ce futur render() n'a
+// pas encore eu lieu. Fermer la fenêtre ici, de façon synchrone, la
+// fermerait donc AVANT que ce render() différé ne s'exécute réellement —
+// celui-ci se retrouverait alors avec la fenêtre déjà fermée et un fondu
+// réactivé (flash tardif, confirmé par instrumentation en conditions
+// réelles). La fermeture est décidée dans render() lui-même (cf. plus bas
+// dans ce fichier), au moment exact où il s'exécute — jamais avant.
 function signalerSourceChargementTerminee() {
   window._sourcesChargementInitialRestantes = Math.max(0, (window._sourcesChargementInitialRestantes ?? window._sourcesChargementInitialTotal ?? 3) - 1);
-  if (window._sourcesChargementInitialRestantes <= 0) {
-    window._fenetreChargementInitialActive = false;
-  }
 }
 
 async function fetchWeather() {
@@ -12666,27 +12657,14 @@ let _renderDiffereChargementTimer = null;
 // Le compteur des sources du chargement initial (badges/fetchWeather/
 // verifierMeteoSeanceDemain, + rebuildPredHistory si déclenchée) est
 // déclaré plus haut dans ce fichier (cf. window._sourcesChargementInitialTotal
-// et signalerSourceChargementTerminee(), qui ferme la fenêtre au bon
-// moment — voir son commentaire pour l'explication complète).
+// et signalerSourceChargementTerminee()).
 function renderDiffereChargementInitial() {
-  console.log(`[DEBUG renderDiffereChargementInitial] appelée à t+${Math.round(performance.now())}ms — sourcesRestantes=${window._sourcesChargementInitialRestantes} total=${window._sourcesChargementInitialTotal}`, new Error().stack.split('\n').slice(1,3).join(' | '));
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
-  _renderDiffereChargementTimer = setTimeout(() => {
-    console.log(`[DEBUG renderDiffereChargementInitial] timer 150ms déclenché à t+${Math.round(performance.now())}ms — sourcesRestantes=${window._sourcesChargementInitialRestantes} fenetreActive=${window._fenetreChargementInitialActive}`);
-    // Ce render() de regroupement reste sans fondu tant que la fenêtre est
-    // active. La fermeture de la fenêtre est désormais décidée dans
-    // signalerSourceChargementTerminee() elle-même (cf. son commentaire),
-    // au moment exact où la VRAIE dernière source démarrée a fini son
-    // travail — pas ici, qui ne reflète que l'état au moment où CE timer se
-    // déclenche, potentiellement avant qu'une source plus lente n'ait fini.
-    render();
-  }, 150);
+  _renderDiffereChargementTimer = setTimeout(render, 150);
 }
 
 function render() {
-  // DEBUG TEMPORAIRE — à retirer une fois le diagnostic terminé.
-  console.log(`[DEBUG render] appel #${(window._debugRenderCount = (window._debugRenderCount||0)+1)} à t+${Math.round(performance.now())}ms — fenetreActive=${window._fenetreChargementInitialActive} sourcesRestantes=${window._sourcesChargementInitialRestantes} total=${window._sourcesChargementInitialTotal}`, new Error().stack.split('\n').slice(1,4).join(' | '));
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
   // juste après reconstruirait inutilement le même contenu (double flash).
@@ -12850,15 +12828,27 @@ function render() {
   // corrigé le diagnostic après nouvelle analyse frame par frame d'une
   // vidéo de contrôle, suite au retour de Laurent que le problème n'était
   // pas qu'un fondu lent. window._premierRenderEffectue ne suffisait donc
-  // pas : remplacé par window._fenetreChargementInitialActive, qui reste
-  // vrai jusqu'à APRÈS que renderDiffereChargementInitial() ait déclenché
-  // son propre render() de regroupement (fenêtre fermée juste après cet
-  // appel, cf. plus bas) — couvre donc TOUS les render() (premier ET
-  // celui du regroupement à 150ms) qui ont lieu pendant cette fenêtre.
+  // Aucun render() du chargement initial (premier affichage, ET tous les
+  // suivants tant que badges/météo/météo-demain/rebuildPredHistory n'ont
+  // pas tous fini) ne doit jamais avoir de fondu — y compris le tout
+  // dernier d'entre eux, qui affiche un contenu réellement différent
+  // (badge débloqué, météo reçue) mais dont le fondu CSS (0.2s, opacity
+  // 0->1 sur tout #app) est perçu comme un flash plutôt qu'une transition
+  // élégante, surtout combiné à un render précédent proche dans le temps
+  // qui a déjà changé quelque chose de visible. La fenêtre ne se ferme
+  // qu'ICI, à l'intérieur de render() lui-même, au moment exact où il
+  // s'exécute — jamais dans signalerSourceChargementTerminee() (qui ne
+  // fait que décrémenter le compteur, cf. son commentaire) : cette
+  // dernière s'exécute AVANT que le render() différé de 150ms planifié
+  // par la même source n'ait eu lieu, donc fermer la fenêtre à ce
+  // moment-là serait toujours prématuré pour ce futur render.
   if (window._fenetreChargementInitialActive !== false) {
     window._fenetreChargementInitialActive = true;
     if (hdr) hdr.style.animation = "none";
     content.style.animation = "none";
+    if (window._sourcesChargementInitialRestantes <= 0) {
+      window._fenetreChargementInitialActive = false;
+    }
   }
   // Masque l'écran de chargement statique (logo Y, cf. #ecran-chargement
   // dans le <body>) dès ce tout premier render() réel — une seule fois
