@@ -52,8 +52,10 @@ yoria/
 │   ├── cgu.html                   # Conditions générales d'utilisation et de vente
 │   │                              # (SIRET/adresse en attente, cf. inventaire
 │   │                              # chantier "Conformité — CGU/CGV")
+│   ├── sante.html                 # Recommandations santé (page statique, même
+│   │                              # contenu que ouvrirRecommandationsSanteModale())
 │   ├── beta/                      # Site candidature bêta publique (cf. §16bis)
-│   │   ├── index.html             # Page d'inscription (one-page à ancres)
+│   │   ├── index.html             # Page d'inscription (navigation par onglets)
 │   │   ├── script.js
 │   │   ├── styles.css
 │   │   ├── merci.html             # Page de remerciement dédiée
@@ -110,7 +112,7 @@ dynamic `import()` (`window._planGeneratorModule`).
 **Règle TDZ (temporal dead zone)** : toute promesse globale attendue
 ailleurs (`window.__AUTH_PRET__`), ou toute variable `let`/`const` lue par
 du code exécuté tôt (`_renderDiffereTimer`, `stravaToken`,
-`swappedSessions`...), doit être déclarée de façon synchrone, AVANT tout
+`swapPairs`...), doit être déclarée de façon synchrone, AVANT tout
 code qui pourrait la lire — y compris du code placé après un `await` mais
 techniquement situé avant la déclaration dans le fichier. Un `typeof` ne
 protège pas de ce piège. Toute variable lue par une même fonction
@@ -127,7 +129,7 @@ cf. `verifierMeteoSeanceDemain()`, désormais appelée juste après le
 premier `render()` plutôt qu'au tout début du script.
 
 **Toute mutation d'un état source de `ALL_SESSIONS`** (`statuses`,
-`swappedSessions`) doit être suivie d'un `ALL_SESSIONS =
+`swapPairs`) doit être suivie d'un `ALL_SESSIONS =
 recalculerAllSessions()` explicite avant tout `render()`, jamais implicite.
 
 **Support PWA iOS** — `apple-mobile-web-app-status-bar-style` (valeur
@@ -147,7 +149,9 @@ santé" du dashboard (`yoria_bandeau_sante_ferme`, cf.
 santé"). Contrairement à Android (TWA Play Store), **aucun équivalent
 officiel Apple n'existe** pour faire passer une PWA vers l'App Store sans
 review — installation manuelle via Safari (Partager → Sur l'écran
-d'accueil) reste la seule voie.
+d'accueil) reste la seule voie. Une app native iOS via wrapper Capacitor
+est mentionnée comme "à l'étude" côté communication bêta (page
+d'inscription, mail d'invitation) — aucun développement entamé.
 
 **Écran "Consulter un plan" — accordéon "Modifier mon plan"
 (`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
@@ -233,7 +237,18 @@ Fonctions de rendu (`render*`) :
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
 - `ouvrirPpsModale` — modale PPS (cf. plus bas)
-- `ouvrirRecommandationsSanteModale` — modale santé (texte complet : avis médical, signaux d'alerte à l'effort, limites de l'app), lecture seule, pas de formulaire
+- `ouvrirModaleTexte` — factory générique de modale texte lecture seule
+  (titre + sections), utilisée par les 3 modales suivantes : tailles
+  unifiées (titre 18px/800, sous-titre 15px/700, corps 14px/lineHeight
+  1.6), même pattern d'overlay plein écran que `ouvrirPpsModale()`.
+- `ouvrirRecommandationsSanteModale` — texte complet : avis médical,
+  signaux d'alerte à l'effort, limites de l'app.
+- `ouvrirCguModale` / `ouvrirPrivacyModale` — texte des Conditions
+  générales d'utilisation / Politique de confidentialité, dupliqué depuis
+  `public/cgu.html`/`public/privacy.html` (SOURCE DE VÉRITÉ = ces fichiers
+  statiques, toute mise à jour de texte doit être répercutée aux deux
+  endroits). Réglages : lien CGU/Confidentialité ouvre ces modales
+  (remplace l'ancien `window.open("_blank")`).
 - `renderTestSemiCooperRow` — carte du jour (Mode Forme sans référence, cf. `auth-et-publication.md`)
 
 **Carte "Aujourd'hui" (todayEl)** — principe "rien à ouvrir". Header de
@@ -435,17 +450,20 @@ date d'expiration non retenue (peu fiable sur le gabarit FFA observé) —
 saisie manuelle de la date reste le seul chemin. Alerte visuelle si
 expiration ≤30 jours.
 
-**Onglet Réglages — 6 groupes accordéon + 1 ligne autonome** — Compte et
-abonnement / Profil coureur / Records personnels / Intégrations / Export
-/ Version, même mécanisme de persistance d'état que Stats/Course. Deux
-sections restent hors accordéon, toujours visibles : la clôture de plan
-Forme (action irréversible) et le thème clair/sombre (bouton icône
+**Onglet Réglages — 6 groupes accordéon + 2 lignes autonomes** — Compte
+et abonnement / Profil coureur / Records personnels / Intégrations /
+Export / Version, même mécanisme de persistance d'état que Stats/Course.
+Deux sections restent hors accordéon, toujours visibles : la clôture de
+plan Forme (action irréversible) et le thème clair/sombre (bouton icône
 discret, intégré à l'en-tête de l'app — fond blanc fixe derrière ☀️, fond
 noir fixe derrière 🌙, indépendant du thème actif pour un contraste
 constant). Le groupe "Profil coureur" affiche un simple rappel PPS en
 lecture seule (statut + date d'expiration). Tout en bas de l'écran, hors
-de tout groupe accordéon : ligne "⚕️ Recommandations santé"
-(`recommandationsSanteSection`), ouvre `ouvrirRecommandationsSanteModale()`.
+de tout groupe accordéon : lignes "⚕️ Recommandations santé" et "📄
+Conditions générales d'utilisation" / "🔒 Politique de confidentialité"
+(`recommandationsSanteSection`, `cguSection`), ouvrent respectivement
+`ouvrirRecommandationsSanteModale()`, `ouvrirCguModale()`,
+`ouvrirPrivacyModale()`.
 
 **Records personnels — grille compacte avec validation explicite** —
 chaque distance (5K/10K/Semi/Marathon) affiche directement sa roulette
@@ -473,35 +491,46 @@ affichant un warning si une fonction attendue est absente au chargement.
 Ne doit lister QUE des fonctions réellement `export`ées ; une fonction
 privée y figurant à tort génère un faux warning permanent.
 
-## Échange de séances (swap) — modèle en rotation
+## Échange de séances (swap) — modèle en paires atomiques
 
-Refonte complète (remplace l'ancien modèle en paires bidirectionnelles) :
-`swappedSessions[uid] = uidSource` signifie "la position `uid` affiche le
-contenu d'origine de la position `uidSource`". Si l'entrée n'existe pas,
-la source implicite est `uid` lui-même (aucun swap actif).
+Refonte complète (remplace l'ancien modèle en dictionnaire
+`swappedSessions[uid] = uidSource`, qui pouvait perdre ou dupliquer une
+séance lors d'une annulation partielle sur une rotation à 3+ maillons —
+bug découvert et corrigé le 14/08/2026). `swapPairs = [{a: uid, b: uid},
+...]` — une liste de paires ATOMIQUES, jamais un dictionnaire à
+demi-cohérent. Chaque paire est un échange complet et réversible en bloc.
 
-- **`sourceSwap(uid)`** — lookup direct (un seul niveau, jamais de chaîne
-  à résoudre : chaque échange écrit directement la source finale).
-- **`echangerSwap(uidA, uidB)`** — opération élémentaire, appelée une fois
-  par clic "échanger" : permute directement les sources actuelles de
-  `uidA` et `uidB`. Équivaut à un vrai échange physique répété — enchaîner
-  plusieurs clics produit une vraie ROTATION en chaîne (ex. A↔B puis B↔C
-  donne A=contenu de B initial, B=contenu de C initial, C=contenu de A
-  initial — testé et validé explicitement sur ce cas). Nettoie
-  automatiquement toute entrée qui redevient l'identité.
+- **`sourceSwap(uid)`** — résout la position d'origine en parcourant
+  `swapPairs` À L'ENVERS (paire la plus récente en premier), "remontant
+  le temps" depuis la position actuelle. Toujours équivalent à un vrai
+  échange physique répété.
+- **`echangerSwap(uidA, uidB)`** — ajoute une paire à `swapPairs`. Un
+  ré-échange de la même paire l'annule (toggle). Enchaîner plusieurs
+  clics produit une vraie ROTATION en chaîne (ex. A↔B puis B↔C donne
+  A=contenu de B initial, B=contenu de C initial, C=contenu de A initial
+  — testé et validé sur ce cas, comme sur des rotations à 4).
+- **`annulerSwapSur(uid)`** — retire la DERNIÈRE paire touchant ce uid,
+  EN BLOC (les deux côtés de la paire ensemble, jamais un seul). C'est ce
+  point précis qui corrige le bug de séance disparue/dupliquée : l'ancien
+  modèle ne retirait qu'un seul côté d'une chaîne, cassant sa cohérence.
 - **`getEffectiveSession(week, slotIdx)`** — point d'entrée UNIQUE pour
   lire le contenu affiché d'un slot après swap éventuel. Toute nouvelle
   fonction qui calcule des statistiques ou un affichage à partir des
   séances d'une semaine DOIT passer par cette fonction, jamais lire
-  `week.sessions[i]` directement — plusieurs bugs (frise correcte mais
-  statistiques affichées à côté désynchronisées) sont venus d'un filtrage
-  direct sur `week.sessions` qui ignorait le swap.
+  `week.sessions[i]` directement.
+
+Migration automatique et silencieuse depuis l'ancien `lk_swapped_sessions`
+au premier chargement (`lk_swap_pairs`) — ancienne clé conservée en
+storage comme filet de sécurité temporaire.
 
 Utilisée par `renderGrilleJoursSemaine`, `renderWeekDetail`, `weekStats`,
-`weeklyReport`, `weekPct`, `recalculerAllSessions`. Le bouton "Annuler le
-déplacement" (dans `showSessionMenu`) retire uniquement l'entrée du slot
-concerné (`delete swappedSessions[uid]`) — n'affecte pas les autres
-maillons d'une éventuelle chaîne plus longue.
+`weeklyReport`, `weekPct`, `recalculerAllSessions`.
+
+**Déplacement d'un jour passé** — bloqué par défaut (traité comme "déjà
+réalisé"), SAUF pour un jour de la semaine EN COURS (`currentWeek()`)
+sans aucune trace d'activité (statut/note/RPE/saisie) — dans ce cas
+précis, le déplacement reste possible. Toute semaine antérieure reste
+bloquée sans exception.
 
 ## Écrans statiques hors JS (splash, chargement)
 
