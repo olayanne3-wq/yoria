@@ -1281,21 +1281,29 @@ footer {
 }
 
 @media (max-width: 760px) {
+  /* Les 4 onglets tiennent sur une seule ligne, sans scroll (correctif
+     14/08/2026 : "Inscription" était coupé net par le bord de l'écran en
+     overflow-x:auto sans indice visuel qu'il fallait scroller — capture
+     fournie par Laurent). flex:1 + padding/gap réduits + police plus
+     petite au lieu du scroll horizontal, pour que l'onglet le plus
+     important (Inscription) reste toujours entièrement visible. */
   .onglets-nav {
     justify-self: unset;
     width: 100%;
     display: flex;
-    gap: 4px;
+    gap: 3px;
     padding: 10px 0;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
   .onglet-lien {
-    flex: 0 0 auto;
-    padding: 8px 13px;
-    font-size: 0.82rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 0.68rem;
+    text-align: center;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .nav {
