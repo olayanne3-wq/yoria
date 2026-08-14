@@ -71,6 +71,7 @@ Tous dans `docs/v2-methodologie/` :
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
 - Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`).
 - Après un `str_replace` qui remplace un `old_str` court (ex. juste `function xxx() {`) par un bloc long, toujours revérifier que la ligne de déclaration d'origine est bien réincluse dans le `new_str` — un remplacement qui "avale" l'en-tête de fonction sans le reproduire casse silencieusement la fonction suivante en JS (pas d'erreur avant l'exécution du fichier entier). La vérification syntaxique de TOUS les blocs `<script>` (pas seulement le plus gros) avant chaque push est ce qui a intercepté ce genre d'erreur (cf. incident `ouvrirPpsModale()`, 13/08/2026, corrigé avant déploiement).
+- Un modèle de données qui a déjà nécessité plusieurs correctifs successifs sur le même mécanisme est un signal qu'il faut réévaluer l'architecture elle-même plutôt que d'empiler un énième patch — un commentaire affirmant qu'un modèle "n'a jamais telle forme d'incohérence par construction" doit être vérifié par une simulation reproductible avant d'être cru, pas simplement recopié d'un précédent commentaire (cf. refonte du modèle de swap, ci-dessous).
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -108,7 +109,27 @@ Tous dans `docs/v2-methodologie/` :
 - Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut révéler un bug latent dans du code existant qui supposait silencieusement un contexte toujours présent — vérifier les suppositions implicites du code traversé, pas seulement le nouveau code.
 
 **Échanges de séances (swap)**
-- Le modèle de swap (`swappedSessions`) est une vraie ROTATION en chaîne, pas des paires bidirectionnelles indépendantes — `swappedSessions[uid] = uidSource` signifie "cette position affiche le contenu d'origine de `uidSource`". Un échange (`echangerSwap`) permute directement les deux sources actuelles, jamais de "libération" préalable du partenaire. Toute nouvelle logique touchant aux séances swappées doit passer par `getEffectiveSession()`, jamais lire `week.sessions[i]` ou `PLAN` directement — plusieurs bugs (frise désynchronisée des statistiques affichées) sont venus de fonctions qui filtraient les séances sans passer par cette résolution.
+- Le modèle de swap (`swapPairs`) est une liste de paires atomiques
+  `{a: uid, b: uid}` — jamais un dictionnaire `{uid: uidSource}` (ancien
+  modèle `swappedSessions`, remplacé le 14/08/2026 suite à un bug
+  structurel : une rotation à 3+ maillons pouvait perdre une séance ou en
+  dupliquer une autre lors d'une annulation partielle). `sourceSwap(uid)`
+  résout la position d'origine en parcourant `swapPairs` À L'ENVERS
+  (paire la plus récente en premier). `echangerSwap()` ajoute une paire
+  (toggle si la même paire existe déjà) ; `annulerSwapSur(uid)` retire la
+  DERNIÈRE paire touchant ce uid EN BLOC (les deux côtés ensemble, jamais
+  un seul — c'est ce point précis qui corrige le bug). Migration
+  automatique et silencieuse depuis l'ancien `lk_swapped_sessions` au
+  premier chargement (`lk_swap_pairs`) ; ancienne clé conservée en
+  storage comme filet de sécurité. Toute nouvelle logique touchant aux
+  séances swappées doit passer par `getEffectiveSession()`, jamais lire
+  `week.sessions[i]` ou `PLAN` directement — plusieurs bugs (frise
+  désynchronisée des statistiques affichées) sont venus de fonctions qui
+  filtraient les séances sans passer par cette résolution.
+- Un jour PASSÉ sans aucune trace d'activité (statut/note/RPE/saisie) est
+  déplaçable uniquement s'il appartient à la semaine EN COURS
+  (`currentWeek()`) — bloqué pour toute semaine antérieure. Toute vraie
+  trace d'activité bloque toujours, peu importe la semaine.
 
 ## État des chantiers ouverts
 
@@ -125,13 +146,17 @@ Tous dans `docs/v2-methodologie/` :
   explicitement qu'aucun abonnement payant ne peut être activé tant que
   ces champs ne sont pas renseignés (cohérent avec le chantier Stripe
   live ci-dessous).
-- **Pas encore liée depuis l'app** (Réglages, wizard) — à faire une fois
-  le contenu validé.
+- Liée depuis l'app (Réglages) via modale interne, avec Politique de
+  confidentialité et Recommandations santé (mêmes tailles de police
+  unifiées) — plus de `window.open` en nouvel onglet. Mêmes 3 documents
+  également accessibles en pages statiques (`/cgu.html`, `/privacy.html`,
+  `/sante.html`) et depuis le footer du site bêta (`public/beta/`) via
+  une modale JS vanilla dédiée à ce site.
 - ⚠️ Rédaction non validée juridiquement — une relecture professionnelle
   reste recommandée avant tout lancement public payant, en particulier
   sur le droit de rétractation et la limitation de responsabilité.
 
-**Recommandations santé (nouveau, 13/08/2026)**
+**Recommandations santé**
 
 - Mention courte sur l'écran `choix-mode-contenu` du wizard (avant choix
   du type de plan).
@@ -140,6 +165,9 @@ Tous dans `docs/v2-methodologie/` :
   l'app. Accessible depuis Réglages (ligne autonome tout en bas, hors
   accordéon — cf. principe UI ci-dessus) et depuis un bandeau dashboard
   affiché une seule fois (`localStorage: yoria_bandeau_sante_ferme`).
+  Même contenu dupliqué en page statique `/sante.html` (créée le
+  14/08/2026 pour permettre un lien depuis le site bêta, qui n'a pas
+  accès au système de modales de l'app principale).
 
 **Sécurité — audit et durcissement (démarré, en partie traité)**
 
@@ -186,8 +214,6 @@ Reste à faire :
 - **Passer Stripe en clés live** — actuellement en mode test. Ne doit
   être fait qu'une fois le SIRET obtenu et `public/cgu.html` complétée
   (cf. `saisie-et-integrations.md`).
-- **Lier `public/cgu.html` depuis l'app** (Réglages, wizard) une fois le
-  contenu validé.
 
 **Publication mobile**
 - **HyperOS (Xiaomi)** — open-intent non résolu, irritant connu, pas
@@ -195,7 +221,15 @@ Reste à faire :
 - **iOS App Store** — pas de publication à ce jour, installation via
   Safari uniquement. Passage par un wrapper type Capacitor nécessaire
   (guideline 4.2 Apple à anticiper), non entamé (cf.
-  `auth-et-publication.md`).
+  `auth-et-publication.md`). Mentionné comme "à l'étude pour une
+  prochaine version" côté page d'inscription bêta et mail d'invitation
+  iOS (14/08/2026) — communication uniquement, aucun développement
+  entamé.
+- **QR code Play Store** — ajouté sur la page d'inscription bêta
+  (section Inscription) et dans le mail d'invitation Android
+  (`lib/beta-invitation-email.js`), généré à la volée via
+  `api.qrserver.com` à partir de l'URL Play Store déjà codée en dur
+  (`PLAY_STORE_URL`).
 
 **Intégrations montres/tracking**
 - **Coros/Garmin** — piste explorée, non lancée. Garmin écarté (accès
