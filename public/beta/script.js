@@ -137,8 +137,8 @@ const CONTENU_LEGAL = {
   privacy: {
     titre: "🔒 Politique de confidentialité",
     html: `
-      <p class="ml-updated">Run by Léa — dernière mise à jour : 13 juillet 2026</p>
-      <p>Run by Léa (Yoria) est une application personnelle de planification d'entraînement running. Cette page explique quelles données sont collectées, pourquoi, et comment elles sont protégées.</p>
+      <p class="ml-updated">Yoria — dernière mise à jour : 14 août 2026</p>
+      <p>Yoria est une application de planification d'entraînement running. Cette page explique quelles données sont collectées, pourquoi, et comment elles sont protégées.</p>
       <h3>1. Données collectées</h3>
       <p>Compte (email/mot de passe chiffré) ; Profil coureur (prénom, nom, année de naissance, poids, taille, FC max, records) ; Données d'entraînement (plans, séances, notes, objectifs) ; Localisation approximative (météo locale uniquement, non stockée) ; Données Strava en option (activités de course).</p>
       <h3>2. Pourquoi ces données sont collectées</h3>
