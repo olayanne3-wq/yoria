@@ -109,22 +109,10 @@ Tous dans `docs/v2-methodologie/` :
 - Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut révéler un bug latent dans du code existant qui supposait silencieusement un contexte toujours présent — vérifier les suppositions implicites du code traversé, pas seulement le nouveau code.
 
 **Échanges de séances (swap)**
-- Le modèle de swap (`swapPairs`) est une liste de paires atomiques
-  `{a: uid, b: uid}` — jamais un dictionnaire `{uid: uidSource}` (modèle
-  plus fragile : une rotation à 3+ maillons peut perdre une séance ou en
-  dupliquer une autre lors d'une annulation partielle). `sourceSwap(uid)`
-  résout la position d'origine en parcourant `swapPairs` À L'ENVERS
-  (paire la plus récente en premier). `echangerSwap()` ajoute une paire
-  (toggle si la même paire existe déjà) ; `annulerSwapSur(uid)` retire la
-  DERNIÈRE paire touchant ce uid EN BLOC (les deux côtés ensemble, jamais
-  un seul). Migration automatique et silencieuse depuis l'ancien
-  `lk_swapped_sessions` au premier chargement (`lk_swap_pairs`) ;
-  ancienne clé conservée en storage comme filet de sécurité. Toute
-  nouvelle logique touchant aux séances swappées doit passer par
-  `getEffectiveSession()`, jamais lire `week.sessions[i]` ou `PLAN`
-  directement — plusieurs bugs (frise désynchronisée des statistiques
-  affichées) sont venus de fonctions qui filtraient les séances sans
-  passer par cette résolution.
+- Modèle en paires atomiques (`swapPairs`), pas un dictionnaire — détail
+  complet dans `architecture-generale.md`. Toute nouvelle logique touchant
+  aux séances swappées doit passer par `getEffectiveSession()`, jamais
+  lire `week.sessions[i]` ou `PLAN` directement.
 - Un jour PASSÉ sans aucune trace d'activité (statut/note/RPE/saisie) est
   déplaçable uniquement s'il appartient à la semaine EN COURS
   (`currentWeek()`) — bloqué pour toute semaine antérieure. Toute vraie
