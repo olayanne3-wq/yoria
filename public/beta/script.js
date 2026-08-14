@@ -201,3 +201,55 @@ document.querySelectorAll("[data-modale-legale]").forEach((el) => {
     ouvrirModaleLegale(el.dataset.modaleLegale);
   });
 });
+
+// ── Navigation par onglets (14/08/2026) ──────────────────────────────────
+// Remplace le scroll continu de la page d'accueil par 4 panneaux affichés
+// un à la fois (Accueil / Pourquoi Yoria / Fonctionnalités / Inscription),
+// demande explicite de Laurent ("je n'aime pas la longue page continue").
+// L'URL reflète l'onglet actif (#accueil, #difference, #fonctionnalites,
+// #inscription) — permet un lien direct partageable vers un onglet précis
+// et fait fonctionner le bouton retour du navigateur entre onglets.
+// ONGLETS_VALIDES doit rester synchronisé avec les data-onglet du header
+// (index.html) et les data-onglet-panneau des <div> enveloppant chaque
+// <section> — si un onglet est ajouté/retiré, mettre à jour les trois.
+const ONGLETS_VALIDES = ["accueil", "difference", "fonctionnalites", "inscription"];
+const liensOnglets = document.querySelectorAll("[data-onglet]");
+const panneauxOnglets = document.querySelectorAll("[data-onglet-panneau]");
+
+function afficherOnglet(nomOnglet, { scrollHaut = true } = {}) {
+  const cible = ONGLETS_VALIDES.includes(nomOnglet) ? nomOnglet : "accueil";
+
+  panneauxOnglets.forEach((panneau) => {
+    panneau.hidden = panneau.dataset.ongletPanneau !== cible;
+  });
+
+  liensOnglets.forEach((lien) => {
+    lien.classList.toggle("onglet-actif", lien.dataset.onglet === cible);
+  });
+
+  if (scrollHaut) {
+    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+  }
+}
+
+liensOnglets.forEach((lien) => {
+  lien.addEventListener("click", (e) => {
+    e.preventDefault();
+    const cible = lien.dataset.onglet;
+    // pushState plutôt que window.location.hash = ... pour éviter le
+    // saut de scroll natif du navigateur avant qu'afficherOnglet() ait pu
+    // masquer les autres panneaux (sinon flash visible de la page longue
+    // avant le découpage en onglets).
+    history.pushState(null, "", `#${cible}`);
+    afficherOnglet(cible);
+  });
+});
+
+window.addEventListener("popstate", () => {
+  afficherOnglet(window.location.hash.replace("#", ""), { scrollHaut: false });
+});
+
+// État initial : onglet indiqué par l'URL au chargement (lien direct
+// partagé), ou Accueil par défaut si absent/invalide.
+afficherOnglet(window.location.hash.replace("#", ""), { scrollHaut: false });
+

@@ -1009,7 +1009,12 @@ footer {
     min-height: 72px;
   }
 
-  nav {
+  /* nav générique cachée sur mobile (ancien menu Pourquoi/Fonctionnalités,
+     remplacé par les onglets) — MAIS PAS .onglets-nav, qui doit rester
+     visible sur mobile (même piège que le footer légal, corrigé le
+     14/08/2026 : une règle générique "nav { display:none }" attrape
+     toute balise <nav>, il faut l'exclure explicitement). */
+  nav:not(.onglets-nav) {
     display: none;
   }
 
@@ -1238,5 +1243,65 @@ footer {
 
   .ml-corps {
     max-height: calc(92vh - 60px);
+  }
+}
+
+/* ── Navigation par onglets (14/08/2026) ─────────────────────────────────
+   Remplace le scroll continu : 4 onglets dans le header (Accueil /
+   Pourquoi Yoria / Fonctionnalités / Inscription), un seul panneau visible
+   à la fois (cf. script.js, afficherOnglet()). Le bouton "Rejoindre la
+   bêta" du header a été retiré, l'onglet Inscription le remplace. */
+.onglets-nav {
+  justify-self: end;
+  display: flex;
+  gap: 6px;
+}
+
+.onglet-lien {
+  padding: 10px 16px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.87rem;
+  font-weight: 750;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.onglet-lien:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.onglet-lien.onglet-actif {
+  color: #ffffff;
+  background: var(--purple);
+}
+
+.onglet-panneau[hidden] {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .onglets-nav {
+    justify-self: unset;
+    width: 100%;
+    display: flex;
+    gap: 4px;
+    padding: 10px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .onglet-lien {
+    flex: 0 0 auto;
+    padding: 8px 13px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .nav {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+    min-height: auto;
+    padding: 12px 0;
   }
 }

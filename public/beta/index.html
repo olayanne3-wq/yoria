@@ -48,18 +48,24 @@
         </span>
       </a>
 
-      <nav aria-label="Navigation principale">
-        <a href="#difference">Pourquoi Yoria</a>
-        <a href="#fonctionnalites">Fonctionnalités</a>
+      <!-- Navigation par onglets (14/08/2026, demande explicite de
+           Laurent : remplace le scroll continu par des sections
+           indépendantes affichées une à la fois, cf. attacherOnglets()
+           dans script.js). data-onglet référence l'id de la <section>
+           correspondante — garder les deux synchronisés si une section
+           est ajoutée/retirée. Bouton "Rejoindre la bêta" retiré : l'onglet
+           Inscription le remplace. -->
+      <nav aria-label="Navigation principale" class="onglets-nav">
+        <a href="#accueil" data-onglet="accueil" class="onglet-lien">Accueil</a>
+        <a href="#difference" data-onglet="difference" class="onglet-lien">Pourquoi Yoria</a>
+        <a href="#fonctionnalites" data-onglet="fonctionnalites" class="onglet-lien">Fonctionnalités</a>
+        <a href="#inscription" data-onglet="inscription" class="onglet-lien">Inscription</a>
       </nav>
-
-      <a class="button button-small" href="#inscription">
-        Rejoindre la bêta
-      </a>
     </div>
   </header>
 
   <main>
+    <div class="onglet-panneau" data-onglet-panneau="accueil">
     <section class="hero" id="accueil">
       <div class="container hero-grid">
         <div class="hero-copy">
@@ -157,7 +163,9 @@
         <div><strong>Coach adaptatif</strong><span>qui apprend au fil du temps</span></div>
       </div>
     </section>
+    </div>
 
+    <div class="onglet-panneau" data-onglet-panneau="difference">
     <section class="section difference-section" id="difference">
       <div class="container difference-grid">
         <div class="difference-copy">
@@ -213,7 +221,9 @@
         </div>
       </div>
     </section>
+    </div>
 
+    <div class="onglet-panneau" data-onglet-panneau="fonctionnalites">
     <section class="section features-section" id="fonctionnalites">
       <div class="container">
         <div class="section-heading">
@@ -279,7 +289,9 @@
         </div>
       </div>
     </section>
+    </div>
 
+    <div class="onglet-panneau" data-onglet-panneau="inscription">
     <section class="section signup-section" id="inscription">
       <div class="container signup-shell">
         <div class="signup-aside">
@@ -452,6 +464,7 @@
         </div>
       </div>
     </section>
+    </div>
   </main>
 
   <footer>
