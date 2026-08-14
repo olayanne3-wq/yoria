@@ -107,7 +107,7 @@ const CONTENU_LEGAL = {
       <p class="ml-updated">Yoria — dernière mise à jour : 13 août 2026</p>
       <div class="ml-avertissement"><strong>⚕️ Avant toute chose</strong><p>Yoria génère des plans d'entraînement, pas un avis médical. Consulte un médecin avant de démarrer ou reprendre une activité sportive.</p></div>
       <h3>1. Éditeur du service</h3>
-      <p>Nom : [À COMPLÉTER — nom et prénom de l'exploitant]. Statut : Entrepreneur individuel (micro-entreprise). SIRET : [À COMPLÉTER]. Adresse : [À COMPLÉTER]. Contact : olayanne.site@gmail.com</p>
+      <p>Nom : [À COMPLÉTER — nom et prénom de l'exploitant]. Statut : Entrepreneur individuel (micro-entreprise). SIRET : [À COMPLÉTER]. Adresse : [À COMPLÉTER]. Contact : contact@yoria.run</p>
       <p>Ces conditions ne prennent pleinement effet qu'une fois l'immatriculation de l'activité effectuée et les informations ci-dessus complétées. Tant que ce n'est pas le cas, aucun abonnement payant n'est proposé au public.</p>
       <h3>2. Objet</h3>
       <p>Yoria est une application de planification d'entraînement à la course à pied. Elle génère des plans d'entraînement adaptatifs à partir des informations renseignées par l'utilisateur et les ajuste au fil du temps selon les séances réalisées.</p>
@@ -131,7 +131,7 @@ const CONTENU_LEGAL = {
       <p>Ces conditions peuvent évoluer ; toute modification substantielle sera portée à la connaissance des utilisateurs avant sa prise d'effet.</p>
       <h3>12. Droit applicable et litiges</h3>
       <p>Droit français. Solution amiable recherchée en priorité ; à défaut, tribunaux français compétents.</p>
-      <div class="ml-contact"><strong>Contact</strong><br>olayanne.site@gmail.com</div>
+      <div class="ml-contact"><strong>Contact</strong><br>contact@yoria.run</div>
     `,
   },
   privacy: {
@@ -151,7 +151,7 @@ const CONTENU_LEGAL = {
       <p>Consultation/modification depuis les Réglages, déconnexion Strava, suppression complète du compte sur demande.</p>
       <h3>6. Conservation des données</h3>
       <p>Conservées tant que le compte est actif ; supprimées intégralement en cas de suppression de compte.</p>
-      <div class="ml-contact"><strong>Contact</strong><br>olayanne.site@gmail.com</div>
+      <div class="ml-contact"><strong>Contact</strong><br>contact@yoria.run</div>
     `,
   },
   sante: {
@@ -164,7 +164,7 @@ const CONTENU_LEGAL = {
       <p>Écoute ton corps avant les recommandations de l'app. Douleur inhabituelle, essoufflement anormal, vertiges ou gêne thoracique doivent toujours faire arrêter l'effort immédiatement.</p>
       <h3>Reste vigilant</h3>
       <p>Yoria ajuste ton plan à partir de tes séances et ressentis, mais ne peut ni te suivre médicalement, ni détecter une urgence. Pour toute question de santé, un professionnel reste le bon interlocuteur.</p>
-      <div class="ml-contact"><strong>Contact</strong><br>olayanne.site@gmail.com</div>
+      <div class="ml-contact"><strong>Contact</strong><br>contact@yoria.run</div>
     `,
   },
 };
