@@ -5384,7 +5384,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   // agrandir ici n'affecte pas le détail Semaine (qui a son propre badge
   // météo distinct, non concerné par ce correctif).
   const weatherBadge = (weatherTemp !== null && window._fenetreChargementInitialActive === false)
-    ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"16px",fontWeight:isHot?"700":"400"}},
+    ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"13px",fontWeight:isHot?"700":"400",whiteSpace:"nowrap",flexShrink:"0"}},
         (weatherDesc||"🌡️")+" "+weatherTemp+"°C"+(isHot?" 🔥":""))
     : null;
   const weatherEl = null; // Supprimé — météo intégrée dans la carte séance
@@ -5526,7 +5526,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            el("div",{style:{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"8px",marginLeft:"auto"}},
+            el("div",{style:{display:"flex",flexWrap:"nowrap",alignItems:"center",gap:"6px",marginLeft:"auto",minWidth:"0"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
@@ -5543,7 +5543,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
                 const histTemp = historicalWeatherCache[s.date];
                 if (isDone && histTemp != null) {
                   const hot = histTemp > 28;
-                  return el("span",{style:{color:hot?"var(--accent)":"var(--text-muted)",fontSize:"12px",fontWeight:hot?"700":"400",whiteSpace:"nowrap"}},
+                  return el("span",{style:{color:hot?"var(--accent)":"var(--text-muted)",fontSize:"12px",fontWeight:hot?"700":"400",whiteSpace:"nowrap",flexShrink:"0"}},
                     (hot?"🔥":"🌡️")+" "+histTemp+"°C");
                 }
                 return isDone ? null : weatherBadge;
@@ -5551,7 +5551,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               isDone?el("span",{style:{
                 background:statusColor+"22",color:statusColor,
                 border:`1px solid ${statusColor}44`,
-                borderRadius:"6px",padding:"3px 8px",fontSize:"14px",fontWeight:"700"
+                borderRadius:"6px",padding:"3px 8px",fontSize:"14px",fontWeight:"700",whiteSpace:"nowrap",flexShrink:"0"
               }},status2==="✅"?"✅ Validée":status2==="⚠️"?"⚠️ Partiel":"❌ Ratée"):null
             )
           ),
@@ -6221,10 +6221,10 @@ function renderIconeStructureMontre(structure, avecLibelle = false) {
     ? el("span",{title:"Détail de la séance",style:{
         display:"inline-flex",alignItems:"center",gap:"6px",cursor:"pointer",
         background:"var(--border-soft)",border:"1px solid var(--border)",
-        borderRadius:"8px",padding:"6px 9px"
+        borderRadius:"8px",padding:"6px 9px",flexShrink:"1",minWidth:"0"
       }},
-        el("span",{style:{fontSize:"18px",lineHeight:"1"}},"⌚"),
-        el("span",{style:{color:"var(--text2)",fontSize:"12px",fontWeight:"600",whiteSpace:"nowrap"}},"Détail séance")
+        el("span",{style:{fontSize:"18px",lineHeight:"1",flexShrink:"0"}},"⌚"),
+        el("span",{style:{color:"var(--text2)",fontSize:"12px",fontWeight:"600",lineHeight:"1.2"}},"Détail séance")
       )
     : el("span",{title:"Détail de la séance",style:{
         color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
@@ -6699,10 +6699,10 @@ function renderIconeSaisieManuelle(uid, s, stravaRun, avecLibelle = false) {
         background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
         color: manuelExiste ? "#F8FAFC" : "var(--text2)",
         border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
-        borderRadius:"8px",padding:"6px 9px"
+        borderRadius:"8px",padding:"6px 9px",flexShrink:"1",minWidth:"0"
       }},
-        el("span",{style:{fontSize:"18px",lineHeight:"1"}},"✏️"),
-        el("span",{style:{fontSize:"12px",fontWeight:"600",whiteSpace:"nowrap"}}, manuelExiste ? "Saisie active" : "Saisie manuelle")
+        el("span",{style:{fontSize:"18px",lineHeight:"1",flexShrink:"0"}},"✏️"),
+        el("span",{style:{fontSize:"12px",fontWeight:"600",lineHeight:"1.2"}}, manuelExiste ? "Saisie active" : "Saisie manuelle")
       )
     : el("span",{title: titreIcone, style:{
         cursor:"pointer",fontSize:"15px",lineHeight:"1",display:"inline-flex",
