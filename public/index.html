@@ -5384,8 +5384,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   // agrandir ici n'affecte pas le détail Semaine (qui a son propre badge
   // météo distinct, non concerné par ce correctif).
   const weatherBadge = (weatherTemp !== null && window._fenetreChargementInitialActive === false)
-    ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"16px",fontWeight:isHot?"700":"400"}},
-        (weatherDesc||"🌡️")+" "+weatherTemp+"°C"+(isHot?" 🔥":""))
+    ? el("span",{style:{
+        display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:"1.15",
+        color:isHot?"var(--accent)":"var(--text-muted)",fontWeight:isHot?"700":"400"
+      }},
+        el("span",{style:{fontSize:"16px"}},(weatherDesc||"🌡️")+(isHot?" 🔥":"")),
+        el("span",{style:{fontSize:"12px"}},weatherTemp+"°C")
+      )
     : null;
   const weatherEl = null; // Supprimé — météo intégrée dans la carte séance
 
