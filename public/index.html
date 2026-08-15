@@ -1828,6 +1828,12 @@ let githubToken = load("lk_github_token", "");
 // qu'un seul lien synchronise tout, plutôt que deux mécanismes séparés
 // dans deux fichiers différents) depuis l'URL si présent
 (async function() {
+  // Filet de sécurité temporel pour la suppression du fondu au chargement
+  // (cf. window._fenetreChargementInitialActive dans render()) — utilisé en
+  // complément du compteur de sources, pas à sa place : quel que soit le
+  // nombre réel de render() qui ont lieu dans les 5 premières secondes,
+  // aucun d'eux n'a de fondu tant que ce délai n'est pas écoulé.
+  window._tempsDebutChargement = performance.now();
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get("token");
   const urlGistV2 = params.get("gistV2");
@@ -12826,7 +12832,16 @@ function render() {
   // son propre render() de regroupement (fenêtre fermée juste après cet
   // appel, cf. plus bas) — couvre donc TOUS les render() (premier ET
   // celui du regroupement à 150ms) qui ont lieu pendant cette fenêtre.
-  if (window._fenetreChargementInitialActive !== false) {
+  // Fenêtre temporelle robuste (5s depuis le tout début du script, cf.
+  // window._tempsDebutChargement) EN PLUS du mécanisme par compteur de
+  // sources : peu importe le nombre réel de render() qui ont lieu dans
+  // les 5 premières secondes (badges, météo, météo-demain, ou toute autre
+  // source future non anticipée), aucun d'eux n'a de fondu tant que ce
+  // délai n'est pas écoulé — élimine le risque qu'une source mal comptée
+  // ou une latence réseau inhabituelle laisse passer un render() avec
+  // fondu avant que toutes les sources connues n'aient fini.
+  const encoreDansFenetreTemporelle = (performance.now() - (window._tempsDebutChargement ?? 0)) < 5000;
+  if (window._fenetreChargementInitialActive !== false || encoreDansFenetreTemporelle) {
     window._fenetreChargementInitialActive = true;
     if (hdr) hdr.style.animation = "none";
     content.style.animation = "none";
