@@ -5383,7 +5383,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
   // weatherBadge (lignes plus bas) sont dans la carte "Aujourd'hui", donc
   // agrandir ici n'affecte pas le détail Semaine (qui a son propre badge
   // météo distinct, non concerné par ce correctif).
-  const weatherBadge = weatherTemp !== null
+  const weatherBadge = (weatherTemp !== null && window._fenetreChargementInitialActive === false)
     ? el("span",{style:{color:isHot?"var(--accent)":"var(--text-muted)",fontSize:"16px",fontWeight:isHot?"700":"400"}},
         (weatherDesc||"🌡️")+" "+weatherTemp+"°C"+(isHot?" 🔥":""))
     : null;
@@ -5526,7 +5526,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            el("div",{style:{display:"flex",flexWrap:"nowrap",alignItems:"center",gap:"10px",marginLeft:"auto"}},
+            el("div",{style:{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"10px",marginLeft:"auto"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
@@ -12649,17 +12649,19 @@ function renderDiffereChargementInitial() {
   clearTimeout(_renderDiffereChargementTimer);
   clearTimeout(_renderDiffereTimer); // annule aussi un renderDiffere() standard en attente, même logique que render() plus haut
   _renderDiffereChargementTimer = setTimeout(() => {
-    // Ce render() de regroupement reste sans fondu (fenêtre encore active,
-    // cf. commentaire sur window._fenetreChargementInitialActive dans
-    // render() plus bas) — la fenêtre n'est fermée qu'APRÈS lui, et
-    // seulement si les 3 sources se sont déjà toutes manifestées (sinon
-    // une source encore en cours, potentiellement lente, redéclenchera
-    // ce même mécanisme plus tard et devra encore trouver la fenêtre
-    // ouverte).
-    render();
+    // Fenêtre fermée AVANT ce render() de regroupement (pas après) —
+    // nécessaire pour que le contenu qui dépend de
+    // window._fenetreChargementInitialActive === false (ex. weatherBadge,
+    // cf. son commentaire) soit correctement affiché dès ce dernier
+    // render(), plutôt que caché jusqu'à un hypothétique render() suivant
+    // qui pourrait ne jamais avoir lieu. Le fondu reste désactivé sur ce
+    // render() malgré cette fermeture anticipée grâce au filet de sécurité
+    // temporel de 5s (cf. window._tempsDebutChargement dans render()),
+    // indépendant de l'état ouvert/fermé de cette fenêtre.
     if (window._sourcesChargementInitialRestantes <= 0) {
       window._fenetreChargementInitialActive = false;
     }
+    render();
   }, 150);
 }
 
