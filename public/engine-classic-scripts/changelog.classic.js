@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.43", title:"Échange de séances fiabilisé en profondeur, conditions et confidentialité accessibles partout", current:true, notes:[
+      { ver:"v2.44", title:"Séances futures programmables sur la montre, chargement plus fluide", current:true, notes:[
+        "⌚ L'icône montre est désormais disponible pour toute séance qualité à venir, pas seulement celle du jour — prépare ta montre plusieurs jours à l'avance",
+        "✨ Correctif : le léger scintillement parfois visible à l'ouverture de l'app a été corrigé",
+        "🗓️ Carte du jour : les boutons montre/saisie manuelle restent toujours bien alignés, sans décalage à l'arrivée de la météo",
+      ]},
+      { ver:"v2.43", title:"Échange de séances fiabilisé en profondeur, conditions et confidentialité accessibles partout", current:false, notes:[
         "🔄 Correctif important : le système d'échange de séances a été entièrement reconstruit pour ne plus jamais faire disparaître ou dupliquer une séance, même après plusieurs échanges d'affilée dans la même semaine",
         "📅 Une séance passée sans statut de la semaine en cours peut maintenant être déplacée, comme n'importe quelle autre séance",
         "📄🔒 Conditions générales d'utilisation et politique de confidentialité accessibles en un tap depuis Réglages, avec un vrai bouton fermer",
