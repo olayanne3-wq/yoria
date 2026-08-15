@@ -5526,7 +5526,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            el("div",{style:{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"10px",marginLeft:"auto"}},
+            el("div",{style:{display:"flex",flexWrap:"wrap",alignItems:"center",gap:"8px",marginLeft:"auto"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
@@ -5539,6 +5539,15 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               // les deux cas.
               (!isRest && !isDone && s.structureIntervalles) ? renderIconeStructureMontre(s.structureIntervalles, true) : null,
               (!isRest) ? renderIconeSaisieManuelle(uid2, s, stravaRun2, true) : null,
+              (()=>{
+                const histTemp = historicalWeatherCache[s.date];
+                if (isDone && histTemp != null) {
+                  const hot = histTemp > 28;
+                  return el("span",{style:{color:hot?"var(--accent)":"var(--text-muted)",fontSize:"12px",fontWeight:hot?"700":"400",whiteSpace:"nowrap"}},
+                    (hot?"🔥":"🌡️")+" "+histTemp+"°C");
+                }
+                return isDone ? null : weatherBadge;
+              })(),
               isDone?el("span",{style:{
                 background:statusColor+"22",color:statusColor,
                 border:`1px solid ${statusColor}44`,
@@ -5546,20 +5555,6 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               }},status2==="✅"?"✅ Validée":status2==="⚠️"?"⚠️ Partiel":"❌ Ratée"):null
             )
           ),
-          // Badge météo sur sa propre ligne, séparée des boutons — sa
-          // présence/absence (selon la donnée reçue au chargement) ne peut
-          // ainsi jamais décaler la position des boutons "Détail séance"/
-          // "Saisie manuelle", qui restent toujours au même endroit.
-          (()=>{
-            const histTemp = historicalWeatherCache[s.date];
-            if (isDone && histTemp != null) {
-              const hot = histTemp > 28;
-              return el("div",{style:{marginBottom:"8px"}},
-                el("span",{style:{color:hot?"var(--accent)":"var(--text-muted)",fontSize:"13px",fontWeight:hot?"700":"400"}},
-                  (hot?"🔥":"🌡️")+" "+histTemp+"°C"));
-            }
-            return (!isDone && weatherBadge) ? el("div",{style:{marginBottom:"8px"}}, weatherBadge) : null;
-          })(),
           // Bloc échauffement/retour au calme (▶/◀) retiré (retour de
           // Laurent : redondant avec le popover ⌚ "à programmer sur ta
           // montre", qui contient déjà cette info — la montre reste la
@@ -6224,12 +6219,12 @@ function renderIconeStructureMontre(structure, avecLibelle = false) {
   const wrap = el("div",{style:{position:"relative"}});
   const icone = avecLibelle
     ? el("span",{title:"Détail de la séance",style:{
-        display:"inline-flex",alignItems:"center",gap:"8px",cursor:"pointer",
+        display:"inline-flex",alignItems:"center",gap:"6px",cursor:"pointer",
         background:"var(--border-soft)",border:"1px solid var(--border)",
-        borderRadius:"8px",padding:"7px 12px"
+        borderRadius:"8px",padding:"6px 9px"
       }},
-        el("span",{style:{fontSize:"22px",lineHeight:"1"}},"⌚"),
-        el("span",{style:{color:"var(--text2)",fontSize:"13px",fontWeight:"600",whiteSpace:"nowrap"}},"Détail séance")
+        el("span",{style:{fontSize:"18px",lineHeight:"1"}},"⌚"),
+        el("span",{style:{color:"var(--text2)",fontSize:"12px",fontWeight:"600",whiteSpace:"nowrap"}},"Détail séance")
       )
     : el("span",{title:"Détail de la séance",style:{
         color:"var(--text-muted)",cursor:"pointer",fontSize:"15px",lineHeight:"1",
@@ -6700,14 +6695,14 @@ function renderIconeSaisieManuelle(uid, s, stravaRun, avecLibelle = false) {
   const titreIcone = manuelExiste ? "Saisie manuelle active" : "Saisir ou corriger manuellement";
   const icone = avecLibelle
     ? el("span",{title: titreIcone, style:{
-        display:"inline-flex",alignItems:"center",gap:"8px",cursor:"pointer",
+        display:"inline-flex",alignItems:"center",gap:"6px",cursor:"pointer",
         background: manuelExiste ? "var(--accent)" : "var(--border-soft)",
         color: manuelExiste ? "#F8FAFC" : "var(--text2)",
         border: manuelExiste ? "1px solid var(--accent)" : "1px solid var(--border)",
-        borderRadius:"8px",padding:"7px 12px"
+        borderRadius:"8px",padding:"6px 9px"
       }},
-        el("span",{style:{fontSize:"22px",lineHeight:"1"}},"✏️"),
-        el("span",{style:{fontSize:"13px",fontWeight:"600",whiteSpace:"nowrap"}}, manuelExiste ? "Saisie active" : "Saisie manuelle")
+        el("span",{style:{fontSize:"18px",lineHeight:"1"}},"✏️"),
+        el("span",{style:{fontSize:"12px",fontWeight:"600",whiteSpace:"nowrap"}}, manuelExiste ? "Saisie active" : "Saisie manuelle")
       )
     : el("span",{title: titreIcone, style:{
         cursor:"pointer",fontSize:"15px",lineHeight:"1",display:"inline-flex",
