@@ -5526,7 +5526,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               badge(s.type),
               el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"700",whiteSpace:"normal",wordBreak:"break-word"}},s.session)
             ),
-            el("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginLeft:"auto"}},
+            el("div",{style:{display:"flex",flexWrap:"nowrap",alignItems:"center",gap:"10px",marginLeft:"auto"}},
               // Refonte carte "Aujourd'hui" (26/07/2026) : icônes ⌚ (structure
               // à programmer sur la montre) affichée UNIQUEMENT tant que la
               // séance n'est pas validée — dès qu'un statut ✅/⚠️/❌ est
