@@ -7441,7 +7441,17 @@ function renderWeekDetail(weekNum) {
     const isToday=s.date===today(), isPast=s.date<today();
     const st=STYPES[effSess.type]||STYPES.REPOS;
     const stravaRun=getStravaRunSiPasManuel(s.date, uid, weekRuns);
+    if (effSess.sousType === 'test') {
+      console.log('[DEBUG test]', {
+        stravaRun: !!stravaRun,
+        lapsCount: stravaRun?.laps?.length,
+        structureIntervalles: JSON.stringify(effSess.structureIntervalles),
+      });
+    }
     const effortLaps=stravaRun?getLapsAffichage(stravaRun, effSess.structureIntervalles):[];
+    if (effSess.sousType === 'test') {
+      console.log('[DEBUG test effortLaps]', effortLaps.length, effortLaps);
+    }
 
     // Seance masquee
     if (isHidden) {
