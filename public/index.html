@@ -1331,6 +1331,23 @@ function calculerIntervalSessionDates() {
   );
 }
 
+// CORRECTIF (16/08/2026, même chantier que ci-dessus — décomposition en
+// laps d'une séance qualité). Transmet à api/strava.js le nombre de blocs
+// attendus par date (structureIntervalles.blocs.length), pour qu'il
+// puisse comparer au nombre de laps réellement reçus de Strava et
+// déclencher l'appel /streams supplémentaire (coûteux, donc réservé au
+// cas où c'est nécessaire) uniquement en cas d'incohérence — cf.
+// api/strava.js pour le format exact ("date:nb,date:nb"). Séances sans
+// structureIntervalles (rare pour VMA/SPEC/TEST/SEUIL, mais possible en
+// théorie) simplement omises de la liste : le serveur garde alors son
+// comportement par défaut (pas de vérification de cohérence possible).
+function calculerIntervalExpected() {
+  return ALL_SESSIONS
+    .filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type) && s.structureIntervalles?.blocs?.length)
+    .map(s => `${s.date}:${s.structureIntervalles.blocs.length}`)
+    .join(",");
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STORAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -7160,6 +7177,35 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   }
 
   // Répétitions : résumé cliquable qui déplie le détail lap-par-lap
+  //
+  // Avertissement décomposition approximative (16/08/2026) — cf.
+  // discussion Laurent, docs/v2-methodologie/saisie-et-integrations.md.
+  // stravaRun.laps_incoherents est posé par api/strava.js quand les laps
+  // natifs de l'activité ne suffisaient pas à couvrir la structure
+  // attendue (moins de blocs+2 laps) ; dans ce cas, getLapsAffichage()
+  // (session-analysis.js) est passée par le repli detecterIntervallesParSignal
+  // (même moteur que l'import FIT) plutôt que par les laps manuels réels
+  // — la décomposition qui suit est une reconstruction par signal, pas
+  // une lecture directe des vrais laps posés sur la montre. Affiché
+  // uniquement si effortLaps a effectivement pu être reconstruite (sinon
+  // le bloc "répétitions" entier est absent, cf. condition juste
+  // au-dessus) — pas la peine d'avertir sur une décomposition qui ne
+  // s'affiche pas.
+  if (stravaRun?.laps_incoherents && effortLaps.length > 0) {
+    const avertLien = el("a",{href:"#",style:{color:"var(--warn)",fontSize:"12px",textDecoration:"underline"}},"en savoir plus");
+    avertLien.addEventListener("click", avecRetourTactile((e)=>{
+      e.preventDefault(); e.stopPropagation();
+      setView("help");
+      _helpTutoOuvert = "programmer-montre";
+      _helpOngletActif = "tutos";
+      render();
+    }));
+    wrap.appendChild(el("div",{style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"12px",color:"var(--warn)",background:"rgba(var(--warn-rgb),0.08)",borderRadius:"8px",padding:"6px 10px",marginBottom:"8px"}},
+      el("span",{},"⚠️ Décomposition reconstruite automatiquement (laps de la montre incomplets) —"),
+      avertLien
+    ));
+  }
+
   if (effortLaps.length > 0) {
     const detailLaps = el("div",{style:{display:"none",borderTop:"1px solid rgba(var(--warn-rgb),0.13)",paddingTop:"8px",marginTop:"8px"}});
     const { driftEl } = computeFcDrift(effortLaps);
@@ -12161,7 +12207,8 @@ async function syncStrava(force = false) {
     const planStart = (PLAN?.[0]?.sessions?.[0]?.date && PLAN[0].sessions[0].date < huitSemainesStr)
       ? PLAN[0].sessions[0].date
       : huitSemainesStr;
-    const resp = await fetch(`/api/strava/activities?token=${stravaToken}&interval_dates=${intervalDates}&plan_start=${planStart}`);
+    const intervalExpected = calculerIntervalExpected();
+    const resp = await fetch(`/api/strava/activities?token=${stravaToken}&interval_dates=${intervalDates}&plan_start=${planStart}&interval_expected=${encodeURIComponent(intervalExpected)}`);
     const activities = await resp.json();
     if (Array.isArray(activities)) {
       const runs = activities.filter(a => a.type === "Run" || a.sport_type === "Run");
