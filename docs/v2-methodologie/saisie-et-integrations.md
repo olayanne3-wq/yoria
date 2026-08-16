@@ -85,18 +85,14 @@ court-circuite le curseur de `getLapsAffichage()` (suppose une alternance
 effort/récup native, absente pour cette source) — corrigé une seule fois
 dans le wrapper, pas dans chacun de ses appelants.
 
-**Protection des activités importées — "premier arrivé, reste"** — la
-première activité sur une date (Strava ou FIT) ne peut plus être écrasée
-silencieusement par une resynchronisation ; seule une suppression
-manuelle explicite (badge de source + bouton 🗑️ sur la carte de séance)
-libère la date. `syncStrava()` merge plutôt qu'écrase,
-`importerFichierFit()` bloque l'import si une activité existe déjà. Effet
-de bord assumé : une activité Strava corrigée a posteriori sur Strava.com
-n'est plus re-synchronisée tant que l'ancienne n'est pas supprimée.
-`matchActivitiesToPlan()` étant appelée par les 3 chemins d'entrée
-(synchro Strava, import FIT, choix d'activité ambiguë), un correctif
-appliqué à cette fonction bénéficie automatiquement aux 3 sans
-duplication.
+**Repli par détection de signal réutilisé pour Strava (16/08/2026)** —
+`fit-detection.js` exporte désormais aussi
+`construireRecordsDepuisStreamsStrava(streams)`, en plus des fonctions
+déjà dédiées au FIT (`detecterIntervallesParSignal()` elle-même est
+agnostique de la source : elle ne connaît que le tableau `records`
+`{t, speed, hr, cadence}`, indépendamment de savoir s'il vient d'un
+fichier `.fit` ou d'un flux Strava). Voir section Strava ci-dessous pour
+le déclenchement de ce repli côté activités synchronisées.
 
 **Pas de stockage du fichier `.fit` brut** — seul le résultat de la
 détection est conservé (dans `stravaActivities`, `_source: "fit"`) ; pas
@@ -117,6 +113,61 @@ obtenir un vrai fichier `.fit` Coros pour vérifier la présence ou non de
 marqueurs natifs, calibrer `fit-detection.js` si besoin. Alternative si
 l'API officielle Coros s'avère nécessaire : candidature développeur OAuth
 2.0.
+
+## Décomposition en laps d'une séance qualité — cohérence et repli (16/08/2026)
+
+Avant ce chantier, `getLapsAffichage()`/`getEffortLaps()`
+(`session-analysis.js`) retournaient un tableau vide dès que
+`activity.laps.length < 4` — garde-fou qui empêchait toute décomposition
+pour un coureur n'ayant pas programmé sa montre en laps manuels
+(échauffement / effort / récup / retour au calme), quelle que soit la
+séance. Ce seuil `< 4` en lui-même n'était pas la cause d'un vrai bug —
+`slice(1, -2)` produit de toute façon un résultat vide pour ≤3 laps —
+mais il ne protégeait contre rien de plus qu'un simple retour vide, et
+laissait un vrai angle mort sans aucun repli.
+
+**Repli sur détection par signal** — quand les laps natifs sont
+absents ou insuffisants pour couvrir la structure attendue
+(`structureIntervalles.blocs.length + 2`), `getLapsAffichage()`/
+`getEffortLaps()` tentent désormais `repliDetectionParSignal()`
+(fonction privée, `session-analysis.js`) : reconstruction via le même
+moteur que l'import FIT (`detecterIntervallesParSignal()`,
+`fit-detection.js`), appliqué cette fois au flux `streams` Strava
+(`construireRecordsDepuisStreamsStrava()`) plutôt qu'aux `records` d'un
+fichier `.fit`. Si `activity.raw_streams` est absent (repli lui-même
+indisponible), le comportement précédent est conservé — tableau vide,
+pas de décomposition affichée.
+
+**Déclenchement côté serveur (`api/strava.js`)** — l'enrichissement
+`/activities` compare, pour chaque date envoyée dans
+`interval_dates`, le nombre de laps réels reçus de Strava
+(`GET .../laps`) au nombre attendu, transmis par le client via un nouveau
+paramètre `interval_expected` (format `"date:nbBlocs,date:nbBlocs"`,
+construit par `calculerIntervalExpected()` côté `index.html` à partir de
+`ALL_SESSIONS[].structureIntervalles.blocs.length`). Si les laps sont
+insuffisants, un appel supplémentaire `GET .../streams`
+(`time,velocity_smooth,heartrate,cadence`, `key_by_type=true`) est fait
+— réservé à ce cas précis, pour ne pas alourdir la synchro normale.
+L'activité enrichie porte alors `raw_streams` et `laps_incoherents: true`.
+
+**Avertissement affiché** — quand `stravaRun.laps_incoherents` est vrai
+et qu'une décomposition a malgré tout pu être reconstruite,
+`renderBlocRealise()` affiche un bandeau ⚠️ *"Décomposition reconstruite
+automatiquement (laps de la montre incomplets)"* avec un lien "en savoir
+plus" qui ouvre l'aide directement sur le tuto "Programmer une séance
+structurée sur ta montre" (`_helpTutoOuvert = "programmer-montre"`,
+`_helpOngletActif = "tutos"`) — même tuto que celui déjà utilisé pour
+l'avertissement équivalent côté import FIT, cohérent avec le principe
+"un seul système de vérité pour l'explication de ce cas" plutôt qu'un
+nouveau texte d'aide dédié.
+
+**Limite connue** : ce mécanisme suppose que Strava fournit bien un flux
+`streams` complet pour l'activité (peut échouer sur une activité privée
+aux détails avancés désactivés, ou une erreur réseau ponctuelle) — dans
+ce cas l'activité reste `laps_incoherents: true` sans `raw_streams`, et
+la décomposition reste absente comme avant ce chantier, sans message
+d'erreur dédié distinct du cas "pas assez de laps, pas de repli
+possible".
 
 ## Intégrations externes
 
@@ -139,6 +190,22 @@ fixé à `https://yoria.run` (plus de wildcard `*`) sur `/refresh` et
 `/activities` — évite qu'un site tiers puisse appeler ces routes depuis
 le navigateur d'un utilisateur. Logs du callback OAuth : présence du
 code loggée (`!!code`), jamais sa valeur, même tronquée.
+
+**`INTERVAL_SESSION_DATES` recalculée à l'usage, pas figée (16/08/2026)**
+— cette liste (dates des séances VMA/SPEC/TEST/SEUIL, transmise à
+`api/strava.js` en paramètre `interval_dates` pour cibler l'enrichissement
+laps) était une `const`, calculée une seule fois au chargement de la
+page. Un swap de séance fait en cours de session met bien à jour
+`ALL_SESSIONS` (`ALL_SESSIONS = recalculerAllSessions()`), mais cette
+`const` ne se recalculait jamais — une séance swappée vers une nouvelle
+date pouvait donc être resynchronisée sans jamais recevoir ses laps,
+malgré une activité Strava bien matchée par ailleurs. Transformée en
+fonction `calculerIntervalSessionDates()`, appelée à chaque synchro
+(`syncStrava()`) plutôt qu'une seule fois — même principe que
+`recalculerAllSessions()` elle-même. `calculerIntervalExpected()`,
+ajoutée au même endroit, suit le même principe pour transmettre le
+nombre de blocs attendus par date (cf. section décomposition en laps
+ci-dessus).
 
 **`syncStrava()`** — robuste sans plan existant : le calcul de
 `planStart` (date la plus ancienne entre le début du plan actuel et 8
@@ -221,4 +288,3 @@ lecture des tokens Strava d'un testeur.
 tables sans `ON DELETE CASCADE` vers `auth.users`, avec SQL de correction
 généré automatiquement. Lecture seule, aucune modification du schéma
 déclenchée depuis l'interface.
-
