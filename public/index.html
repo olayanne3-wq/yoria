@@ -1312,9 +1312,24 @@ function recalculerAllSessions() {
 // ALL_SESSIONS déclarée tout en tête de cette IIFE désormais (cf.
 // commentaire là-bas, CORRECTIF TDZ 13/08/2026) — plus ici.
 
-const INTERVAL_SESSION_DATES = new Set(
-  ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
-);
+// CORRECTIF (16/08/2026, bug signalé par Laurent : séance de confirmation
+// d'allure swappée vers un autre jour en cours de session, resynchronisée
+// Strava ensuite — aucun lap détecté malgré l'activité bien matchée).
+// Cause : cette liste était figée en `const` au chargement initial de la
+// page, calculée depuis ALL_SESSIONS À CE MOMENT-LÀ. Un swap fait ensuite
+// dans la même session de navigation met bien à jour ALL_SESSIONS (cf.
+// ALL_SESSIONS = recalculerAllSessions() après chaque swap), mais cette
+// const ne se recalculait jamais — la date swappée n'était donc jamais
+// envoyée à l'API Strava (interval_dates), qui n'enrichit les laps que
+// pour les dates reçues (cf. api/strava.js, boucle enriched). Transformée
+// en fonction, appelée à l'usage (juste avant l'appel réseau syncStrava)
+// plutôt qu'une seule fois au chargement — même principe que
+// recalculerAllSessions() elle-même.
+function calculerIntervalSessionDates() {
+  return new Set(
+    ALL_SESSIONS.filter(s => ["VMA","SPEC","TEST","SEUIL"].includes(s.type)).map(s => s.date)
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STORAGE
@@ -7441,17 +7456,7 @@ function renderWeekDetail(weekNum) {
     const isToday=s.date===today(), isPast=s.date<today();
     const st=STYPES[effSess.type]||STYPES.REPOS;
     const stravaRun=getStravaRunSiPasManuel(s.date, uid, weekRuns);
-    if (effSess.sousType === 'test') {
-      console.log('[DEBUG test]', {
-        stravaRun: !!stravaRun,
-        lapsCount: stravaRun?.laps?.length,
-        structureIntervalles: JSON.stringify(effSess.structureIntervalles),
-      });
-    }
     const effortLaps=stravaRun?getLapsAffichage(stravaRun, effSess.structureIntervalles):[];
-    if (effSess.sousType === 'test') {
-      console.log('[DEBUG test effortLaps]', effortLaps.length, effortLaps);
-    }
 
     // Seance masquee
     if (isHidden) {
@@ -12127,7 +12132,7 @@ async function syncStrava(force = false) {
   }
   try {
     syncMsg="Récupération des activités..."; render();
-    const intervalDates = [...INTERVAL_SESSION_DATES].join(",");
+    const intervalDates = [...calculerIntervalSessionDates()].join(",");
     // L'ACWR (section Stats, 13 juillet 2026) a besoin d'au moins 28 jours
     // d'historique, idéalement 8 semaines pour le graphique — on ne peut pas
     // se limiter à la date de début du plan actuel (un plan qui vient de
