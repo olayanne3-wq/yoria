@@ -20,6 +20,15 @@
  * vraies dépendances externes utilisées ailleurs dans index.html.
  */
 
+// Détection par signal (16/08/2026, correctif décomposition séance
+// qualité — cf. docs/v2-methodologie/saisie-et-integrations.md) —
+// réutilise le même moteur que l'import FIT (fit-detection.js), déjà
+// éprouvé sur ce cas exact (montre sans laps structurés natifs). Import
+// ES statique : ce module est lui-même chargé comme module ES par
+// index.html (cf. en-tête ci-dessus), donc un import top-level est
+// cohérent avec le reste du fichier.
+import { detecterIntervallesParSignal, construireRecordsDepuisStreamsStrava } from './fit-detection.js';
+
 // ── Score d'Économie normalisé ──────────────────────────────────────────
 // runnerFcMax : profilCoureur.fcMax côté appelant (variable locale au
 // scope du script principal d'index.html, jamais exposée globalement).
@@ -109,12 +118,52 @@ export function detecterTypeEffort(middle, sessionTargets) {
   return meilleurType ? { type: meilleurType, laps: meilleurResultat } : null;
 }
 
+// ------------------------------------------------------------
+// Repli détection par signal (16/08/2026) — appelé par getLapsAffichage()
+// quand les laps natifs de l'activité sont absents ou insuffisants pour
+// isoler la structure attendue (moins de blocs+2 laps), ET que
+// activity.raw_streams est disponible (posé par api/strava.js quand ce
+// cas est détecté côté serveur — cf. son en-tête). Retourne un objet
+// { laps, approximatif } plutôt qu'un tableau brut, pour que l'appelant
+// (index.html, renderBlocRealise) sache qu'il doit afficher un
+// avertissement, contrairement au cas nominal (laps natifs cohérents).
+//
+// N'appelle PAS ce repli si raw_streams est absent (ex. l'appel /streams
+// a échoué côté serveur, ou l'activité est trop ancienne pour avoir été
+// enrichie avec le nouveau paramètre interval_expected) — dans ce cas on
+// retombe sur le comportement précédent (laps natifs tels quels, même
+// insuffisants), plutôt que de renvoyer un tableau vide sans explication.
+// ------------------------------------------------------------
+function repliDetectionParSignal(activity, structureIntervalles) {
+  if (!activity.raw_streams) return null;
+  const records = construireRecordsDepuisStreamsStrava(activity.raw_streams);
+  if (!records.length) return null;
+  const structureAttendue = structureIntervalles?.blocs?.[0] || null;
+  const laps = detecterIntervallesParSignal(records, structureAttendue);
+  if (!laps.length) return null;
+  return { laps, approximatif: true };
+}
+
 // Fonction privée de ce module — appelée uniquement par getLapsAffichage()
 // en interne quand structureIntervalles est absente (repli). Jamais
 // appelée directement depuis index.html (vérifié avant extraction : tous
 // les appelants externes passent par getLapsAffichage()).
-function getEffortLaps(activity, allSessions, sessionTargets) {
-  if (!activity.laps || activity.laps.length < 4) return [];
+//
+// CORRECTIF (16/08/2026) : le garde-fou "< 4 laps → []" est retiré au
+// profit du repli par signal (repliDetectionParSignal ci-dessus) quand
+// raw_streams est disponible. Un coureur qui ne programme pas sa montre
+// en laps manuels (échauffement/effort/récup/retour au calme) obtenait
+// jusqu'ici toujours un tableau vide, quelle que soit la séance — cf.
+// discussion Laurent du 16/08/2026. Si raw_streams est absent (repli
+// impossible), le comportement précédent est conservé (tableau vide) —
+// pas de régression pour les activités déjà synchronisées avant ce
+// correctif, ou pour les cas où le serveur n'a pas pu récupérer les
+// streams.
+function getEffortLaps(activity, allSessions, sessionTargets, structureIntervalles) {
+  if (!activity.laps || activity.laps.length < 4) {
+    const repli = repliDetectionParSignal(activity, structureIntervalles);
+    return repli ? repli.laps : [];
+  }
 
   // Supprimer 1er lap (echauffement) et 2 derniers (retour au calme)
   const middle = activity.laps.slice(1, -2);
@@ -192,9 +241,24 @@ function getEffortLaps(activity, allSessions, sessionTargets) {
 // allSessions/sessionTargets : requis seulement pour le repli
 // getEffortLaps() (cas sans structureIntervalles) — passés ici pour être
 // transmis à ce repli, jamais utilisés directement par cette fonction.
+//
+// CORRECTIF (16/08/2026) : le garde-fou initial "< 4 laps → []" est
+// retiré ici aussi, remplacé par un essai de repli par signal (cf.
+// repliDetectionParSignal ci-dessus et l'en-tête de getEffortLaps) avant
+// de renvoyer un tableau vide. Le flag `approximatif` posé sur le
+// résultat du repli est perdu par le simple retour d'un tableau (return
+// efforts / return getEffortLaps(...)) — c'est un choix assumé : cette
+// fonction garde sa signature d'origine (tableau de laps), l'appelant
+// index.html qui a besoin de savoir si l'activité a été enrichie de
+// raw_streams peut le déduire lui-même via activity.laps_incoherents
+// (posé par api/strava.js), sans avoir à faire remonter ce flag à travers
+// toute la chaîne d'appel.
 export function getLapsAffichage(activity, structureIntervalles, allSessions, sessionTargets) {
-  if (!activity.laps || activity.laps.length < 4) return [];
-  if (!structureIntervalles?.blocs?.length) return getEffortLaps(activity, allSessions, sessionTargets);
+  if (!activity.laps || activity.laps.length < 4) {
+    const repli = repliDetectionParSignal(activity, structureIntervalles);
+    return repli ? repli.laps : [];
+  }
+  if (!structureIntervalles?.blocs?.length) return getEffortLaps(activity, allSessions, sessionTargets, structureIntervalles);
 
   const middle = activity.laps.slice(1, -2);
   const nbSeries = structureIntervalles.nbSeries || 1;
@@ -230,6 +294,19 @@ export function getLapsAffichage(activity, structureIntervalles, allSessions, se
       }
     });
   }
+
+  // Si la structure attendue n'a pas pu être entièrement couverte par les
+  // laps réels disponibles (curseur n'a pas atteint le nombre de laps
+  // nécessaires), les efforts collectés jusqu'ici sont partiels — plutôt
+  // que de renvoyer une décomposition tronquée silencieusement, on tente
+  // le repli par signal si possible, qui reconstruit la séance en entier
+  // depuis le flux continu plutôt que depuis des laps insuffisants.
+  const nbEffortsAttendu = structureIntervalles.blocs.reduce((s,b)=>s+(b.repetitions||1),0) * nbSeries;
+  if (efforts.length < nbEffortsAttendu) {
+    const repli = repliDetectionParSignal(activity, structureIntervalles);
+    if (repli) return repli.laps;
+  }
+
   return efforts;
 }
 
