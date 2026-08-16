@@ -326,6 +326,19 @@ input[type=text], input[type=number], input[type=password] {
 // manifest.json sans la partie technique "plan généré par le moteur v2".
 // Position top:50% + margin-top calculé en JS pour rester sous le logo
 // quelle que soit sa taille réelle, plutôt qu'une valeur fixe.
+// window._masquerEcranChargement : fonction partagée, appelée soit par
+// render() (cf. son commentaire sur window._masquageEcranChargementDemande)
+// une fois la vidéo terminée, soit directement par le listener 'ended' /
+// le timeout de sécurité ci-dessous si render() a déjà demandé le masquage
+// avant que la vidéo n'ait fini. Écrit ici (avant tout render()) pour être
+// définie avant que quiconque n'en ait besoin.
+window._masquerEcranChargement = function() {
+  var ecranChargement = document.getElementById('ecran-chargement');
+  if (ecranChargement) {
+    ecranChargement.style.display = 'none';
+    ecranChargement.remove();
+  }
+};
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
   var video = document.getElementById('logo-ecran-chargement');
@@ -334,8 +347,22 @@ input[type=text], input[type=number], input[type=password] {
     video.style.height = tailleCote;
     // Vidéo jouée une seule fois puis figée sur sa dernière frame (pas de
     // boucle) : pause() sans reset de currentTime laisse la dernière image
-    // affichée à l'écran jusqu'au masquage de #ecran-chargement par render().
-    video.addEventListener('ended', function() { video.pause(); });
+    // affichée à l'écran jusqu'au masquage réel de #ecran-chargement.
+    var finirVideoIntro = function() {
+      video.pause();
+      window._videoIntroTerminee = true;
+      if (window._masquageEcranChargementDemande) {
+        window._masquerEcranChargement();
+      }
+    };
+    video.addEventListener('ended', finirVideoIntro);
+    // Timeout de sécurité (durée vidéo 8s + marge) : si la vidéo échoue à
+    // se charger ou à jouer pour une raison quelconque (réseau, format non
+    // supporté...), ne jamais bloquer l'accès à l'app au-delà de 9s.
+    setTimeout(finirVideoIntro, 9000);
+  } else {
+    // Pas d'élément vidéo trouvé (ne devrait pas arriver) : ne pas bloquer.
+    window._videoIntroTerminee = true;
   }
   var slogan = document.getElementById('slogan-ecran-chargement');
   if (slogan) {
@@ -12927,10 +12954,24 @@ function render() {
   // session). display:none avant remove() plutôt qu'un remove() direct :
   // masque instantanément dans tous les cas, même si .remove() devait
   // échouer pour une raison quelconque.
+  // Masquage différé jusqu'à la fin de la vidéo d'intro (07/08/2026 →
+  // adapté ultérieurement pour la vidéo) : le contenu réel de l'app est
+  // déjà prêt et masqué derrière l'écran de chargement (z-index:9998), qui
+  // reste donc affiché sans rien bloquer côté app tant que la vidéo n'est
+  // pas terminée. window._masquerEcranChargement encapsule la même logique
+  // display:none puis remove() qu'avant. Appelée soit par le listener
+  // 'ended' de la vidéo (cf. script juste après #ecran-chargement dans le
+  // <body>), soit par un timeout de sécurité de 9s (durée vidéo 8s + marge)
+  // si la vidéo n'a pas pu se charger/jouer pour une raison quelconque —
+  // pour ne jamais bloquer indéfiniment l'accès à l'app.
   const ecranChargement = document.getElementById("ecran-chargement");
-  if (ecranChargement) {
-    ecranChargement.style.display = "none";
-    ecranChargement.remove();
+  if (ecranChargement && !window._masquageEcranChargementDemande) {
+    window._masquageEcranChargementDemande = true;
+    if (window._videoIntroTerminee) {
+      window._masquerEcranChargement();
+    } else {
+      window._masquerEcranChargementDesQueVideoFinie = true;
+    }
   }
   // Remplacement atomique — cf. commentaire en tête de render() : plus de
   // app.innerHTML="" séparé en amont, ce replaceChildren() est la SEULE
