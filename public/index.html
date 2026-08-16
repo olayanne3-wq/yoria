@@ -317,7 +317,7 @@ input[type=text], input[type=number], input[type=password] {
      display:none — pas de fondu de sortie volontaire ici, pour ne pas
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732;">
-  <img id="logo-ecran-chargement" src="/icon-512.png" alt="" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0;">
+  <video id="logo-ecran-chargement" src="/logo-animation.mp4" autoplay muted playsinline preload="auto" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0; object-fit:cover;"></video>
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
@@ -328,10 +328,14 @@ input[type=text], input[type=number], input[type=password] {
 // quelle que soit sa taille réelle, plutôt qu'une valeur fixe.
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
-  var img = document.getElementById('logo-ecran-chargement');
-  if (img) {
-    img.style.width = tailleCote;
-    img.style.height = tailleCote;
+  var video = document.getElementById('logo-ecran-chargement');
+  if (video) {
+    video.style.width = tailleCote;
+    video.style.height = tailleCote;
+    // Vidéo jouée une seule fois puis figée sur sa dernière frame (pas de
+    // boucle) : pause() sans reset de currentTime laisse la dernière image
+    // affichée à l'écran jusqu'au masquage de #ecran-chargement par render().
+    video.addEventListener('ended', function() { video.pause(); });
   }
   var slogan = document.getElementById('slogan-ecran-chargement');
   if (slogan) {
