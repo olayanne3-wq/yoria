@@ -3324,6 +3324,22 @@ async function fetchCoachMsg(differe = false) {
   const todayInTarget = todayEffortLaps.length > 0 && SESSION_TARGETS[sessType]
     ? todayEffortLaps.filter(l=>(1000/l.average_speed)<=SESSION_TARGETS[sessType].okPace).length+"/"+todayEffortLaps.length+" reps dans la cible"
     : null;
+  // Ratio numérique dérivé du même calcul que todayInTarget ci-dessus,
+  // pour piloter une consigne de ton explicite (16/08/2026, demande de
+  // Laurent : le coach disait "allure tenue" sur une séance à 5:39/km
+  // alors que la cible était 4:51/km — les chiffres étaient bien transmis
+  // au prompt, mais aucune instruction explicite ne demandait au LLM de
+  // les comparer et d'en tirer une conclusion honnête ; laissé à sa seule
+  // interprétation, il privilégiait le ton "reste nuancé" du statut ⚠️
+  // plutôt que les chiffres. Seuil à 0 rep dans la cible (écart net, pas
+  // un simple dépassement léger) — un ratio partiel (ex. 2/3) reste dans
+  // la zone grise que "reste nuancé" couvre déjà correctement.
+  const todayRepsDansCibleRatio = (todayEffortLaps.length > 0 && SESSION_TARGETS[sessType])
+    ? todayEffortLaps.filter(l=>(1000/l.average_speed)<=SESSION_TARGETS[sessType].okPace).length / todayEffortLaps.length
+    : null;
+  const consigneEcartAllureNet = (todayRepsDansCibleRatio === 0)
+    ? " L'allure réalisée est nettement en dehors de la cible visée — sois honnête là-dessus, ne dis jamais qu'elle a été tenue ou respectée. Reste malgré tout motivant : valorise l'effort fourni ou une piste concrète pour la prochaine fois, sans dramatiser ni minimiser l'écart."
+    : "";
   // IE moyen et cadence moyenne de la séance terminée (si assez de données — min 3 séances du même type)
   const todayNSameType = stravaActivities.filter(a=>{
     const d = a.start_date_local?.slice(0,10);
@@ -3435,7 +3451,7 @@ async function fetchCoachMsg(differe = false) {
   const prompt = `Tu es Yoria, coach running.${prenomCoureur ? ` Le coureur à qui tu t'adresses s'appelle ${prenomCoureur} — utilise son prénom pour t'adresser à lui, jamais "Yoria" (qui est TON propre prénom, pas le sien).` : ' Ne t\'adresse jamais au coureur par "Yoria" — c\'est ton propre prénom, pas le sien ; utilise "tu" sans prénom si tu ne connais pas le sien.'}${ESTMODEFORME ? ' Ton coureur suit un plan de maintien en forme (pas de course visée actuellement).' : ` Tu prépares le ${RACE_NAME} le ${new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})} à ${RACE_LOCATION} (objectif ${fmtTime(raceGoalTime)}).`}
 ${ESTMODEFORME ? '' : `Estimation actuelle : ${predNow.timeStr} (${gapStr}).`}
 ${isMonday && prevWeekReport ? `Semaine ${prevWeekNum} terminée : ${prevWeekReport.done}/${prevWeekReport.total} séances validées, ${prevWeekKm} km courus.` : ''}
-${sessionDone ? `Séance ${sessType} terminée aujourd'hui — ${todaySessionStatus==="✅" ? "RÉUSSIE (statut ✅), tu peux féliciter et être positif." : todaySessionStatus==="⚠️" ? "PARTIELLEMENT réussie ou difficile (statut ⚠️), reste nuancé — ni fausse félicitation ni dramatisation, valorise ce qui a été fait sans minimiser la difficulté." : "RATÉE ou interrompue (statut ❌), NE FÉLICITE JAMAIS et NE PARLE PAS de réussite ou de bonne performance — sois compréhensif et bienveillant sur la cause possible (fatigue, contrainte de temps, etc.), sans culpabiliser."}${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : sessionSkipped ? `Séance ${sessType} du jour volontairement SAUTÉE par le coureur (statut 😴 repos) — ne la félicite JAMAIS comme si elle avait été faite ou réussie, ne mentionne ni allure ni performance. Un mot bienveillant sur le repos ou la reprise est possible, sans culpabiliser.` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
+${sessionDone ? `Séance ${sessType} terminée aujourd'hui — ${todaySessionStatus==="✅" ? "RÉUSSIE (statut ✅), tu peux féliciter et être positif." : todaySessionStatus==="⚠️" ? "PARTIELLEMENT réussie ou difficile (statut ⚠️), reste nuancé — ni fausse félicitation ni dramatisation, valorise ce qui a été fait sans minimiser la difficulté." : "RATÉE ou interrompue (statut ❌), NE FÉLICITE JAMAIS et NE PARLE PAS de réussite ou de bonne performance — sois compréhensif et bienveillant sur la cause possible (fatigue, contrainte de temps, etc.), sans culpabiliser."}${todayAvgPace ? ' Allure intervalles : '+todayAvgPace+'.' : ''}${todayInTarget ? ' '+todayInTarget+'.' : ''}${consigneEcartAllureNet}${todayAvgIE ? ' Indice d\'économie (IE) : '+todayAvgIE+' (100=normal, >100=meilleur qu\'attendu).' : ''}${todayAvgCad ? ' Cadence moy. : '+todayAvgCad+' spm.' : ''}` : sessionSkipped ? `Séance ${sessType} du jour volontairement SAUTÉE par le coureur (statut 😴 repos) — ne la félicite JAMAIS comme si elle avait été faite ou réussie, ne mentionne ni allure ni performance. Un mot bienveillant sur le repos ou la reprise est possible, sans culpabiliser.` : `Aujourd'hui (PAS ENCORE FAIT) : ${sessType} — ${sessDesc}.`}
 ${isEveOfKeySession ? `Demain séance clé : ${tomorrowKeySess.type} — ${tomorrowKeySess.session}.` : ''}
 ${weatherTemp ? 'Température : '+weatherTemp+'°C.' : ''}
 ${!ESTMODEFORME && isLastTwoWeeks ? `J–${cd} avant la course.` : ""}
