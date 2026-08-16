@@ -441,6 +441,8 @@ Séance unique par plan, placée vers la fin de la phase Spécifique, qui recali
 
 **Soumise au plafond C** (section 17) — vérifié : les distances de test générées par ce tableau restent sous le plafond M/Daniels (20% du volume hebdo) pour un volume hebdo suffisant, mais un débutant en tout début de progression (avant d'atteindre le pic de volume de sa phase) peut voir sa séance test dépasser ce plafond sur certaines distances — trou identifié, couvert par la même implémentation que le plafond général (section 17, non encore codé).
 
+> **Volontairement exclue du prédicteur** (`weightedAvgByEffortDuration()`, cf. `moteur-plan.md`) : cette séance est à allure C (allure course objectif), pas SPEC/VMA/SEUIL — les trois seules sources pondérées par le prédicteur (SPEC 0.45 / VMA 0.35 / SEUIL 0.10). Daniels (chapitre 4) présente ce type de séance comme un outil de confiance/pacing — le bénéfice est mental (s'habituer à l'allure objectif, vérifier qu'elle est tenable dans la durée), pas une mesure physiologique fiable de forme, contrairement aux zones I/T/SPEC. Aucune influence sur l'estimation 10K affichée : comportement voulu, pas un bug. À rappeler côté UI (aide/tuto) pour éviter la confusion — cf. chantier ouvert dans `inventaire-application.md` §16.
+
 Placement (tampon avant Affûtage, plancher si Spécifique trop courte) et implémentation technique (recalcule EF/longue de la semaine, réutilise `repartirVolumeSemaine`/`differencierEF`) identiques au reste du moteur.
 
 ## 21. Persistance et suivi
