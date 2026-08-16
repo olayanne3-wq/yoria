@@ -99,6 +99,23 @@ export default async function handler(req, res) {
 
     const intervalDatesParam = req.query?.interval_dates;
     const INTERVAL_DATES = intervalDatesParam ? intervalDatesParam.split(",") : [];
+
+    // Nombre de laps attendu par date (16/08/2026, correctif décomposition
+    // séance qualité — cf. docs/v2-methodologie/saisie-et-integrations.md).
+    // Format transmis par index.html : "2026-08-16:3,2026-08-20:5" (date
+    // deux-points nombre de blocs attendus, plusieurs dates séparées par
+    // virgule). Optionnel — une date présente dans INTERVAL_DATES mais
+    // absente ici n'a pas de vérification de cohérence possible (comportement
+    // inchangé : laps Strava utilisés tels quels).
+    const intervalExpectedParam = req.query?.interval_expected;
+    const NB_BLOCS_ATTENDU_PAR_DATE = new Map();
+    if (intervalExpectedParam) {
+      for (const paire of intervalExpectedParam.split(",")) {
+        const [date, nb] = paire.split(":");
+        if (date && nb) NB_BLOCS_ATTENDU_PAR_DATE.set(date, parseInt(nb, 10));
+      }
+    }
+
     const planStartParam = req.query?.plan_start;
     const after = Math.floor(new Date((planStartParam || "2026-06-22") + "T00:00:00Z").getTime() / 1000);
 
@@ -123,7 +140,42 @@ export default async function handler(req, res) {
             { headers: { Authorization: `Bearer ${token}` } }
           );
           const laps = await lapsResp.json();
-          return { ...act, laps: Array.isArray(laps) ? laps : [] };
+          const lapsArray = Array.isArray(laps) ? laps : [];
+
+          // Cohérence : nombre de laps attendu (blocs + échauffement +
+          // retour au calme) vs réel. Si on n'a pas d'attendu pour cette
+          // date, ou si le nombre réel suffit, comportement inchangé — pas
+          // d'appel /streams supplémentaire (coûteux, à réserver au cas où
+          // c'est vraiment nécessaire).
+          const nbBlocsAttendu = NB_BLOCS_ATTENDU_PAR_DATE.get(dateLocal);
+          const attendu = nbBlocsAttendu != null ? nbBlocsAttendu + 2 : null;
+          const incoherent = attendu != null && lapsArray.length < attendu;
+
+          if (!incoherent) {
+            return { ...act, laps: lapsArray };
+          }
+
+          // Laps insuffisants pour décomposer correctement la séance —
+          // repli sur le flux détaillé (streams), pour permettre une
+          // reconstruction par détection de signal côté client
+          // (fit-detection.js, construireRecordsDepuisStreamsStrava()).
+          // key_by_type=true : réponse en objet { time: {data:[...]}, ... }
+          // plutôt qu'un tableau de flux — plus simple à consommer côté
+          // client, cf. commentaire de construireRecordsDepuisStreamsStrava().
+          try {
+            const streamsResp = await fetch(
+              `https://www.strava.com/api/v3/activities/${actId}/streams?keys=time,velocity_smooth,heartrate,cadence&key_by_type=true`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const streams = await streamsResp.json();
+            return { ...act, laps: lapsArray, raw_streams: streams, laps_incoherents: true };
+          } catch {
+            // Streams indisponibles (activité privée aux détails avancés,
+            // erreur réseau ponctuelle...) — on retourne quand même les laps
+            // bruts avec le flag, le client saura qu'il n'a pas de repli
+            // possible et affichera l'avertissement sans décomposition.
+            return { ...act, laps: lapsArray, laps_incoherents: true };
+          }
         } catch {
           return { ...act, laps: [] };
         }
