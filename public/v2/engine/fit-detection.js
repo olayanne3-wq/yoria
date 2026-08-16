@@ -38,6 +38,20 @@
 // segments continus — retenue ici — ne redonne un résultat globalement
 // fiable). Accepté comme limite plutôt que bloquant pour cette première
 // version.
+//
+// RÉUTILISATION POUR STRAVA (16/08/2026, demande de Laurent) — voir
+// construireRecordsDepuisStreamsStrava() en fin de fichier. Un coureur
+// qui swappe une séance en cours de session peut voir ses laps Strava
+// natifs ne pas correspondre à la structure réellement attendue (cf.
+// correctif du même jour sur INTERVAL_SESSION_DATES), et plus
+// généralement tout coureur qui ne programme pas sa montre en laps
+// manuels (échauffement / effort / récup / retour au calme) obtient des
+// laps Strava sans rapport avec la séance. Plutôt que d'afficher une
+// décomposition vide ou fausse dans ce cas, le même moteur de détection
+// par signal que pour le FIT est réutilisé sur le flux `streams` Strava
+// (vitesse/FC/cadence seconde par seconde) — detecterIntervallesParSignal()
+// ne connaît pas la source des `records` qu'on lui donne, seule la
+// construction de ce tableau diffère entre FIT et Strava.
 // ============================================================
 
 // ------------------------------------------------------------
@@ -63,6 +77,26 @@ export function possedeMarqueursNatifs(lapsFit) {
   // marqueurs structurés).
   const triggersIgnores = new Set(['distance', 'session_end']);
   return lapsFit.some(lap => lap.lap_trigger && !triggersIgnores.has(lap.lap_trigger));
+}
+
+// ------------------------------------------------------------
+// Vérification de cohérence des laps déjà connus (Strava ou FIT natif)
+// par rapport à la structure attendue du plan — utilisée par l'appelant
+// AVANT de décider s'il faut passer par la détection par signal.
+//
+// `structureIntervalles.blocs.length` donne le nombre de répétitions
+// attendues ; le nombre de laps cohérent est ce nombre + 2 (échauffement
+// + retour au calme), en laps manuels classiques. Volontairement
+// permissif (>=, pas ===) : un coureur peut poser des laps
+// supplémentaires (ex. un arrêt à un feu rouge) sans que ça invalide la
+// décomposition — c'est l'insuffisance de laps, pas leur excès, qui rend
+// la décomposition impossible à faire correctement.
+// ------------------------------------------------------------
+export function lapsCoherentsAvecStructure(nombreLapsReels, structureIntervalles) {
+  const nbBlocs = structureIntervalles?.blocs?.length;
+  if (!nbBlocs) return true; // pas de structure connue : rien à comparer, ne pas bloquer
+  const attendu = nbBlocs + 2;
+  return nombreLapsReels >= attendu;
 }
 
 // ------------------------------------------------------------
@@ -274,4 +308,43 @@ export function construireLapsDepuisFit(session, structureAttendue = null) {
   }
 
   return detecterIntervallesParSignal(records, structureAttendue);
+}
+
+// ------------------------------------------------------------
+// Repli Strava (16/08/2026) — construit le même format `records` que
+// construireLapsDepuisFit(), mais depuis un objet `streams` Strava
+// (réponse de GET /activities/{id}/streams?keys=time,velocity_smooth,
+// heartrate,cadence&key_by_type=true), plutôt que depuis un fichier FIT.
+//
+// Format `streams` Strava (key_by_type=true) : un objet où chaque clé
+// (time/velocity_smooth/heartrate/cadence) contient { data: [...] },
+// tous les tableaux alignés (même longueur, même index temporel) — pas
+// de timestamp absolu à recalculer comme pour FIT, `time` est déjà en
+// secondes écoulées depuis le départ.
+//
+// N'appelle PAS possedeMarqueursNatifs() : côté Strava, la décision de
+// passer par ce repli est prise en amont par l'appelant, sur la base de
+// lapsCoherentsAvecStructure() (comparaison laps réels vs structure du
+// plan) — un mécanisme différent de la détection lap_trigger, propre au
+// FIT, qui n'a pas d'équivalent dans l'API Strava.
+// ------------------------------------------------------------
+export function construireRecordsDepuisStreamsStrava(streams) {
+  const tempsSec = streams?.time?.data;
+  if (!Array.isArray(tempsSec) || tempsSec.length === 0) return [];
+
+  const vitesses = streams?.velocity_smooth?.data || [];
+  const fc = streams?.heartrate?.data || [];
+  const cadenceBrute = streams?.cadence?.data || [];
+
+  // Cadence Strava déjà en spm total (convention différente de FIT, qui
+  // est par jambe — cf. commentaire de statsBloc() ci-dessus) : divisée
+  // par 2 ici pour rester dans la même convention interne par jambe que
+  // le reste du fichier, avant que index.html ne remultiplie par 2 à
+  // l'affichage comme il le fait déjà pour toute cadence.
+  return tempsSec.map((t, i) => ({
+    t,
+    speed: vitesses[i] ?? 0,
+    hr: fc[i] ?? null,
+    cadence: cadenceBrute[i] != null ? cadenceBrute[i] / 2 : null,
+  }));
 }
