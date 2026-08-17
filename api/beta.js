@@ -1,4 +1,4 @@
-import { sendBrevoInvitation } from "../lib/beta-invitation-email.js";
+import { sendBrevoInvitation, sendBrevoAdminNotification } from "../lib/beta-invitation-email.js";
 import { extraireIp, verifierEtIncrementerTentative } from "../lib/rate-limit.js";
 
 const ALLOWED_PLATFORMS = new Set(["android", "iphone"]);
@@ -273,6 +273,19 @@ export default async function handler(request, response) {
       });
     }
 
+    const brevoConfig = {
+      brevoApiKey: process.env.BREVO_API_KEY,
+      fromEmail: process.env.BETA_INVITATION_FROM_EMAIL,
+      fromName: process.env.BETA_INVITATION_FROM_NAME,
+      appUrl: process.env.BETA_APP_URL,
+    };
+    const brevoConfigComplete = !!(
+      brevoConfig.brevoApiKey &&
+      brevoConfig.fromEmail &&
+      brevoConfig.fromName &&
+      brevoConfig.appUrl
+    );
+
     // Envoi de l'email d'invitation (uniquement si auto-validée) —
     // best-effort : un échec d'envoi ne doit jamais faire échouer
     // l'inscription elle-même (déjà enregistrée en base à ce stade). Le
@@ -282,19 +295,7 @@ export default async function handler(request, response) {
     let emailEnvoye = false;
 
     if (autoValidee) {
-      const brevoConfig = {
-        brevoApiKey: process.env.BREVO_API_KEY,
-        fromEmail: process.env.BETA_INVITATION_FROM_EMAIL,
-        fromName: process.env.BETA_INVITATION_FROM_NAME,
-        appUrl: process.env.BETA_APP_URL,
-      };
-
-      if (
-        brevoConfig.brevoApiKey &&
-        brevoConfig.fromEmail &&
-        brevoConfig.fromName &&
-        brevoConfig.appUrl
-      ) {
+      if (brevoConfigComplete) {
         try {
           await sendBrevoInvitation(brevoConfig, candidate);
           emailEnvoye = true;
@@ -303,6 +304,24 @@ export default async function handler(request, response) {
         }
       } else {
         console.warn("Configuration Brevo incomplète — email d'auto-validation non envoyé.");
+      }
+    } else {
+      // Notification admin (ajout) — UNIQUEMENT pour les candidatures
+      // "pending", celles qui exigent une action manuelle de Laurent
+      // (décision explicite : ne jamais notifier pour les auto-validées,
+      // déjà traitées automatiquement, ce serait du bruit sans action à
+      // faire). Best-effort strict, comme tout envoi email de ce
+      // fichier : ne doit JAMAIS faire échouer l'enregistrement de la
+      // candidature (déjà en base à ce stade) ni changer le code retour
+      // envoyé au candidat.
+      if (brevoConfigComplete) {
+        try {
+          await sendBrevoAdminNotification(brevoConfig, candidate);
+        } catch (erreurNotifAdmin) {
+          console.error("Échec envoi notification admin (pending) :", erreurNotifAdmin.message);
+        }
+      } else {
+        console.warn("Configuration Brevo incomplète — notification admin non envoyée.");
       }
     }
 
