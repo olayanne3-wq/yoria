@@ -7636,10 +7636,7 @@ function renderWeekDetail(weekNum) {
         el("span",{class:"muted",style:{fontSize:"13px"}},"[supprimee] "+effSess.type+" - "+effSess.session.slice(0,30)),
         el("span",{class:"muted",style:{fontSize:"11px"}},s.date)
       );
-      let lpH=null;
-      hCard.addEventListener("touchstart",()=>{lpH=setTimeout(()=>{lpH=null;showSessionMenu(week,i);},600);},{passive:true});
-      hCard.addEventListener("touchend",()=>{if(lpH){clearTimeout(lpH);lpH=null;}});
-      hCard.addEventListener("touchmove",()=>{if(lpH){clearTimeout(lpH);lpH=null;}});
+      attacherDoubleTap(hCard, () => showSessionMenu(week, i));
       hCard.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
       return hCard;
     }
@@ -7783,12 +7780,12 @@ function renderWeekDetail(weekNum) {
       }
     }
 
-    // Appui long : menu gestion seance
+    // Double tap : menu gestion seance (remplace l'appui long, 17/08/2026,
+    // demande explicite de Laurent : l'appui long entrait en tension avec
+    // le glissement au doigt, deux gestes avec des délais proches sur la
+    // même carte).
     if (effSess.type !== "REPOS" && effSess.type !== "RACE") {
-      let lpCard=null;
-      card.addEventListener("touchstart",()=>{lpCard=setTimeout(()=>{lpCard=null;showSessionMenu(week,i);},600);},{passive:true});
-      card.addEventListener("touchend",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
-      card.addEventListener("touchmove",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
+      attacherDoubleTap(card, () => showSessionMenu(week, i));
       card.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
     }
 
@@ -9837,6 +9834,30 @@ function getAvailableSlots(week, excludeIdx) {
     return {idx:i, uid, date:s.date, label:effective.type+" — "+(effective.session||"").slice(0,30)};
   }).filter(Boolean);
 return slots;
+}
+
+// Double tap / double clic (correctif — remplace l'appui long, demande
+// explicite de Laurent : l'appui long entrait en tension avec le
+// glissement au doigt ajouté juste avant, deux gestes différents avec des
+// délais proches sur la même carte). Détecte deux "click" (déclenché
+// nativement à la fois par une souris ET par un tap tactile — pas besoin
+// de gérer touchend séparément) survenant à moins de 350ms d'intervalle.
+// callback reçoit l'événement du second clic. Retourne une fonction de
+// nettoyage (non utilisée actuellement, gardée pour cohérence si un jour
+// une carte doit être détachée dynamiquement sans recharger toute la vue).
+function attacherDoubleTap(el, callback) {
+  let dernierTapAt = 0;
+  function surClick(e) {
+    const maintenant = Date.now();
+    if (maintenant - dernierTapAt < 350) {
+      dernierTapAt = 0; // réinitialise, évite qu'un triple-tap déclenche deux fois
+      callback(e);
+    } else {
+      dernierTapAt = maintenant;
+    }
+  }
+  el.addEventListener("click", surClick);
+  return () => el.removeEventListener("click", surClick);
 }
 
 function showSessionMenu(week, slotIdx) {
