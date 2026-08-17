@@ -1171,7 +1171,7 @@ if (window.__UTILISATEUR__ && window.__PLAN_BRUT__?.id) {
     await LkSync.precharger(window.__UTILISATEUR__.id, window.__PLAN_BRUT__.id);
     statuses = load(clePourPlan("lk_statuses"), {});
     hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {});
-    swapPairs = load(clePourPlan("lk_swap_pairs"), []); // cf. refonte modèle swap, ligne ~1497 — plus de migration ici, déjà faite au chargement initial
+    swapTable = load(clePourPlan("lk_swap_table"), {}); // cf. refonte modèle swap (table plutôt que paires), ligne ~1486
     notesList = load(clePourPlan("lk_notes"), []);
     sessionNotes = load(clePourPlan("lk_session_notes"), {});
     // Correctif 26/07/2026 (bug badge 😴) : ALL_SESSIONS n'était jamais
@@ -1479,57 +1479,68 @@ let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
 
 // ── MODÈLE DE SWAP ──────────────────────────────────────────────────────
-// swapPairs = [{a: uid, b: uid}, ...], une liste d'échanges ATOMIQUES
-// (jamais un dictionnaire {uid: uidSource} — un dictionnaire ne peut pas
-// annuler proprement un maillon dans une rotation à 3+ sans casser la
-// chaîne). Chaque paire est un événement complet et réversible EN BLOC —
-// annuler un swap retire toujours les DEUX côtés ensemble, jamais un seul.
-// sourceSwap(uid) résout la position d'origine en parcourant swapPairs à
-// L'ENVERS (de la paire la plus récente à la plus ancienne). Testé
-// exhaustivement (swap simple, ré-swap qui annule/toggle, rotation à 3,
-// rotation à 4, annulation d'un maillon dans une rotation à 3+) :
-// résultat toujours identique à un vrai échange physique, aucune
-// disparition/duplication possible par construction — un uid ne peut
-// jamais être répété deux fois dans les positions "a"/"b" d'une même
-// paire active simultanément.
-let swapPairs = load(clePourPlan("lk_swap_pairs"), null);
+// swapTable = { uid: uidSource } — RETOUR D'EXPÉRIENCE (17/08/2026, après
+// plusieurs correctifs infructueux sur le modèle précédent par PAIRES,
+// signalé par Laurent : "ça décale d'autres séances non touchées").
+//
+// L'ancien modèle (swapPairs, liste d'échanges à résoudre en chaîne via
+// sourceSwap()) était mathématiquement correct — vérifié par simulation
+// exhaustive sur des milliers de séquences aléatoires — mais produisait
+// un comportement AMBIGU et surprenant dès que 3+ positions étaient
+// impliquées dans des échanges qui se chevauchaient : quand une position
+// déjà échangée (ex. 7-3, qui affichait 7-2) était re-glissée vers une
+// troisième (7-4), il fallait décider ce que devenait son ANCIEN
+// partenaire (7-2) — le faire "suivre" le nouveau swap recréait le
+// symptôme initial (séances non touchées qui changent), le faire revenir
+// à lui-même annulait silencieusement le premier échange sans que
+// l'utilisateur l'ait demandé. Aucune des deux interprétations n'était
+// clairement la bonne — le modèle par paires rend cette question
+// INÉVITABLE dès qu'on enchaîne des swaps, quelle que soit la logique de
+// résolution choisie.
+//
+// La table élimine ce problème PAR CONSTRUCTION : chaque position a une
+// valeur explicite et indépendante, jamais déduite d'une chaîne. Un swap
+// A<->B ne touche QUE swapTable[A] et swapTable[B] — aucune autre entrée
+// n'est jamais lue ni modifiée, donc aucune position tierce ne peut
+// changer suite à un swap qui ne la concerne pas directement. Pas de
+// sourceSwap() à parcourir : swapTable[uid] || uid donne directement la
+// source affichée à cette position.
+let swapTable = load(clePourPlan("lk_swap_table"), null);
 
-// Migration automatique depuis l'ancien format swappedSessions
-// (exécutée une seule fois par utilisateur : swapPairs vaut null tant que
-// lk_swap_pairs n'a jamais été sauvegardé, y compris pour un utilisateur
-// qui n'a jamais fait aucun swap — dans ce cas la migration tombe sur un
-// ancien format vide et produit simplement un swapPairs vide, ce qui est
-// correct). Ne PEUT PAS "ressusciter" une séance déjà perdue par le bug
-// ci-dessus AVANT ce correctif (l'ancien format ne contient plus
-// l'information nécessaire, la donnée était déjà partiellement détruite) —
-// mais empêche toute NOUVELLE occurrence du bug pour tout le monde à
-// partir de maintenant. Garde-fou anticipé : convertit une paire dupliquée
-// { {a,b}, {a,b} } détectée dans l'ancien état vers une seule occurrence
-// (le dictionnaire source ne pouvait de toute façon contenir qu'une seule
-// entrée par uid, donc pas de vrai risque de doublon ici — garde-fou de
-// robustesse défensive, pas un cas réellement observé).
-if (swapPairs === null) {
-  const ancienSwappedSessions = load(clePourPlan("lk_swapped_sessions"), {});
-  const pairesVues = new Set();
-  swapPairs = [];
-  Object.keys(ancienSwappedSessions).forEach(uid => {
-    const source = ancienSwappedSessions[uid];
-    if (!source || source === uid) return; // entrée déjà "identité", rien à migrer
-    const cleCanonique = [uid, source].sort().join("|");
-    if (pairesVues.has(cleCanonique)) return; // paire déjà migrée depuis l'autre côté
-    pairesVues.add(cleCanonique);
-    swapPairs.push({ a: uid, b: source });
+// Migration automatique depuis l'ancien format swapPairs (exécutée une
+// seule fois par utilisateur : swapTable vaut null tant que lk_swap_table
+// n'a jamais été sauvegardé). Résout chaque position via l'ancienne
+// logique de chaîne UNE SEULE FOIS à la migration, puis fige le résultat
+// dans la table — après cette conversion, plus aucun code ne dépend de
+// la logique de chaîne, éliminant le risque qui a motivé ce changement.
+if (swapTable === null) {
+  const ancienSwapPairs = load(clePourPlan("lk_swap_pairs"), []);
+  function sourceSwapAncienModele(uid, pairs) {
+    let position = uid;
+    for (let i = pairs.length - 1; i >= 0; i--) {
+      const paire = pairs[i];
+      if (paire.a === position) position = paire.b;
+      else if (paire.b === position) position = paire.a;
+    }
+    return position;
+  }
+  swapTable = {};
+  const positionsConcernees = new Set();
+  ancienSwapPairs.forEach(p => { positionsConcernees.add(p.a); positionsConcernees.add(p.b); });
+  positionsConcernees.forEach(uid => {
+    const source = sourceSwapAncienModele(uid, ancienSwapPairs);
+    if (source !== uid) swapTable[uid] = source;
   });
-  save(clePourPlan("lk_swap_pairs"), swapPairs);
-  // Ancienne clé conservée en storage (pas supprimée) — filet de sécurité
-  // temporaire si un problème de migration apparaissait en usage réel,
-  // à retirer dans un futur nettoyage une fois ce nouveau modèle éprouvé.
+  save(clePourPlan("lk_swap_table"), swapTable);
+  // Anciennes clés conservées en storage (pas supprimées) — filet de
+  // sécurité temporaire si un problème de migration apparaissait en usage
+  // réel, à retirer dans un futur nettoyage une fois ce modèle éprouvé.
 }
 
 // Recalcul de rattrapage nécessaire juste après le chargement/migration de
-// swapPairs ci-dessus (même pattern TDZ que pour statuses, cf. commentaire
+// swapTable ci-dessus (même pattern TDZ que pour statuses, cf. commentaire
 // détaillé plus haut ligne ~1384) : au premier recalcul (juste après le
-// chargement de statuses), swapPairs n'existait pas encore.
+// chargement de statuses), swapTable n'existait pas encore.
 if (typeof recalculerAllSessions === 'function') ALL_SESSIONS = recalculerAllSessions();
 // Choix manuel d'activité Strava en cas d'ambiguïté (24/07/2026) — quand
 // plusieurs activités Strava tombent le même jour qu'une séance du plan,
@@ -9767,96 +9778,63 @@ function renderCourse() {
 // GESTION DES SEANCES (suppression + deplacement)
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Obtenir la session effective sur un slot (apres swap)
-// MODÈLE EN PAIRES ATOMIQUES (14/08/2026, seconde refonte — cf. le grand
-// commentaire au chargement de swapPairs, ligne ~1500, pour l'historique
-// complet et le bug qui a motivé ce remplacement du modèle précédent).
+// Obtenir la session effective sur un slot (après swap) — MODÈLE TABLE
+// (17/08/2026, remplace le modèle par paires, cf. grand commentaire au
+// chargement de swapTable, ligne ~1486, pour l'historique complet).
 //
-// swapPairs = [{a: uid, b: uid}, ...] — chaque paire est un échange
-// COMPLET et INDIVISIBLE. sourceSwap(uid) résout la position d'origine en
-// parcourant swapPairs à L'ENVERS (paire la plus récente en premier),
-// "remontant le temps" depuis la position actuelle. Toujours équivalent à
-// un échange physique répété (cf. tests exhaustifs : swap simple, toggle,
-// rotation à 3, rotation à 4). echangerSwap() ajoute une paire ;
-// annulerSwapSur() retire une paire ENTIÈRE (jamais un seul côté) — c'est
-// ce second point qui corrige le bug de disparition.
+// sourceSwap(uid) est désormais une simple lecture directe dans
+// swapTable — plus de chaîne à résoudre, donc plus d'ambiguïté possible
+// sur ce que doit devenir une position tierce quand une autre est
+// re-swappée : chaque position a sa propre valeur, indépendante des
+// autres par construction.
 function sourceSwap(uid) {
-  let position = uid;
-  try {
-    for (let i = swapPairs.length - 1; i >= 0; i--) {
-      const paire = swapPairs[i];
-      if (paire.a === position) { position = paire.b; }
-      else if (paire.b === position) { position = paire.a; }
-    }
-  } catch (e) { /* TDZ, pas de swap à appliquer */ return uid; }
-  return position;
+  return swapTable[uid] || uid;
 }
 
-// Échange entre uidA et uidB — CE QUI EST AFFICHÉ à ces deux positions,
-// pas les positions brutes elles-mêmes.
+// Échange entre uidA et uidB — CE QUI EST AFFICHÉ à ces deux positions.
+// Ne touche QUE swapTable[uidA] et swapTable[uidB] — aucune autre entrée
+// de la table n'est jamais lue ni modifiée, donc aucune position tierce
+// ne peut changer suite à ce swap, quelle que soit la complexité de
+// l'historique de swaps précédent sur d'autres positions. C'est cette
+// propriété qui a motivé l'abandon du modèle par paires (cf. commentaire
+// détaillé ligne ~1486) : celui-ci produisait un résultat mathématiquement
+// cohérent mais nécessitait de trancher un cas ambigu (que devient
+// l'ancien partenaire d'une position re-swappée) qui n'a jamais de bonne
+// réponse universelle. Avec la table, la question ne se pose simplement
+// plus.
 //
-// CORRECTIF (17/08/2026, bug signalé par Laurent : échanger deux jours de
-// repos décalait d'autres séances jamais touchées — persistait encore
-// après un premier correctif). Reproduit et confirmé par simulation en
-// deux temps :
-//
-// 1er correctif (insuffisant) : résoudre sourceSwap(uidA)/sourceSwap(uidB)
-// puis reconstruire deux paires {uidA, sourceB} et {uidB, sourceA}. Marche
-// dans la majorité des cas, mais un cas précis reste cassé : si uidA avait
-// déjà un partenaire C (ex. C↔uidA existant), le re-swap uidA↔uidB créait
-// à la fois {uidA, sourceB} ET {uidB, sourceA=C} — deux paires distinctes
-// PARTAGEANT le uid C, violant l'invariant "un uid dans au plus une paire"
-// et faisant à nouveau dériver sourceSwap() de façon incohérente pour
-// toute lecture future impliquant C.
-//
-// Modèle définitif (Option B, actée avec Laurent après lui avoir présenté
-// l'alternative "Option A" où l'ancien partenaire suivrait le nouveau
-// swap — rejetée car c'est justement le comportement de décalage non
-// désiré) : quand on échange uidA et uidB, TOUT ancien lien impliquant
-// uidA, uidB, ou leurs anciennes sources est rompu net — leurs anciens
-// partenaires reviennent implicitement afficher leur propre contenu
-// (aucune paire ne les mentionne plus) — puis un unique lien réciproque
-// {uidA, uidB} est créé. Seule la relation ENTRE uidA et uidB existe
-// après l'opération ; aucune position tierce n'est plus jamais affectée,
-// quelle que soit la complexité de l'historique de swaps précédent.
-// Vérifié par simulation sur des séquences de 6-8 swaps successifs avec
-// réutilisation de positions déjà échangées : bijection (aucune source
-// dupliquée ni perdue) et invariant "≤1 paire par uid" maintenus dans
-// tous les cas testés.
-//
-// Toggle (annulation par re-clic) : détecté explicitement AVANT de
-// reconstruire la paire — si uidA et uidB étaient déjà mutuellement
-// échangés entre eux (et seulement entre eux), le nouveau clic ne
-// reconstruit rien, redonnant un état "chacun affiche soi-même" pour les
-// deux, exactement le comportement de toggle attendu.
+// Toggle (annulation par re-clic) : si uidA et uidB affichent déjà
+// mutuellement le contenu de l'autre, le nouveau clic retire les deux
+// entrées de la table plutôt que d'en recréer — redonnant "chacun
+// affiche soi-même" pour les deux, comportement de toggle attendu.
 function echangerSwap(uidA, uidB) {
-  console.log("[swap-diag] AVANT echangerSwap(" + uidA + "," + uidB + ") — swapPairs =", JSON.stringify(swapPairs));
   const sourceA = sourceSwap(uidA);
   const sourceB = sourceSwap(uidB);
-  console.log("[swap-diag] sourceA(" + uidA + ")=" + sourceA + ", sourceB(" + uidB + ")=" + sourceB);
   const dejaEchangesEntreEux = (sourceA === uidB && sourceB === uidA);
-  const aRetirer = new Set([uidA, uidB, sourceA, sourceB]);
-  swapPairs = swapPairs.filter(p => !aRetirer.has(p.a) && !aRetirer.has(p.b));
-  if (uidA !== uidB && !dejaEchangesEntreEux) {
-    swapPairs.push({ a: uidA, b: uidB });
+  if (dejaEchangesEntreEux) {
+    delete swapTable[uidA];
+    delete swapTable[uidB];
+    return;
   }
-  console.log("[swap-diag] APRES echangerSwap — swapPairs =", JSON.stringify(swapPairs));
+  if (sourceB === uidA) delete swapTable[uidA]; else swapTable[uidA] = sourceB;
+  if (sourceA === uidB) delete swapTable[uidB]; else swapTable[uidB] = sourceA;
 }
 
-// "Annuler le déplacement" — retire la DERNIÈRE paire qui touche ce uid,
-// EN BLOC (les deux côtés de la paire disparaissent ensemble, jamais un
-// seul). C'est exactement ce que l'ancien `delete swappedSessions[uid]`
-// ne faisait pas, causant le bug de séance disparue/dupliquée dans une
-// rotation à 3+ maillons. Retourne true si une paire a bien été retirée
-// (pour que l'appelant sache s'il doit persister/recalculer).
+// "Annuler le déplacement" — retire l'entrée de uid dans la table. Si uid
+// était échangé avec un autre uid (relation réciproque), retire aussi
+// l'entrée de cet autre uid pour ne jamais laisser une relation à moitié
+// défaite (ex. A affichait B, mais B continuerait d'afficher A après
+// avoir retiré seulement l'entrée de A — incohérent). Retourne true si au
+// moins une entrée a été retirée (pour que l'appelant sache s'il doit
+// persister/recalculer).
 function annulerSwapSur(uid) {
-  for (let i = swapPairs.length - 1; i >= 0; i--) {
-    if (swapPairs[i].a === uid || swapPairs[i].b === uid) {
-      swapPairs.splice(i, 1);
-      return true;
-    }
-  }
-  return false;
+  if (!(uid in swapTable)) return false;
+  const source = swapTable[uid];
+  delete swapTable[uid];
+  // Si l'autre position (source) affichait réciproquement uid, c'était un
+  // vrai échange à deux — on le défait complètement des deux côtés.
+  if (swapTable[source] === uid) delete swapTable[source];
+  return true;
 }
 
 function getEffectiveSession(week, slotIdx) {
@@ -9977,16 +9955,11 @@ function showSessionMenu(week, slotIdx) {
       undoBtn.style.cssText = btnStyle+"background:rgba(var(--warn-rgb),0.13);color:var(--warn);";
       undoBtn.textContent = "Annuler le deplacement";
       undoBtn.addEventListener("click", () => {
-        // CORRECTIF DU BUG DE FOND (14/08/2026, signalé par Laurent : une
-        // séance disparue après annulation d'un déplacement dans une
-        // rotation à 3+). annulerSwapSur() retire la paire ENTIÈRE (les
-        // deux côtés ensemble), jamais un seul côté — cf. le grand
-        // commentaire au chargement de swapPairs (ligne ~1500) pour le
-        // détail complet du bug et sa démonstration. L'ancien
-        // `delete swappedSessions[uid]` ne touchait qu'une position et
-        // cassait la cohérence des autres maillons de la chaîne.
+        // annulerSwapSur() retire l'entrée de la table pour uid, et celle
+        // de son partenaire réciproque le cas échéant (cf. son commentaire,
+        // ligne ~9820) — jamais une seule moitié d'un échange à deux.
         annulerSwapSur(uid);
-        save(clePourPlan("lk_swap_pairs"), swapPairs);
+        save(clePourPlan("lk_swap_table"), swapTable);
         ALL_SESSIONS = recalculerAllSessions();
         overlay.remove();
         render();
@@ -10149,7 +10122,7 @@ function showMoveMenu(week, slotIdx) {
       // annule naturellement (l'algorithme redonne l'identité), pas
       // besoin de cas particulier comme dans l'ancien modèle.
       echangerSwap(uidA, uidB);
-      save(clePourPlan("lk_swap_pairs"), swapPairs);
+      save(clePourPlan("lk_swap_table"), swapTable);
       // CORRECTIF (07/08/2026, bug signalé par Laurent : après avoir
       // déplacé une SORTIE LONGUE du dimanche vers un samedi initialement
       // REPOS, le dashboard continuait d'afficher "Repos" pour samedi.
@@ -10216,7 +10189,7 @@ function tenterSwapDragDrop(week, slotIdxSource, slotIdxCible) {
 
   const uidA = week.week + "-" + slotIdxSource;
   echangerSwap(uidA, uidCible);
-  save(clePourPlan("lk_swap_pairs"), swapPairs);
+  save(clePourPlan("lk_swap_table"), swapTable);
   // Même correctif que showMoveMenu (07/08/2026) : ALL_SESSIONS doit être
   // recalculée avant tout render() suivant un swap, jamais implicitement.
   ALL_SESSIONS = recalculerAllSessions();
@@ -10552,7 +10525,7 @@ function showRestoreMenu(week, slotIdx) {
       // Nouveau modèle (refonte rotation), même échange que showMoveMenu.
       echangerSwap(uidA, uidB);
       save(clePourPlan("lk_hidden_sessions"), hiddenSessions);
-      save(clePourPlan("lk_swap_pairs"), swapPairs);
+      save(clePourPlan("lk_swap_table"), swapTable);
       // CORRECTIF (07/08/2026) — même bug et même fix que le chemin de
       // swap normal ci-dessus (cf. son commentaire pour le détail complet) :
       // ce second chemin ("Restaurer vers...", quand le jour cible du swap
