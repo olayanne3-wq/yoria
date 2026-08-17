@@ -6,25 +6,25 @@ import { extraireIp, verifierEtIncrementerTentative, reinitialiserTentatives } f
 const COOKIE = "yoria_beta_admin";
 const TTL = 28_800;
 
-// Rate limiting sur la connexion admin (correctif sécurité) — la
-// comparaison du mot de passe est déjà en temps constant
-// (crypto.timingSafeEqual, cf. safe() plus bas), mais rien n'empêchait un
-// grand nombre de tentatives rapides. Politique : 5 tentatives par IP sur
-// une fenêtre de 15 minutes, au-delà la connexion est refusée (429) même
-// avec le bon mot de passe, jusqu'à expiration de la fenêtre. Table
-// tentatives_connexion_admin (cf. docs/v2-methodologie/
-// table-rate-limiting-admin.sql), logique factorisée dans
-// lib/rate-limit.js (réutilisée aussi par api/beta.js, cf. sa propre
-// table tentatives_soumission_beta — contexte différent, table séparée).
 const TABLE_RATE_LIMIT_ADMIN = "tentatives_connexion_admin";
 const FENETRE_RATE_LIMIT_MS = 15 * 60 * 1000;
 const MAX_TENTATIVES_RATE_LIMIT = 5;
 
+// Statuts simplifiés (retrait de "selected" et "active", demande
+// explicite de Laurent) — "selected" faisait doublon avec "invited" sans
+// rôle distinct dans le code (aucun effet différent : ni email, ni action
+// automatique), et "active" n'avait aucun déclencheur automatique (jamais
+// mis à jour tout seul, un statut manuel que personne ne pensait à
+// cliquer). Les candidatures déjà en base avec l'un de ces deux anciens
+// statuts ont été migrées vers "invited" par une requête SQL ponctuelle
+// (pas de code de migration ici — action ponctuelle, pas un besoin
+// récurrent). PATCH avec status="selected"/"active" est désormais rejeté
+// (400, cf. STATUSES.has(status) plus bas) — ancien code client qui
+// enverrait encore ces valeurs échouerait proprement plutôt que de créer
+// un état incohérent.
 const STATUSES = new Set([
   "pending",
-  "selected",
   "invited",
-  "active",
   "rejected",
 ]);
 
@@ -150,14 +150,6 @@ async function supabaseRequest(config, path, options = {}) {
   return data;
 }
 
-// Tables applicatives liées directement par user_id — cf. inventaire §5,
-// liste des tables liées à user_id : plans_original, plans_actif,
-// badges_debloques, decision_events en font partie. integrations n'a PAS
-// été retrouvée avec certitude comme liée à user_id dans le code déjà
-// consulté cette session (colonne v2_gist_id mentionnée, structure exacte
-// non vérifiée) — incluse par prudence, un DELETE sur une table/colonne
-// inexistante ou déjà vide échoue proprement (404/0 lignes), jamais une
-// vraie casse.
 const TABLES_USER_ID_DIRECT = [
   "decision_events",
   "plans_original",
@@ -166,14 +158,6 @@ const TABLES_USER_ID_DIRECT = [
   "integrations",
 ];
 
-// Suppression complète d'un compte Yoria par email — pendant admin de
-// api/delete-account.js, mais déclenché avec la clé service_role
-// directement plutôt qu'un token d'accès utilisateur (celui-ci n'a aucun
-// sens depuis l'admin : Laurent n'est jamais connecté en tant que le
-// testeur dont il nettoie le compte). Retourne { supprime: true } si un
-// compte a été trouvé et supprimé, { supprime: false } si aucun compte
-// n'existe avec cet email — ce second cas n'est PAS une erreur (le cas le
-// plus fréquent : une candidature bêta sans compte Yoria jamais créé).
 async function supprimerCompteYoriaParEmail(config, email) {
   const usersResponse = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users`,
@@ -199,11 +183,6 @@ async function supprimerCompteYoriaParEmail(config, email) {
     return { supprime: false };
   }
 
-  // plan_donnees n'est PAS liée directement à user_id (elle référence
-  // plans_actif.id via plan_id, cf. inventaire §5) — il faut d'abord
-  // récupérer les ids des plans de cet utilisateur pour pouvoir la
-  // nettoyer. Lecture avant les DELETE ci-dessous, pour disposer de la
-  // liste avant que plans_actif ne soit potentiellement déjà supprimée.
   let planIds = [];
   try {
     const plansResponse = await fetch(
@@ -220,10 +199,6 @@ async function supprimerCompteYoriaParEmail(config, email) {
       planIds = Array.isArray(plans) ? plans.map((p) => p.id) : [];
     }
   } catch (erreurLecturePlans) {
-    // Best-effort — si cette lecture échoue, plan_donnees ne sera pas
-    // nettoyée explicitement, mais le reste de la suppression continue
-    // (elle serait de toute façon orpheline sans casser quoi que ce soit
-    // de fonctionnel, juste des lignes mortes en base).
     console.warn("Lecture des plans avant suppression échouée :", erreurLecturePlans.message);
   }
 
@@ -247,7 +222,6 @@ async function supprimerCompteYoriaParEmail(config, email) {
     }
   }
 
-  // Tables liées directement par user_id.
   for (const table of TABLES_USER_ID_DIRECT) {
     const cleanRes = await fetch(
       `${config.supabaseUrl}/rest/v1/${table}?user_id=eq.${user.id}`,
@@ -263,24 +237,10 @@ async function supprimerCompteYoriaParEmail(config, email) {
 
     if (!cleanRes.ok) {
       const errText = await cleanRes.text();
-      // Une table absente ou une colonne user_id inexistante répond en
-      // 400/404 — traité comme non bloquant plutôt qu'une vraie erreur
-      // fatale, pour ne jamais empêcher la suppression du compte à cause
-      // d'une table optionnelle/mal identifiée (ex. integrations,
-      // incluse par prudence sans certitude absolue sur son schéma).
       console.warn(`Nettoyage table ${table} non concluant (ignoré) :`, cleanRes.status, errText);
     }
   }
 
-  // abonnements est liée par EMAIL, pas user_id (cf. code existant
-  // upsertAbonnementGratuit, qui filtre déjà sur email=eq.) — nettoyage
-  // séparé pour cette raison. Un abonnement Stripe actif n'est PAS annulé
-  // ici (aucun appel à l'API Stripe) : cette suppression ne retire que la
-  // ligne de suivi côté Supabase, pas l'abonnement réel côté Stripe — à
-  // annuler manuellement sur le dashboard Stripe si un vrai abonnement
-  // payant existait pour ce compte (cas très improbable pour un compte
-  // de test, mais à garder en tête si ce mécanisme sert un jour sur un
-  // vrai compte utilisateur).
   const cleanAbonnementsRes = await fetch(
     `${config.supabaseUrl}/rest/v1/abonnements?email=eq.${encodeURIComponent(email)}`,
     {
@@ -426,8 +386,6 @@ async function upsertAbonnementGratuit(config, email, stripeCustomerId, stripeSu
   return Array.isArray(rows) ? rows[0] : null;
 }
 
-// Libellés lisibles pour les statuts bruts stockés côté client
-// (index.html, SOPTS) — repris tels quels, jamais réinterprétés.
 const LIBELLES_STATUT = { "✅": "✅ Réussie", "❌": "❌ Ratée", "⚠️": "⚠️ Partielle", "😴": "😴 Non faite (auto)", "—": "— Pas de statut" };
 
 export default async function handler(request, response) {
@@ -496,9 +454,6 @@ export default async function handler(request, response) {
         });
       }
 
-      // Connexion réussie — on efface le compteur pour cette IP, pour ne
-      // pas pénaliser des tentatives futures légitimes après une erreur
-      // de frappe initiale.
       await reinitialiserTentatives(config, TABLE_RATE_LIMIT_ADMIN, ip);
 
       response.setHeader(
@@ -622,14 +577,6 @@ export default async function handler(request, response) {
       }
     }
 
-    // Invitation directe par e-mail (ajout) — crée une candidature
-    // beta_testers "de toutes pièces" avec statut "invited" d'emblée puis
-    // envoie l'e-mail Brevo, pour un email qui n'a jamais rempli le
-    // formulaire de candidature public. Les champs de profil (niveau,
-    // sorties/semaine, distance favorite) n'ont pas de sens ici — la ligne
-    // beta_testers exige ces colonnes NOT NULL, donc des valeurs neutres
-    // par défaut sont posées (cf. DEFAUTS_INVITATION_DIRECTE), jamais
-    // interprétées ni affichées comme des préférences réelles du testeur.
     if (action === "invite_by_email") {
       if (
         !config.brevoApiKey ||
@@ -679,11 +626,6 @@ export default async function handler(request, response) {
 
         const maintenant = new Date().toISOString();
 
-        // Valeurs neutres pour les colonnes NOT NULL sans rapport avec
-        // une invitation directe — jamais montrées comme des préférences
-        // réelles (le module "Comptes"/l'onglet Candidatures affichent
-        // "Débutant"/"3"/"Je débute" pour ces lignes, une divergence
-        // mineure et sans conséquence acceptée pour ce cas d'usage rare).
         const candidate = {
           first_name: firstName,
           email,
@@ -721,10 +663,6 @@ export default async function handler(request, response) {
         try {
           await sendBrevoInvitation(config, nouvelleCandidature);
         } catch (erreurEmail) {
-          // La ligne existe déjà en base à ce stade (status "invited")
-          // même si l'envoi échoue — best-effort cohérent avec
-          // send_invitation plus bas : Laurent peut renvoyer l'invitation
-          // depuis la fiche candidature (bouton existant) si besoin.
           console.error("Échec envoi invitation directe :", erreurEmail.message);
           return json(response, 200, {
             success: true,
@@ -749,11 +687,6 @@ export default async function handler(request, response) {
       }
     }
 
-    /*
-     * Module "Comptes" — recherche un utilisateur par email et retourne
-     * son ou ses plans en lecture seule (cf. commentaire détaillé plus bas
-     * sur search_user_plan, inchangé).
-     */
     if (action === "search_user_plan") {
       const email = String(body.email || "").trim().toLowerCase();
 
@@ -897,10 +830,6 @@ export default async function handler(request, response) {
       }
     }
 
-    // Suppression d'un compte Yoria seul, sans passer par une candidature
-    // — cas d'un compte créé sans jamais avoir candidaté à la bêta.
-    // Déclenché depuis le module "Comptes" (recherche par email déjà
-    // existante), sur un compte déjà affiché par search_user_plan.
     if (action === "delete_account") {
       const email = String(body.email || "").trim().toLowerCase();
 
@@ -932,19 +861,9 @@ export default async function handler(request, response) {
       }
     }
 
-    /*
-     * Le reste (candidatures beta_testers) — id/action/status classiques.
-     */
     const id = String(body.id || "");
     const status = String(body.status || "");
 
-    // Suppression d'une candidature bêta — supprime la ligne beta_testers,
-    // PUIS tente de supprimer un compte Yoria associé à la même adresse
-    // email s'il en existe un (cas le plus courant en usage réel : un
-    // candidat qui a aussi effectivement créé son compte). L'absence de
-    // compte Yoria n'est jamais traitée comme une erreur — c'est le cas
-    // attendu pour la grande majorité des candidatures de test, qui ne
-    // vont jamais jusqu'à l'onboarding complet de l'app.
     if (action === "delete_application") {
       if (!/^[0-9a-f-]{36}$/i.test(id)) {
         return json(response, 400, {
@@ -978,11 +897,6 @@ export default async function handler(request, response) {
           const resultatCompte = await supprimerCompteYoriaParEmail(config, email);
           compteAussiSupprime = resultatCompte.supprime;
         } catch (erreurCompte) {
-          // Best-effort : la candidature est déjà supprimée à ce stade,
-          // ne jamais faire échouer toute l'opération si seule la partie
-          // "compte Yoria associé" pose problème — Laurent peut relancer
-          // une suppression de compte séparément depuis le module Comptes
-          // si besoin.
           console.warn("Suppression du compte Yoria associé échouée :", erreurCompte.message);
         }
 
