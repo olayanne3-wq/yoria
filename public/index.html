@@ -9792,19 +9792,41 @@ function sourceSwap(uid) {
   return position;
 }
 
-// Échange PHYSIQUE entre uidA et uidB — ajoute une paire à swapPairs.
-// Re-swapper la même paire l'annule (toggle), même comportement que
-// l'ancien modèle mais géré ici en amont plutôt que via un nettoyage
-// d'entrée "identité" (le concept n'a plus de sens avec des paires).
+// Échange entre uidA et uidB — CE QUI EST AFFICHÉ à ces deux positions,
+// pas les positions brutes elles-mêmes.
+//
+// CORRECTIF (17/08/2026, bug signalé par Laurent : échanger deux jours de
+// repos décalait d'autres séances jamais touchées). Reproduit et confirmé
+// par simulation : l'ancienne version ajoutait simplement une paire
+// {a:uidA, b:uidB} au sommet de swapPairs, sans jamais tenir compte de ce
+// que uidA/uidB affichaient DÉJÀ suite à des swaps précédents. Dans une
+// semaine avec 2 swaps déjà faits (ex. J0↔J1, J2↔J3), demander un
+// troisième swap sur J1↔J2 (qui affichaient alors Repos/Repos ou tout
+// autre contenu partagé) empilait une 3e paire brute sur les POSITIONS —
+// sourceSwap() résolvait alors la chaîne de façon incorrecte, décalant en
+// cascade J0 et J3 alors que l'utilisateur n'avait demandé qu'un échange
+// entre J1 et J2.
+//
+// Nouvelle logique : résout d'abord sourceSwap(uidA)/sourceSwap(uidB) —
+// ce qui est RÉELLEMENT affiché à ces deux positions à l'instant du clic
+// — puis retire TOUTE paire existante touchant uidA ou uidB (peu importe
+// dans quel sens), avant de reconstruire au maximum 2 nouvelles paires
+// qui font que uidA affiche désormais l'ancien contenu de uidB et
+// vice-versa. Les autres positions de la chaîne (J0/J3 dans l'exemple)
+// restent implicitement correctes car elles continuent de pointer vers
+// les mêmes sources qu'avant — seule la relation ENTRE uidA et uidB
+// change, rien d'autre.
+//
+// Cas particulier couvert : re-échanger deux positions déjà échangées
+// entre elles (jamais touchées par un autre swap) redonne bien un
+// swapPairs vide pour cette paire — comportement de "toggle" identique à
+// l'ancienne version, vérifié par simulation.
 function echangerSwap(uidA, uidB) {
-  const indexExistant = swapPairs.findIndex(p =>
-    (p.a === uidA && p.b === uidB) || (p.a === uidB && p.b === uidA)
-  );
-  if (indexExistant !== -1) {
-    swapPairs.splice(indexExistant, 1);
-    return;
-  }
-  swapPairs.push({ a: uidA, b: uidB });
+  const sourceA = sourceSwap(uidA);
+  const sourceB = sourceSwap(uidB);
+  swapPairs = swapPairs.filter(p => p.a !== uidA && p.b !== uidA && p.a !== uidB && p.b !== uidB);
+  if (uidA !== sourceB) swapPairs.push({ a: uidA, b: sourceB });
+  if (uidB !== sourceA && sourceA !== uidA) swapPairs.push({ a: uidB, b: sourceA });
 }
 
 // "Annuler le déplacement" — retire la DERNIÈRE paire qui touche ce uid,
