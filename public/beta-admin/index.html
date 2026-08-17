@@ -86,7 +86,24 @@
       </section>
 
       <section class="view" data-panel="selected"><div id="selected-list" class="list"></div></section>
-      <section class="view" data-panel="invited"><div id="invited-list" class="list"></div></section>
+
+      <section class="view" data-panel="invited">
+        <div class="card">
+          <h2>Inviter directement par e-mail</h2>
+          <p><small>Pour un e-mail qui n'a jamais rempli le formulaire de candidature public — crée une entrée avec le statut « Invité » et envoie immédiatement l'e-mail d'invitation.</small></p>
+          <div class="filters">
+            <input id="direct-invite-firstname" type="text" placeholder="Prénom">
+            <input id="direct-invite-email" type="email" placeholder="Adresse e-mail">
+            <select id="direct-invite-platform">
+              <option value="android">Android</option>
+              <option value="iphone">iPhone</option>
+            </select>
+            <button id="direct-invite-btn" class="primary">📧 Envoyer l'invitation</button>
+          </div>
+          <div id="direct-invite-status" class="notice" hidden></div>
+        </div>
+        <div id="invited-list" class="list"></div>
+      </section>
 
       <section class="view" data-panel="signalements">
         <div class="filters">

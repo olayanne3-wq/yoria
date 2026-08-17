@@ -70,6 +70,48 @@ function confirmDeleteApplication(){
   if(confirm(msg))deleteApplication();
 }
 
+// Invitation directe par e-mail (ajout) — pour un e-mail qui n'a jamais
+// rempli le formulaire de candidature public. Crée la ligne beta_testers
+// et envoie l'e-mail Brevo en un seul appel côté serveur (action
+// invite_by_email, cf. api/beta-admin.js). Formulaire situé dans l'onglet
+// Invités plutôt que Candidatures — c'est un raccourci vers le résultat
+// final (invité), pas une nouvelle candidature à faire cheminer.
+async function directInvite(){
+  const firstName=$("#direct-invite-firstname").value.trim();
+  const email=$("#direct-invite-email").value.trim();
+  const platform=$("#direct-invite-platform").value;
+  const statusEl=$("#direct-invite-status");
+  statusEl.hidden=true;
+
+  if(firstName.length<2){
+    statusEl.hidden=false;statusEl.className="notice error";statusEl.textContent="Saisis un prénom.";
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    statusEl.hidden=false;statusEl.className="notice error";statusEl.textContent="Adresse e-mail invalide.";
+    return;
+  }
+
+  const btn=$("#direct-invite-btn");const label=btn.textContent;
+  btn.disabled=true;btn.textContent="Envoi en cours…";
+
+  try{
+    const r=await req({method:"PATCH",body:JSON.stringify({action:"invite_by_email",firstName,email,platform})});
+    if(r.candidate)S.items.unshift(r.candidate);
+    render();
+    $("#direct-invite-firstname").value="";
+    $("#direct-invite-email").value="";
+    statusEl.hidden=false;
+    statusEl.className=r.emailEnvoye===false?"notice error":"notice";
+    statusEl.textContent=r.message||"Invitation envoyée.";
+  }catch(e){
+    statusEl.hidden=false;statusEl.className="notice error";statusEl.textContent=e.message;
+  }finally{
+    btn.disabled=false;btn.textContent=label;
+  }
+}
+$("#direct-invite-btn").onclick=directInvite;
+
 /*
  * Module "Comptes" (25/07/2026, enrichi le 25/07/2026 avec statuts/RPE/
  * notes réels + decision_events/decision_outcomes) — recherche un
