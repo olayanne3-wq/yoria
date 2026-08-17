@@ -10075,14 +10075,27 @@ function showMoveMenu(week, slotIdx) {
   document.body.appendChild(overlay);
 }
 
-// Swap par glissement (drag & drop, ajouté 17/08/2026, demande explicite
-// de Laurent : "swap par glissement" en plus du menu tap existant
-// (showMoveMenu ci-dessus, qui reste le repli — utile notamment sur
-// petit écran où le glissement est moins précis). Réutilise
-// STRICTEMENT la même logique de validation (getAvailableSlots — mêmes
-// gardes anti-séance-déjà-réalisée) et la même séquence d'application
-// (echangerSwap/save/recalcul) que le menu, pour ne jamais dupliquer ces
-// règles ni risquer une divergence entre les deux chemins.
+// Swap par glissement (ajouté 17/08/2026, demande explicite de Laurent :
+// "swap par glissement" en plus du menu tap existant (showMoveMenu
+// ci-dessus, qui reste le repli — utile notamment sur petit écran où le
+// glissement est moins précis). Réutilise STRICTEMENT la même logique de
+// validation (getAvailableSlots — mêmes gardes anti-séance-déjà-réalisée)
+// et la même séquence d'application (echangerSwap/save/recalcul) que le
+// menu, pour ne jamais dupliquer ces règles ni risquer une divergence
+// entre les deux chemins.
+//
+// CORRECTIF (17/08/2026, signalé par Laurent : fonctionnait sur PC mais
+// pas sur smartphone) — la première version utilisait l'API HTML5 Drag &
+// Drop native (dragstart/dragover/drop), qui n'a structurellement PAS de
+// vrai support tactile : ces événements sont conçus pour la souris, et la
+// plupart des navigateurs mobiles (Chrome/WebView Android inclus, donc la
+// TWA de Yoria) ne les déclenchent jamais correctement au doigt — ce
+// n'était pas un bug de câblage corrigible, c'est une limitation de
+// l'API elle-même sur mobile. Remplacé entièrement (pas de double
+// système desktop/mobile, décision actée avec Laurent — un seul chemin de
+// code, plus sûr à maintenir) par les Pointer Events (pointerdown/
+// pointermove/pointerup), qui unifient souris ET tactile dans une seule
+// API, sans distinction de code entre les deux.
 //
 // Retourne true si le swap a été appliqué, false si la cible n'était pas
 // valide (l'appelant décide alors de l'animation de rejet à jouer côté
@@ -10103,95 +10116,208 @@ function tenterSwapDragDrop(week, slotIdxSource, slotIdxCible) {
   return true;
 }
 
-// Câble le drag & drop HTML5 natif sur une carte de séance. sourceGetter
-// renvoie {week, slotIdx} pour IDENTIFIER la carte glissée/survolée au
-// moment de l'événement (jamais capturé une fois pour toutes à l'appel de
-// cette fonction — les cartes sont reconstruites à chaque render(), un
-// slotIdx figé deviendrait obsolète après un premier swap sans recharger
-// la page). draggable posé uniquement si la séance n'est pas déjà
+// État global du glissement en cours (un seul à la fois, jamais plusieurs
+// simultanés — cohérent avec le fait qu'un doigt/une souris ne peut de
+// toute façon interagir qu'avec une seule carte à la fois). Réinitialisé
+// à null entre chaque geste. Porté au niveau module plutôt qu'en closure
+// de cablerDragDropSeance() : le pointermove global (posé sur document,
+// cf. plus bas) doit pouvoir lire/modifier cet état peu importe quelle
+// carte a démarré le geste.
+let glissementSeanceEnCours = null;
+
+// Seuil de mouvement (px) avant de considérer qu'un geste est un
+// glissement plutôt qu'un simple tap — sous ce seuil, pointerup relâche
+// sans rien faire, laissant le clic normal de la carte (ouverture de
+// détail, etc.) se comporter normalement. Cohérent avec le seuil déjà
+// utilisé ailleurs dans ce fichier pour distinguer swipe horizontal/
+// vertical (attacherSwipeEtapes, 10px) — ici légèrement plus élevé (12px)
+// car le geste part d'une carte entière, pas d'un swipe de navigation
+// plein écran, moins de risque de faux déclenchement sur un tap précis.
+const SEUIL_GLISSEMENT_PX = 12;
+
+// Câble le glissement (source) sur une carte de séance via Pointer Events.
+// week/slotIdx sont capturés dans la closure au moment du câblage (les
+// cartes sont reconstruites à chaque render(), donc chaque carte a sa
+// propre closure figée sur SES coordonnées — jamais un slotIdx partagé/
+// muté entre cartes). Posé uniquement si la séance n'est pas déjà
 // réalisée/annotée (même garde que le bouton "Déplacer cette séance" du
 // menu tap, cf. aTraceActivite dans showSessionMenu) — une carte non
-// déplaçable ne doit visuellement donner aucune prise de glissement.
+// déplaçable ne doit visuellement donner aucune prise de glissement (pas
+// de curseur "grab", pas de listener pointerdown posé du tout).
+//
+// Le paramètre `week`/`slotIdx` fournis ici correspondent à la carte en
+// tant que SOURCE potentielle. Le calcul de la CIBLE au relâchement se
+// fait indépendamment (via document.elementFromPoint + l'attribut
+// data-swap-uid posé sur chaque carte, cf. plus bas) — une carte peut
+// donc être source (si peutEtreSource) et/ou cible (toujours), exactement
+// la même distinction que l'ancienne version HTML5 draggable vs
+// dragover/drop.
 function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
-  if (peutEtreSource) {
-    cardEl.draggable = true;
-    cardEl.style.cursor = "grab";
+  const uidCarte = week.week + "-" + slotIdx;
+  // data-swap-uid permet à toute autre carte de s'identifier comme cible
+  // au survol, via closest("[data-swap-uid]") depuis elementFromPoint —
+  // sans dépendre d'une closure spécifique à CETTE carte (contrairement à
+  // week/slotIdx ci-dessus, qui ne servent qu'à IDENTIFIER la source).
+  cardEl.dataset.swapUid = uidCarte;
 
-    cardEl.addEventListener("dragstart", (e) => {
-      e.dataTransfer.effectAllowed = "move";
-      // Texte simple plutôt que JSON structuré : suffisant, on ne relit
-      // jamais dataTransfer pour reconstruire un objet complexe — seul le
-      // uid sert de clé de correspondance carte-source au moment du drop.
-      e.dataTransfer.setData("text/plain", week.week + "-" + slotIdx);
-      cardEl.style.opacity = "0.4";
-    });
-    cardEl.addEventListener("dragend", () => {
-      cardEl.style.opacity = "1";
-      document.querySelectorAll(".carte-drop-survol").forEach(el => el.classList.remove("carte-drop-survol"));
-    });
-  }
+  if (!peutEtreSource) return; // ni curseur "grab" ni listener : carte non déplaçable
 
-  // dragenter/dragover/drop toujours câblés, même sur une carte non-source
-  // (ex. REPOS, ou une séance déjà réalisée) — cette carte doit rester une
-  // CIBLE valide de dépôt. La validation réelle se fait dans
-  // tenterSwapDragDrop() via getAvailableSlots (même garde que le menu
-  // tap) : une cible invalide (ex. séance déjà réalisée) renvoie
-  // simplement false, sans effet visuel ni exception.
-  //
-  // dragenter (ajouté — bug corrigé : le drop ne se déclenchait jamais,
-  // seul le dragstart fonctionnait). La spécification HTML5 exige
-  // preventDefault() sur dragenter ET dragover pour qu'un élément soit
-  // reconnu comme cible de drop valide — dragover seul suffit sur
-  // certains navigateurs desktop mais pas de façon fiable partout
-  // (notamment observé dans la TWA Android de Yoria). Sans ce listener,
-  // le navigateur peut retomber sur le comportement par défaut ("aucun
-  // drop autorisé ici") avant même que dragover n'ait la chance
-  // d'intervenir.
-  cardEl.addEventListener("dragenter", (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    cardEl.classList.add("carte-drop-survol");
-  });
-  cardEl.addEventListener("dragover", (e) => {
-    e.preventDefault(); // requis pour autoriser le drop (comportement HTML5 natif)
-    e.dataTransfer.dropEffect = "move";
-    cardEl.classList.add("carte-drop-survol");
-  });
-  cardEl.addEventListener("dragleave", (e) => {
-    // Garde contre le dragleave intempestif (comportement HTML5 bien connu :
-    // cet événement se déclenche aussi en entrant dans un ENFANT de
-    // cardEl, pas seulement en quittant réellement la carte — sans cette
-    // garde, la classe de survol clignote en traversant le titre, les
-    // badges, ou l'input de note à l'intérieur de la carte). relatedTarget
-    // est l'élément vers lequel le curseur se déplace ; s'il est toujours
-    // contenu dans cardEl, ce n'est pas une vraie sortie.
-    if (cardEl.contains(e.relatedTarget)) return;
-    cardEl.classList.remove("carte-drop-survol");
-  });
+  cardEl.style.cursor = "grab";
 
-  cardEl.addEventListener("drop", (e) => {
-    e.preventDefault();
-    cardEl.classList.remove("carte-drop-survol");
-    const uidSource = e.dataTransfer.getData("text/plain");
-    if (!uidSource) return;
-    const [weekNumSource, slotIdxSourceStr] = uidSource.split("-");
-    const slotIdxSource = parseInt(slotIdxSourceStr, 10);
-    // Le glissement reste dans la même semaine (décision actée avec
-    // Laurent) — un drop venant d'une autre semaine que celle affichée
-    // est silencieusement ignoré plutôt que de tenter un swap inter-
-    // semaines jamais supporté par echangerSwap/getEffectiveSession.
-    if (parseInt(weekNumSource, 10) !== week.week) return;
-    const applique = tenterSwapDragDrop(week, slotIdxSource, slotIdx);
-    if (applique) render();
-    // Si non appliqué (cible invalide, ex. séance déjà réalisée) : rien
-    // ne bouge, la carte reprend son état normal via dragend ci-dessus —
-    // pas d'alert() intrusive pour un simple survol malheureux, cohérent
-    // avec le fait que la carte cible n'affichait déjà pas de prise de
-    // survol franche dans ce cas (cf. classe carte-drop-survol posée sans
-    // condition ici, volontairement permissive visuellement — seule
-    // l'action réelle au drop est gardée).
+  cardEl.addEventListener("pointerdown", (e) => {
+    // Ignore si un geste est déjà en cours (ex. deux doigts) — un seul
+    // glissement actif à la fois, cf. commentaire sur glissementSeanceEnCours.
+    if (glissementSeanceEnCours) return;
+    // Ignore le clic droit / bouton secondaire (le clic droit ouvre déjà
+    // le menu contextuel showSessionMenu, cf. contextmenu câblé ailleurs
+    // sur cette même carte — ne jamais interférer avec ce chemin existant).
+    if (e.button != null && e.button !== 0) return;
+
+    const rectDepart = cardEl.getBoundingClientRect();
+    const etat = {
+      week,
+      slotIdxSource: slotIdx,
+      pointerId: e.pointerId,
+      xDepart: e.clientX,
+      yDepart: e.clientY,
+      cardSource: cardEl,
+      // Décalage entre le point de contact et le coin de la carte, pour
+      // que le fantôme suive le doigt de façon naturelle plutôt que de se
+      // caler sur son coin supérieur gauche.
+      decalageX: e.clientX - rectDepart.left,
+      decalageY: e.clientY - rectDepart.top,
+      largeur: rectDepart.width,
+      hauteur: rectDepart.height,
+      fantome: null, // créé seulement une fois le seuil de mouvement franchi
+      cibleActuelle: null,
+      dernierPointerType: e.pointerType,
+      arme: false, // devient true après le délai d'armement ci-dessous
+    };
+
+    // Délai d'armement (250ms, correctif — un scroll vertical tactile
+    // normal démarre le mouvement quasi immédiatement après le contact,
+    // trop tôt pour ce délai ; un glissement volontaire, où le doigt
+    // reste un instant avant de bouger, le franchit naturellement).
+    // pointerType "mouse" est armé instantanément : un clic-glisser
+    // desktop n'a pas ce risque de conflit avec un scroll tactile.
+    if (e.pointerType === "mouse") {
+      etat.arme = true;
+    } else {
+      etat.armementTimer = setTimeout(() => { etat.arme = true; }, 250);
+    }
+    glissementSeanceEnCours = etat;
   });
 }
+
+// pointermove/pointerup posés UNE SEULE FOIS sur document (pas par carte)
+// — le doigt/la souris quitte forcément la carte source dès que le
+// glissement commence, un listener local à cardEl ne recevrait plus rien
+// dès ce moment. glissementSeanceEnCours porte tout le contexte
+// nécessaire, mis à jour ici peu importe quelle carte a démarré le geste.
+document.addEventListener("pointermove", (e) => {
+  const g = glissementSeanceEnCours;
+  if (!g || e.pointerId !== g.pointerId) return;
+  if (!g.arme) return; // délai d'armement pas encore écoulé, cf. pointerdown — laisse le scroll natif agir librement
+
+  const dx = e.clientX - g.xDepart;
+  const dy = e.clientY - g.yDepart;
+  const distance = Math.hypot(dx, dy);
+
+  if (!g.fantome) {
+    if (distance < SEUIL_GLISSEMENT_PX) return; // pas encore un vrai glissement, cf. SEUIL_GLISSEMENT_PX
+    // Seuil franchi : démarre réellement le glissement visuel. Capture le
+    // pointeur sur la carte source (setPointerCapture) pour continuer à
+    // recevoir pointermove/pointerup même si le doigt sort de son
+    // élément d'origine — comportement standard des Pointer Events,
+    // nécessaire ici puisque le geste traverse plusieurs cartes.
+    try { g.cardSource.setPointerCapture(g.pointerId); } catch {}
+    g.cardSource.style.opacity = "0.35";
+    g.fantome = g.cardSource.cloneNode(true);
+    g.fantome.removeAttribute("id"); // évite un doublon d'id avec la carte source pendant le glissement
+    g.fantome.style.position = "fixed";
+    g.fantome.style.left = "0";
+    g.fantome.style.top = "0";
+    g.fantome.style.width = g.largeur + "px";
+    g.fantome.style.zIndex = "10000";
+    g.fantome.style.pointerEvents = "none"; // ne doit jamais lui-même déclencher elementFromPoint ci-dessous
+    g.fantome.style.boxShadow = "0 12px 32px rgba(0,0,0,0.35)";
+    g.fantome.style.opacity = "0.96";
+    g.fantome.style.transform = "rotate(-1deg)";
+    document.body.appendChild(g.fantome);
+  }
+
+  e.preventDefault(); // empêche le scroll de page pendant un vrai glissement en cours
+  g.fantome.style.transform = `translate(${e.clientX - g.decalageX}px, ${e.clientY - g.decalageY}px) rotate(-1deg)`;
+
+  // pointerEvents:none sur le fantôme (posé ci-dessus) garantit que
+  // elementFromPoint voit la vraie carte en-dessous, jamais le fantôme
+  // lui-même — sinon cette recherche se retrouverait systématiquement à
+  // se cibler elle-même.
+  const elementSous = document.elementFromPoint(e.clientX, e.clientY);
+  const carteCible = elementSous ? elementSous.closest("[data-swap-uid]") : null;
+  const uidCibleSurvol = carteCible ? carteCible.dataset.swapUid : null;
+
+  if (g.cibleActuelle && g.cibleActuelle !== carteCible) {
+    g.cibleActuelle.classList.remove("carte-drop-survol");
+  }
+  // La cible doit appartenir à LA MÊME SEMAINE que la source (même règle
+  // que l'ancienne version HTML5 — glissement limité à la semaine
+  // affichée, décision actée avec Laurent) et ne pas être la carte
+  // source elle-même.
+  const memeUidQueSource = uidCibleSurvol === (g.week.week + "-" + g.slotIdxSource);
+  const [weekNumCible] = (uidCibleSurvol || "").split("-");
+  const memeSemaine = parseInt(weekNumCible, 10) === g.week.week;
+  if (carteCible && !memeUidQueSource && memeSemaine) {
+    carteCible.classList.add("carte-drop-survol");
+    g.cibleActuelle = carteCible;
+  } else {
+    g.cibleActuelle = null;
+  }
+});
+
+document.addEventListener("pointerup", (e) => {
+  const g = glissementSeanceEnCours;
+  if (!g || e.pointerId !== g.pointerId) return;
+  if (g.armementTimer) clearTimeout(g.armementTimer);
+
+  if (g.fantome) {
+    g.fantome.remove();
+    g.cardSource.style.opacity = "1";
+    try { g.cardSource.releasePointerCapture(g.pointerId); } catch {}
+    if (g.cibleActuelle) {
+      g.cibleActuelle.classList.remove("carte-drop-survol");
+      const [, slotIdxCibleStr] = g.cibleActuelle.dataset.swapUid.split("-");
+      const slotIdxCible = parseInt(slotIdxCibleStr, 10);
+      const applique = tenterSwapDragDrop(g.week, g.slotIdxSource, slotIdxCible);
+      if (applique) render();
+      // Si non appliqué (cible devenue invalide entre-temps, cas
+      // extrêmement rare) : rien ne bouge, pas d'alert() intrusive — même
+      // philosophie que l'ancienne version HTML5.
+    }
+  }
+  // Sous le seuil de mouvement (g.fantome jamais créé) : rien à faire,
+  // c'était un simple tap — le clic normal de la carte (s'il y en a un)
+  // continue de fonctionner puisque pointerdown n'a jamais appelé
+  // preventDefault() avant que le seuil soit franchi.
+  glissementSeanceEnCours = null;
+});
+
+// pointercancel (ex. appel entrant pendant le glissement, ou le système
+// reprend le geste pour un autre usage) — même nettoyage que pointerup
+// sans appliquer de swap, pour ne jamais laisser un fantôme orphelin à
+// l'écran ou un état bloqué qui empêcherait tout glissement futur.
+document.addEventListener("pointercancel", (e) => {
+  const g = glissementSeanceEnCours;
+  if (!g || e.pointerId !== g.pointerId) return;
+  if (g.armementTimer) clearTimeout(g.armementTimer);
+  if (g.fantome) {
+    g.fantome.remove();
+    g.cardSource.style.opacity = "1";
+    try { g.cardSource.releasePointerCapture(g.pointerId); } catch {}
+  }
+  if (g.cibleActuelle) g.cibleActuelle.classList.remove("carte-drop-survol");
+  glissementSeanceEnCours = null;
+});
 
 function showRestoreMenu(week, slotIdx) {
   const slots = getAvailableSlots(week, slotIdx);
