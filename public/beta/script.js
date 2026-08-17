@@ -2,12 +2,19 @@ const form = document.getElementById("beta-form");
 const statusElement = document.getElementById("form-status");
 const submitButton = form.querySelector('button[type="submit"]');
 
-// Encart iOS — affiché/masqué selon le choix "Android"/"iPhone" du
-// fieldset "Votre téléphone". Écoute sur le fieldset entier (délégation
-// d'événement) plutôt que sur chaque input radio individuellement : plus
-// court, et couvre aussi le cas où d'autres options de plateforme
-// s'ajouteraient un jour (ex. tablette) sans avoir à modifier ce script.
+// Encarts iOS/Android — affichés/masqués selon le choix "Android"/"iPhone"
+// du fieldset "Votre téléphone". Écoute sur le fieldset entier
+// (délégation d'événement) plutôt que sur chaque input radio
+// individuellement : plus court, et couvre aussi le cas où d'autres
+// options de plateforme s'ajouteraient un jour (ex. tablette) sans avoir
+// à modifier ce script.
+//
+// Encart Android ajouté (demande explicite de Laurent : préciser que
+// l'e-mail doit être associé à un compte Google, nécessaire pour le test
+// fermé Play Store) — même mécanisme que l'encart iOS déjà en place,
+// simplement étendu à deux éléments plutôt qu'un seul.
 const encartIos = document.getElementById("encart-ios");
+const encartAndroid = document.getElementById("encart-android");
 const platformFieldset = form.querySelector('input[name="platform"]').closest("fieldset");
 
 platformFieldset.addEventListener("change", (event) => {
@@ -16,6 +23,7 @@ platformFieldset.addEventListener("change", (event) => {
   }
 
   encartIos.hidden = event.target.value !== "iphone";
+  encartAndroid.hidden = event.target.value !== "android";
 });
 
 function getBooleanRadioValue(name) {
@@ -252,4 +260,3 @@ window.addEventListener("popstate", () => {
 // État initial : onglet indiqué par l'URL au chargement (lien direct
 // partagé), ou Accueil par défaut si absent/invalide.
 afficherOnglet(window.location.hash.replace("#", ""), { scrollHaut: false });
-
