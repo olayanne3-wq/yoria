@@ -10163,6 +10163,17 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
   if (!peutEtreSource) return; // ni curseur "grab" ni listener : carte non déplaçable
 
   cardEl.style.cursor = "grab";
+  // touch-action: none (correctif — le glissement ne démarrait pas DU TOUT
+  // au doigt, même pointerdown semblait sans effet). Sans cette propriété
+  // CSS, un navigateur mobile réserve par défaut tout geste tactile sur
+  // cet élément pour SON PROPRE scroll de page, avant même de laisser les
+  // Pointer Events s'exécuter normalement — comportement par défaut du
+  // tactile qui n'existe pas à la souris (d'où le fonctionnement correct
+  // sur desktop dès la première version). Sans ce correctif, le navigateur
+  // peut soit ignorer purement pointermove après un pointerdown initial,
+  // soit annuler le geste en pointercancel dès qu'il détecte une intention
+  // de scroll — dans les deux cas, "rien ne se passe" côté utilisateur.
+  cardEl.style.touchAction = "none";
 
   cardEl.addEventListener("pointerdown", (e) => {
     // Ignore si un geste est déjà en cours (ex. deux doigts) — un seul
