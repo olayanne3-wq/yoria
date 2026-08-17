@@ -10131,18 +10131,41 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
     });
   }
 
-  // dragover/drop toujours câblés, même sur une carte non-source (ex.
-  // REPOS, ou une séance déjà réalisée) — cette carte doit rester une
+  // dragenter/dragover/drop toujours câblés, même sur une carte non-source
+  // (ex. REPOS, ou une séance déjà réalisée) — cette carte doit rester une
   // CIBLE valide de dépôt. La validation réelle se fait dans
   // tenterSwapDragDrop() via getAvailableSlots (même garde que le menu
   // tap) : une cible invalide (ex. séance déjà réalisée) renvoie
   // simplement false, sans effet visuel ni exception.
+  //
+  // dragenter (ajouté — bug corrigé : le drop ne se déclenchait jamais,
+  // seul le dragstart fonctionnait). La spécification HTML5 exige
+  // preventDefault() sur dragenter ET dragover pour qu'un élément soit
+  // reconnu comme cible de drop valide — dragover seul suffit sur
+  // certains navigateurs desktop mais pas de façon fiable partout
+  // (notamment observé dans la TWA Android de Yoria). Sans ce listener,
+  // le navigateur peut retomber sur le comportement par défaut ("aucun
+  // drop autorisé ici") avant même que dragover n'ait la chance
+  // d'intervenir.
+  cardEl.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    cardEl.classList.add("carte-drop-survol");
+  });
   cardEl.addEventListener("dragover", (e) => {
     e.preventDefault(); // requis pour autoriser le drop (comportement HTML5 natif)
     e.dataTransfer.dropEffect = "move";
     cardEl.classList.add("carte-drop-survol");
   });
-  cardEl.addEventListener("dragleave", () => {
+  cardEl.addEventListener("dragleave", (e) => {
+    // Garde contre le dragleave intempestif (comportement HTML5 bien connu :
+    // cet événement se déclenche aussi en entrant dans un ENFANT de
+    // cardEl, pas seulement en quittant réellement la carte — sans cette
+    // garde, la classe de survol clignote en traversant le titre, les
+    // badges, ou l'input de note à l'intérieur de la carte). relatedTarget
+    // est l'élément vers lequel le curseur se déplace ; s'il est toujours
+    // contenu dans cardEl, ce n'est pas une vraie sortie.
+    if (cardEl.contains(e.relatedTarget)) return;
     cardEl.classList.remove("carte-drop-survol");
   });
 
