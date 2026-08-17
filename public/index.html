@@ -10236,6 +10236,55 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
 // glissement commence, un listener local à cardEl ne recevrait plus rien
 // dès ce moment. glissementSeanceEnCours porte tout le contexte
 // nécessaire, mis à jour ici peu importe quelle carte a démarré le geste.
+// Auto-scroll pendant le glissement (correctif — impossible de glisser
+// vers une carte hors de l'écran visible, cf. commentaire détaillé dans
+// pointermove ci-dessous). Zone de déclenchement : 80px depuis le haut ou
+// le bas de la fenêtre visible ; vitesse de scroll proportionnelle à la
+// proximité du bord (plus près du bord = scroll plus rapide), plafonnée à
+// VITESSE_AUTOSCROLL_MAX_PX. Une seule boucle rAF globale, jamais
+// plusieurs empilées — autoScrollRafId sert de verrou.
+const ZONE_AUTOSCROLL_PX = 80;
+const VITESSE_AUTOSCROLL_MAX_PX = 14;
+let autoScrollRafId = null;
+
+function demarrerAutoScrollSiNecessaire() {
+  if (autoScrollRafId) return; // déjà en cours, pas de double boucle
+  function etape() {
+    const g = glissementSeanceEnCours;
+    // Le glissement peut se terminer (pointerup/pointercancel) entre deux
+    // frames — la boucle doit alors s'arrêter d'elle-même plutôt que de
+    // continuer à scroller indéfiniment sur un état obsolète.
+    if (!g || !g.fantome) { autoScrollRafId = null; return; }
+
+    const y = g.dernierClientY;
+    const hauteurFenetre = window.innerHeight;
+    let vitesse = 0;
+    if (y < ZONE_AUTOSCROLL_PX) {
+      // Plus le doigt est proche du bord haut, plus on scroll vite (ratio
+      // 0 à 1 sur la zone de déclenchement, jamais négatif grâce au Math.max).
+      const proximite = (ZONE_AUTOSCROLL_PX - Math.max(0, y)) / ZONE_AUTOSCROLL_PX;
+      vitesse = -proximite * VITESSE_AUTOSCROLL_MAX_PX;
+    } else if (y > hauteurFenetre - ZONE_AUTOSCROLL_PX) {
+      const proximite = (y - (hauteurFenetre - ZONE_AUTOSCROLL_PX)) / ZONE_AUTOSCROLL_PX;
+      vitesse = proximite * VITESSE_AUTOSCROLL_MAX_PX;
+    }
+
+    if (vitesse !== 0) {
+      window.scrollBy(0, vitesse);
+      // Le fantôme suit une position FIXE à l'écran (position:fixed, cf.
+      // sa création) — un window.scrollBy ne le déplace donc pas tout
+      // seul, contrairement à une carte en position normale. Rien à
+      // recalculer ici pour autant : le fantôme reste correctement
+      // positionné sous le doigt (c'est la PAGE qui bouge en-dessous),
+      // et le prochain pointermove recalculera de toute façon la cible
+      // sous le nouveau contenu visible via elementFromPoint.
+    }
+
+    autoScrollRafId = requestAnimationFrame(etape);
+  }
+  autoScrollRafId = requestAnimationFrame(etape);
+}
+
 document.addEventListener("pointermove", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
@@ -10282,6 +10331,19 @@ document.addEventListener("pointermove", (e) => {
   e.preventDefault(); // empêche le scroll de page pendant un vrai glissement en cours
   g.fantome.style.transform = `translate(${e.clientX - g.decalageX}px, ${e.clientY - g.decalageY}px) scale(1.04) rotate(-1.5deg)`;
 
+  // Auto-scroll (correctif, signalé par Laurent : impossible de glisser
+  // une séance vers un jour plus bas dans la semaine, hors de l'écran
+  // visible — touch-action:none empêche tout scroll natif pendant le
+  // glissement, cf. son propre correctif). Mémorise juste la position Y
+  // actuelle du pointeur ; la boucle démarrerActuScrollAutomatique()
+  // ci-dessous (une seule instance globale, démarrée au premier
+  // pointermove d'un glissement actif) lit cette position en continu via
+  // requestAnimationFrame plutôt que de scroller ici ponctuellement — un
+  // scroll uniquement à la fréquence des pointermove serait saccadé et
+  // dépendrait du taux d'échantillonnage tactile de l'appareil.
+  g.dernierClientY = e.clientY;
+  demarrerAutoScrollSiNecessaire();
+
   // pointerEvents:none sur le fantôme (posé ci-dessus) garantit que
   // elementFromPoint voit la vraie carte en-dessous, jamais le fantôme
   // lui-même — sinon cette recherche se retrouverait systématiquement à
@@ -10312,6 +10374,7 @@ document.addEventListener("pointerup", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
   if (g.armementTimer) clearTimeout(g.armementTimer);
+  if (autoScrollRafId) { cancelAnimationFrame(autoScrollRafId); autoScrollRafId = null; }
 
   if (g.fantome) {
     g.fantome.remove();
@@ -10343,6 +10406,7 @@ document.addEventListener("pointercancel", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
   if (g.armementTimer) clearTimeout(g.armementTimer);
+  if (autoScrollRafId) { cancelAnimationFrame(autoScrollRafId); autoScrollRafId = null; }
   if (g.fantome) {
     g.fantome.remove();
     g.cardSource.style.opacity = "1";
