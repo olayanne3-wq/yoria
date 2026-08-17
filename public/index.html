@@ -116,6 +116,14 @@ window.sentryOnLoad = function () {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
 <style>
+/* Swap par glissement (drag & drop, 17/08/2026) — retour visuel pendant
+   le survol d'une carte cible valide. cablerDragDropSeance() pose/retire
+   cette classe sur dragover/dragleave/drop. */
+.carte-drop-survol {
+  outline: 2px dashed var(--accent) !important;
+  outline-offset: 2px;
+  background: rgba(var(--accent-rgb),0.06) !important;
+}
 :root {
   --bg-rgb: 248,250,252;
   --surface-rgb: 248,250,252;
@@ -5746,6 +5754,28 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
             el("span",{style:{color:"var(--text2)",fontSize:"18px"}},"›")
           ):null
         );
+        // Swap par glissement sur le dashboard (17/08/2026) — même
+        // mécanisme que renderWeekDetail (cablerDragDropSeance,
+        // tenterSwapDragDrop), week/slotIdx extraits de uid2 (format
+        // "${weekNum}-${idx}") puisqu'ils ne sont pas disponibles
+        // directement dans ce contexte (todaySessions ne porte que la
+        // séance aplatie, pas la structure PLAN d'origine). Repos/Race déjà
+        // exclus en amont par le filtre todaySessions.filter(s=>s.type!==
+        // "REPOS") de cette boucle — la carte "aujourd'hui" du dashboard ne
+        // représente donc jamais un jour de repos, seule la carte "demain"
+        // (cf. tomorrowKey plus haut dans ce fichier) pourrait l'être, mais
+        // celle-ci n'est pas glissable/déposable ici (lien de navigation
+        // simple vers weekDetail, cf. onClick ci-dessus — le vrai
+        // glissement pour "demain" se fait depuis renderWeekDetail).
+        {
+          const [weekNumDrag, slotIdxDragStr] = uid2.split("-");
+          const weekDrag = PLAN.find(w=>w.week===parseInt(weekNumDrag,10));
+          if (weekDrag) {
+            const slotIdxDrag = parseInt(slotIdxDragStr, 10);
+            const aTraceActiviteDrag = isDone || !!sessionNotes[uid2] || !!sessionRpe[uid2] || !!manualPerf[uid2];
+            cablerDragDropSeance(card, weekDrag, slotIdxDrag, !aTraceActiviteDrag);
+          }
+        }
         return card;
       })
     );
@@ -7760,6 +7790,27 @@ function renderWeekDetail(weekNum) {
       card.addEventListener("touchend",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
       card.addEventListener("touchmove",()=>{if(lpCard){clearTimeout(lpCard);lpCard=null;}});
       card.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
+    }
+
+    // Swap par glissement (drag & drop, ajouté 17/08/2026) — même garde
+    // que le bouton "Déplacer cette séance" du menu tap ci-dessus
+    // (aTraceActivite dans showSessionMenu) : une séance déjà réalisée,
+    // annotée, ou un jour révolu sans saisie ne peut pas être glissée.
+    // RACE reste également exclue en tant que SOURCE de glissement (jamais
+    // dans le champ de ce mécanisme, cohérent avec le menu tap qui ne
+    // s'attache pas non plus au clic long sur ce type) — mais un jour
+    // REPOS ou RACE doit rester une CIBLE valide de dépôt (cablerDragDropSeance
+    // gère toujours les listeners dragover/drop, seul draggable=true en
+    // dépend de peutEtreDeplacee). isDoneSession et statutEffectif déjà
+    // calculés plus haut dans cette même itération — réutilisés tels quels
+    // plutôt que recalculés.
+    {
+      const estSourcePossible = effSess.type !== "REPOS" && effSess.type !== "RACE";
+      const estPasseNonSaisiDrag = s.date < today()
+        && (!statuses[uid] || statuses[uid] === "—")
+        && week.week !== currentWeek();
+      const aTraceActiviteDrag = isDoneSession || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid] || estPasseNonSaisiDrag;
+      cablerDragDropSeance(card, week, i, estSourcePossible && !aTraceActiviteDrag);
     }
     return card;
   });
@@ -10022,6 +10073,101 @@ function showMoveMenu(week, slotIdx) {
   overlay.appendChild(panel);
   overlay.addEventListener("click", e => { if(e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
+}
+
+// Swap par glissement (drag & drop, ajouté 17/08/2026, demande explicite
+// de Laurent : "swap par glissement" en plus du menu tap existant
+// (showMoveMenu ci-dessus, qui reste le repli — utile notamment sur
+// petit écran où le glissement est moins précis). Réutilise
+// STRICTEMENT la même logique de validation (getAvailableSlots — mêmes
+// gardes anti-séance-déjà-réalisée) et la même séquence d'application
+// (echangerSwap/save/recalcul) que le menu, pour ne jamais dupliquer ces
+// règles ni risquer une divergence entre les deux chemins.
+//
+// Retourne true si le swap a été appliqué, false si la cible n'était pas
+// valide (l'appelant décide alors de l'animation de rejet à jouer côté
+// UI, cette fonction reste sans effet de bord visuel).
+function tenterSwapDragDrop(week, slotIdxSource, slotIdxCible) {
+  if (slotIdxSource === slotIdxCible) return false;
+  const slotsValides = getAvailableSlots(week, slotIdxSource);
+  const uidCible = week.week + "-" + slotIdxCible;
+  const cibleValide = slotsValides.some(s => s.uid === uidCible);
+  if (!cibleValide) return false;
+
+  const uidA = week.week + "-" + slotIdxSource;
+  echangerSwap(uidA, uidCible);
+  save(clePourPlan("lk_swap_pairs"), swapPairs);
+  // Même correctif que showMoveMenu (07/08/2026) : ALL_SESSIONS doit être
+  // recalculée avant tout render() suivant un swap, jamais implicitement.
+  ALL_SESSIONS = recalculerAllSessions();
+  return true;
+}
+
+// Câble le drag & drop HTML5 natif sur une carte de séance. sourceGetter
+// renvoie {week, slotIdx} pour IDENTIFIER la carte glissée/survolée au
+// moment de l'événement (jamais capturé une fois pour toutes à l'appel de
+// cette fonction — les cartes sont reconstruites à chaque render(), un
+// slotIdx figé deviendrait obsolète après un premier swap sans recharger
+// la page). draggable posé uniquement si la séance n'est pas déjà
+// réalisée/annotée (même garde que le bouton "Déplacer cette séance" du
+// menu tap, cf. aTraceActivite dans showSessionMenu) — une carte non
+// déplaçable ne doit visuellement donner aucune prise de glissement.
+function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
+  if (peutEtreSource) {
+    cardEl.draggable = true;
+    cardEl.style.cursor = "grab";
+
+    cardEl.addEventListener("dragstart", (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      // Texte simple plutôt que JSON structuré : suffisant, on ne relit
+      // jamais dataTransfer pour reconstruire un objet complexe — seul le
+      // uid sert de clé de correspondance carte-source au moment du drop.
+      e.dataTransfer.setData("text/plain", week.week + "-" + slotIdx);
+      cardEl.style.opacity = "0.4";
+    });
+    cardEl.addEventListener("dragend", () => {
+      cardEl.style.opacity = "1";
+      document.querySelectorAll(".carte-drop-survol").forEach(el => el.classList.remove("carte-drop-survol"));
+    });
+  }
+
+  // dragover/drop toujours câblés, même sur une carte non-source (ex.
+  // REPOS, ou une séance déjà réalisée) — cette carte doit rester une
+  // CIBLE valide de dépôt. La validation réelle se fait dans
+  // tenterSwapDragDrop() via getAvailableSlots (même garde que le menu
+  // tap) : une cible invalide (ex. séance déjà réalisée) renvoie
+  // simplement false, sans effet visuel ni exception.
+  cardEl.addEventListener("dragover", (e) => {
+    e.preventDefault(); // requis pour autoriser le drop (comportement HTML5 natif)
+    e.dataTransfer.dropEffect = "move";
+    cardEl.classList.add("carte-drop-survol");
+  });
+  cardEl.addEventListener("dragleave", () => {
+    cardEl.classList.remove("carte-drop-survol");
+  });
+
+  cardEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    cardEl.classList.remove("carte-drop-survol");
+    const uidSource = e.dataTransfer.getData("text/plain");
+    if (!uidSource) return;
+    const [weekNumSource, slotIdxSourceStr] = uidSource.split("-");
+    const slotIdxSource = parseInt(slotIdxSourceStr, 10);
+    // Le glissement reste dans la même semaine (décision actée avec
+    // Laurent) — un drop venant d'une autre semaine que celle affichée
+    // est silencieusement ignoré plutôt que de tenter un swap inter-
+    // semaines jamais supporté par echangerSwap/getEffectiveSession.
+    if (parseInt(weekNumSource, 10) !== week.week) return;
+    const applique = tenterSwapDragDrop(week, slotIdxSource, slotIdx);
+    if (applique) render();
+    // Si non appliqué (cible invalide, ex. séance déjà réalisée) : rien
+    // ne bouge, la carte reprend son état normal via dragend ci-dessus —
+    // pas d'alert() intrusive pour un simple survol malheureux, cohérent
+    // avec le fait que la carte cible n'affichait déjà pas de prise de
+    // survol franche dans ce cas (cf. classe carte-drop-survol posée sans
+    // condition ici, volontairement permissive visuellement — seule
+    // l'action réelle au drop est gardée).
+  });
 }
 
 function showRestoreMenu(week, slotIdx) {
