@@ -5586,15 +5586,6 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       const bilanLabel = isMonday2 ? "Bilan semaine "+bilanWeekNum : "Semaine "+bilanWeekNum+" en cours";
       const bilanKm = weekKm(bilanWeekNum);
 
-      // uid du jour "aujourd'hui" (repos) — nécessaire pour câbler ce
-      // bloc comme CIBLE de glissement ci-dessous (correctif, signalé par
-      // Laurent : un jour de repos, aucune interaction de glissement/
-      // double-tap n'était câblée du tout, contrairement à la branche
-      // "else" ci-dessous pour un jour actif — le "rien ne se passe"
-      // n'était donc pas un bug de câblage, cette branche n'avait
-      // simplement jamais été équipée).
-      const uidAujourdhuiRepos = todaySessions[0]?.uid;
-
       const carteRepos = el("div",{style:{background:"var(--bg)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderLeft:"3px solid var(--accent)",borderRadius:"10px",padding:"14px",marginBottom:"8px"}},
           el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
             el("span",{style:{background:"rgba(var(--accent-rgb),0.13)",color:"var(--accent)",border:"1px solid rgba(var(--accent-rgb),0.27)",borderRadius:"4px",padding:"2px 7px",fontSize:"13px",fontWeight:"700"}},"REPOS"),
@@ -5623,17 +5614,8 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           coachEl
       );
 
-      // Carte "⚡ Demain" — SÉPARÉE de carteRepos (correctif, signalé par
-      // Laurent : les deux blocs étaient empilés dans une SEULE carte
-      // avec juste une bordure interne de séparation ; au toucher, la
-      // zone de contact des deux blocs était trop proche/collée, un tap
-      // visant "REPOS" activait en réalité le bloc Demain juste en-
-      // dessous). Deux vraies cartes DOM distinctes désormais, avec un
-      // vrai marginBottom entre elles (8px, cohérent avec les autres
-      // cartes du système, cf. renderWeekDetail) — même style visuel que
-      // l'ancien bloc interne (bordure haute fine plutôt que la bordure
-      // gauche accentuée de carteRepos, pour la distinguer visuellement
-      // sans pour autant paraître complètement déconnectée).
+      // Carte "⚡ Demain" — séparée de carteRepos (deux vraies cartes DOM
+      // distinctes, avec un vrai marginBottom entre elles).
       const carteTomorrow = tomorrowKey ? el("div",{style:{
           background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"10px",
           padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"
@@ -5647,29 +5629,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
         el("span",{style:{color:"var(--text2)",fontSize:"18px"}},"›")
       ) : null;
 
-      // Câblage glissement/double-tap (correctif, cf. commentaire ci-
-      // dessus). carteRepos = CIBLE uniquement (peutEtreSource=false,
-      // jamais glissable elle-même — on ne glisse pas un repos vide).
-      // carteTomorrow = SOURCE, désormais un élément DOM totalement
-      // distinct (plus un enfant de carteRepos), câblée séparément.
-      if (uidAujourdhuiRepos) {
-        const [weekNumRepos, slotIdxReposStr] = uidAujourdhuiRepos.split("-");
-        const weekRepos = PLAN.find(w=>w.week===parseInt(weekNumRepos,10));
-        if (weekRepos) cablerDragDropSeance(carteRepos, weekRepos, parseInt(slotIdxReposStr,10), false);
-      }
-      if (tomorrowKey && carteTomorrow) {
-        const [weekNumDemain, slotIdxDemainStr] = tomorrowKey.uid.split("-");
-        const weekDemain = PLAN.find(w=>w.week===parseInt(weekNumDemain,10));
-        if (weekDemain) {
-          const slotIdxDemain = parseInt(slotIdxDemainStr, 10);
-          // aTraceActivite : un jour non encore commencé (demain) n'a par
-          // construction jamais de statut/note/RPE posé — pas besoin de la
-          // même vérification que pour une carte "aujourd'hui" ou passée,
-          // toujours déplaçable si elle apparaît ici.
-          cablerDragDropSeance(carteTomorrow, weekDemain, slotIdxDemain, true);
-          attacherDoubleTap(carteTomorrow, () => showSessionMenu(weekDemain, slotIdxDemain));
-        }
-      }
+      // Swap par glissement retiré du dashboard (17/08/2026, décision
+      // explicite de Laurent après plusieurs tentatives de correctif sans
+      // résultat concluant sur cette zone précise — la carte de repos/
+      // demain reste ici un simple lien de navigation vers weekDetail,
+      // seul écran où le glissement reste disponible et fonctionne
+      // correctement, cf. cablerDragDropSeance/attacherDoubleTap dans
+      // renderWeekDetail).
 
       todayEl = el("div",{style:{marginBottom:"12px"}},
         el("div",{class:"label"},"Aujourd\'hui"),
@@ -5813,35 +5779,12 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
             el("span",{style:{color:"var(--text2)",fontSize:"18px"}},"›")
           ):null
         );
-        // Swap par glissement sur le dashboard (17/08/2026) — même
-        // mécanisme que renderWeekDetail (cablerDragDropSeance,
-        // tenterSwapDragDrop), week/slotIdx extraits de uid2 (format
-        // "${weekNum}-${idx}") puisqu'ils ne sont pas disponibles
-        // directement dans ce contexte (todaySessions ne porte que la
-        // séance aplatie, pas la structure PLAN d'origine). Repos/Race déjà
-        // exclus en amont par le filtre todaySessions.filter(s=>s.type!==
-        // "REPOS") de cette boucle — la carte "aujourd'hui" du dashboard ne
-        // représente donc jamais un jour de repos, seule la carte "demain"
-        // (cf. tomorrowKey plus haut dans ce fichier) pourrait l'être, mais
-        // celle-ci n'est pas glissable/déposable ici (lien de navigation
-        // simple vers weekDetail, cf. onClick ci-dessus — le vrai
-        // glissement pour "demain" se fait depuis renderWeekDetail).
-        {
-          const [weekNumDrag, slotIdxDragStr] = uid2.split("-");
-          const weekDrag = PLAN.find(w=>w.week===parseInt(weekNumDrag,10));
-          if (weekDrag) {
-            const slotIdxDrag = parseInt(slotIdxDragStr, 10);
-            const aTraceActiviteDrag = isDone || !!sessionNotes[uid2] || !!sessionRpe[uid2] || !!manualPerf[uid2];
-            cablerDragDropSeance(card, weekDrag, slotIdxDrag, !aTraceActiviteDrag);
-            // Double tap : menu gestion séance (correctif — présent dans
-            // renderWeekDetail mais oublié ici lors de l'ajout du
-            // glissement sur le dashboard, cf. son propre commentaire :
-            // seul cablerDragDropSeance avait été câblé, jamais
-            // attacherDoubleTap). Même week/slotIdx déjà extraits
-            // ci-dessus, réutilisés tels quels.
-            attacherDoubleTap(card, () => showSessionMenu(weekDrag, slotIdxDrag));
-          }
-        }
+        // Swap par glissement retiré du dashboard (17/08/2026, décision
+        // explicite de Laurent après plusieurs tentatives de correctif
+        // sans résultat concluant — reste disponible uniquement dans la
+        // vue détail de la semaine (renderWeekDetail), seul endroit où
+        // le mécanisme (cablerDragDropSeance/attacherDoubleTap) fonctionne
+        // correctement et de façon fiable).
         return card;
       })
     );
