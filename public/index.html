@@ -168,6 +168,23 @@ window.sentryOnLoad = function () {
   --warn-rgb: 255,119,85;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+/* Anti pull-to-refresh (ajout, demande explicite de Laurent) —
+   overscroll-behavior-y:contain empêche le geste "tirer vers le bas en
+   haut de page" de déclencher le rafraîchissement natif du navigateur/
+   TWA, sur toute l'application. Posé sur html ET body (certains
+   navigateurs regardent l'un, d'autres l'autre — pas de risque à
+   dupliquer la règle). N'affecte pas le scroll normal de la page, ni
+   l'auto-scroll du swap par glissement (cf. demarrerAutoScrollSiNecessaire
+   dans renderWeekDetail), qui utilise window.scrollBy et reste inchangé. */
+html, body { overscroll-behavior-y: contain; }
+/* Anti sélection de texte (ajout, demande explicite de Laurent) — un
+   appui prolongé ou un glissement du doigt ne doit jamais déclencher la
+   sélection native de texte, sur toute l'application. Exception explicite
+   pour input/textarea (ligne suivante) : ces champs doivent rester
+   normalement sélectionnables/éditables, sans quoi la saisie de texte
+   deviendrait impraticable (copier/coller, correction au clavier). */
+* { -webkit-user-select: none; user-select: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
 body { background: var(--bg); color: var(--text); font-family: 'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-variant-numeric: tabular-nums; line-height: 1.45; max-width: 430px; margin: 0 auto; transition: background 0.2s ease, color 0.2s ease; }
 button, input { font-family: inherit; }
 .pill { border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0; }
