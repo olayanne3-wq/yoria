@@ -7686,6 +7686,26 @@ function renderWeekDetail(weekNum) {
     // après avoir changé de vue. Basé sur uid (déjà unique et stable dans
     // tout le fichier, cf. statuses[uid]/ALL_SESSIONS), préfixé "carte-"
     // pour éviter toute collision avec un id existant ailleurs dans le DOM.
+    // Poignée de glissement dédiée (correctif, signalé par Laurent :
+    // glisser n'importe où sur la carte rendait le scroll vertical
+    // difficile — touch-action:none devait couvrir toute la carte,
+    // bloquant aussi le scroll normal sur cette même zone). Créée en
+    // amont de card pour être insérée dans son rendu ci-dessous, puis
+    // câblée après construction complète de card (cablerDragDropSeance a
+    // besoin de card entière pour le clonage du fantôme visuel).
+    // Affichée uniquement si la séance est réellement déplaçable — pas de
+    // poignée visible du tout sinon, cohérent avec l'ancien comportement
+    // "pas de curseur grab" pour une carte non-source.
+    const estSourcePossibleAffichage = effSess.type !== "RACE";
+    const estPasseNonSaisiAffichage = s.date < today()
+      && (!statuses[uid] || statuses[uid] === "—")
+      && week.week !== currentWeek();
+    const aTraceActiviteAffichage = isDoneSession || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid] || estPasseNonSaisiAffichage;
+    const peutEtreGlisseeAffichage = estSourcePossibleAffichage && !aTraceActiviteAffichage;
+    const poigneeGlissement = peutEtreGlisseeAffichage
+      ? el("span",{style:{fontSize:"18px",color:"var(--text-muted)",flexShrink:"0",lineHeight:"1",padding:"2px 4px",cursor:"grab"}},"⠿")
+      : null;
+
     const card=el("div",{id:"carte-"+uid,style:{
       background:isToday?"var(--border-soft)":"var(--bg)",
       border:`1px solid ${isToday?"rgba(var(--accent-rgb),0.2)":st.colorSoft+"0.13)"}`,
@@ -7724,7 +7744,8 @@ function renderWeekDetail(weekNum) {
         // (✅/❌/⚠️ portent déjà leur propre couleur) — traitement unifié
         // avec 😴, qui n'en a jamais eu. Taille augmentée (16px → 20px)
         // à la même demande, pour une meilleure lisibilité de l'emoji.
-        isDoneSession ? el("span",{style:{fontSize:"20px",flexShrink:"0",lineHeight:"1"}}, statutEffectif) : null
+        isDoneSession ? el("span",{style:{fontSize:"20px",flexShrink:"0",lineHeight:"1"}}, statutEffectif) : null,
+        poigneeGlissement
       ),
       el("div",{style:{color:"var(--text)",fontSize:"15px",fontWeight:"600",marginBottom:"4px"}},effSess.session),
       // Bloc échauffement/retour au calme (▶/◀) retiré (même correctif que
@@ -7831,21 +7852,13 @@ function renderWeekDetail(weekNum) {
     // dépend de peutEtreDeplacee). isDoneSession et statutEffectif déjà
     // calculés plus haut dans cette même itération — réutilisés tels quels
     // plutôt que recalculés.
-    {
-      // REPOS autorisée comme source (17/08/2026, demande explicite de
-      // Laurent : "déplacer un repos sur une autre séance ou même un
-      // repos") — seule RACE reste exclue, jamais glissable (le jour de
-      // course lui-même ne doit jamais pouvoir être déplacé). getAvailableSlots
-      // continue de gérer la garde anti-séance-déjà-réalisée, y compris
-      // pour un jour de repos passé (cf. estPasseNonSaisiDrag ci-dessous) —
-      // rien de spécifique à ajouter ici pour ce cas.
-      const estSourcePossible = effSess.type !== "RACE";
-      const estPasseNonSaisiDrag = s.date < today()
-        && (!statuses[uid] || statuses[uid] === "—")
-        && week.week !== currentWeek();
-      const aTraceActiviteDrag = isDoneSession || !!sessionNotes[uid] || !!sessionRpe[uid] || !!manualPerf[uid] || estPasseNonSaisiDrag;
-      cablerDragDropSeance(card, week, i, estSourcePossible && !aTraceActiviteDrag);
-    }
+    // Câblage du glissement (correctif — logique de calcul déjà faite
+    // plus haut pour décider d'afficher ou non poigneeGlissement,
+    // réutilisée ici telle quelle plutôt que recalculée une seconde
+    // fois). REPOS autorisée comme source (demande explicite de Laurent :
+    // "déplacer un repos sur une autre séance ou même un repos") — seule
+    // RACE reste exclue, jamais glissable.
+    cablerDragDropSeance(card, poigneeGlissement, week, i, peutEtreGlisseeAffichage);
     return card;
   });
 
@@ -10193,24 +10206,37 @@ let glissementSeanceEnCours = null;
 // plein écran, moins de risque de faux déclenchement sur un tap précis.
 const SEUIL_GLISSEMENT_PX = 12;
 
-// Câble le glissement (source) sur une carte de séance via Pointer Events.
+// Câble le glissement (source) sur une carte de séance via Pointer Events,
+// déclenché depuis une POIGNÉE DÉDIÉE (handleEl) plutôt que n'importe où
+// sur la carte (correctif, signalé par Laurent : glisser n'importe où sur
+// la carte rendait le scroll vertical de la page difficile — touch-action:
+// none devait couvrir toute la carte pour que le glissement fonctionne de
+// façon fiable, cf. son propre correctif, mais ça bloquait aussi le scroll
+// normal sur cette même zone). Avec une poignée dédiée (icône ⠿ 24×24px),
+// seule cette petite zone a touch-action:none — le reste de la carte
+// redevient scrollable normalement au doigt, comme n'importe quel contenu.
+//
+// Délai d'armement RETIRÉ (existait dans la version précédente pour
+// distinguer un scroll d'un glissement volontaire sur toute la carte) —
+// devenu inutile : une poignée dédiée élimine par construction le risque
+// de confondre un scroll avec un glissement, le geste démarre donc
+// immédiatement au contact de la poignée, sans délai.
+//
 // week/slotIdx sont capturés dans la closure au moment du câblage (les
 // cartes sont reconstruites à chaque render(), donc chaque carte a sa
 // propre closure figée sur SES coordonnées — jamais un slotIdx partagé/
-// muté entre cartes). Posé uniquement si la séance n'est pas déjà
-// réalisée/annotée (même garde que le bouton "Déplacer cette séance" du
-// menu tap, cf. aTraceActivite dans showSessionMenu) — une carte non
-// déplaçable ne doit visuellement donner aucune prise de glissement (pas
-// de curseur "grab", pas de listener pointerdown posé du tout).
+// muté entre cartes). handleEl posé (draggable/pointerdown) uniquement si
+// la séance n'est pas déjà réalisée/annotée (même garde que le bouton
+// "Déplacer cette séance" du menu tap, cf. aTraceActivite dans
+// showSessionMenu) — si non déplaçable, la poignée n'est simplement pas
+// affichée du tout côté appelant (cf. renderWeekDetail), pas juste
+// désactivée ici.
 //
-// Le paramètre `week`/`slotIdx` fournis ici correspondent à la carte en
-// tant que SOURCE potentielle. Le calcul de la CIBLE au relâchement se
-// fait indépendamment (via document.elementFromPoint + l'attribut
-// data-swap-uid posé sur chaque carte, cf. plus bas) — une carte peut
-// donc être source (si peutEtreSource) et/ou cible (toujours), exactement
-// la même distinction que l'ancienne version HTML5 draggable vs
-// dragover/drop.
-function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
+// cardEl reste la carte ENTIÈRE : sert de cible de dépôt (dataset.swapUid,
+// toujours posé) et de modèle pour le clonage du fantôme visuel pendant
+// le glissement (le fantôme doit représenter toute la carte, pas
+// seulement la poignée qui l'a déclenché).
+function cablerDragDropSeance(cardEl, handleEl, week, slotIdx, peutEtreSource) {
   const uidCarte = week.week + "-" + slotIdx;
   // data-swap-uid permet à toute autre carte de s'identifier comme cible
   // au survol, via closest("[data-swap-uid]") depuis elementFromPoint —
@@ -10218,22 +10244,17 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
   // week/slotIdx ci-dessus, qui ne servent qu'à IDENTIFIER la source).
   cardEl.dataset.swapUid = uidCarte;
 
-  if (!peutEtreSource) return; // ni curseur "grab" ni listener : carte non déplaçable
+  if (!peutEtreSource || !handleEl) return; // pas de poignée affichée : carte non déplaçable
 
-  cardEl.style.cursor = "grab";
-  // touch-action: none (correctif — le glissement ne démarrait pas DU TOUT
-  // au doigt, même pointerdown semblait sans effet). Sans cette propriété
-  // CSS, un navigateur mobile réserve par défaut tout geste tactile sur
-  // cet élément pour SON PROPRE scroll de page, avant même de laisser les
-  // Pointer Events s'exécuter normalement — comportement par défaut du
-  // tactile qui n'existe pas à la souris (d'où le fonctionnement correct
-  // sur desktop dès la première version). Sans ce correctif, le navigateur
-  // peut soit ignorer purement pointermove après un pointerdown initial,
-  // soit annuler le geste en pointercancel dès qu'il détecte une intention
-  // de scroll — dans les deux cas, "rien ne se passe" côté utilisateur.
-  cardEl.style.touchAction = "none";
+  handleEl.style.cursor = "grab";
+  // touch-action: none UNIQUEMENT sur la poignée (24×24px), jamais sur
+  // cardEl — c'est tout l'objet de ce correctif, cf. commentaire en tête
+  // de fonction. Sans cette propriété sur la poignée elle-même, le
+  // navigateur mobile réserverait aussi ce petit élément pour son scroll
+  // natif, empêchant le glissement d'y démarrer.
+  handleEl.style.touchAction = "none";
 
-  cardEl.addEventListener("pointerdown", (e) => {
+  handleEl.addEventListener("pointerdown", (e) => {
     // Ignore si un geste est déjà en cours (ex. deux doigts) — un seul
     // glissement actif à la fois, cf. commentaire sur glissementSeanceEnCours.
     if (glissementSeanceEnCours) return;
@@ -10242,17 +10263,20 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
     // sur cette même carte — ne jamais interférer avec ce chemin existant).
     if (e.button != null && e.button !== 0) return;
 
+    e.preventDefault(); // empêche toute sélection/comportement natif dès le contact avec la poignée
+    e.stopPropagation(); // n'atteint jamais un double-tap posé sur cardEl (la poignée n'est pas un déclencheur de double-tap)
+
     const rectDepart = cardEl.getBoundingClientRect();
-    const etat = {
+    glissementSeanceEnCours = {
       week,
       slotIdxSource: slotIdx,
       pointerId: e.pointerId,
       xDepart: e.clientX,
       yDepart: e.clientY,
       cardSource: cardEl,
-      // Décalage entre le point de contact et le coin de la carte, pour
-      // que le fantôme suive le doigt de façon naturelle plutôt que de se
-      // caler sur son coin supérieur gauche.
+      // Décalage entre le point de contact (sur la poignée) et le coin de
+      // la carte entière — le fantôme représente toute la carte, donc ce
+      // décalage doit être calculé par rapport à cardEl, pas handleEl.
       decalageX: e.clientX - rectDepart.left,
       decalageY: e.clientY - rectDepart.top,
       largeur: rectDepart.width,
@@ -10260,32 +10284,19 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
       fantome: null, // créé seulement une fois le seuil de mouvement franchi
       cibleActuelle: null,
       dernierPointerType: e.pointerType,
-      arme: false, // devient true après le délai d'armement ci-dessous
+      arme: true, // toujours armé immédiatement, cf. commentaire en tête (plus de délai d'armement)
     };
 
-    // Délai d'armement (250ms, correctif — un scroll vertical tactile
-    // normal démarre le mouvement quasi immédiatement après le contact,
-    // trop tôt pour ce délai ; un glissement volontaire, où le doigt
-    // reste un instant avant de bouger, le franchit naturellement).
-    // pointerType "mouse" est armé instantanément : un clic-glisser
-    // desktop n'a pas ce risque de conflit avec un scroll tactile.
-    if (e.pointerType === "mouse") {
-      etat.arme = true;
-    } else {
-      etat.armementTimer = setTimeout(() => {
-        etat.arme = true;
-        // Retour tactile au moment de l'armement (même pattern que
-        // avecRetourTactile déjà utilisé ailleurs dans ce fichier pour les
-        // boutons d'action importants) — signale physiquement que le
-        // glissement est désormais actif, avant même que le fantôme
-        // visuel n'apparaisse (celui-ci n'apparaît qu'au franchissement du
-        // seuil de mouvement, cf. pointermove plus bas). navigator.vibrate
-        // échoue silencieusement sur iOS Safari (non supporté), sans
-        // risque à l'appeler quand même.
-        if (navigator.vibrate) { try { navigator.vibrate(35); } catch {} }
-      }, 250);
-    }
-    glissementSeanceEnCours = etat;
+    // Retour tactile au moment du contact avec la poignée (même pattern
+    // que avecRetourTactile déjà utilisé ailleurs dans ce fichier pour les
+    // boutons d'action importants) — signale physiquement que le
+    // glissement est désormais actif. Réintégré ici (avant : au terme
+    // d'un délai d'armement de 250ms, retiré cf. commentaire en tête de
+    // cablerDragDropSeance) — la poignée dédiée élimine le besoin de ce
+    // délai, la vibration se déclenche donc dès le contact.
+    // navigator.vibrate échoue silencieusement sur iOS Safari (non
+    // supporté), sans risque à l'appeler quand même.
+    if (navigator.vibrate) { try { navigator.vibrate(35); } catch {} }
   });
 }
 
@@ -10346,7 +10357,6 @@ function demarrerAutoScrollSiNecessaire() {
 document.addEventListener("pointermove", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
-  if (!g.arme) return; // délai d'armement pas encore écoulé, cf. pointerdown — laisse le scroll natif agir librement
 
   const dx = e.clientX - g.xDepart;
   const dy = e.clientY - g.yDepart;
@@ -10431,7 +10441,6 @@ document.addEventListener("pointermove", (e) => {
 document.addEventListener("pointerup", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
-  if (g.armementTimer) clearTimeout(g.armementTimer);
   if (autoScrollRafId) { cancelAnimationFrame(autoScrollRafId); autoScrollRafId = null; }
 
   if (g.fantome) {
@@ -10463,7 +10472,6 @@ document.addEventListener("pointerup", (e) => {
 document.addEventListener("pointercancel", (e) => {
   const g = glissementSeanceEnCours;
   if (!g || e.pointerId !== g.pointerId) return;
-  if (g.armementTimer) clearTimeout(g.armementTimer);
   if (autoScrollRafId) { cancelAnimationFrame(autoScrollRafId); autoScrollRafId = null; }
   if (g.fantome) {
     g.fantome.remove();
