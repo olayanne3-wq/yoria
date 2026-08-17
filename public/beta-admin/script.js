@@ -1,6 +1,13 @@
 const API="/api/beta-admin",S={items:[],id:null,signalements:[]};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const L={pending:"En attente",selected:"Sélectionné",invited:"Invité",active:"Actif",rejected:"Refusé"};
+// Statuts simplifiés (retrait de "selected" et "active", demande
+// explicite de Laurent) — cf. commentaire détaillé côté serveur
+// (api/beta-admin.js, const STATUSES). Les candidatures déjà en base avec
+// l'un de ces deux anciens statuts ont été migrées vers "invited" par une
+// requête SQL ponctuelle, donc L n'a plus besoin de les traduire — un
+// statut inconnu resterait affiché tel quel (repli déjà géré par
+// `L[c.status]||c.status` partout où L est utilisé).
+const L={pending:"En attente",invited:"Invité",rejected:"Refusé"};
 const LV={debutant:"Débutant",intermediaire:"Intermédiaire",confirme:"Confirmé",competiteur:"Compétiteur"};
 const D={"5-km":"5 km","10-km":"10 km","semi-marathon":"Semi-marathon",marathon:"Marathon",trail:"Trail",debutant:"Je débute"};
 const P={android:"Android",iphone:"iPhone"};
@@ -16,11 +23,11 @@ $("#login-form").addEventListener("submit",async e=>{e.preventDefault();const b=
 $("#logout").onclick=async()=>{try{await req({method:"POST",body:JSON.stringify({action:"logout"})})}finally{auth(false)}};
 $("#refresh").onclick=load;
 function card(c){return `<article class="candidate"><div><strong>${esc(c.first_name)}</strong><small>${esc(c.email)}</small><div class="chips"><span class="chip">${esc(P[c.platform]||c.platform)}</span><span class="chip">${esc(LV[c.running_level]||c.running_level)}</span><span class="badge ${esc(c.status)}">${esc(L[c.status]||c.status)}</span></div></div><button class="open" data-id="${esc(c.id)}">Voir</button></article>`}
-function render(){const n=S.items.length,cs=x=>S.items.filter(i=>i.status===x).length;["total","pending","selected","invited","active","rejected"].forEach(k=>$("#s-"+k).textContent=k==="total"?n:cs(k));
+function render(){const n=S.items.length,cs=x=>S.items.filter(i=>i.status===x).length;["total","pending","invited","rejected"].forEach(k=>$("#s-"+k).textContent=k==="total"?n:cs(k));
 $("#recent").innerHTML=S.items.slice(0,6).map(card).join("")||'<div class="empty">Aucune candidature.</div>';
 const a=S.items.filter(i=>i.platform==="android").length,ip=S.items.filter(i=>i.platform==="iphone").length,st=S.items.filter(i=>i.uses_strava).length,fb=S.items.filter(i=>i.accepts_feedback).length;
 $("#distribution").innerHTML=[["Android",pct(a,n)],["iPhone",pct(ip,n)],["Strava",pct(st,n)],["Questionnaire",pct(fb,n)]].map(x=>`<div><span>${x[0]}</span><strong>${x[1]} %</strong></div>`).join("");
-table();$("#selected-list").innerHTML=S.items.filter(i=>i.status==="selected").map(card).join("")||'<div class="empty">Aucun sélectionné.</div>';$("#invited-list").innerHTML=S.items.filter(i=>i.status==="invited").map(card).join("")||'<div class="empty">Aucun invité.</div>';signalementsTable();stats()}
+table();$("#invited-list").innerHTML=S.items.filter(i=>i.status==="invited").map(card).join("")||'<div class="empty">Aucun invité.</div>';signalementsTable();stats()}
 function filtered(){const q=$("#search").value.toLowerCase(),s=$("#status-filter").value,p=$("#platform-filter").value;return S.items.filter(i=>(!q||i.first_name.toLowerCase().includes(q)||i.email.toLowerCase().includes(q))&&(s==="all"||i.status===s)&&(p==="all"||i.platform===p))}
 function table(){const x=filtered();$("#tbody").innerHTML=x.map(c=>`<tr><td><strong>${esc(c.first_name)}</strong><br><small>${esc(c.email)}</small></td><td>${esc(P[c.platform]||c.platform)}</td><td>${esc(LV[c.running_level]||c.running_level)}</td><td>${c.runs_per_week}</td><td>${esc(D[c.favorite_distance]||c.favorite_distance)}</td><td>${c.uses_strava?"Oui":"Non"}</td><td><span class="badge ${c.status}">${esc(L[c.status])}</span></td><td>${esc(date(c.created_at))}</td><td><button class="open" data-id="${c.id}">Voir</button></td></tr>`).join("");$("#empty").hidden=!!x.length}
 ["search","status-filter","platform-filter"].forEach(id=>{$("#"+id).oninput=table;$("#"+id).onchange=table});
@@ -30,7 +37,11 @@ function signalementsTable(){const x=signalementsFiltered();$("#signalements-tbo
 ["signalement-type-filter","signalement-statut-filter"].forEach(id=>{$("#"+id).onchange=signalementsTable});
 function stats(){const group=(f)=>S.items.reduce((a,i)=>(a[i[f]]=(a[i[f]]||0)+1,a),{}),bar=(obj,labels)=>`<div class="bar-list">${Object.entries(obj).map(([k,v])=>`<div class="bar"><span>${esc(labels[k]||k)}</span><div class="track"><div class="fill" style="width:${pct(v,S.items.length)}%"></div></div><strong>${pct(v,S.items.length)}%</strong></div>`).join("")}</div>`;
 $("#statistics").innerHTML=`<article class="card"><h2>Plateformes</h2>${bar(group("platform"),P)}</article><article class="card"><h2>Niveaux</h2>${bar(group("running_level"),LV)}</article><article class="card"><h2>Distances</h2>${bar(group("favorite_distance"),D)}</article><article class="card"><h2>Engagement</h2>${bar({strava:S.items.filter(i=>i.uses_strava).length,feedback:S.items.filter(i=>i.accepts_feedback).length},{strava:"Strava",feedback:"Questionnaire"})}</article>`}
-function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;const invited=c.invited_at?`<div class="detail"><span>Invitation envoyée</span><strong>${esc(date(c.invited_at))}</strong></div>`:"";$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}${invited}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions"><button data-status="selected">Sélectionner</button><button data-send-invitation>📧 Envoyer l'invitation</button><button data-create-subscription>💳 Créer abonnement gratuit</button><button data-status="active">Marquer actif</button><button data-status="rejected">Refuser</button><button data-delete-application class="danger">🗑️ Supprimer définitivement</button></div>`;$("#modal").hidden=false}
+// Boutons "Sélectionner"/"Marquer actif" retirés de la modale (statuts
+// simplifiés, cf. commentaire en tête de fichier) — restent "Envoyer
+// l'invitation" (invited), "Créer abonnement gratuit", "Refuser"
+// (rejected), et "Supprimer définitivement".
+function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;const invited=c.invited_at?`<div class="detail"><span>Invitation envoyée</span><strong>${esc(date(c.invited_at))}</strong></div>`:"";$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}${invited}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions"><button data-send-invitation>📧 Envoyer l'invitation</button><button data-create-subscription>💳 Créer abonnement gratuit</button><button data-status="rejected">Refuser</button><button data-delete-application class="danger">🗑️ Supprimer définitivement</button></div>`;$("#modal").hidden=false}
 function close(){ $("#modal").hidden=true;S.id=null }
 document.addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(b)return open(b.dataset.id);if(e.target.closest("[data-close]"))return close();const invite=e.target.closest("[data-send-invitation]");if(invite&&S.id)return confirmInvitation();const sub=e.target.closest("[data-create-subscription]");if(sub&&S.id)return confirmSubscription();const del=e.target.closest("[data-delete-application]");if(del&&S.id)return confirmDeleteApplication();const a=e.target.closest("[data-status]");if(a&&S.id)update(a.dataset.status)});
 document.addEventListener("change",e=>{const sel=e.target.closest("[data-signalement-statut]");if(sel)updateSignalementStatut(sel.dataset.signalementStatut,sel.value)});
@@ -45,7 +56,7 @@ function confirmSubscription(){const c=S.items.find(i=>i.id===S.id);if(!c)return
 // tente de supprimer un compte Yoria associé à la même adresse email s'il
 // en existe un (cf. commentaire détaillé côté serveur, action
 // delete_application). Confirmation à double niveau volontairement plus
-// insistante que les autres actions (Sélectionner/Refuser/etc.) — action
+// insistante que les autres actions (Refuser/etc.) — action
 // irréversible, contrairement à un simple changement de statut.
 async function deleteApplication(){
   const id=S.id;if(!id)return;
@@ -476,6 +487,6 @@ function cascadesResultHtml(result) {
   return html;
 }
 
-const titles={dashboard:"Tableau de bord",applications:"Candidatures",selected:"Sélectionnés",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
