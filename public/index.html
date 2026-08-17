@@ -7813,8 +7813,9 @@ function renderWeekDetail(weekNum) {
     // pas seulement le clic droit souris ; le garder aurait continué à
     // ouvrir ce menu à l'appui long malgré le retrait du timer JS
     // dédié). Double tap devient donc le SEUL déclencheur, desktop comme
-    // mobile.
-    if (effSess.type !== "REPOS" && effSess.type !== "RACE") {
+    // mobile. REPOS autorisée (17/08/2026, cohérent avec le glissement
+    // déjà autorisé pour ce type) — seule RACE reste exclue.
+    if (effSess.type !== "RACE") {
       attacherDoubleTap(card, () => showSessionMenu(week, i));
     }
 
@@ -7831,7 +7832,14 @@ function renderWeekDetail(weekNum) {
     // calculés plus haut dans cette même itération — réutilisés tels quels
     // plutôt que recalculés.
     {
-      const estSourcePossible = effSess.type !== "REPOS" && effSess.type !== "RACE";
+      // REPOS autorisée comme source (17/08/2026, demande explicite de
+      // Laurent : "déplacer un repos sur une autre séance ou même un
+      // repos") — seule RACE reste exclue, jamais glissable (le jour de
+      // course lui-même ne doit jamais pouvoir être déplacé). getAvailableSlots
+      // continue de gérer la garde anti-séance-déjà-réalisée, y compris
+      // pour un jour de repos passé (cf. estPasseNonSaisiDrag ci-dessous) —
+      // rien de spécifique à ajouter ici pour ce cas.
+      const estSourcePossible = effSess.type !== "RACE";
       const estPasseNonSaisiDrag = s.date < today()
         && (!statuses[uid] || statuses[uid] === "—")
         && week.week !== currentWeek();
