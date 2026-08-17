@@ -538,7 +538,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     if ((!profilBrut || !profilBrut.niveau) && !resultatPrechargement.echecChargementProfil) {
       const complement = await LkAuth.monterEcranOnboarding('ecran-auth-hote', profilBrut || {});
       const profilMisAJour = Object.assign(
-        { prenom: "", nom: "", poids: null, taille: null, fcMax: 181, pps: "", ppsDocument: null, ppsExpiration: null, records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
+        { prenom: "", nom: "", poids: null, taille: null, fcMax: null, pps: "", ppsDocument: null, ppsExpiration: null, records: { "5K": null, "10K": null, "Semi": null, "Marathon": null } },
         profilBrut || {},
         complement
       );
@@ -1988,7 +1988,7 @@ function migrerVersProfilCoureur() {
     anneeNaissance: null,
     dateNaissance: null, // "YYYY-MM-DD" — ajouté le 19/07/2026, remplace anneeNaissance à terme (cf. calculerCategorieAgeFFA). anneeNaissance reste dérivée automatiquement de dateNaissance dès que celle-ci est renseignée, pour ne rien casser côté plan-generator.js/wizard (formule de Tanaka, computeFcMaxTanaka) qui ne consomment que l'année.
     niveau: null, // 'debutant'|'intermediaire'|'confirme' — v2.8, retire du wizard (§17.7)
-    poids: ancienPoids, taille: ancienneTaille, fcMax: ancienneFcMax ?? 181,
+    poids: ancienPoids, taille: ancienneTaille, fcMax: ancienneFcMax ?? null,
     pps: ancienPps,
     ppsDocument: null, // {data, type, nomFichier} — document PPS FFA en base64, cf. ppsDocumentSection
     ppsExpiration: null, // "YYYY-MM-DD"
@@ -3632,23 +3632,28 @@ const PACE_REFS = Object.fromEntries(
   Object.entries(SESSION_TARGETS).map(([k,v]) => [k, { effort:v.effort, tolerance:v.tolerance, recup:v.recup }])
 );
 // FC max lue depuis le plan chargé (zoneFC.fcMax, cf. section 7bis du doc de
-// convergence) plutôt que codée en dur — repli sur 181 (valeur historique
-// de Laurent) si le plan n'a pas cette donnée (profil sans fcMaxConnue).
-const FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
+// convergence) — plus de repli sur 181 (ancienne valeur historique de
+// Laurent, jamais valide pour un autre coureur) : reste null si le plan
+// n'a pas cette donnée (profil sans fcMaxConnue).
+const FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || null;
 
 // ── Zones FC cible ──────────────────────────────────────────────────────
 // Reconstruites depuis FC_MAX (pourcentages fixes : 65-75% EF/LONGUE,
 // 85-90% SPEC/TEST bas, 90-95% SEUIL/TEST haut, 90-100% VMA) plutôt que des
 // bornes bpm codées en dur — sinon ces bornes resteraient figées sur
 // l'ancien FC_MAX (181) même si un plan avec un profil différent est chargé.
-const FC_ZONES = {
+// Si FC_MAX est absent (coureur sans FC max connue), chaque zone vaut null
+// plutôt qu'un objet {min:NaN,max:NaN,...} — tous les points d'usage
+// (fcStatus, cartes séance, écran objectifs) testent déjà !zone/FC_ZONES[x]
+// en falsy, donc null s'intègre naturellement sans plantage NaN.
+const FC_ZONES = FC_MAX ? {
   EF:    { min: Math.round(FC_MAX*0.65), max: Math.round(FC_MAX*0.75), label:"65–75%", color:"var(--accent)" },
   LONGUE:{ min: Math.round(FC_MAX*0.65), max: Math.round(FC_MAX*0.75), label:"65–75%", color:"var(--accent2)" },
   SPEC:  { min: Math.round(FC_MAX*0.85), max: Math.round(FC_MAX*0.90), label:"85–90%", color:"var(--accent)" },
   SEUIL: { min: Math.round(FC_MAX*0.90), max: Math.round(FC_MAX*0.95), label:"90–95%", color:"var(--warn)" },
   VMA:   { min: Math.round(FC_MAX*0.90), max: FC_MAX,                  label:"90–100%",color:"var(--accent)" },
   TEST:  { min: Math.round(FC_MAX*0.85), max: Math.round(FC_MAX*0.95), label:"85–95%", color:"var(--accent)" },
-};
+} : { EF:null, LONGUE:null, SPEC:null, SEUIL:null, VMA:null, TEST:null };
 
 function fcStatus(type, avgHr) {
   const zone = FC_ZONES[type];
@@ -8079,12 +8084,14 @@ function renderStats() {
   // incohérence physiologique visible. Ligne SPEC désormais masquée pour
   // tout plan sans allures.C réelles.
   const aZoneC = !!window.__PLAN_BRUT__?.allures?.C;
+  const fcLabel = (zone) => zone ? zone.min+"–"+zone.max : "—";
+  const pctLabel = (zone) => zone ? zone.label : "—";
   const paceRows = [
-    {type:"EF",      label:"Endurance fondamentale", pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.EF.min+"–"+FC_ZONES.EF.max, pct:FC_ZONES.EF.label, color:"var(--accent)"},
-    {type:"LONGUE",  label:"Sortie longue",           pace:alluresEF, heat:chaleurEF, fc:FC_ZONES.LONGUE.min+"–"+FC_ZONES.LONGUE.max, pct:FC_ZONES.LONGUE.label, color:"var(--accent2)"},
-    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:FC_ZONES.SEUIL.min+"–"+FC_ZONES.SEUIL.max, pct:FC_ZONES.SEUIL.label, color:"var(--accent2)"},
-    ...(aZoneC ? [{type:"SPEC", label:labelSpecifique, pace:SESSION_TARGETS.SPEC.effort, heat:null, fc:FC_ZONES.SPEC.min+"–"+FC_ZONES.SPEC.max, pct:FC_ZONES.SPEC.label, color:"var(--accent)"}] : []),
-    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:FC_ZONES.VMA.min+"–"+FC_ZONES.VMA.max, pct:FC_ZONES.VMA.label, color:"var(--accent)"},
+    {type:"EF",      label:"Endurance fondamentale", pace:alluresEF, heat:chaleurEF, fc:fcLabel(FC_ZONES.EF), pct:pctLabel(FC_ZONES.EF), color:"var(--accent)"},
+    {type:"LONGUE",  label:"Sortie longue",           pace:alluresEF, heat:chaleurEF, fc:fcLabel(FC_ZONES.LONGUE), pct:pctLabel(FC_ZONES.LONGUE), color:"var(--accent2)"},
+    {type:"SEUIL",   label:"Seuil",                   pace:SESSION_TARGETS.SEUIL.effort, heat:null, fc:fcLabel(FC_ZONES.SEUIL), pct:pctLabel(FC_ZONES.SEUIL), color:"var(--accent2)"},
+    ...(aZoneC ? [{type:"SPEC", label:labelSpecifique, pace:SESSION_TARGETS.SPEC.effort, heat:null, fc:fcLabel(FC_ZONES.SPEC), pct:pctLabel(FC_ZONES.SPEC), color:"var(--accent)"}] : []),
+    {type:"VMA",     label:"VMA",                     pace:SESSION_TARGETS.VMA.effort,   heat:null, fc:fcLabel(FC_ZONES.VMA), pct:pctLabel(FC_ZONES.VMA), color:"var(--accent)"},
   ];
   // ── Courbes IE + Cadence ─────────────────────────────────────────────────
   const intensiveTypes = ["VMA","SPEC","SEUIL"];
@@ -10501,7 +10508,7 @@ function renderSettings() {
         {label:"separator"},
         {label:"Poids", id:"inp-poids", type:"number", unit:"kg", val:runnerWeight||""},
         {label:"Taille", id:"inp-taille", type:"number", unit:"cm", val:runnerHeight||""},
-        {label:"FC max", id:"inp-fcmax", type:"number", unit:"bpm", val:runnerFcMax||181},
+        {label:"FC max", id:"inp-fcmax", type:"number", unit:"bpm", val:runnerFcMax||""},
         {label:"FC repos", id:"inp-fcrepos", type:"number", unit:"bpm", val:profilCoureur.fcRepos||""},
         {label:"separator"},
         {label:"Objectif", id:"inp-goal", type:"text", unit:fmtPace(DISTANCE_M_REFERENCE/raceGoalTime)+"/km", val: raceGoalTime >= 3600
@@ -10556,7 +10563,7 @@ function renderSettings() {
           }
           else if (r.id === "inp-poids") { runnerWeight = parseInt(inp.value)||null; profilCoureur.poids = runnerWeight; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-taille") { runnerHeight = parseInt(inp.value)||null; profilCoureur.taille = runnerHeight; sauvegarderProfilCoureur(); }
-          else if (r.id === "inp-fcmax") { runnerFcMax = parseInt(inp.value)||181; profilCoureur.fcMax = runnerFcMax; sauvegarderProfilCoureur(); }
+          else if (r.id === "inp-fcmax") { runnerFcMax = parseInt(inp.value)||null; profilCoureur.fcMax = runnerFcMax; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-fcrepos") { profilCoureur.fcRepos = parseInt(inp.value)||null; sauvegarderProfilCoureur(); }
           else if (r.id === "inp-goal") {
             // Accepte "M:SS" (sous l'heure) et "H:MM:SS" (au-delà) — même
