@@ -9788,7 +9788,21 @@ function renderCourse() {
 // re-swappée : chaque position a sa propre valeur, indépendante des
 // autres par construction.
 function sourceSwap(uid) {
-  return swapTable[uid] || uid;
+  // Protection TDZ (correctif — même piège déjà documenté pour
+  // ALL_SESSIONS/statuses/l'ancien swapPairs) : recalculerAllSessions()
+  // est appelée dès la ligne ~1118 pour le tout premier calcul, avant que
+  // la déclaration `let swapTable = ...` (ligne ~1486, plus bas dans ce
+  // même script) n'ait été atteinte par le fil principal — y accéder à ce
+  // stade lève "Cannot access 'swapTable' before initialization". Repli
+  // sûr sur uid lui-même (aucun swap appliqué) pour ce tout premier appel
+  // uniquement ; le recalcul de rattrapage juste après le vrai chargement
+  // de swapTable (cf. son propre commentaire) corrige l'affichage dès que
+  // la table est réellement disponible.
+  try {
+    return swapTable[uid] || uid;
+  } catch (e) {
+    return uid;
+  }
 }
 
 // Échange entre uidA et uidB — CE QUI EST AFFICHÉ à ces deux positions.
