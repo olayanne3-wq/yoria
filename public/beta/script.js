@@ -46,10 +46,30 @@ form.addEventListener("submit", async (event) => {
 
   const formData = new FormData(form);
   const platform = formData.get("platform");
+  const email = (formData.get("email") || "").trim();
+
+  // Blocage Android/Gmail (demande explicite de Laurent) — la bêta étant
+  // en test fermé sur le Play Store, Google exige un compte Google
+  // explicitement ajouté comme testeur pour pouvoir installer l'app :
+  // une adresse hors Gmail ne permettrait jamais l'installation, même
+  // avec une candidature acceptée (cf. encart-android ci-dessus, même
+  // page). Ce n'est pas une règle Yoria — api/beta.js (isValidEmail)
+  // n'a aucune restriction de domaine — c'est une contrainte de Google
+  // Play, vérifiée ici uniquement pour éviter d'accepter une candidature
+  // qui échouerait ensuite à l'installation. Vérification stricte sur
+  // @gmail.com uniquement (pas les domaines Google Workspace, décision
+  // explicite de Laurent — plus simple à expliquer au candidat que
+  // "toute adresse liée à un compte Google").
+  if (platform === "android" && !/@gmail\.com$/i.test(email)) {
+    statusElement.textContent =
+      "La bêta Android nécessite une adresse Gmail (@gmail.com) — c'est une règle de Google pour le test fermé sur le Play Store, pas une contrainte de Yoria. Utilisez votre adresse Gmail, ou choisissez iPhone si vous n'en avez pas.";
+    statusElement.className = "form-status error";
+    return;
+  }
 
   const payload = {
     firstName: formData.get("firstName"),
-    email: formData.get("email"),
+    email,
     platform,
     runningLevel: formData.get("runningLevel"),
     runsPerWeek: Number(formData.get("runsPerWeek")),
