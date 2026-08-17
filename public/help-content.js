@@ -105,12 +105,14 @@ export const HELP_SECTIONS = [
         ]
       },
       { id: "echanger-seance", icon: "🔄", title: "Échanger deux séances",
-        text: "Depuis l'écran Semaines, un appui long (~0,6 sec) sur une séance ouvre un menu avec l'option \"Déplacer cette séance\" — qui propose en réalité un échange avec un autre jour de la semaine, jamais un vrai déplacement vers du vide.",
+        text: "Depuis l'écran Semaines, glisse une séance par sa poignée ⠿ jusqu'à un autre jour pour les échanger — ou double-tape sur une séance pour ouvrir le menu Déplacer. Un jour de repos peut lui aussi être déplacé.",
         blocks: [
-          { type: "p", text: "Sur l'écran Semaines, un appui un peu long sur une carte de séance (environ une demi-seconde) ouvre un menu en bas de l'écran. Si la séance n'a pas encore été faite ni notée d'une façon ou d'une autre, tu y trouves \"Déplacer cette séance\"." },
-          { type: "p", text: "En réalité, il s'agit toujours d'un échange : Yoria te propose la liste des autres jours de la semaine (repos ou séances actives), et en choisir un permet aux deux contenus de permuter — ta séance prend la place du jour choisi, et inversement. Rien ne disparaît jamais dans le vide : le plan garde toujours le même nombre de séances." },
-          { type: "p", text: "Si tu changes d'avis, ouvre à nouveau le menu sur l'une des deux séances échangées : l'option devient \"Annuler le déplacement\", et tout revient à sa place d'origine." },
-          { type: "p", text: "Une séance déjà validée, notée, ou dont le jour est passé sans saisie ne peut plus être échangée — logique, puisqu'un effort réel y est déjà associé." },
+          { type: "p", text: "Sur l'écran Semaines, chaque carte de séance qui peut être déplacée affiche une petite poignée ⠿ sur sa droite, à côté du badge de statut. Pose le doigt dessus (ou clique avec la souris) et glisse jusqu'à un autre jour de la même semaine : dès que tu relâches, les deux séances échangent leur place." },
+          { type: "p", text: "C'est toujours un échange, jamais un vrai déplacement vers du vide : ta séance prend la place du jour choisi, et inversement. Le plan garde toujours le même nombre de séances, quoi qu'il arrive." },
+          { type: "p", text: "Tu peux échanger n'importe quel jour avec n'importe quel autre — y compris un repos avec une autre séance, ou même deux repos entre eux. Seul le jour de la course elle-même ne peut jamais être déplacé." },
+          { type: "p", text: "Pas envie de glisser au doigt ? Un double-tap (ou double-clic) sur une carte ouvre le même menu qu'avant, avec l'option \"Déplacer cette séance\" — pratique si tu préfères choisir le jour cible dans une liste plutôt que de glisser précisément." },
+          { type: "p", text: "Si tu changes d'avis après un échange, ouvre le menu (double-tap) sur l'une des deux séances échangées : l'option devient \"Annuler le déplacement\", et tout revient à sa place d'origine." },
+          { type: "p", text: "Une séance déjà validée, notée, ou dont le jour est passé sans saisie ne peut plus être déplacée ni recevoir d'échange — logique, puisqu'un effort réel y est déjà associé. Cette fonctionnalité n'est disponible que sur l'écran Semaines, pas sur le dashboard." },
         ]
       },
       { id: "course-intermediaire", icon: "🏅", title: "Ajouter une course intermédiaire",
@@ -196,7 +198,7 @@ export const HELP_SECTIONS = [
       { title: "⚡ Dashboard",
         text: "Ta séance du jour, ton estimation de temps mise à jour automatiquement, et les conseils personnalisés de Yoria selon ta progression." },
       { title: "📅 Semaines",
-        text: "Le détail de chaque semaine. Tape sur une séance pour la valider. Appui long (~1 sec) pour l'échanger avec une autre séance de la semaine — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
+        text: "Le détail de chaque semaine. Tape sur une séance pour la valider. Glisse une séance par sa poignée ⠿ (ou double-tape) pour l'échanger avec une autre séance de la semaine — une séance ne peut pas être supprimée du plan, seul un statut la caractérise." },
       { title: "📊 Stats",
         text: "Ta progression vers l'objectif, ton Indice d'Économie (IE), ta cadence, et un référentiel complet des allures et zones FC." },
       { title: "🏁 Course",
