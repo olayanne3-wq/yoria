@@ -395,6 +395,27 @@
                   </label>
                 </div>
 
+                <!-- Encart Android (ajout, demande explicite de Laurent :
+                     "l'adresse mail doit être une adresse gmail pour la
+                     bêta") — précise, uniquement quand Android est
+                     sélectionné, que l'e-mail utilisé doit être associé à
+                     un compte Google. Ce n'est PAS une contrainte de
+                     Yoria (api/beta.js accepte n'importe quel domaine,
+                     cf. isValidEmail) mais du test fermé Google Play : la
+                     fiche Play Store n'est installable que pour les
+                     comptes Google explicitement ajoutés comme testeurs
+                     (cf. lib/beta-invitation-email.js, PLAY_STORE_URL).
+                     Même mécanisme d'affichage conditionnel que
+                     encart-ios ci-dessous (cf. script.js). -->
+                <div id="encart-android" class="encart-ios" hidden>
+                  <strong>🤖 Sur Android :</strong>
+                  L'installation se fait via le Play Store (bêta fermée),
+                  qui exige un compte Google. Utilisez de préférence une
+                  adresse Gmail (ou une adresse déjà associée à un compte
+                  Google) — une autre adresse e-mail ne permettra pas
+                  d'accéder à la fiche d'installation.
+                </div>
+
                 <div id="encart-ios" class="encart-ios" hidden>
                   <strong>📱 Sur iPhone :</strong>
                   Yoria s'installe via Safari — pas de téléchargement sur
