@@ -34,6 +34,8 @@ const SIGNALEMENT_STATUSES = new Set([
   "resolu",
 ]);
 
+const ALLOWED_PLATFORMS = new Set(["android", "iphone"]);
+
 const json = (response, status, payload) =>
   response.status(status).json(payload);
 
@@ -106,6 +108,10 @@ const isValidToken = (token, key) => {
     return false;
   }
 };
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 async function supabaseRequest(config, path, options = {}) {
   const response = await fetch(
@@ -612,6 +618,133 @@ export default async function handler(request, response) {
       } catch {
         return json(response, 500, {
           message: "Le statut n'a pas pu être modifié.",
+        });
+      }
+    }
+
+    // Invitation directe par e-mail (ajout) — crée une candidature
+    // beta_testers "de toutes pièces" avec statut "invited" d'emblée puis
+    // envoie l'e-mail Brevo, pour un email qui n'a jamais rempli le
+    // formulaire de candidature public. Les champs de profil (niveau,
+    // sorties/semaine, distance favorite) n'ont pas de sens ici — la ligne
+    // beta_testers exige ces colonnes NOT NULL, donc des valeurs neutres
+    // par défaut sont posées (cf. DEFAUTS_INVITATION_DIRECTE), jamais
+    // interprétées ni affichées comme des préférences réelles du testeur.
+    if (action === "invite_by_email") {
+      if (
+        !config.brevoApiKey ||
+        !config.fromEmail ||
+        !config.fromName ||
+        !config.appUrl
+      ) {
+        return json(response, 500, {
+          message: "Configuration Brevo incomplète.",
+        });
+      }
+
+      const email = String(body.email || "").trim().toLowerCase();
+      const firstName = String(body.firstName || "").trim().slice(0, 80);
+      const platform = String(body.platform || "");
+
+      if (!isValidEmail(email)) {
+        return json(response, 400, {
+          message: "L'adresse e-mail n'est pas valide.",
+        });
+      }
+
+      if (firstName.length < 2) {
+        return json(response, 400, {
+          message: "Le prénom est obligatoire.",
+        });
+      }
+
+      if (!ALLOWED_PLATFORMS.has(platform)) {
+        return json(response, 400, {
+          message: "La plateforme sélectionnée n'est pas valide.",
+        });
+      }
+
+      try {
+        const existing = await supabaseRequest(
+          config,
+          `beta_testers?email=eq.${encodeURIComponent(email)}&select=id`,
+          { method: "GET" },
+        );
+
+        if (Array.isArray(existing) && existing.length > 0) {
+          return json(response, 409, {
+            message: "Cette adresse e-mail a déjà une candidature enregistrée.",
+          });
+        }
+
+        const maintenant = new Date().toISOString();
+
+        // Valeurs neutres pour les colonnes NOT NULL sans rapport avec
+        // une invitation directe — jamais montrées comme des préférences
+        // réelles (le module "Comptes"/l'onglet Candidatures affichent
+        // "Débutant"/"3"/"Je débute" pour ces lignes, une divergence
+        // mineure et sans conséquence acceptée pour ce cas d'usage rare).
+        const candidate = {
+          first_name: firstName,
+          email,
+          platform,
+          running_level: "debutant",
+          runs_per_week: 3,
+          favorite_distance: "debutant",
+          uses_strava: false,
+          accepts_feedback: false,
+          message: null,
+          status: "invited",
+          consented_at: maintenant,
+          invited_at: maintenant,
+          updated_at: maintenant,
+        };
+
+        const created = await supabaseRequest(
+          config,
+          "beta_testers?select=*",
+          {
+            method: "POST",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify(candidate),
+          },
+        );
+
+        const nouvelleCandidature = Array.isArray(created) ? created[0] : null;
+
+        if (!nouvelleCandidature) {
+          return json(response, 500, {
+            message: "La candidature n'a pas pu être créée.",
+          });
+        }
+
+        try {
+          await sendBrevoInvitation(config, nouvelleCandidature);
+        } catch (erreurEmail) {
+          // La ligne existe déjà en base à ce stade (status "invited")
+          // même si l'envoi échoue — best-effort cohérent avec
+          // send_invitation plus bas : Laurent peut renvoyer l'invitation
+          // depuis la fiche candidature (bouton existant) si besoin.
+          console.error("Échec envoi invitation directe :", erreurEmail.message);
+          return json(response, 200, {
+            success: true,
+            emailEnvoye: false,
+            message: "Candidature créée, mais l'e-mail n'a pas pu être envoyé. Réessaie depuis sa fiche.",
+            candidate: nouvelleCandidature,
+          });
+        }
+
+        return json(response, 200, {
+          success: true,
+          emailEnvoye: true,
+          message: "Invitation envoyée.",
+          candidate: nouvelleCandidature,
+        });
+      } catch (error) {
+        console.error("Erreur invitation directe :", error);
+
+        return json(response, 500, {
+          message: error.message || "L'invitation n'a pas pu être envoyée.",
         });
       }
     }
