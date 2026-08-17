@@ -7637,7 +7637,6 @@ function renderWeekDetail(weekNum) {
         el("span",{class:"muted",style:{fontSize:"11px"}},s.date)
       );
       attacherDoubleTap(hCard, () => showSessionMenu(week, i));
-      hCard.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
       return hCard;
     }
 
@@ -7783,10 +7782,14 @@ function renderWeekDetail(weekNum) {
     // Double tap : menu gestion seance (remplace l'appui long, 17/08/2026,
     // demande explicite de Laurent : l'appui long entrait en tension avec
     // le glissement au doigt, deux gestes avec des délais proches sur la
-    // même carte).
+    // même carte). contextmenu retiré aussi (correctif — l'appui long
+    // tactile déclenche NATIVEMENT l'événement contextmenu sur mobile,
+    // pas seulement le clic droit souris ; le garder aurait continué à
+    // ouvrir ce menu à l'appui long malgré le retrait du timer JS
+    // dédié). Double tap devient donc le SEUL déclencheur, desktop comme
+    // mobile.
     if (effSess.type !== "REPOS" && effSess.type !== "RACE") {
       attacherDoubleTap(card, () => showSessionMenu(week, i));
-      card.addEventListener("contextmenu",e=>{e.preventDefault();showSessionMenu(week,i);});
     }
 
     // Swap par glissement (drag & drop, ajouté 17/08/2026) — même garde
