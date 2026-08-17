@@ -5554,7 +5554,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     const isFullRepos = todaySessions.every(s=>s.type==="REPOS");
     // Séance clé demain ?
     const tomorrowStr = demain();
-    const tomorrowKey = ALL_SESSIONS.find(s=>s.date===tomorrowStr&&["VMA","SPEC","SEUIL","TEST","RACE"].includes(s.type));
+    // Élargi le 16/08/2026 (signalé par Laurent) : n'affichait "⚡ Demain"
+    // que pour une séance qualité (VMA/SPEC/SEUIL/TEST/RACE) — une simple
+    // séance EF ou LONGUE prévue le lendemain d'un jour de repos
+    // n'apparaissait jamais sur le dashboard. Élargi à toute séance
+    // non-REPOS, pour que le coureur voie systématiquement ce qui
+    // l'attend demain, qualité ou non.
+    const tomorrowKey = ALL_SESSIONS.find(s=>s.date===tomorrowStr&&s.type!=="REPOS");
     if (isFullRepos) {
       // Bilan semaine pour la carte repos
       const isMonday2 = new Date().getDay() === 1;
