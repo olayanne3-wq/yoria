@@ -143,6 +143,27 @@ export default async function handler(request, response) {
     });
   }
 
+  // Blocage Android/Gmail (demande explicite de Laurent) — filet de
+  // sécurité derrière la validation déjà faite côté formulaire
+  // (public/beta/script.js), au cas où elle serait contournée
+  // (JS désactivé, appel direct à l'API). La bêta étant en test fermé sur
+  // le Play Store, Google exige un compte Google explicitement ajouté
+  // comme testeur pour installer l'app — une adresse hors Gmail ne
+  // permettrait jamais l'installation, même avec une candidature
+  // acceptée. Ce n'est pas une règle Yoria (le reste de cette fonction
+  // n'a aucune restriction de domaine, cf. isValidEmail ci-dessus) — le
+  // message le précise explicitement pour ne jamais laisser croire à une
+  // contrainte arbitraire de l'app. Vérification stricte sur @gmail.com
+  // uniquement (pas les domaines Google Workspace, décision explicite de
+  // Laurent), cohérente avec le même seuil côté formulaire.
+  if (platform === "android" && !/@gmail\.com$/i.test(email)) {
+    return sendJson(response, 400, {
+      success: false,
+      code: "GMAIL_REQUIS_ANDROID",
+      message: "La bêta Android nécessite une adresse Gmail (@gmail.com) — c'est une règle de Google pour le test fermé sur le Play Store, pas une contrainte de Yoria.",
+    });
+  }
+
   if (!ALLOWED_LEVELS.has(runningLevel)) {
     return sendJson(response, 400, {
       success: false,
