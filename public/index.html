@@ -5568,7 +5568,15 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     // n'apparaissait jamais sur le dashboard. Élargi à toute séance
     // non-REPOS, pour que le coureur voie systématiquement ce qui
     // l'attend demain, qualité ou non.
-    const tomorrowKey = ALL_SESSIONS.find(s=>s.date===tomorrowStr&&s.type!=="REPOS");
+    // Élargi une seconde fois (17/08/2026, signalé par Laurent : impossible
+    // de refaire le mouvement inverse d'un swap précédent) — après un
+    // premier glissement "demain EF" -> "aujourd'hui repos", demain devient
+    // à son tour REPOS (poussé par le swap) ; le filtre s.type!=="REPOS"
+    // (retiré ici) excluait alors ce jour, faisant disparaître entièrement
+    // la carte "⚡ Demain" du dashboard — sans elle, aucune cible ni source
+    // de glissement n'était plus affichée pour annuler/inverser le swap.
+    // Toute séance de demain s'affiche désormais, REPOS inclus.
+    const tomorrowKey = ALL_SESSIONS.find(s=>s.date===tomorrowStr);
     if (isFullRepos) {
       // Bilan semaine pour la carte repos
       const isMonday2 = new Date().getDay() === 1;
