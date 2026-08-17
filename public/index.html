@@ -9830,14 +9830,17 @@ function sourceSwap(uid) {
 // reconstruit rien, redonnant un état "chacun affiche soi-même" pour les
 // deux, exactement le comportement de toggle attendu.
 function echangerSwap(uidA, uidB) {
+  console.log("[swap-diag] AVANT echangerSwap(" + uidA + "," + uidB + ") — swapPairs =", JSON.stringify(swapPairs));
   const sourceA = sourceSwap(uidA);
   const sourceB = sourceSwap(uidB);
+  console.log("[swap-diag] sourceA(" + uidA + ")=" + sourceA + ", sourceB(" + uidB + ")=" + sourceB);
   const dejaEchangesEntreEux = (sourceA === uidB && sourceB === uidA);
   const aRetirer = new Set([uidA, uidB, sourceA, sourceB]);
   swapPairs = swapPairs.filter(p => !aRetirer.has(p.a) && !aRetirer.has(p.b));
   if (uidA !== uidB && !dejaEchangesEntreEux) {
     swapPairs.push({ a: uidA, b: uidB });
   }
+  console.log("[swap-diag] APRES echangerSwap — swapPairs =", JSON.stringify(swapPairs));
 }
 
 // "Annuler le déplacement" — retire la DERNIÈRE paire qui touche ce uid,
