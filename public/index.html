@@ -1784,7 +1784,37 @@ function calculerEtatMoteurDecision() {
       weekAnalysis,
       trendAnalysis,
     });
-    return { runnerState, engagementState, weekAnalysis, trendAnalysis, decision: resultatMoteur ? resultatMoteur.decision : null };
+    // Garde données suffisantes (16/08/2026, signalé par Laurent : un tout
+    // nouveau coureur sans historique pouvait recevoir un message de
+    // charge incohérent, ET une vraie carte "Yoria te propose un
+    // ajustement"/"a repéré un signal à surveiller" à valider ou ignorer,
+    // alors qu'aucune séance n'a encore eu lieu). Cause racine :
+    // RunnerStateCalculator a un repli FC_REPOS_DEFAUT=60bpm (cf.
+    // moteur-decision.md) qui produit un runnerState numériquement valide
+    // même avec un historique vide ou quasi vide — le RuleEngine peut donc
+    // évaluer ses règles (R-006/R-024s/R-050/R-060...) sur des données
+    // essentiellement inventées et produire une vraie décision.
+    //
+    // Centralisé ICI (plutôt qu'à chaque site d'appel — fetchCoachMsg()
+    // pour le message du coach, moteurDecisionEl pour la carte
+    // Appliquer/Ignorer, cf. décision actée avec Laurent) : une seule
+    // source de vérité, aucun consommateur actuel ou futur de
+    // calculerEtatMoteurDecision() ne peut oublier cette garde. Seuil à 5
+    // séances (samples déjà dédupliqué Strava/manuel, cf.
+    // adapterHistoriqueAvecRpe — plus précis que stravaActivities.length +
+    // nbSaisiesManuelles() qui pouvait légèrement diverger). runnerState/
+    // engagementState/weekAnalysis/trendAnalysis restent renvoyés tels
+    // quels (usage éventuel ailleurs, ex. graphique ACWR qui a sa propre
+    // garde via obtenirHistoriqueACWR()) — seule `decision` est forcée à
+    // null, empêchant toute carte ou consigne de charge d'apparaître.
+    const historiqueSuffisantPourDecision = samples.length >= 5;
+    return {
+      runnerState,
+      engagementState,
+      weekAnalysis,
+      trendAnalysis,
+      decision: historiqueSuffisantPourDecision && resultatMoteur ? resultatMoteur.decision : null,
+    };
   } catch (err) {
     console.warn("Moteur de décision : erreur de calcul.", err.message);
     return null;
