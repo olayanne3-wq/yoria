@@ -10214,7 +10214,18 @@ function cablerDragDropSeance(cardEl, week, slotIdx, peutEtreSource) {
     if (e.pointerType === "mouse") {
       etat.arme = true;
     } else {
-      etat.armementTimer = setTimeout(() => { etat.arme = true; }, 250);
+      etat.armementTimer = setTimeout(() => {
+        etat.arme = true;
+        // Retour tactile au moment de l'armement (même pattern que
+        // avecRetourTactile déjà utilisé ailleurs dans ce fichier pour les
+        // boutons d'action importants) — signale physiquement que le
+        // glissement est désormais actif, avant même que le fantôme
+        // visuel n'apparaisse (celui-ci n'apparaît qu'au franchissement du
+        // seuil de mouvement, cf. pointermove plus bas). navigator.vibrate
+        // échoue silencieusement sur iOS Safari (non supporté), sans
+        // risque à l'appeler quand même.
+        if (navigator.vibrate) { try { navigator.vibrate(35); } catch {} }
+      }, 250);
     }
     glissementSeanceEnCours = etat;
   });
@@ -10242,7 +10253,11 @@ document.addEventListener("pointermove", (e) => {
     // élément d'origine — comportement standard des Pointer Events,
     // nécessaire ici puisque le geste traverse plusieurs cartes.
     try { g.cardSource.setPointerCapture(g.pointerId); } catch {}
-    g.cardSource.style.opacity = "0.35";
+    // Carte source nettement estompée (0.25, au lieu de 0.35) — le
+    // contraste avec le fantôme "soulevé" ci-dessous doit être net,
+    // signalant clairement quelle carte est en train d'être déplacée.
+    g.cardSource.style.opacity = "0.25";
+    g.cardSource.style.transition = "opacity 0.15s ease";
     g.fantome = g.cardSource.cloneNode(true);
     g.fantome.removeAttribute("id"); // évite un doublon d'id avec la carte source pendant le glissement
     g.fantome.style.position = "fixed";
@@ -10251,14 +10266,21 @@ document.addEventListener("pointermove", (e) => {
     g.fantome.style.width = g.largeur + "px";
     g.fantome.style.zIndex = "10000";
     g.fantome.style.pointerEvents = "none"; // ne doit jamais lui-même déclencher elementFromPoint ci-dessous
-    g.fantome.style.boxShadow = "0 12px 32px rgba(0,0,0,0.35)";
-    g.fantome.style.opacity = "0.96";
-    g.fantome.style.transform = "rotate(-1deg)";
+    // Effet "carte soulevée" renforcé (correctif — le glissement passait
+    // trop inaperçu, sensation peu naturelle malgré un mécanisme
+    // fonctionnel) : ombre plus large et plus sombre, léger agrandissement
+    // (scale 1.04) qui simule physiquement une carte détachée de la pile,
+    // transition douce à l'apparition plutôt qu'un saut instantané de
+    // taille/ombre.
+    g.fantome.style.boxShadow = "0 18px 40px rgba(0,0,0,0.45), 0 4px 12px rgba(0,0,0,0.3)";
+    g.fantome.style.opacity = "1";
+    g.fantome.style.transform = "scale(1.04) rotate(-1.5deg)";
+    g.fantome.style.transition = "box-shadow 0.15s ease";
     document.body.appendChild(g.fantome);
   }
 
   e.preventDefault(); // empêche le scroll de page pendant un vrai glissement en cours
-  g.fantome.style.transform = `translate(${e.clientX - g.decalageX}px, ${e.clientY - g.decalageY}px) rotate(-1deg)`;
+  g.fantome.style.transform = `translate(${e.clientX - g.decalageX}px, ${e.clientY - g.decalageY}px) scale(1.04) rotate(-1.5deg)`;
 
   // pointerEvents:none sur le fantôme (posé ci-dessus) garantit que
   // elementFromPoint voit la vraie carte en-dessous, jamais le fantôme
