@@ -844,7 +844,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
             <label for="onb-taille">Taille (cm) — optionnel</label>
             <input type="number" id="onb-taille" placeholder="175" value="${profilExistant.taille || ''}">
             <label for="onb-fcmax">FC max (bpm) — optionnel</label>
-            <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax && profilExistant.fcMax !== 181 ? profilExistant.fcMax : ''}">
+            <input type="number" id="onb-fcmax" placeholder="185" value="${profilExistant.fcMax || ''}">
             <label for="onb-fcrepos">FC repos (bpm) — optionnel</label>
             <input type="number" id="onb-fcrepos" placeholder="55" value="${profilExistant.fcRepos || ''}">
             <label>Sexe — optionnel, affine le calcul de charge</label>
@@ -1327,7 +1327,7 @@ export function monterEcranOnboarding(conteneurId, profilExistant = {}) {
         const dateNaissance = hote.querySelector('#onb-date-naissance').value || profilExistant.dateNaissance || null;
         const poids = parseInt(hote.querySelector('#onb-poids').value) || profilExistant.poids || null;
         const taille = parseInt(hote.querySelector('#onb-taille').value) || profilExistant.taille || null;
-        const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || 181;
+        const fcmax = parseInt(hote.querySelector('#onb-fcmax').value) || profilExistant.fcMax || null;
         const fcrepos = parseInt(hote.querySelector('#onb-fcrepos').value) || profilExistant.fcRepos || null;
         const records = { ...(profilExistant.records || {}) };
         DISTANCES_RECORD.forEach((dist) => {
