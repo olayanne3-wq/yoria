@@ -6522,6 +6522,16 @@ async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnApplique
     btnAppliquer.disabled = false;
     return;
   }
+  // Resynchronise raceGoalTime (et son stockage lk_race_goal) sur le
+  // nouvel objectif — sans ça, l'onglet Course/la stratégie de course/
+  // l'allure cible/le prédicteur continuaient de lire l'ancienne valeur
+  // saisie manuellement dans Réglages (ou l'objectif d'origine du plan),
+  // qui ne correspond plus à paramsOrigine.objectif une fois le levier
+  // appliqué. Ce champ de Réglages reste la source de vérité pour un
+  // ajustement manuel HORS levier — mais ce levier change explicitement
+  // l'objectif du plan, il doit donc primer au moment où il s'applique.
+  raceGoalTime = Engine.parseTimeToSeconds(nouvelObjectif);
+  save(clePourPlan("lk_race_goal"), raceGoalTime);
   msgEl.textContent = "✅ Objectif mis à jour.";
   msgEl.style.color = "var(--accent2)";
   render();
