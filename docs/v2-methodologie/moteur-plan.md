@@ -31,6 +31,40 @@ Adaptation dynamique : `calculerScoreSemaine`, `analyserAdaptations`,
 `appliquerAdaptations`, `regenererStructuresIntervalles` — excluent
 toujours les séances déjà passées.
 
+**`placerSeanceCourse(plan, alluresSec)` — respecte toujours le vrai jour
+de semaine de `dateCourse`** — cherchait auparavant la séance existante du
+jour de semaine ISO correspondant dans `assignment` (qui ne contient QUE
+les jours d'entraînement habituels du coureur, 2 à 7 clés sur 7
+possibles) ; si ce jour n'y figurait pas, repliait silencieusement sur le
+DERNIER jour entraîné de la semaine, sans lien avec la date réellement
+choisie — un coureur choisissant une date de course sur un jour
+habituellement non entraîné avait l'impression que rien ne changeait
+(même dernier jour entraîné) ou voyait un déplacement erratique. Corrigé
+en créant une entrée `repos` à la volée si nécessaire, plutôt que de
+replier vers un autre jour — même principe que `placerCourseIntermediaire`
+(cf. ci-dessous), qui respectait déjà correctement la date choisie par le
+coureur.
+
+**`computeVolumeProgression` — trou comblé quand `semaineDepart > 1`** —
+la boucle de progression du volume ne produisait AUCUNE entrée dans
+`volumesParSemaine` pour les semaines avant `semaineDepart` (utilisé par
+l'accordéon "Modifier mon plan", cf. `architecture-generale.md`, quand un
+levier réutilise `plan.volumeCourant.semaineNum` d'un levier Volume déjà
+appliqué précédemment) — `generatePlan()` repliait alors sur
+`volumeCibleKm: 0` pour ces semaines (`entreeVolumeSemaine?.volumeKm ??
+0`), produisant des séances EF et sortie longue à 0 minutes. Se produisait
+concrètement quand la charnière d'un levier suivant (ex. Jours) tombait
+avant `semaineDepart` d'un levier Volume précédent. Corrigé à deux
+niveaux : les semaines avant `semaineDepart` sont désormais comblées avec
+un volume plat (`volumeDepart`, sans progression) plutôt que laissées
+vides ; et le repli final (`generatePlan()`) pointe vers
+`params.volumeActuel` plutôt que `0`, comme filet de sécurité
+supplémentaire si un futur cas imprévu recréait un trou. Ces semaines
+comblées sont normalement remplacées par les vraies semaines de l'ancien
+plan lors de la fusion côté app (`finaliserRegenerationLevier`, cf.
+`architecture-generale.md`) — le comblement protège contre le cas où la
+charnière ne s'aligne pas exactement avec ce point.
+
 **Stratégie de jour de course** : `calculerStrategieCourse()` (miroir
 exact entre `index.html` et `plan-generator.js`) — bornes km fixes pour
 Semi/Marathon (tous les 5km + palier à 35km sur marathon), proportionnel
@@ -83,15 +117,20 @@ complète.
   `verifierEtAppliquerAlluresDynamiques()` et son propre garde-fou. Le
   recalibrage alimente ce mécanisme en amont sans jamais le
   court-circuiter.
-- **UI** : trois points d'entrée distincts —
+- **UI** : quatre points d'entrée distincts —
   1. Wizard (`v2/index.html`, STEP 6 "Date de course") : toggle
      Ajouter, préremplit une date à mi-parcours par défaut.
-  2. Accordéon "Modifier mon plan" (`v2/index.html`) : 5e levier
-     `courseIntermediaire` aux côtés de objectif/jours/volume/dateCourse,
-     même mécanique de régénération à partir de la semaine suivante
-     (charnière) — la date choisie doit être ≥ charnière et < date de
-     course finale, sinon le bouton Appliquer reste désactivé.
-  3. Dashboard (`public/index.html`) : bannière de saisie du résultat
+  2. Accordéon "Modifier mon plan" du WIZARD (`v2/index.html`) : 5e
+     levier `courseIntermediaire` aux côtés de objectif/jours/volume/
+     dateCourse, même mécanique de régénération à partir de la semaine
+     suivante (charnière) — la date choisie doit être ≥ charnière et <
+     date de course finale, sinon le bouton Appliquer reste désactivé.
+  3. Accordéon "Modifier mon plan" de l'APP PRINCIPALE
+     (`public/index.html`, onglet Semaines) — même 5e levier, porté
+     depuis le wizard avec le même principe (cf.
+     `architecture-generale.md` pour le détail du portage : en-tête
+     fixe, `finaliserRegenerationLevier` commun aux 5 leviers).
+  4. Dashboard (`public/index.html`) : bannière de saisie du résultat
      une fois la date passée (`courseInterResultBannerEl`), pattern
      identique à la bannière post-course finale mais écrit dans
      `lk_course_intermediaire_result` sous forme d'objet
@@ -99,13 +138,18 @@ complète.
      contrairement à `lk_race_result` qui ne stocke qu'un nombre de
      secondes).
 
-**v1-bridge.js (`traduirePlanVersFormatV1`)** — couche de traduction entre
-le plan brut (v2) et le format `index.html`. Tout nouveau champ
+**`v1-bridge.js` (`traduirePlanVersFormatV1`)** — couche de traduction
+entre le plan brut (v2) et le format `index.html`. Tout nouveau champ
 personnalisé ajouté sur une séance côté moteur doit être explicitement
 propagé dans cette fonction — sinon silencieusement perdu (ex. `pourquoi`,
 cf. `pourquoi-seance.md` §6). Mapping
 `FAMILLE_VERS_TYPE_V1` doit couvrir tout nouveau `sousType`, sinon repli
-vers `SEUIL`.
+vers `SEUIL`. **Ne traduit aucune notion de date de course globale** — le
+format v1 (`PLAN`) ne connaît la date de course qu'à travers la séance
+RACE elle-même (dernier jour du plan), jamais un champ `dateCourse`
+autonome ; `window.__PLAN_BRUT__.dateCourse` (format v2 brut) reste la
+seule source fiable pour tout affichage de date de course côté app
+principale (cf. `DATE_COURSE_REFERENCE`, `architecture-generale.md`).
 
 **Test semi-Cooper pour plan course** — même principe que Mode Forme
 (`generatePlanAvecTestSemiCooper`/`completerPlanApresTestSemiCooper`),
@@ -125,10 +169,11 @@ aussi pour le badge "km cumulés" (cf. `persistance-donnees.md`) — pose une en
 moitié des semaines de Construction ont un EF sous `VOLUME_MIN_EF_KM`
 (3km) ou une longue sous `VOLUME_MIN_LONGUE_KM` (5km), `generatePlan()`
 retourne `{ planInvalide: true, code: 'VOLUME_JOURS_INCOMPATIBLE',
-message }` plutôt qu'un plan cassé. Les 3 points d'appel (`v2/index.html`
-création/régénération/modif objectif, `index.html` plan de repli) gèrent
-ce retour et affichent le message. Les semaines de Construction
-antérieures à `semaineDepart` (présentes uniquement quand
+message }` plutôt qu'un plan cassé. Les points d'appel (`v2/index.html`
+création/régénération/modif objectif, accordéon "Modifier mon plan" de
+l'app principale via `finaliserRegenerationLevier`, `index.html` plan de
+repli) gèrent ce retour et affichent le message. Les semaines de
+Construction antérieures à `semaineDepart` (présentes uniquement quand
 `semaineDepart > 1`) sont exclues des statistiques de ce garde-fou
 (`semaineHorsProgression`).
 
@@ -163,10 +208,12 @@ calibration — protégées par le garde-fou `VOLUME_JOURS_INCOMPATIBLE`
 1 (comportement historique, génération initiale d'un plan). Permet de
 faire démarrer la progression du volume (+10%/semaine, décharge tous les
 4 semaines) à une semaine ultérieure du plan plutôt que depuis la semaine
-1 — la progression REPART réellement de ce niveau. Les semaines avant
-`semaineDepart` ne sont pas produites par cette fonction. Le rythme des
+1 — la progression REPART réellement de ce niveau. Le rythme des
 décharges reste calculé sur le numéro de semaine RÉEL du plan, pas
-réindexé à 1.
+réindexé à 1. Les semaines AVANT `semaineDepart` sont désormais comblées
+avec un volume plat (`volumeDepart`) plutôt que totalement absentes de
+`volumesParSemaine` — cf. section dédiée plus haut sur le correctif du
+trou.
 
 **`repartirVolumeSemaine` — partage proportionnel longue/EF par poids** —
 la longue et chaque EF sont traités comme des "parts" d'un même budget
@@ -182,7 +229,10 @@ aucun EF) : tout le budget restant va mécaniquement à la longue
 — `genererContenuLongue()` plafonne déjà la DURÉE affichée
 (`DUREE_MAX_LONGUE_MIN`). Warning informatif `VOLUME_LONGUE_EXCESSIVE_2J`
 (pas un refus) invite à passer à 3 jours ou plus, sans bloquer la
-génération du plan.
+génération du plan. **Exportée** (`export function`) — utilisée aussi par
+l'app principale pour recalculer EF/longue après une correction manuelle
+de séance (`reparerCoherencePhasesApp`, `appliquerReglesPhaseApp`, cf.
+`architecture-generale.md`).
 
 **Records du monde — plancher absolu de temps saisissable** —
 `RECORDS_MONDE_SECONDES` (5K/10K/Semi/Marathon, hommes route), bloque
