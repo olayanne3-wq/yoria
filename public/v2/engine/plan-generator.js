@@ -355,7 +355,7 @@ export function injecterCoherenceSemaineTest(plan) {
 // Champ dédié `seance.pourquoi`, posé sur TOUTE séance (EF, longue, qualité
 // par famille, test, repos) — pas seulement les séances qualité : le
 // principe "quel est le but de cette séance ?" (cf. synthèse Daniels,
-// docs/v2-methodologie/daniels-running-formula-synthese.md §1.1)
+// docs/v2-methodologie/daniels-running-formule-synthese.md §1.1)
 // s'applique aussi à l'EF et au repos, pas seulement au travail intense.
 //
 // Contextualisé par (famille × phase) quand la distinction a un sens
@@ -657,31 +657,6 @@ export function computePhases({ dateDebut, dateCourse, distance, niveau, ampleur
 // plan) — semaineDepart (02/08/2026) permet de faire démarrer ce même
 // calcul à une semaine ultérieure du plan, en conservant la logique de
 // progression/décharge à partir de ce point plutôt que depuis zéro.
-//
-// CORRECTIF (02/08/2026, bug signalé par Laurent — "j'ai essayé de
-// baisser le volume à partir de la semaine prochaine et je ne vois pas
-// d'effet"). Cause : le levier "Volume" de l'accordéon "Modifier mon
-// plan" (v2/index.html, appliquerChangementVolume) régénérait tout le
-// plan avec le nouveau volume comme point de départ SEMAINE 1, puis ne
-// gardait que les semaines à partir de la charnière réelle (semaine en
-// cours + 1, souvent 8-10-12...). Comme cette fonction fait progresser
-// le volume de +10%/semaine vers un plafond quasi fixe, la nouvelle
-// courbe recalculée depuis semaine 1 avait largement le temps de
-// remonter près du plafond avant d'atteindre la charnière — la baisse
-// demandée par l'utilisateur était donc presque totalement absorbée
-// avant même d'apparaître dans les semaines conservées. semaineDepart
-// corrige ça en faisant démarrer LA PROGRESSION elle-même à la charnière
-// (le nouveau volume s'applique directement à cette semaine, la
-// progression +10%/décharge reprend ensuite depuis ce niveau) —
-// v2/index.html passe désormais semaineDepart: semaineCharniere à cet
-// appel plutôt que de laisser le défaut à 1. Les semaines AVANT
-// semaineDepart ne sont pas produites par cette fonction (tableau vide
-// pour elles) : sans impact, l'appelant ne conserve de toute façon que
-// les semaines >= charnière (cf. appliquerChangementVolume). Le rythme
-// des décharges (tous les 4 semaines) reste calculé sur le numéro de
-// semaine RÉEL du plan (semaineDepart + offset), pas réindexé à 1 —
-// sinon le rythme de décharge se désynchroniserait de celui déjà en
-// cours dans les semaines conservées avant la charnière.
 export function computeVolumeProgression({ volumeDepart, distance, niveau, totalSemaines, contraintes = [], ampleurObjectif, phases, semaineDepart = 1 }) {
   const [plafondBas, plafondHaut] = PLAFONDS_VOLUME[distance][niveau];
   const plafondPopulation = (plafondBas + plafondHaut) / 2;
@@ -1013,37 +988,6 @@ function resoudreSousType(sousType, restrictionsAllure) {
   return resolved;
 }
 
-// ---------------------------------------------------------------------------
-// Plafond Daniels par séance qualité (06/08/2026, cf. bibliotheque-seances.md
-// section 43 pour la conception complète et les sources)
-//
-// Chapitre 4, figure 4.1 du livre Daniels (fichier projet) : le volume d'une
-// SÉANCE INDIVIDUELLE (jamais le cumul de plusieurs séances qualité dans la
-// même semaine — texte exact : "the percentage of weekly miles that is
-// typically associated with a single session") est plafonné, avec un
-// pourcentage propre à chaque zone d'intensité :
-//   I (VMA)    : min(temps 10K, 8%  volume hebdo)
-//   T (Seuil)  : min(20 min,   10% volume hebdo)
-//   V (Vitesse): min(5 miles,  5%  volume hebdo)
-//   C (Allure course, repère "M" chez Daniels) : min(18 miles/29km, 20% volume hebdo)
-//
-// Ce plafond coexiste avec base/cap par niveau (PARAMS_NIVEAU dans chaque
-// case du switch de genererContenuQualite) sans le remplacer : base/cap
-// pilote la vitesse de progression et jusqu'où le moteur veut emmener le
-// coureur selon son expérience déclarée ; ce plafond Daniels dit ce que le
-// volume hebdo RÉEL de la semaine autorise physiologiquement, indépendamment
-// du niveau (formule universelle chez Daniels — le niveau influence le
-// résultat seulement de façon indirecte, via le volume hebdo réel, souvent
-// corrélé au niveau). En cas de conflit, le plus restrictif des deux prévaut
-// — pas de warning explicite quand ce plafond s'applique (même principe que
-// base/cap eux-mêmes, qui n'en émettent pas non plus).
-//
-// tempsRef10KSec est optionnel : si absent (ex. appelants qui n'ont pas
-// cette donnée sous la main), seul le plafond en % du volume hebdo
-// s'applique — reste cohérent car le repère "temps 10K"/"20 min"/"5 miles"
-// est de toute façon rarement la contrainte active pour un volume hebdo
-// modeste (le % est presque toujours le plus restrictif des deux dans ce
-// cas), cf. simulations en section 43 de la doc.
 const PLAFOND_DANIELS_PAR_ZONE = {
   I: { pctVolumeHebdo: 0.08, reperAbsoluMin: null },        // temps 10K, géré via tempsRef10KSec
   T: { pctVolumeHebdo: 0.10, reperAbsoluMin: 20 },           // 20 min max, quel que soit le volume
@@ -1417,10 +1361,6 @@ export function genererContenuTest({ distance, alluresSec, volumeHebdoCibleKm = 
   const kmEchauffement = kmDepuisMinutes(DUREE_ECHAUFFEMENT_MIN, E);
   const kmRetourCalme = kmDepuisMinutes(DUREE_RETOUR_CALME_MIN, E);
   const kmEstime = distanceTestKm + kmEchauffement + kmRetourCalme;
-  // Phrase "sert à confirmer/recalibrer ton allure objectif" retirée
-  // (retour de Laurent : redondante avec le bloc "Pourquoi cette séance"
-  // depuis l'ajout de POURQUOI_SEANCE.test, qui explique déjà exactement
-  // ça — cf. injecterPourquoiSeance plus haut).
   const contenu = `Échauffement ${DUREE_ECHAUFFEMENT_MIN}min @ ${formatPace(E)} (EF) + ${dureeConfirmationMin}min à allure course (${formatPace(C)}) — ${distanceTestKm}km + Retour au calme ${DUREE_RETOUR_CALME_MIN}min @ ${formatPace(E)} (EF)`;
   const structureIntervalles = {
     blocs: [{ repetitions: 1, dureeEffortSec: dureeConfirmationMin*60, allure: formatPace(C), dureeRecupSec: 0 }],
@@ -1669,6 +1609,27 @@ export function genererContenuRace({ distance, alluresSec }) {
   return { sousType: 'race', contenu, kmEstime: distanceKm };
 }
 
+// ---------------------------------------------------------------------------
+// Placement de la séance de course finale — CORRECTIF 18/08/2026 (bug
+// signalé par Laurent : décaler la date de course via le levier "Modifier
+// mon plan" restait sans effet visible SAUF si la nouvelle date tombait
+// sur un jour déjà entraîné). Cause : cette fonction cherchait la séance du
+// jour de semaine ISO correspondant à dateCourse dans assignment, qui ne
+// contient QUE les jours d'entraînement habituels du coureur (2 à 7 clés
+// sur 7 possibles) — si jourCourseISO n'y figurait pas (jour habituellement
+// non entraîné), le code repliait silencieusement sur le DERNIER jour
+// entraîné de la semaine, quel qu'il soit, sans lien avec la date réellement
+// choisie. Un coureur choisissant une date sur un jour non entraîné avait
+// donc l'impression que rien ne changeait quand la date décalait peu (même
+// dernier jour entraîné choisi) et un déplacement erratique sinon.
+//
+// Corrigé en respectant TOUJOURS le jour de semaine réel de dateCourse,
+// même s'il n'a pas d'entrée dans assignment — même principe déjà appliqué
+// à placerCourseIntermediaire (cf. son commentaire : "Ne déplace jamais la
+// date choisie par le coureur, même si elle tombe sur un jour repos... la
+// date est un choix explicite du coureur, elle est respectée telle
+// quelle"). Une entrée 'repos' est créée à la volée si nécessaire, plutôt
+// que de se limiter aux jours déjà présents.
 export function placerSeanceCourse(plan, alluresSec) {
   const derniereSemaine = plan.semaines[plan.semaines.length - 1];
   if (!derniereSemaine) return;
@@ -1676,24 +1637,20 @@ export function placerSeanceCourse(plan, alluresSec) {
   const jsDay = new Date(plan.dateCourse + 'T00:00:00').getDay();
   const jourCourseISO = (jsDay + 6) % 7;
 
-  let dernierJour = derniereSemaine.assignment[jourCourseISO];
-  let jourCourseNum = jourCourseISO;
-
-  if (!dernierJour) {
-    const jours = Object.entries(derniereSemaine.assignment);
-    const derniere = jours[jours.length - 1];
-    if (!derniere) return;
-    jourCourseNum = Number(derniere[0]);
-    dernierJour = derniere[1];
+  // Toujours utiliser le vrai jour de semaine de dateCourse — crée une
+  // entrée 'repos' si ce jour n'était pas un jour entraîné habituel,
+  // plutôt que de replier vers un autre jour de la semaine.
+  if (!derniereSemaine.assignment[jourCourseISO]) {
+    derniereSemaine.assignment[jourCourseISO] = { type: 'repos' };
   }
-  if (!dernierJour) return;
+  const jourCourse = derniereSemaine.assignment[jourCourseISO];
 
   const { sousType, contenu, kmEstime } = genererContenuRace({ distance: plan.distance, alluresSec });
-  dernierJour.type = 'race';
-  dernierJour.sousType = sousType;
-  dernierJour.contenu = contenu;
-  dernierJour.kmEstime = kmEstime;
-  dernierJour.estCourse = true;
+  jourCourse.type = 'race';
+  jourCourse.sousType = sousType;
+  jourCourse.contenu = contenu;
+  jourCourse.kmEstime = kmEstime;
+  jourCourse.estCourse = true;
 }
 
 export function neutraliserJoursApresCourse(plan) {
@@ -2243,22 +2200,6 @@ export function generatePlan(profil, params) {
   neutraliserJoursApresCourse(plan);
   injecterApprocheCourse(plan);
 
-  // Course intermédiaire (cf. inventaire-application.md §16, conçu avec
-  // Laurent) — paramètre optionnel du wizard, jamais modifiable après coup
-  // depuis le dashboard (revirement du 13/08/2026 : la présence d'une
-  // course intermédiaire modifie la STRUCTURE du plan — allègement de sa
-  // semaine, palier de récupération — donc elle doit être un paramètre
-  // d'entrée de generatePlan() comme la date de course finale ou
-  // l'objectif, pas un patch a posteriori sur un plan déjà figé ; toute
-  // modification ultérieure passe par une régénération complète du plan,
-  // exactement comme changer d'objectif ou de date de course).
-  // Placé ici, APRÈS placerSeanceCourse/neutraliserJoursApresCourse/
-  // injecterApprocheCourse : ces trois fonctions ne touchent que la
-  // DERNIÈRE semaine du plan (course finale), donc aucun conflit possible
-  // avec une course intermédiaire placée n'importe où avant cette dernière
-  // semaine. Placé AVANT injecterPourquoiSeance : cette dernière boucle sur
-  // toutes les séances et doit voir estCourseIntermediaire déjà posé pour
-  // l'exclure (comme estCourse, cf. le filtre dans injecterPourquoiSeance).
   if (params.courseIntermediaire?.date && params.courseIntermediaire?.distance) {
     const resultatPlacement = placerCourseIntermediaire(plan, params.courseIntermediaire, allSeconds);
     if (resultatPlacement.warning) {
