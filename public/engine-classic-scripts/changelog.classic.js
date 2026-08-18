@@ -27,7 +27,13 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.45", title:"Décomposition en laps plus fiable, séance de confirmation d'allure clarifiée", current:true, notes:[
+      { ver:"v2.46", title:"Échange de séances par glissement, fiabilité définitive du swap", current:true, notes:[
+        "🖐️ Nouveau : dans le détail d'une semaine, glisse une séance par sa poignée ⠿ jusqu'à un autre jour pour l'échanger directement — un jour de repos peut lui aussi être déplacé",
+        "👆 Le menu \"Déplacer cette séance\" reste disponible via un double tap (ou double-clic), en alternative au glissement",
+        "🔄 Correctif de fond : le système d'échange de séances a été repensé une seconde fois pour ne plus jamais décaler une séance que tu n'as pas touchée, même après plusieurs échanges successifs dans la même semaine",
+        "📱🤖 Sur Android, la bêta précise désormais qu'une adresse Gmail est nécessaire pour installer l'app (règle du Play Store, pas de Yoria) — vérifié avant l'envoi de ta candidature",
+      ]},
+      { ver:"v2.45", title:"Décomposition en laps plus fiable, séance de confirmation d'allure clarifiée", current:false, notes:[
         "🏃 Le détail par répétition d'une séance de qualité s'affiche désormais même si ta montre n'a pas posé de laps manuels distincts — reconstruit automatiquement à partir de la trace complète",
         "⚠️ Un message discret l'indique quand c'est le cas, avec un rappel de comment programmer ta montre pour une décomposition encore plus précise",
         "🎯 Clarifié dans l'aide : la séance de confirmation d'allure (quelques semaines avant ta course) sert à vérifier que tu tiens ton allure objectif, pas à recalculer ton estimation de temps",
