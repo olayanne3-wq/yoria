@@ -6628,16 +6628,90 @@ async function appliquerChangementJoursApp(msgEl, btnAppliquer) {
 // appliquerChangementDateCourse() du wizard — mêmes règles de phase (une
 // Spécifique ne repasse jamais en Construction ; un Affûtage avec
 // décalage ≤1 semaine ne recalcule pas du tout, seule la date change).
-function appliquerReglesPhaseApp(planRegenere, phaseActuelle, semaineCharniere) {
+async function appliquerReglesPhaseApp(planRegenere, phaseActuelle, semaineCharniere) {
   if (phaseActuelle !== "Specifique" && phaseActuelle !== "Affutage") return planRegenere;
   const aUneConstructionApresCharniere = planRegenere.semaines.some(s =>
     s.semaineNum >= semaineCharniere && s.phase === "Construction"
   );
   if (!aUneConstructionApresCharniere) return planRegenere;
-  planRegenere.semaines.forEach(s => {
-    if (s.semaineNum >= semaineCharniere && s.phase === "Construction") s.phase = "Specifique";
-  });
+
+  const semainesRebasculees = planRegenere.semaines.filter(s =>
+    s.semaineNum >= semaineCharniere && s.phase === "Construction"
+  );
+  semainesRebasculees.forEach(s => { s.phase = "Specifique"; });
   planRegenere.phases = planRegenere.phases.map(p => p.nom === "Construction" ? { ...p, nom: "Specifique" } : p);
+
+  // Régénère le contenu qualité des semaines rebasculées avec la rotation
+  // Specifique (allure-course/seuil/i-3min/test selon distance) plutôt que
+  // de laisser le sousType Construction (VMA/seuil-court) déjà assigné —
+  // sinon seule l'étiquette de phase change, le contenu réel reste
+  // incohérent avec elle.
+  if (planRegenere.paramsOrigine && planRegenere.profilOrigine) {
+    const Engine = await chargerPlanGeneratorApp();
+    const alluresSec = Engine.computeAllures({
+      refTimeSeconds: Engine.parseTimeToSeconds(planRegenere.paramsOrigine.tempsReference),
+      refDistanceKm: Engine.KM_BY_DISTANCE[planRegenere.paramsOrigine.refDistance ?? planRegenere.paramsOrigine.distance],
+      objectifTimeSeconds: Engine.parseTimeToSeconds(planRegenere.paramsOrigine.objectif),
+      distanceCibleKm: Engine.KM_BY_DISTANCE[planRegenere.paramsOrigine.distance]
+    });
+    const tempsRef10KSec = Engine.riegelPredict(
+      Engine.parseTimeToSeconds(planRegenere.paramsOrigine.tempsReference),
+      Engine.KM_BY_DISTANCE[planRegenere.paramsOrigine.refDistance ?? planRegenere.paramsOrigine.distance],
+      10
+    );
+    const semainesSpecifiqueTriees = planRegenere.semaines
+      .filter(s => s.phase === "Specifique")
+      .sort((a, b) => a.semaineNum - b.semaineNum);
+
+    for (const semaine of semainesRebasculees) {
+      const semaineDansPhase = semainesSpecifiqueTriees.findIndex(s => s.semaineNum === semaine.semaineNum);
+      let kmQualiteTotal = 0;
+      for (const [jourIndex, seance] of Object.entries(semaine.assignment)) {
+        if (seance.type !== 'qualite') continue;
+        const { sousType, contenu, kmEstime, structureIntervalles } = Engine.genererContenuQualite({
+          distance: planRegenere.paramsOrigine.distance,
+          phase: "Specifique",
+          semaineDansPhase: Math.max(0, semaineDansPhase),
+          indexQualiteSemaine: seance.indexQualite ?? 0,
+          alluresSec,
+          restrictionsAllure: seance.restrictionsAllure,
+          tauxAffutage: semaine.tauxAffutage ?? 1,
+          estDechargeSemaine: semaine.estDechargeSemaine ?? false,
+          niveau: planRegenere.profilOrigine?.niveau,
+          volumeHebdoCibleKm: semaine.volumeCibleKm,
+          tempsRef10KSec
+        });
+        seance.sousType = sousType;
+        seance.contenu = contenu;
+        seance.kmEstime = kmEstime;
+        seance.structureIntervalles = structureIntervalles;
+        kmQualiteTotal += kmEstime;
+      }
+      if (semaine.volumeCibleKm != null) {
+        const nbEF = Object.values(semaine.assignment).filter(s => s.type === 'ef').length;
+        const aLongue = Object.values(semaine.assignment).some(s => s.type === 'longue');
+        const { kmLongue, kmParEF } = Engine.repartirVolumeSemaine({
+          volumeCibleKm: semaine.volumeCibleKm,
+          kmQualiteTotal,
+          nbEF,
+          aLongue,
+          nbJours: Object.keys(semaine.assignment).length
+        });
+        for (const seance of Object.values(semaine.assignment)) {
+          if (seance.type === 'ef') {
+            const { contenu, kmEstime } = Engine.genererContenuEF({ alluresSec, kmCible: kmParEF, role: seance.role === 'recuperation' ? 'recuperation' : 'standard' });
+            seance.contenu = contenu;
+            seance.kmEstime = kmEstime;
+          } else if (seance.type === 'longue') {
+            const { contenu, kmEstime } = Engine.genererContenuLongue({ distance: planRegenere.paramsOrigine.distance, phase: "Specifique", alluresSec, kmCible: kmLongue });
+            seance.contenu = contenu;
+            seance.kmEstime = kmEstime;
+          }
+        }
+      }
+    }
+  }
+
   return planRegenere;
 }
 
@@ -6728,7 +6802,7 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
   // appliquerReglesPhase() doit s'appliquer APRÈS finaliserRegenerationLevier
   // (qui a déjà fusionné les semaines passées) — repasse sur window.__PLAN_BRUT__,
   // seule référence à jour à ce stade.
-  window.__PLAN_BRUT__ = appliquerReglesPhaseApp(window.__PLAN_BRUT__, phaseActuelle, semaineCharniere);
+  window.__PLAN_BRUT__ = await appliquerReglesPhaseApp(window.__PLAN_BRUT__, phaseActuelle, semaineCharniere);
   window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
   PLAN = window.__PLAN_GENERE__;
   ALL_SESSIONS = recalculerAllSessions();
@@ -7173,9 +7247,25 @@ function renderModifierPlanAccordeon() {
   // sous-titre listant les leviers pour comprendre le contenu même
   // fermé. Justifié par la nature différente de ce groupe : une ACTION
   // sur le plan actif, pas une simple consultation.
+  //
+  // position:sticky (18/08/2026, demande de Laurent) — reste visible en
+  // scrollant dans la liste des semaines, plutôt que de disparaître dès
+  // qu'on descend. top:52px pour se caler juste sous le header sticky de
+  // l'écran (titre "Semaines" + bouton retour, cf. hdr dans render() plus
+  // bas, z-index 10) — 52px correspond à sa hauteur réelle (padding
+  // 12px+10px + une ligne de texte ~30px). z-index 9 (juste sous le
+  // header, jamais dessus) pour qu'aucun chevauchement visuel ne se
+  // produise si les deux se touchent pendant le scroll. Seul le CONTENEUR
+  // GLOBAL (entête + carte) est sticky, pas le contenu déplié des leviers
+  // eux-mêmes : un levier ouvert avec plusieurs champs resterait sinon
+  // coincé en haut d'écran sur un petit mobile, hors de proportion avec
+  // l'espace disponible.
   const entete = el("button",{style:{
     all:"unset",boxSizing:"border-box",cursor:"pointer",width:"100%",
-    display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px"
+    display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px",
+    position:"sticky",top:"52px",zIndex:"9",
+    background:"var(--bg)",borderRadius:"14px 14px 0 0",
+    boxShadow:"0 1px 0 rgba(var(--accent-rgb),0.35)"
   }},
     el("span",{style:{fontSize:"22px"}},"📝"),
     el("div",{style:{flex:"1"}},
