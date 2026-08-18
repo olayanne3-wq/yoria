@@ -6331,6 +6331,27 @@ async function chargerPlanGeneratorApp() {
 let ouvertModifierPlan = false; // état du groupe accordéon lui-même
 let levierPlanOuvert = null;    // quel levier interne est ouvert ("volume", etc.), un seul à la fois
 
+// Fermeture automatique de l'accordéon au scroll vers le bas (18/08/2026,
+// demande de Laurent) — l'en-tête étant désormais position:fixed en
+// permanence (cf. renderModifierPlanAccordeon), il resterait sinon ouvert
+// et visible en continu pendant que l'utilisateur consulte ses semaines
+// plus bas, prenant de la place inutilement. Écouteur ajouté UNE SEULE
+// FOIS au chargement (pas à chaque render(), qui provoquerait une
+// accumulation de listeners identiques) — sa logique interne vérifie à
+// chaque scroll si on est bien sur l'onglet Semaines et si l'accordéon est
+// ouvert, plutôt que d'ajouter/retirer le listener à chaque changement
+// d'onglet.
+let _dernierScrollYAccordeonPlan = 0;
+window.addEventListener("scroll", () => {
+  if (view !== "weeks" || !ouvertModifierPlan) { _dernierScrollYAccordeonPlan = window.scrollY; return; }
+  if (window.scrollY > _dernierScrollYAccordeonPlan + 4) { // petit seuil anti-bruit (tremblement tactile)
+    ouvertModifierPlan = false;
+    levierPlanOuvert = null;
+    render();
+  }
+  _dernierScrollYAccordeonPlan = window.scrollY;
+}, {passive:true});
+
 // Portée telle quelle depuis public/v2/index.html (fonction autonome, ne
 // dépend que du plan passé en paramètre) — calcule la première semaine
 // non entièrement passée, point de départ de toute application "à partir
@@ -7563,7 +7584,16 @@ function renderModifierPlanAccordeon() {
   );
   entete.addEventListener("click", () => {
     ouvertModifierPlan = !ouvertModifierPlan;
-    if (!ouvertModifierPlan) levierPlanOuvert = null; // referme aussi tout levier interne resté ouvert
+    if (!ouvertModifierPlan) {
+      levierPlanOuvert = null; // referme aussi tout levier interne resté ouvert
+    } else {
+      // Scroll en haut à l'ouverture (18/08/2026, demande de Laurent) —
+      // sinon le contenu déplié (juste sous l'en-tête fixe) apparaît hors
+      // champ si l'utilisateur était déjà scrollé bas dans la liste des
+      // semaines. instant (pas smooth) : cohérent avec les autres scrolls
+      // de navigation déjà en place dans l'app (cf. setView()).
+      window.scrollTo({top:0, behavior:"instant"});
+    }
     render();
   });
 
