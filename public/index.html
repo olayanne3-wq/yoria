@@ -6409,6 +6409,14 @@ async function finaliserRegenerationLevier(planBrut, nouveauxParams, profilPourG
   planPropre.paramsOrigine = { ...paramsSansCharniere, volumeActuel: planBrut.paramsOrigine.volumeActuel };
   if (planBrut.volumeCourant) planPropre.volumeCourant = planBrut.volumeCourant;
 
+  // Corrige un éventuel retour de phase (Specifique/Affutage -> Construction)
+  // introduit par la fusion ci-dessus — cf. commentaire détaillé sur
+  // appliquerReglesPhaseApp. Calculé ici (point commun à TOUS les leviers)
+  // plutôt que par chaque appelant : un levier Volume ou Jours peut tout
+  // autant désaligner les frontières de phase qu'un levier Date de course.
+  const phaseActuelle = planBrut.semaines.find(s => s.semaineNum === semaineCharniere - 1)?.phase ?? null;
+  planPropre = await appliquerReglesPhaseApp(planPropre, phaseActuelle, semaineCharniere);
+
   try {
     await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
   } catch (e) {
@@ -6799,12 +6807,9 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
     btnAppliquer.disabled = false;
     return;
   }
-  // appliquerReglesPhase() doit s'appliquer APRÈS finaliserRegenerationLevier
-  // (qui a déjà fusionné les semaines passées) — repasse sur window.__PLAN_BRUT__,
-  // seule référence à jour à ce stade.
-  window.__PLAN_BRUT__ = await appliquerReglesPhaseApp(window.__PLAN_BRUT__, phaseActuelle, semaineCharniere);
-  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
-  PLAN = window.__PLAN_GENERE__;
+  // appliquerReglesPhaseApp() est désormais appelée à l'intérieur de
+  // finaliserRegenerationLevier (18/08/2026, cf. son commentaire) — point
+  // commun à tous les leviers, plus la peine de la rappeler ici.
   ALL_SESSIONS = recalculerAllSessions();
   msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
   msgEl.style.color = "var(--accent2)";
