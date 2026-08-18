@@ -6451,19 +6451,42 @@ function renderLevierVolume() {
   return el("div",{}, entete, corps);
 }
 
+// Levier "à venir" — placeholder visuel pour un levier pas encore porté
+// depuis le wizard (cf. mémoire de session pour l'état d'avancement réel).
+// Grisé et non cliquable plutôt qu'absent : rend visible ce qui arrive,
+// sans risquer une confusion avec une vraie action désactivée par erreur.
+function renderLevierAVenir(icone, label) {
+  return el("div",{style:{
+    padding:"10px 4px",display:"flex",alignItems:"center",justifyContent:"space-between",
+    fontSize:"13px",color:"var(--text-muted)",opacity:"0.55",borderTop:"1px solid var(--border-soft)"
+  }},
+    el("span",{},icone+" "+label),
+    el("span",{style:{fontSize:"11px",fontStyle:"italic"}},"Bientôt")
+  );
+}
+
 function renderModifierPlanAccordeon() {
   // Rien à modifier sans plan brut chargé (ex. ancien plan sauvegardé
   // avant paramsOrigine/profilOrigine) — groupe entier omis plutôt
   // qu'affiché vide, même principe que renderGroupeAccordeonStats.
   if (!window.__PLAN_BRUT__?.profilOrigine || !window.__PLAN_BRUT__?.paramsOrigine) return null;
 
-  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",marginLeft:"auto",transition:"transform 0.15s",transform:ouvertModifierPlan?"rotate(90deg)":"rotate(0deg)"}},"›");
+  const chevron = el("span",{style:{fontSize:"18px",color:"var(--accent)",marginLeft:"auto",transition:"transform 0.15s",transform:ouvertModifierPlan?"rotate(90deg)":"rotate(0deg)"}},"›");
+  // En-tête volontairement plus visible qu'un groupe Réglages/Stats
+  // classique (18/08/2026, retour de Laurent : "peu visible") — cadre en
+  // carte avec fond/bordure teintés accent, icône et libellé agrandis,
+  // sous-titre listant les leviers pour comprendre le contenu même
+  // fermé. Justifié par la nature différente de ce groupe : une ACTION
+  // sur le plan actif, pas une simple consultation.
   const entete = el("button",{style:{
     all:"unset",boxSizing:"border-box",cursor:"pointer",width:"100%",
-    display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px",paddingBottom:"8px"
+    display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px"
   }},
-    el("span",{style:{fontSize:"15px"}},"📝"),
-    el("span",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)"}},"Modifier mon plan"),
+    el("span",{style:{fontSize:"22px"}},"📝"),
+    el("div",{style:{flex:"1"}},
+      el("div",{style:{fontSize:"15px",fontWeight:"700",color:"var(--text)"}},"Modifier mon plan"),
+      el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginTop:"1px"}},"Objectif, jours, volume, date de course…")
+    ),
     chevron
   );
   entete.addEventListener("click", () => {
@@ -6472,16 +6495,19 @@ function renderModifierPlanAccordeon() {
     render();
   });
 
-  const contenu = ouvertModifierPlan ? el("div",{style:{marginTop:"10px"}},
-    renderLevierVolume()
-    // Objectif / Jours / Date de course / Course intermédiaire : pas
-    // encore portés (restent dans le wizard uniquement) — cf. mémoire de
-    // session pour l'état d'avancement réel.
+  const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
+    renderLevierVolume(),
+    renderLevierAVenir("🎯","Objectif de temps"),
+    renderLevierAVenir("📅","Jours d'entraînement"),
+    renderLevierAVenir("📆","Date de course"),
+    renderLevierAVenir("🏃","Course intermédiaire")
   ) : null;
 
-  return el("div",{style:{marginBottom:"14px"}},
+  return el("div",{style:{
+    marginBottom:"14px",borderRadius:"14px",border:"1px solid rgba(var(--accent-rgb),0.35)",
+    background:"rgba(var(--accent-rgb),0.06)",overflow:"hidden"
+  }},
     entete,
-    el("div",{style:{height:"1px",background:"var(--accent)",opacity:"0.4"}}),
     contenu
   );
 }
@@ -13405,7 +13431,22 @@ function setView(v) {
   // un utilisateur qui rouvre l'aide plus tard ne doit pas retrouver une
   // recherche ou des sections restées ouvertes d'une visite précédente.
   if (v === "help") { _helpSectionsOuvertes = new Set(); _helpRecherche = ""; _helpTutoOuvert = null; _helpOngletActif = "aide"; }
+  // Centrage automatique sur la semaine actuelle (31/07/2026, demande de
+  // Laurent) — déplacé ici depuis render() le 18/08/2026 (bug signalé par
+  // Laurent : cliquer l'accordéon "Modifier mon plan" appelle render() sans
+  // changer d'onglet, ce qui redéclenchait le scroll à chaque clic et
+  // ramenait l'utilisateur loin du levier qu'il venait d'ouvrir). Ne se
+  // déclenche donc plus que sur une vraie ARRIVÉE sur l'onglet Semaines
+  // (view !== "weeks" avant ce setView), jamais sur un simple re-render
+  // pendant qu'on y est déjà.
+  const arriveeSurWeeks = (v === "weeks" && view !== "weeks");
   view=v; render();
+  if (arriveeSurWeeks) {
+    const carteSemaineActuelle = document.getElementById("carte-semaine-"+currentWeek());
+    if (carteSemaineActuelle) {
+      carteSemaineActuelle.scrollIntoView({ block:"center", behavior:"instant" });
+    }
+  }
   // Fetcher les météos historiques manquantes pour les séances avec Strava
   if (v==="weekDetail") {
     const week = PLAN.find(w=>w.week===selectedWeek);
@@ -13725,20 +13766,10 @@ function render() {
   // opération qui touche réellement le DOM affiché, en une fois.
   app.replaceChildren(...(hdr ? [hdr] : []), content);
 
-  // Centrage automatique sur la semaine actuelle à l'ouverture de l'onglet
-  // Semaines (31/07/2026, demande de Laurent) — instantané, cohérent avec
-  // le comportement déjà choisi pour le scroll vers une carte de séance
-  // (cf. renderGrilleJoursSemaine). currentWeek() plutôt que selectedWeek :
-  // ce dernier peut valoir une AUTRE semaine si l'utilisateur revient sur
-  // cet onglet après avoir consulté weekDetail sans repasser par la nav
-  // (ex. bouton retour du navigateur) — currentWeek() reste toujours la
-  // vraie semaine calendaire actuelle, peu importe la navigation.
-  if (vueEffective === "weeks") {
-    const carteSemaineActuelle = document.getElementById("carte-semaine-"+currentWeek());
-    if (carteSemaineActuelle) {
-      carteSemaineActuelle.scrollIntoView({ block:"center", behavior:"instant" });
-    }
-  }
+  // Centrage automatique sur la semaine actuelle : déplacé dans setView()
+  // (18/08/2026, cf. son commentaire) — ne doit se déclencher qu'à une
+  // vraie arrivée sur l'onglet Semaines, jamais à chaque render() sur cet
+  // onglet (ex. clic sur l'accordéon "Modifier mon plan").
 
   // Nav montée dans un conteneur séparé de #app (24/07/2026, correctif
   // flash) — avant, nav était un enfant de #app, donc détruite par
