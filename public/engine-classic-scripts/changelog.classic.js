@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.46", title:"Échange de séances par glissement, fiabilité définitive du swap", current:true, notes:[
+      { ver:"v2.47", title:"Modifier mon plan directement depuis Semaines, toujours accessible", current:true, notes:[
+        "📝 Nouveau : modifie ton objectif, tes jours, ton volume, ta date de course ou ajoute une course intermédiaire directement depuis l'onglet Semaines — plus besoin de repasser par le wizard",
+        "📌 Cet accès reste visible en permanence en haut de l'écran, même en faisant défiler tes semaines",
+        "🎯 Même principe que dans le wizard : simulation avant application, ta semaine en cours n'est jamais modifiée",
+      ]},
+      { ver:"v2.46", title:"Échange de séances par glissement, fiabilité définitive du swap", current:false, notes:[
         "🖐️ Nouveau : dans le détail d'une semaine, glisse une séance par sa poignée ⠿ jusqu'à un autre jour pour l'échanger directement — un jour de repos peut lui aussi être déplacé",
         "👆 Le menu \"Déplacer cette séance\" reste disponible via un double tap (ou double-clic), en alternative au glissement",
         "🔄 Correctif de fond : le système d'échange de séances a été repensé une seconde fois pour ne plus jamais décaler une séance que tu n'as pas touchée, même après plusieurs échanges successifs dans la même semaine",
