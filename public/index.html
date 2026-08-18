@@ -7546,7 +7546,7 @@ function renderModifierPlanAccordeon() {
   const entete = el("button",{style:{
     all:"unset",boxSizing:"border-box",cursor:"pointer",width:"100%",
     display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px",
-    position:"sticky",top:"52px",zIndex:"9",
+    position:"sticky",top:"var(--hauteur-header-sticky, 60px)",zIndex:"9",
     background:"var(--bg)",borderRadius:"14px 14px 0 0",
     boxShadow:"0 1px 0 rgba(var(--accent-rgb),0.35)"
   }},
@@ -14792,7 +14792,7 @@ function render() {
     : vueEffective==="help" && _helpOngletActif === "tutos"
     ? "Tutos"
     : titles.help;
-  const hdr = vueEffective==="dashboard" ? null : el("div",{style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(var(--bg-rgb),0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid var(--border)",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
+  const hdr = vueEffective==="dashboard" ? null : el("div",{id:"hdr-sticky-principal",style:{position:"sticky",top:"0",zIndex:"10",background:"rgba(var(--bg-rgb),0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid var(--border)",padding:"12px 16px 10px",display:"flex",alignItems:"center",gap:"8px"}},
     backBtn||"",
     runByLeaIcon(24, 6),
     el("div",{style:{flex:"1"}},
@@ -14914,6 +14914,20 @@ function render() {
   // app.innerHTML="" séparé en amont, ce replaceChildren() est la SEULE
   // opération qui touche réellement le DOM affiché, en une fois.
   app.replaceChildren(...(hdr ? [hdr] : []), content);
+
+  // Mesure réelle du header sticky (18/08/2026, correctif) — remplace une
+  // estimation manuelle en pixels (52px) qui s'est révélée trop basse en
+  // pratique (padding + icône + titre + badge countdown dépassent cette
+  // valeur), ce qui cachait l'entête sticky "Modifier mon plan" SOUS le
+  // vrai header (z-index supérieur) au lieu de la laisser apparaître juste
+  // en dessous. getBoundingClientRect().height (pas offsetHeight) pour
+  // capturer une hauteur sous-pixel exacte. Si hdr est absent (vue
+  // dashboard), la variable garde sa dernière valeur connue — sans
+  // conséquence, aucun sticky secondaire n'existe sur cette vue.
+  const hdrReel = document.getElementById("hdr-sticky-principal");
+  if (hdrReel) {
+    document.documentElement.style.setProperty("--hauteur-header-sticky", hdrReel.getBoundingClientRect().height + "px");
+  }
 
   // Centrage automatique sur la semaine actuelle : déplacé dans setView()
   // (18/08/2026, cf. son commentaire) — ne doit se déclencher qu'à une
