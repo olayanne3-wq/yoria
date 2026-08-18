@@ -6270,10 +6270,227 @@ function renderGrilleJoursSemaine(week) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MODIFIER MON PLAN — accordéon en tête de l'onglet Semaines (18/08/2026,
+// direction validée avec Laurent : porte ici les leviers du wizard
+// public/v2/index.html, écran résultat step 10, qui restent la SEULE
+// source de vérité tant que ce portage n'est pas terminé pour tous les
+// leviers — cf. mémoire de session). Même mécanisme visuel que
+// renderGroupeAccordeonStats (Réglages/Stats) : icône + titre + chevron +
+// trait de couleur, replié par défaut, contenu construit uniquement à
+// l'ouverture.
+//
+// Premier levier porté : Volume. Les 4 autres (Objectif/Jours/Date
+// course/Course intermédiaire) restent à porter selon le même patron —
+// cf. mémoire de session pour l'état d'avancement réel (jamais consigné
+// ici, cf. inventaire-application.md §16 comme seule source de vérité
+// sur l'avancement).
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Import dynamique mis en cache (même pattern que _fitParserModule/
+// _planGeneratorModule côté wizard) — chargé seulement au premier besoin
+// réel (ouverture du levier Volume), pas au chargement de l'app : aucune
+// régénération de plan n'est nécessaire tant que ce groupe reste fermé.
+let _planGeneratorModuleApp = null;
+async function chargerPlanGeneratorApp() {
+  if (!_planGeneratorModuleApp) {
+    _planGeneratorModuleApp = await import("/v2/engine/plan-generator.js");
+  }
+  return _planGeneratorModuleApp;
+}
+
+let ouvertModifierPlan = false; // état du groupe accordéon lui-même
+let levierPlanOuvert = null;    // quel levier interne est ouvert ("volume", etc.), un seul à la fois
+
+// Portée telle quelle depuis public/v2/index.html (fonction autonome, ne
+// dépend que du plan passé en paramètre) — calcule la première semaine
+// non entièrement passée, point de départ de toute application "à partir
+// de la semaine prochaine".
+function semaineActuelleOuProchaineApp(plan) {
+  if (!plan?.dateDebut || !plan.semaines?.length) return plan?.semaines?.[0]?.semaineNum ?? 1;
+  const aujourdhui = new Date();
+  const aujourdhuiStr = new Date(Date.UTC(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate())).toISOString().slice(0,10);
+  const debut = new Date(plan.dateDebut + 'T00:00:00Z');
+  if (aujourdhuiStr < plan.dateDebut) return plan.semaines[0].semaineNum;
+  for (const semaine of plan.semaines) {
+    const finSemaine = new Date(debut);
+    finSemaine.setUTCDate(debut.getUTCDate() + (semaine.semaineNum - plan.semaines[0].semaineNum) * 7 + 6);
+    if (aujourdhuiStr <= finSemaine.toISOString().slice(0,10)) return semaine.semaineNum;
+  }
+  return plan.semaines[plan.semaines.length - 1].semaineNum;
+}
+
+// Applique le nouveau volume à partir de la semaine prochaine — même
+// logique et mêmes garde-fous qu'appliquerChangementVolume() côté wizard
+// (cf. mémoire de session pour l'historique des correctifs qui ont
+// façonné cette fonction, notamment semaineDepartVolume et
+// plan.volumeCourant) — adaptée ici pour lire/écrire PLAN (format v1,
+// affiché) et window.__PLAN_BRUT__ (format v2, seul format que le moteur
+// sait régénérer) plutôt que dernierPlanGenere (variable propre au
+// wizard, absente ici), et pour persister via LkSync.mettreAJourPlanSupabase
+// (même mécanisme déjà utilisé par les allures dynamiques, cf.
+// architecture-generale.md) plutôt que assurerPlanExiste (réservé à la
+// création initiale d'un plan, pas à sa modification).
+async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
+    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+  if (!nouveauVolume || nouveauVolume <= 0) {
+    msgEl.textContent = "Renseigne un volume valide.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const Engine = await chargerPlanGeneratorApp();
+  const texteOriginal = btnAppliquer.textContent;
+  btnAppliquer.textContent = "Application…";
+  btnAppliquer.disabled = true;
+
+  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut) + 1;
+  const nouveauxParams = { ...planBrut.paramsOrigine, volumeActuel: nouveauVolume, semaineDepartVolume: semaineCharniere };
+  let planPropre;
+  try {
+    planPropre = Engine.generatePlan(planBrut.profilOrigine, nouveauxParams);
+  } catch (e) {
+    msgEl.textContent = "Erreur de régénération : " + e.message;
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+  if (planPropre?.planInvalide) {
+    msgEl.textContent = planPropre.message ?? "Ce plan ne peut pas être régénéré avec ce volume.";
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+
+  // Semaines déjà passées (avant la charnière) : conservées TELLES QUELLES
+  // depuis le plan actuel, jamais recalculées — même principe que
+  // lancerAnalyseAdaptation()/appliquerChangementVolume() côté wizard.
+  planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
+    if (semaineNouvelle.semaineNum < semaineCharniere) {
+      const semaineAncienne = planBrut.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
+      return semaineAncienne || semaineNouvelle;
+    }
+    return semaineNouvelle;
+  });
+
+  planPropre.id = planBrut.id;
+  planPropre.nom = planBrut.nom;
+  planPropre.statuses = planBrut.statuses;
+  planPropre.profilOrigine = planBrut.profilOrigine;
+  // semaineDepartVolume ne doit JAMAIS rester dans paramsOrigine au-delà de
+  // cette régénération — cf. mémoire de session (bug déjà rencontré et
+  // corrigé côté wizard le 06/08 : EF/longue tombant à 0min pour toute
+  // régénération future si ce paramètre transitoire restait "collé").
+  const { semaineDepartVolume, ...paramsSansCharniere } = nouveauxParams;
+  planPropre.paramsOrigine = paramsSansCharniere;
+  // Préserve la dernière intention réelle de volume, distincte du volume
+  // de départ historique — cf. mémoire de session, même raisonnement que
+  // le wizard.
+  planPropre.volumeCourant = { km: nouveauVolume, semaineNum: semaineCharniere };
+
+  try {
+    await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
+  } catch (e) {
+    msgEl.textContent = "Régénéré mais sauvegarde échouée : " + e.message;
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+
+  window.__PLAN_BRUT__ = planPropre;
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planPropre);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+  msgEl.textContent = "✅ Volume mis à jour à partir de la semaine prochaine.";
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
+function renderLevierVolume() {
+  const planBrut = window.__PLAN_BRUT__;
+  const ouvert = levierPlanOuvert === "volume";
+  const valeurInitiale = planBrut?.volumeCourant?.km ?? planBrut?.paramsOrigine?.volumeActuel ?? "";
+
+  const input = el("input",{type:"number",placeholder:"Volume de départ (km)",value:String(valeurInitiale),style:{
+    width:"100%",marginTop:"8px",padding:"10px 12px",borderRadius:"8px",border:"1px solid var(--border)",
+    background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"14px",fontFamily:"inherit"
+  }});
+  const msgEl = el("div",{style:{marginTop:"6px",fontSize:"13px"}});
+  const btnAppliquer = el("button",{style:{
+    marginTop:"10px",width:"100%",padding:"10px",borderRadius:"8px",border:"none",
+    background:"var(--accent)",color:"var(--bg)",fontSize:"13px",fontWeight:"700",cursor:"pointer"
+  }},"Appliquer à partir de la semaine prochaine");
+  btnAppliquer.addEventListener("click", () => {
+    const nouveauVolume = parseFloat(input.value);
+    appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer);
+  });
+
+  const corps = el("div",{style:{display:ouvert?"block":"none",padding:"0 4px 14px"}},
+    el("p",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Change ton volume de départ à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas."),
+    input, btnAppliquer, msgEl
+  );
+
+  const chevron = el("span",{style:{fontSize:"11px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
+    el("span",{},"📊 Volume (km/semaine)"), chevron
+  );
+  entete.addEventListener("click", () => {
+    levierPlanOuvert = (levierPlanOuvert === "volume") ? null : "volume";
+    render();
+  });
+
+  return el("div",{}, entete, corps);
+}
+
+function renderModifierPlanAccordeon() {
+  // Rien à modifier sans plan brut chargé (ex. ancien plan sauvegardé
+  // avant paramsOrigine/profilOrigine) — groupe entier omis plutôt
+  // qu'affiché vide, même principe que renderGroupeAccordeonStats.
+  if (!window.__PLAN_BRUT__?.profilOrigine || !window.__PLAN_BRUT__?.paramsOrigine) return null;
+
+  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",marginLeft:"auto",transition:"transform 0.15s",transform:ouvertModifierPlan?"rotate(90deg)":"rotate(0deg)"}},"›");
+  const entete = el("button",{style:{
+    all:"unset",boxSizing:"border-box",cursor:"pointer",width:"100%",
+    display:"flex",alignItems:"center",gap:"8px",marginBottom:"4px",paddingBottom:"8px"
+  }},
+    el("span",{style:{fontSize:"15px"}},"📝"),
+    el("span",{style:{fontSize:"13px",fontWeight:"600",color:"var(--text)"}},"Modifier mon plan"),
+    chevron
+  );
+  entete.addEventListener("click", () => {
+    ouvertModifierPlan = !ouvertModifierPlan;
+    if (!ouvertModifierPlan) levierPlanOuvert = null; // referme aussi tout levier interne resté ouvert
+    render();
+  });
+
+  const contenu = ouvertModifierPlan ? el("div",{style:{marginTop:"10px"}},
+    renderLevierVolume()
+    // Objectif / Jours / Date de course / Course intermédiaire : pas
+    // encore portés (restent dans le wizard uniquement) — cf. mémoire de
+    // session pour l'état d'avancement réel.
+  ) : null;
+
+  return el("div",{style:{marginBottom:"14px"}},
+    entete,
+    el("div",{style:{height:"1px",background:"var(--accent)",opacity:"0.4"}}),
+    contenu
+  );
+}
+
 function renderWeeks() {
   const cw=currentWeek();
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"var(--text2)",fontSize:"14px"}},"Semaine actuelle : ",el("span",{style:{color:"var(--accent)",fontWeight:"700"}},"S"+cw)),
+    renderModifierPlanAccordeon(),
     ...PLAN.map(week=>{
       const pct=weekPct(week), isActive=week.week===cw, color=phaseOf(week.week).color, decharge=estSemaineDecharge(week.week);
       const entete=el("button",{style:{all:"unset",boxSizing:"border-box",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",width:"100%",marginBottom:"4px"}},
