@@ -397,6 +397,7 @@ window._masquerEcranChargement = function() {
 })();
 </script>
 <div id="app"></div>
+<div id="accordeon-plan-root"></div>
 <div id="nav-root"></div>
 
 <!-- ============================================================
@@ -7531,24 +7532,27 @@ function renderModifierPlanAccordeon() {
   // fermé. Justifié par la nature différente de ce groupe : une ACTION
   // sur le plan actif, pas une simple consultation.
   //
-  // position:sticky (18/08/2026, demande de Laurent) — reste visible en
-  // scrollant dans la liste des semaines, plutôt que de disparaître dès
-  // qu'on descend. top:52px pour se caler juste sous le header sticky de
-  // l'écran (titre "Semaines" + bouton retour, cf. hdr dans render() plus
-  // bas, z-index 10) — 52px correspond à sa hauteur réelle (padding
-  // 12px+10px + une ligne de texte ~30px). z-index 9 (juste sous le
-  // header, jamais dessus) pour qu'aucun chevauchement visuel ne se
-  // produise si les deux se touchent pendant le scroll. Seul le CONTENEUR
-  // GLOBAL (entête + carte) est sticky, pas le contenu déplié des leviers
-  // eux-mêmes : un levier ouvert avec plusieurs champs resterait sinon
-  // coincé en haut d'écran sur un petit mobile, hors de proportion avec
-  // l'espace disponible.
+  // position:fixed (18/08/2026, demande explicite de Laurent : "toujours en
+  // haut de l'écran, même quand on scroll jusqu'en bas") — pas juste
+  // sticky (qui ne colle que pendant que son propre conteneur défile) :
+  // fixed l'ancre définitivement à l'écran, monté dans #accordeon-plan-root
+  // (en dehors de #app, même pattern que la nav fixe du bas) pour ne
+  // jamais être détruit/recréé par le cycle de render(). top calé sur
+  // --hauteur-header-sticky, mesurée dynamiquement (cf. render()) plutôt
+  // qu'une valeur en dur devinée — un ancien correctif (52px en dur)
+  // s'était révélé faux et cachait l'entête sous le vrai header. left:50%
+  // + transform + maxWidth:430px : même technique de centrage que la nav
+  // fixe du bas, cohérente avec le layout mobile de l'app.
   const entete = el("button",{style:{
-    all:"unset",boxSizing:"border-box",cursor:"pointer",width:"100%",
+    all:"unset",boxSizing:"border-box",cursor:"pointer",
+    position:"fixed",top:"var(--hauteur-header-sticky, 60px)",left:"50%",
+    transform:"translateX(-50%)",width:"100%",maxWidth:"430px",zIndex:"9",
     display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px",
-    position:"sticky",top:"var(--hauteur-header-sticky, 60px)",zIndex:"9",
-    background:"var(--bg)",borderRadius:"14px 14px 0 0",
-    boxShadow:"0 1px 0 rgba(var(--accent-rgb),0.35)"
+    background:"var(--bg)",borderRadius:"0 0 14px 14px",
+    borderLeft:"1px solid rgba(var(--accent-rgb),0.35)",
+    borderRight:"1px solid rgba(var(--accent-rgb),0.35)",
+    borderBottom:"1px solid rgba(var(--accent-rgb),0.35)",
+    boxShadow:"0 2px 6px var(--shadow2)"
   }},
     el("span",{style:{fontSize:"22px"}},"📝"),
     el("div",{style:{flex:"1"}},
@@ -7563,28 +7567,40 @@ function renderModifierPlanAccordeon() {
     render();
   });
 
-  const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
-    renderLevierObjectif(),
-    renderLevierJours(),
-    renderLevierVolume(),
-    renderLevierDateCourse(),
-    renderLevierCourseIntermediaire()
-  ) : null;
+  return entete;
+}
+
+// Contenu déplié de l'accordéon "Modifier mon plan" (18/08/2026) — séparé
+// de l'en-tête (désormais position:fixed en permanence, cf.
+// renderModifierPlanAccordeon) : ce contenu, lui, reste dans le flux
+// normal de la page pour ne jamais rester figé en haut d'écran quand un
+// levier est ouvert (un levier avec plusieurs champs serait hors de
+// proportion en fixed sur un petit mobile). Rendu juste après l'espace
+// compensatoire de l'en-tête fixe, dans renderWeeks().
+function renderContenuAccordeonPlan() {
+  if (!ouvertModifierPlan) return null;
+  if (!window.__PLAN_BRUT__?.profilOrigine || !window.__PLAN_BRUT__?.paramsOrigine) return null;
 
   return el("div",{style:{
-    marginBottom:"14px",borderRadius:"14px",border:"1px solid rgba(var(--accent-rgb),0.35)",
-    background:"rgba(var(--accent-rgb),0.06)"
+    marginBottom:"14px",marginTop:"-14px",borderRadius:"0 0 14px 14px",
+    border:"1px solid rgba(var(--accent-rgb),0.35)",borderTop:"none",
+    background:"rgba(var(--accent-rgb),0.06)",overflow:"hidden"
   }},
-    entete,
-    contenu ? el("div",{style:{borderRadius:"0 0 14px 14px",overflow:"hidden"}}, contenu) : null
+    el("div",{style:{padding:"0 16px 14px"}},
+      renderLevierObjectif(),
+      renderLevierJours(),
+      renderLevierVolume(),
+      renderLevierDateCourse(),
+      renderLevierCourseIntermediaire()
+    )
   );
 }
 
 function renderWeeks() {
   const cw=currentWeek();
-  return el("div",{style:{padding:"0 16px 100px"}},
+  return el("div",{style:{padding:"0 16px 100px",paddingTop:"var(--hauteur-accordeon-plan-ferme, 56px)"}},
     el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"var(--text2)",fontSize:"14px"}},"Semaine actuelle : ",el("span",{style:{color:"var(--accent)",fontWeight:"700"}},"S"+cw)),
-    renderModifierPlanAccordeon(),
+    renderContenuAccordeonPlan(),
     ...PLAN.map(week=>{
       const pct=weekPct(week), isActive=week.week===cw, color=phaseOf(week.week).color, decharge=estSemaineDecharge(week.week);
       const entete=el("button",{style:{all:"unset",boxSizing:"border-box",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",width:"100%",marginBottom:"4px"}},
@@ -14942,6 +14958,24 @@ function render() {
   // jamais vidé par innerHTML="" — replaceChildren() remplace son unique
   // enfant de façon atomique (pas de frame intermédiaire vide).
   document.getElementById("nav-root").replaceChildren(nav);
+
+  // En-tête fixe de l'accordéon "Modifier mon plan" (18/08/2026, demande
+  // explicite de Laurent : "toujours en haut de l'écran, même en scrollant
+  // jusqu'en bas") — montée dans son propre conteneur, même raisonnement
+  // que nav-root ci-dessus (jamais détruite par le cycle de render()).
+  // Uniquement sur l'onglet Semaines : vidé (replaceChildren() sans
+  // argument) sur toute autre vue, sinon l'en-tête resterait affichée par-
+  // dessus un écran auquel elle n'appartient pas.
+  const accordeonPlanRoot = document.getElementById("accordeon-plan-root");
+  if (vueEffective === "weeks") {
+    const accordeonPlanEntete = renderModifierPlanAccordeon();
+    accordeonPlanRoot.replaceChildren(...(accordeonPlanEntete ? [accordeonPlanEntete] : []));
+    if (accordeonPlanEntete) {
+      document.documentElement.style.setProperty("--hauteur-accordeon-plan-ferme", (accordeonPlanEntete.getBoundingClientRect().height + 8) + "px");
+    }
+  } else {
+    accordeonPlanRoot.replaceChildren();
+  }
 
   // Swipe horizontal entre onglets principaux (24/07/2026) — limité aux
   // vues présentes dans NAV (pas weekDetail, pas help : éviter toute
