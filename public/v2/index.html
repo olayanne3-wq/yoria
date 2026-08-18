@@ -203,7 +203,7 @@
 
   .content{
     flex:1;
-    padding:14px 20px 130px 20px;
+    padding:14px 20px 32px 20px;
     overflow-y:auto;
   }
   .eyebrow{
@@ -1793,8 +1793,19 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
       <div class="block-label" style="margin-top:20px;">Allures et FC par zone</div>
       <div class="bib" id="resAllures"></div>
 
-      <div class="block-label" style="margin-top:20px;">Plan complet</div>
-      <div id="resPlanComplet"></div>
+      <!-- Bloc "Plan complet" (semaine par semaine, renderSemaineHtml)
+           retiré le 18/08/2026 (demande Laurent, audit UX) — ce rendu
+           dupliquait un second système de visualisation du plan,
+           différent de celui de l'app principale (renderWeekDetail/
+           cartes, index.html), créant une rupture visuelle juste après
+           la génération. Le bouton "Terminer" (flèche →, en haut via
+           nextBtn/.step-nav, toujours visible) sauvegarde déjà le plan
+           puis redirige vers l'app (cf. nextStep()) — c'est là que la
+           consultation réelle doit avoir lieu, avec le bon visuel.
+           dernierPlanGenere reste utilisé par rafraichirPlanComplet()
+           (accordéon "Modifier mon plan" ci-dessus, simulation live) —
+           seul l'AFFICHAGE du plan complet est retiré, pas le calcul. -->
+      <p class="sub" style="margin-top:20px; text-align:center;">Ton plan est prêt — clique sur → en haut pour le retrouver dans l'appli.</p>
     </div>
 
   </div>
@@ -2969,6 +2980,13 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
   }
 
   function rafraichirPlanComplet() {
+    // #resPlanComplet retiré du DOM le 18/08/2026 (cf. commentaire sur
+    // l'écran résultat, ~ligne 1793) — le rendu semaine par semaine du
+    // wizard n'est plus affiché, la consultation réelle se fait dans
+    // l'app après le bouton "Terminer". Retour anticipé plutôt que
+    // suppression des 3 appels existants : garde la fonction inoffensive
+    // sans toucher à leurs points d'appel.
+    if (!document.getElementById('resPlanComplet')) return;
     if (!dernierPlanGenere) return;
     // BUG corrigé le 22/07/2026 : pour un plan partiel en attente de test
     // (enAttenteTest:true), il n'y a qu'une seule semaine — elle devenait
