@@ -935,7 +935,7 @@ export function computeZonesFC(fcMax) {
   );
 }
 
-const ROTATION_SOUS_TYPE = {
+export const ROTATION_SOUS_TYPE = {
   '5K': {
     Reacclimatation: [],
     Construction: ['cotes', 'i-30-30'],
