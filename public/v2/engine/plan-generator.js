@@ -688,6 +688,10 @@ export function computeVolumeProgression({ volumeDepart, distance, niveau, total
   const volumesParSemaine = [];
   let peak = volumeDepart;
 
+  for (let s = 1; s < semaineDepart && s <= semainesProgression; s++) {
+    volumesParSemaine.push({ semaine: s, volumeKm: Math.round(volumeDepart * 10) / 10, estDecharge: false });
+  }
+
   for (let s = semaineDepart; s <= semainesProgression; s++) {
     const estDecharge = s % 4 === 0 && s > 1;
     if (s === semaineDepart) {
@@ -2101,7 +2105,13 @@ export function generatePlan(profil, params) {
         }
       }
 
-      const volumeCibleSemaine = entreeVolumeSemaine?.volumeKm ?? 0;
+      // Repli sur params.volumeActuel plutôt que 0 (18/08/2026, filet de
+      // sécurité supplémentaire suite au bug EF/longue à 0min) — au cas où
+      // une semaine tomberait encore hors progression malgré le comblement
+      // ajouté dans computeVolumeProgression (semaineDepart > 1), mieux
+      // vaut un volume plat raisonnable qu'un volume nul qui produit des
+      // séances vides.
+      const volumeCibleSemaine = entreeVolumeSemaine?.volumeKm ?? params.volumeActuel ?? 0;
       const { warnings: warningsRepartition, kmLongue, kmParEF, nbEF, aLongue } = recalculerRepartitionEFLongue({
         assignment,
         volumeCibleKm: volumeCibleSemaine,
