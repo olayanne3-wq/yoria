@@ -7563,58 +7563,12 @@ function renderModifierPlanAccordeon() {
     render();
   });
 
-  const msgReparation = el("div",{style:{fontSize:"12px",marginTop:"4px"}});
-  const btnReparer = el("button",{style:{
-    width:"100%",padding:"9px",borderRadius:"8px",border:"1px solid var(--border)",
-    background:"transparent",color:"var(--text-muted)",fontSize:"12px",cursor:"pointer"
-  }},"🔧 Vérifier la cohérence du plan");
-  btnReparer.addEventListener("click", () => reparerCoherencePhasesApp(msgReparation, btnReparer));
-
-  const blocCorrectionSeance = (() => {
-    const planBrut = window.__PLAN_BRUT__;
-    const cw = currentWeek();
-    const semaine = planBrut?.semaines?.find(s => s.semaineNum === cw);
-    const jourQualite = semaine ? Object.entries(semaine.assignment).find(([,x]) => x.type === 'qualite') : null;
-    if (!jourQualite) return null;
-    const [jourIndex, seanceQualite] = jourQualite;
-
-    // Liste des sous-types possibles pour la phase de cette semaine — pas
-    // de rotation exportée pour toutes les distances si jamais absente,
-    // repli discret (pas de bloc affiché) plutôt qu'une liste vide.
-    const rotationBrute = ROTATION_SOUS_TYPE_LABELS[planBrut.paramsOrigine?.distance]?.[semaine.phase];
-    if (!rotationBrute || rotationBrute.length === 0) return null;
-    const sousTypesUniques = [...new Set(rotationBrute)];
-
-    const select = el("select",{style:{
-      width:"100%",marginTop:"8px",padding:"9px 10px",borderRadius:"8px",border:"1px solid var(--border)",
-      background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"13px",fontFamily:"inherit"
-    }}, ...sousTypesUniques.map(st => el("option",{value:st, selected: st===seanceQualite.sousType ? "selected" : undefined}, st)));
-
-    const msgCorrection = el("div",{style:{fontSize:"12px",marginTop:"6px"}});
-    const btnCorriger = el("button",{style:{
-      marginTop:"8px",width:"100%",padding:"9px",borderRadius:"8px",border:"1px solid var(--border)",
-      background:"transparent",color:"var(--text-muted)",fontSize:"12px",cursor:"pointer"
-    }},"Appliquer ce type de séance");
-    btnCorriger.addEventListener("click", () => {
-      changerSousTypeSeanceApp(cw, Number(jourIndex), select.value, msgCorrection, btnCorriger);
-    });
-
-    return el("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border-soft)"}},
-      el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginBottom:"2px"}},"Séance qualité de cette semaine — actuellement : "+seanceQualite.sousType),
-      select, btnCorriger, msgCorrection
-    );
-  })();
-
   const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
     renderLevierObjectif(),
     renderLevierJours(),
     renderLevierVolume(),
     renderLevierDateCourse(),
-    renderLevierCourseIntermediaire(),
-    el("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border-soft)"}},
-      btnReparer, msgReparation
-    ),
-    blocCorrectionSeance
+    renderLevierCourseIntermediaire()
   ) : null;
 
   return el("div",{style:{
@@ -13594,6 +13548,64 @@ function renderSettings() {
   // compte). Bouton volontairement discret (style secondaire, pas
   // d'icône), à retirer si un vrai mécanisme de recalcul automatique est
   // développé plus tard.
+  // Réparation de cohérence de phase (18/08/2026, déplacée depuis
+  // l'accordéon "Modifier mon plan" — outil de réparation ponctuelle, pas
+  // un levier de modification courante, cf. mémoire de session pour le
+  // contexte du bug qui l'a rendu nécessaire) — détecte et corrige une
+  // éventuelle divergence entre l'étiquette de phase stockée sur chaque
+  // semaine et la vraie structure du plan.
+  const msgReparationPhase = el("div",{style:{fontSize:"12px",marginTop:"8px"}});
+  const btnReparerPhase = el("button",{style:{width:"100%",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",padding:"10px",color:"var(--text)",fontSize:"14px",fontWeight:"700",cursor:"pointer"}},"Vérifier la cohérence des phases");
+  btnReparerPhase.addEventListener("click", () => reparerCoherencePhasesApp(msgReparationPhase, btnReparerPhase));
+  const reparationPhaseSection = el("div",{style:{marginBottom:"24px"}},
+    el("div",{class:"label"},"🔧 Cohérence des phases du plan"),
+    el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
+      el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.5"}},
+        "Si une semaine affiche une phase (Construction/Spécifique/Affûtage) incohérente avec le reste du plan, vérifie et corrige ici."
+      ),
+      btnReparerPhase, msgReparationPhase
+    )
+  );
+
+  // Correction manuelle ciblée du sous-type de la séance qualité de la
+  // semaine actuelle (18/08/2026, déplacée depuis l'accordéon "Modifier
+  // mon plan") — pour réparer une séance dont le contenu a changé de façon
+  // inattendue (ex. bug de charnière déjà corrigé sur le levier Objectif,
+  // cf. mémoire de session), quand on connaît le bon type d'origine.
+  const correctionSeanceSection = (() => {
+    const planBrut = window.__PLAN_BRUT__;
+    const cw = typeof currentWeek === "function" ? currentWeek() : null;
+    const semaine = cw != null ? planBrut?.semaines?.find(s => s.semaineNum === cw) : null;
+    const jourQualite = semaine ? Object.entries(semaine.assignment).find(([,x]) => x.type === 'qualite') : null;
+    if (!jourQualite) return null;
+    const [jourIndex, seanceQualite] = jourQualite;
+
+    const rotationBrute = ROTATION_SOUS_TYPE_LABELS[planBrut.paramsOrigine?.distance]?.[semaine.phase];
+    if (!rotationBrute || rotationBrute.length === 0) return null;
+    const sousTypesUniques = [...new Set(rotationBrute)];
+
+    const select = el("select",{style:{
+      width:"100%",marginBottom:"8px",padding:"9px 10px",borderRadius:"8px",border:"1px solid var(--border)",
+      background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"13px",fontFamily:"inherit"
+    }}, ...sousTypesUniques.map(st => el("option",{value:st, selected: st===seanceQualite.sousType ? "selected" : undefined}, st)));
+
+    const msgCorrection = el("div",{style:{fontSize:"12px",marginTop:"8px"}});
+    const btnCorriger = el("button",{style:{width:"100%",background:"var(--border-soft)",border:"1px solid var(--border)",borderRadius:"8px",padding:"10px",color:"var(--text)",fontSize:"14px",fontWeight:"700",cursor:"pointer"}},"Appliquer ce type de séance");
+    btnCorriger.addEventListener("click", () => {
+      changerSousTypeSeanceApp(cw, Number(jourIndex), select.value, msgCorrection, btnCorriger);
+    });
+
+    return el("div",{style:{marginBottom:"24px"}},
+      el("div",{class:"label"},"🔧 Séance qualité de la semaine en cours"),
+      el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
+        el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"10px",lineHeight:"1.5"}},
+          "Type actuel : "+seanceQualite.sousType+" — choisis le bon type si celui-ci ne correspond pas à ce qui était prévu."
+        ),
+        select, btnCorriger, msgCorrection
+      )
+    );
+  })();
+
   const recalcKmSection = el("div",{style:{marginBottom:"24px"}},
     el("div",{class:"label"},"🔧 Maintenance"),
     el("div",{style:{background:"var(--bg)",boxShadow:"0 1px 3px var(--shadow1), 0 1px 2px var(--shadow2)",borderRadius:"10px",padding:"14px"}},
@@ -13776,7 +13788,7 @@ function renderSettings() {
     ]),
 
     renderGroupeAccordeonStats("🔧","Maintenance","var(--text-muted)", [
-      recalcKmSection
+      recalcKmSection, reparationPhaseSection, correctionSeanceSection
     ]),
 
     renderGroupeAccordeonStats("ℹ️","Version","var(--text-muted)", [
