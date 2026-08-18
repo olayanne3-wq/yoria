@@ -1213,7 +1213,12 @@ let RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
 const LABEL_PHASE_V2 = { 'Construction': 'Construction', 'Specifique': 'Spécifique', 'Affutage': 'Affûtage' };
 const COULEUR_PHASE_V2 = { 'Construction': 'var(--accent2)', 'Specifique': 'var(--accent)', 'Affutage': 'var(--warn)' };
 
-const PHASES = (() => {
+// `let` + fonction nommée plutôt qu'une IIFE assignée à une `const`
+// (18/08/2026, même correctif que RACE_NAME/FC_MAX/SESSION_TARGETS) —
+// recalculée en tête de render() : sinon un changement de plan via un
+// levier "Modifier mon plan" ne se répercutait jamais sur les phases
+// affichées (dates de phase, couleurs, semaine courante par phase).
+function construirePhases() {
   const phasesBrutes = window.__PLAN_BRUT__?.phases;
   if (!phasesBrutes) {
     // Mode Forme (13 juillet 2026) : pas de plan.phases par nature (cf.
@@ -1239,7 +1244,8 @@ const PHASES = (() => {
     semaineCourante += p.semaines;
     return { id: p.nom, label: LABEL_PHASE_V2[p.nom] || p.nom, weeks, color: COULEUR_PHASE_V2[p.nom] || 'var(--accent)' };
   });
-})();
+}
+let PHASES = construirePhases();
 
 const STYPES = {
   EF:    { label:"Endurance fondamentale", color:"var(--accent2)", colorSoft:"rgba(var(--accent2-rgb),", short:"EF"    },
@@ -3721,7 +3727,11 @@ function construireSessionTargets() {
     TEST:  { targetMin:Math.round(specSec-3), targetMax:Math.round(specSec+4), okPace:Math.round(specSec+4),  warnPace:Math.round(specSec+16), repOk:0.80, repWarn:0.60, effort:formatPace(specSec), tolerance:"±7 sec",  recup:"≥ 6:00/km" },
   };
 }
-const SESSION_TARGETS = construireSessionTargets();
+// `let` plutôt que `const` (18/08/2026, même correctif que PHASES/RACE_NAME
+// etc.) — recalculée en tête de render() : sinon un changement d'objectif/
+// allures via un levier "Modifier mon plan" ne se répercutait jamais sur
+// les cibles de validation des séances VMA/SEUIL/SPEC/TEST.
+let SESSION_TARGETS = construireSessionTargets();
 // Alias pour compatibilité affichage
 const PACE_REFS = Object.fromEntries(
   Object.entries(SESSION_TARGETS).map(([k,v]) => [k, { effort:v.effort, tolerance:v.tolerance, recup:v.recup }])
@@ -14248,6 +14258,8 @@ function render() {
     : 2910;
   DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
   FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
+  PHASES = construirePhases();
+  SESSION_TARGETS = construireSessionTargets();
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
   // juste après reconstruirait inutilement le même contenu (double flash).
