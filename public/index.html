@@ -6513,11 +6513,15 @@ async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnApplique
   btnAppliquer.textContent = "Application…";
   btnAppliquer.disabled = true;
 
-  // Charnière = semaine actuelle (pas +1, cf. regenererAvecNouvelObjectif
-  // côté wizard) — l'objectif se répercute dès la semaine en cours, seul
-  // le CONTENU détaillé des séances déjà passées est préservé.
+  // Charnière = semaine actuelle + 1 (18/08/2026, aligné sur tous les
+  // autres leviers — corrige un bug où la semaine en cours, potentiellement
+  // déjà entamée avec une séance réalisée, était régénérée avec une
+  // nouvelle rotation qualité au lieu de rester intacte). L'ancien choix
+  // "pas +1" était hérité de regenererAvecNouvelObjectif côté wizard, où ce
+  // risque n'était pas le même (génération initiale, pas modification d'un
+  // plan déjà en cours).
   const Engine = await chargerPlanGeneratorApp();
-  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut);
+  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut) + 1;
   const nouveauxParams = planBrut.volumeCourant
     ? { ...planBrut.paramsOrigine, objectif: nouvelObjectif, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
     : { ...planBrut.paramsOrigine, objectif: nouvelObjectif };
@@ -7248,6 +7252,29 @@ function renderLevierCourseIntermediaire() {
 // utiliser en réparation ponctuelle (18/08/2026, cf. mémoire de session :
 // bug de rebascule de phase déjà rencontré avant le correctif du moteur),
 // pas comme mécanisme récurrent.
+const ROTATION_SOUS_TYPE_LABELS = {
+  '5K': {
+    Construction: ['cotes', 'i-30-30'],
+    Specifique: ['i-3min', 'vitesse', 'pyramidale'],
+    Affutage: ['vitesse', 'i-3min']
+  },
+  '10K': {
+    Construction: ['seuil-court', 'i-30-30'],
+    Specifique: ['i-3min', 'seuil', 'allure-course', 'seuil-negatif', 'pyramidale'],
+    Affutage: ['allure-course', 'seuil-court']
+  },
+  'Semi': {
+    Construction: ['tempo-court', 'seuil-2min'],
+    Specifique: ['seuil', 'i-3min', 'allure-course', 'seuil-negatif', 'pyramidale'],
+    Affutage: ['allure-course-court', 'seuil-court']
+  },
+  'Marathon': {
+    Construction: ['tempo-court', 'seuil-court'],
+    Specifique: ['seuil', 'allure-course', 'seuil-negatif'],
+    Affutage: ['tempo-court', 'allure-course-court']
+  }
+};
+
 async function reparerCoherencePhasesApp(msgEl, btn) {
   const planBrut = window.__PLAN_BRUT__;
   if (!planBrut?.paramsOrigine || !planBrut?.profilOrigine) {
@@ -7393,6 +7420,103 @@ async function reparerCoherencePhasesApp(msgEl, btn) {
   render();
 }
 
+// Correction manuelle ciblée : force le sous-type d'UNE séance qualité
+// précise (18/08/2026, cf. mémoire de session — bug de charnière sur le
+// levier Objectif qui a changé le contenu d'une semaine déjà entamée).
+// Contrairement à reparerCoherencePhasesApp (qui recalcule via la rotation
+// automatique), cette fonction impose directement le sous-type choisi par
+// l'utilisateur — nécessaire quand on connaît le bon contenu d'origine
+// mais que la rotation automatique ne le retrouverait pas forcément (la
+// position exacte dans la rotation d'une semaine déjà entamée n'est pas
+// toujours reconstituable après coup).
+async function changerSousTypeSeanceApp(semaineNum, jourIndex, nouveauSousType, msgEl, btn) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut?.paramsOrigine || !planBrut?.profilOrigine) {
+    msgEl.textContent = "Ce plan ne peut pas être modifié directement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+  const semaine = planBrut.semaines.find(s => s.semaineNum === semaineNum);
+  const seance = semaine?.assignment?.[jourIndex];
+  if (!seance || seance.type !== 'qualite') {
+    msgEl.textContent = "Séance introuvable.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const texteOriginal = btn.textContent;
+  btn.textContent = "Application…";
+  btn.disabled = true;
+
+  const Engine = await chargerPlanGeneratorApp();
+  const alluresSec = Engine.computeAllures({
+    refTimeSeconds: Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
+    refDistanceKm: Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
+    objectifTimeSeconds: Engine.parseTimeToSeconds(planBrut.paramsOrigine.objectif),
+    distanceCibleKm: Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.distance]
+  });
+  const tempsRef10KSec = Engine.riegelPredict(
+    Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
+    Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
+    10
+  );
+
+  // Trouve, dans la rotation de cette phase, une position (semaineDansPhase)
+  // qui produit le sous-type voulu — sans avoir besoin de connaître la
+  // vraie position historique de cette semaine dans la rotation.
+  const distance = planBrut.paramsOrigine.distance;
+  const rotation = Engine.ROTATION_SOUS_TYPE?.[distance]?.[semaine.phase];
+  let semaineDansPhaseChoisie = 0;
+  if (rotation) {
+    const idx = rotation.indexOf(nouveauSousType);
+    if (idx >= 0) semaineDansPhaseChoisie = idx - (seance.indexQualite ?? 0);
+  }
+
+  const { sousType, contenu, kmEstime, structureIntervalles } = Engine.genererContenuQualite({
+    distance,
+    phase: semaine.phase,
+    semaineDansPhase: Math.max(0, semaineDansPhaseChoisie),
+    indexQualiteSemaine: seance.indexQualite ?? 0,
+    alluresSec,
+    restrictionsAllure: seance.restrictionsAllure,
+    tauxAffutage: semaine.tauxAffutage ?? 1,
+    estDechargeSemaine: semaine.estDechargeSemaine ?? false,
+    niveau: planBrut.profilOrigine?.niveau,
+    volumeHebdoCibleKm: semaine.volumeCibleKm,
+    tempsRef10KSec
+  });
+
+  if (sousType !== nouveauSousType) {
+    msgEl.textContent = `Impossible de générer une séance "${nouveauSousType}" pour cette phase/distance.`;
+    msgEl.style.color = "var(--warn)";
+    btn.textContent = texteOriginal;
+    btn.disabled = false;
+    return;
+  }
+
+  seance.sousType = sousType;
+  seance.contenu = contenu;
+  seance.kmEstime = kmEstime;
+  seance.structureIntervalles = structureIntervalles;
+
+  try {
+    await window.LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut);
+  } catch (e) {
+    msgEl.textContent = "Modifié mais sauvegarde échouée : " + e.message;
+    msgEl.style.color = "var(--warn)";
+    btn.textContent = texteOriginal;
+    btn.disabled = false;
+    return;
+  }
+
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+  msgEl.textContent = `✅ Séance mise à jour : ${sousType}.`;
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
 function renderModifierPlanAccordeon() {
   // Rien à modifier sans plan brut chargé (ex. ancien plan sauvegardé
   // avant paramsOrigine/profilOrigine) — groupe entier omis plutôt
@@ -7446,6 +7570,41 @@ function renderModifierPlanAccordeon() {
   }},"🔧 Vérifier la cohérence du plan");
   btnReparer.addEventListener("click", () => reparerCoherencePhasesApp(msgReparation, btnReparer));
 
+  const blocCorrectionSeance = (() => {
+    const planBrut = window.__PLAN_BRUT__;
+    const cw = currentWeek();
+    const semaine = planBrut?.semaines?.find(s => s.semaineNum === cw);
+    const jourQualite = semaine ? Object.entries(semaine.assignment).find(([,x]) => x.type === 'qualite') : null;
+    if (!jourQualite) return null;
+    const [jourIndex, seanceQualite] = jourQualite;
+
+    // Liste des sous-types possibles pour la phase de cette semaine — pas
+    // de rotation exportée pour toutes les distances si jamais absente,
+    // repli discret (pas de bloc affiché) plutôt qu'une liste vide.
+    const rotationBrute = ROTATION_SOUS_TYPE_LABELS[planBrut.paramsOrigine?.distance]?.[semaine.phase];
+    if (!rotationBrute || rotationBrute.length === 0) return null;
+    const sousTypesUniques = [...new Set(rotationBrute)];
+
+    const select = el("select",{style:{
+      width:"100%",marginTop:"8px",padding:"9px 10px",borderRadius:"8px",border:"1px solid var(--border)",
+      background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"13px",fontFamily:"inherit"
+    }}, ...sousTypesUniques.map(st => el("option",{value:st, selected: st===seanceQualite.sousType ? "selected" : undefined}, st)));
+
+    const msgCorrection = el("div",{style:{fontSize:"12px",marginTop:"6px"}});
+    const btnCorriger = el("button",{style:{
+      marginTop:"8px",width:"100%",padding:"9px",borderRadius:"8px",border:"1px solid var(--border)",
+      background:"transparent",color:"var(--text-muted)",fontSize:"12px",cursor:"pointer"
+    }},"Appliquer ce type de séance");
+    btnCorriger.addEventListener("click", () => {
+      changerSousTypeSeanceApp(cw, Number(jourIndex), select.value, msgCorrection, btnCorriger);
+    });
+
+    return el("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border-soft)"}},
+      el("div",{style:{fontSize:"12px",color:"var(--text-muted)",marginBottom:"2px"}},"Séance qualité de cette semaine — actuellement : "+seanceQualite.sousType),
+      select, btnCorriger, msgCorrection
+    );
+  })();
+
   const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
     renderLevierObjectif(),
     renderLevierJours(),
@@ -7454,7 +7613,8 @@ function renderModifierPlanAccordeon() {
     renderLevierCourseIntermediaire(),
     el("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border-soft)"}},
       btnReparer, msgReparation
-    )
+    ),
+    blocCorrectionSeance
   ) : null;
 
   return el("div",{style:{
