@@ -39,7 +39,7 @@ Tous dans `docs/v2-methodologie/` :
 
 | Fichier | Contenu |
 |---|---|
-| `architecture-generale.md` | Arborescence du repo, les deux interfaces (app principale / wizard), écrans de l'app principale |
+| `architecture-generale.md` | Arborescence du repo, les deux interfaces (app principale / wizard), écrans de l'app principale, échange de séances (swap) |
 | `persistance-donnees.md` | localStorage, Supabase (tables, RLS), profil coureur |
 | `moteur-plan.md` | Moteur de génération de plan, prédicteur d'estimation 10K |
 | `moteur-decision.md` | Les 5 modules du moteur de décision (état coureur, analyse séance/semaine/tendance, moteur de règles) |
@@ -70,10 +70,11 @@ Tous dans `docs/v2-methodologie/` :
 - Un mécanisme basé sur un compteur de sources asynchrones (fermeture d'état après N signaux) est fragile si l'ordre réel de résolution diffère de l'ordre supposé — préférer un filet de sécurité basé sur le temps écoulé (ex. délai fixe depuis un timestamp de départ) en complément, pas en remplacement, pour absorber les cas où le compteur seul ne suffit pas.
 - Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
-- Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`).
+- Un appel `async` avec des `await` internes déclenché tôt dans un script (avant la fin de la section synchrone de déclarations `let`/`const` de niveau module) peut lever une ReferenceError de zone morte temporelle (TDZ) même après plusieurs correctifs successifs qui remontent les variables une à une — si la fonction déclenche elle-même une chaîne d'appels large (ex. un `render()` global qui référence des dizaines de variables), le vrai correctif est de déplacer l'APPEL vers la fin du flux synchrone principal (après le premier point où tout le script est garanti initialisé), pas de continuer à chasser chaque variable individuellement (cf. `verifierMeteoSeanceDemain()`, déplacée après le premier `render()`). Pour une fonction utilitaire appelée en cascade tôt (ex. `sourceSwap()` via `recalculerAllSessions()`), un simple `try/catch` autour de la lecture de la variable concernée est un filet de sécurité valable en alternative, avec repli sûr sur une valeur neutre.
 - Après un `str_replace` qui remplace un `old_str` court (ex. juste `function xxx() {`) par un bloc long, toujours revérifier que la ligne de déclaration d'origine est bien réincluse dans le `new_str` — un remplacement qui "avale" l'en-tête de fonction sans le reproduire casse silencieusement la fonction suivante en JS (pas d'erreur avant l'exécution du fichier entier). La vérification syntaxique de TOUS les blocs `<script>` (pas seulement le plus gros) avant chaque push est ce qui a intercepté ce genre d'erreur (cf. incident `ouvrirPpsModale()`, corrigé avant déploiement).
-- Un modèle de données qui a déjà nécessité plusieurs correctifs successifs sur le même mécanisme est un signal qu'il faut réévaluer l'architecture elle-même plutôt que d'empiler un énième patch — un commentaire affirmant qu'un modèle "n'a jamais telle forme d'incohérence par construction" doit être vérifié par une simulation reproductible avant d'être cru, pas simplement recopié d'un précédent commentaire (cf. refonte du modèle de swap, ci-dessous).
+- Un modèle de données qui a déjà nécessité plusieurs correctifs successifs sur le même mécanisme est un signal qu'il faut réévaluer l'architecture elle-même plutôt que d'empiler un énième patch — un commentaire affirmant qu'un modèle "n'a jamais telle forme d'incohérence par construction" doit être vérifié par une simulation reproductible avant d'être cru, pas simplement recopié d'un précédent commentaire. Le remplacement du modèle de swap par paires (mathématiquement correct mais structurellement ambigu dès 3+ échanges superposés) par une table d'assignation directe (`swapTable`, cf. `architecture-generale.md`) en est l'exemple concret : deux correctifs successifs sur le modèle par paires, chacun validé par simulation exhaustive, n'ont pas suffi — seul un changement de modèle a éliminé le problème par construction.
 - Avant de condenser ou réécrire des commentaires volumineux dans un gros fichier (`index.html`), valider par un diff automatisé strict (lignes de CODE réel identiques avant/après, commentaires exclus) que zéro ligne exécutable n'a changé — un nettoyage éditorial ne doit jamais être confondu avec un changement fonctionnel, et cette preuve permet d'écarter rapidement le nettoyage comme cause d'une régression signalée ensuite.
+- Une interaction tactile (glissement, geste personnalisé) qui fonctionne sur desktop (souris) n'est pas automatiquement fonctionnelle sur mobile — HTML5 Drag & Drop n'a pas de support tactile fiable par construction ; les Pointer Events (`pointerdown`/`pointermove`/`pointerup`) sont l'API à privilégier d'emblée pour tout geste devant fonctionner identiquement à la souris et au doigt. Un geste de glissement personnalisé sur toute une carte/zone large entre en conflit avec le scroll natif de la page (`touch-action` doit être restreint à une poignée dédiée, pas la zone entière) — et sur mobile, un appui long déclenche NATIVEMENT `contextmenu` en plus du timer JS éventuel : retirer un mécanisme d'appui long nécessite de retirer aussi ce listener, pas seulement le `setTimeout`.
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans.
@@ -98,7 +99,7 @@ Tous dans `docs/v2-methodologie/` :
 - Une donnée de performance ponctuelle et rare (ex. course intermédiaire) ne doit jamais être injectée dans un pipeline pondéré conçu pour des mesures répétées (ex. moyenne SPEC/SEUIL/VMA du prédicteur) — un mélange one-shot dédié, avec ses propres garde-fous, est plus sûr qu'une 4e source dans un système calibré pour un usage différent (cf. `calculerNouvelleReferenceCourseIntermediaire`, `moteur-plan.md`).
 
 **UI et composants**
-- Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, détaillé dans `architecture-generale.md`) — vérifier chaque variable individuellement, pas seulement la première trouvée. Si un même appel `async` déclenche une TDZ sur plusieurs variables successives à chaque correctif, voir le principe dédié dans "Workflow de développement" ci-dessus (déplacer l'appel plutôt que chasser chaque variable).
+- Toute promesse globale attendue ailleurs, et toute variable `let`/`const` lue par du code exécuté tôt, doit être déclarée de façon synchrone AVANT toute lecture possible (piège TDZ, détaillé dans `architecture-generale.md`) — vérifier chaque variable individuellement, pas seulement la première trouvée. Si un même appel `async` déclenche une TDZ sur plusieurs variables successives à chaque correctif, voir le principe dédié dans "Workflow de développement" ci-dessus (déplacer l'appel plutôt que chasser chaque variable, ou protéger la lecture par `try/catch` pour une fonction utilitaire simple).
 - Un registre d'état de composant (accordéon, toggle) qui doit survivre à un `render()` complet doit être déclaré au niveau module, jamais à l'intérieur de la fonction qui construit l'écran.
 - Le positionnement initial d'un élément scrollable ne doit jamais dépendre d'un délai arbitraire — vérifier une condition réelle via polling léger. Tout composant niché dans un groupe accordéon fermé doit prévoir un callback `onOuverture`.
 - Avant de paralléliser des `<script src>` avec `defer`, vérifier tout script INLINE placé entre eux — un script inline s'exécute toujours immédiatement, contrairement aux scripts `src` avec `defer`.
@@ -107,20 +108,29 @@ Tous dans `docs/v2-methodologie/` :
 - Un bandeau destiné à n'être vu qu'une fois (pas un message éphémère qui expire de lui-même comme l'anniversaire) doit utiliser un flag `localStorage` GLOBAL non préfixé par plan (état de CET appareil, pas une donnée de plan à synchroniser Supabase — même famille que `yoria_bandeau_ios_ferme`), avec un bouton fermer explicite qui pose le flag et déclenche `render()`.
 - Un élément dont le contenu ne devient disponible qu'après le chargement initial (ex. donnée météo asynchrone) et qui partage une rangée flex avec d'autres éléments stables (boutons) peut provoquer un décalage de mise en page visible à son apparition (wrap tardif) — deux leviers combinables selon le besoin : `flexWrap:"nowrap"` sur la rangée pour qu'elle ne bascule jamais sur 2 lignes (les enfants se compressent alors, prévoir `minWidth:"0"`/`flexShrink` adapté pour permettre au texte des boutons de wrapper en interne plutôt qu'à la rangée entière de déborder), et/ou ne construire l'élément qu'une fois toutes les sources de chargement résolues plutôt que dès sa donnée individuellement prête (évite une réapparition en plein milieu du chargement). Un badge/texte qui ne doit jamais se comprimer doit porter `flexShrink:"0"` explicitement.
 - Le fondu CSS par défaut (`fadeIn`) appliqué à tout nouvel enfant inséré via `replaceChildren()` peut se réactiver sur un `render()` de fin de chargement si la fenêtre d'état qui le désactive (`_fenetreChargementInitialActive`) se ferme avant que tous les renders programmés (via `setTimeout`) n'aient eu lieu — un flash de délavage plein écran en résulte, visible même sans changement de contenu majeur. Diagnostiqué de façon fiable par extraction frame-par-frame d'une vidéo de l'écran (`ffmpeg -vf fps=N`) autour du moment signalé, pas par relecture du code seul.
+- Un geste de glissement personnalisé (Pointer Events) sur une zone large (carte entière) rend le scroll vertical natif difficile si `touch-action:none` doit couvrir toute cette zone — une poignée dédiée, plus petite, isole cette contrainte et rend le reste de la zone à nouveau scrollable normalement.
 
 **Installation PWA / mobile**
 - Une redirection vers un lien PWA classique ouverte depuis la WebView intégrée d'une app tierce (Gmail, WhatsApp) ne peut jamais déclencher `beforeinstallprompt` — limitation universelle des WebViews, pas un bug applicatif. Pour Android, rediriger vers la fiche Play Store dans ce contexte (installation native fiable peu importe le navigateur d'origine).
 - Un nouveau flux d'entrée (ex. connexion Strava avant tout plan) peut révéler un bug latent dans du code existant qui supposait silencieusement un contexte toujours présent — vérifier les suppositions implicites du code traversé, pas seulement le nouveau code.
+- L'inscription à un test fermé Google Play (Play Store) n'ajoute JAMAIS automatiquement un candidat à la liste de testeurs autorisés — cette étape reste manuelle côté Play Console (ou nécessite un Google Group + API dédiée avec un compte Workspace, non disponible avec un compte développeur Gmail personnel). Un candidat Android peut recevoir l'email d'invitation et pourtant ne pas pouvoir installer l'app tant que son adresse n'a pas été ajoutée manuellement.
+- La bêta Android en test fermé (Play Store) exige que l'adresse email du testeur soit associée à un compte Google — une adresse hors Gmail (ou non liée à un compte Google) ne permettra jamais l'installation, même avec une candidature acceptée. Validé côté formulaire ET côté serveur (`api/beta.js`), cf. `site-beta-admin.md`.
 
-**Échanges de séances (swap)**
-- Modèle en paires atomiques (`swapPairs`), pas un dictionnaire — détail
-  complet dans `architecture-generale.md`. Toute nouvelle logique touchant
-  aux séances swappées doit passer par `getEffectiveSession()`, jamais
-  lire `week.sessions[i]` ou `PLAN` directement.
+**Échange de séances (swap)**
+- Modèle en TABLE d'assignation directe (`swapTable = {uid: uidSource}`),
+  pas un dictionnaire à chaîne ni des paires — détail complet et
+  historique des deux modèles précédents abandonnés dans
+  `architecture-generale.md`. Toute nouvelle logique touchant aux séances
+  swappées doit passer par `getEffectiveSession()`, jamais lire
+  `week.sessions[i]` ou `PLAN` directement.
 - Un jour PASSÉ sans aucune trace d'activité (statut/note/RPE/saisie) est
   déplaçable uniquement s'il appartient à la semaine EN COURS
   (`currentWeek()`) — bloqué pour toute semaine antérieure. Toute vraie
   trace d'activité bloque toujours, peu importe la semaine.
+- Glissement (poignée dédiée, Pointer Events) disponible uniquement dans
+  `renderWeekDetail` — retiré du dashboard après plusieurs tentatives
+  infructueuses. Double tap (pas appui long) déclenche le menu tap
+  alternatif, sur toute séance sauf RACE.
 
 ## État des chantiers ouverts
 
@@ -191,6 +201,11 @@ Reste : validation d'intégrité `plan_donnees.data`, 2FA sur `beta-admin`
   (`lib/beta-invitation-email.js`), généré à la volée via
   `api.qrserver.com` à partir de l'URL Play Store déjà codée en dur
   (`PLAY_STORE_URL`).
+- **Ajout manuel des testeurs Android au Play Store** — chaque candidat
+  Android accepté doit être ajouté manuellement à la liste de testeurs
+  du test fermé Play Console (aucune automatisation possible avec la
+  configuration actuelle, cf. `site-beta-admin.md` et le principe dédié
+  ci-dessus dans "Installation PWA / mobile").
 
 **Intégrations montres/tracking**
 - **Coros/Garmin** — piste explorée, non lancée. Garmin écarté (accès
@@ -212,6 +227,11 @@ Reste : validation d'intégrité `plan_donnees.data`, 2FA sur `beta-admin`
   `persistance-donnees.md`, détail complet dans
   `vision-coach-adaptatif.md`). Exploitation en lecture conditionnée à la
   stabilité du moteur sur plusieurs mois et plusieurs utilisateurs réels.
+- **Garde données suffisantes (5 séances min)** — `calculerEtatMoteurDecision()`
+  force `decision: null` tant que moins de 5 séances réelles (Strava +
+  manuel) existent, pour éviter au coach/à la carte de proposition de
+  s'appuyer sur un `RunnerState` numériquement valide mais construit sur
+  un repli `FC_REPOS_DEFAUT` sans vraie donnée (cf. `moteur-decision.md`).
 
 **Nouvelles fonctionnalités envisagées — aucune commencée**
 
