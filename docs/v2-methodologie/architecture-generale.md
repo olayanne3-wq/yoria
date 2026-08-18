@@ -62,8 +62,10 @@ yoria/
 │   │   ├── merci.js
 │   │   └── assets/                # Screenshots + logo SVG (PNG mort supprimé), image Open Graph dédiée
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
-│   │                              # Onglets : Candidatures, Sélectionnés, Invités,
-│   │                              # Signalements, Comptes, Sauvegarde, Cascades, Statistiques
+│   │                              # Onglets : Candidatures, Invités, Signalements,
+│   │                              # Comptes, Sauvegarde, Cascades, Statistiques
+│   │                              # (statuts simplifiés à pending/invited/rejected —
+│   │                              # "Sélectionnés"/"Actifs" retirés)
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -112,24 +114,27 @@ dynamic `import()` (`window._planGeneratorModule`).
 **Règle TDZ (temporal dead zone)** : toute promesse globale attendue
 ailleurs (`window.__AUTH_PRET__`), ou toute variable `let`/`const` lue par
 du code exécuté tôt (`_renderDiffereTimer`, `stravaToken`,
-`swapPairs`...), doit être déclarée de façon synchrone, AVANT tout
+`swapTable`...), doit être déclarée de façon synchrone, AVANT tout
 code qui pourrait la lire — y compris du code placé après un `await` mais
 techniquement situé avant la déclaration dans le fichier. Un `typeof` ne
-protège pas de ce piège. Toute variable lue par une même fonction
-(`recalculerAllSessions()`/`getEffectiveSession()`) doit être vérifiée
-individuellement, pas seulement la première trouvée. Si une même fonction
-`async` (appelée tôt, avec des `await` internes) déclenche une TDZ sur
-plusieurs variables successives à chaque correctif isolé (`PLAN` puis
-`ALL_SESSIONS` puis `_renderDiffereChargementTimer`), le vrai correctif
-est de déplacer l'APPEL vers la fin du
-flux synchrone principal (après le premier `render()`, point où toutes
-les déclarations `let`/`const` de niveau module sont garanties
-exécutées) plutôt que de continuer à chasser chaque variable une à une —
-cf. `verifierMeteoSeanceDemain()`, désormais appelée juste après le
-premier `render()` plutôt qu'au tout début du script.
+protège pas de ce piège, mais un `try/catch` autour de la lecture reste un
+filet de sécurité valable pour une fonction appelée en cascade tôt dans le
+chargement (cf. `sourceSwap()`, protégée ainsi car appelée via
+`recalculerAllSessions()` avant que `swapTable` ne soit déclarée). Toute
+variable lue par une même fonction (`recalculerAllSessions()`/
+`getEffectiveSession()`) doit être vérifiée individuellement, pas
+seulement la première trouvée. Si une même fonction `async` (appelée tôt,
+avec des `await` internes) déclenche une TDZ sur plusieurs variables
+successives à chaque correctif isolé (`PLAN` puis `ALL_SESSIONS` puis
+`_renderDiffereChargementTimer`), le vrai correctif est de déplacer
+l'APPEL vers la fin du flux synchrone principal (après le premier
+`render()`, point où toutes les déclarations `let`/`const` de niveau
+module sont garanties exécutées) plutôt que de continuer à chasser chaque
+variable une à une — cf. `verifierMeteoSeanceDemain()`, désormais appelée
+juste après le premier `render()` plutôt qu'au tout début du script.
 
 **Toute mutation d'un état source de `ALL_SESSIONS`** (`statuses`,
-`swapPairs`) doit être suivie d'un `ALL_SESSIONS =
+`swapTable`) doit être suivie d'un `ALL_SESSIONS =
 recalculerAllSessions()` explicite avant tout `render()`, jamais implicite.
 
 **Support PWA iOS** — `apple-mobile-web-app-status-bar-style` (valeur
@@ -226,8 +231,13 @@ Fonctions de rendu (`render*`) :
   bandeaux en tête (après le sélecteur de plan) : anniversaire
   (`estAnniversaireAujourdhui()`, éphémère, disparaît de lui-même le
   lendemain, pas de bouton fermer) et recommandations santé (persiste
-  jusqu'à fermeture explicite, cf. bandeaux iOS/santé plus haut).
-- `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine
+  jusqu'à fermeture explicite, cf. bandeaux iOS/santé plus haut). Ne
+  propose PAS le glissement de séance (cf. section swap ci-dessous,
+  "Où le glissement est disponible") — cartes "Aujourd'hui" et "⚡ Demain"
+  restent de simples liens de navigation vers `weekDetail` sur cet écran.
+- `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine.
+  `renderWeekDetail` est le SEUL écran où le glissement de séance
+  (poignée dédiée) est disponible, cf. section swap ci-dessous.
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
@@ -298,15 +308,16 @@ Gérer son plan / Suivi / Compte), un clic ouvre le tuto en vue détail. 17
 tutos couvrant : créer un plan, test semi-Cooper, choisir sa source de
 données, carte "Aujourd'hui", import .fit, programmer sur montre,
 readiness/RPE, répondre à une proposition d'ajustement, échanger deux
-séances, course intermédiaire, modifier son plan, estimation de
-performance, lire les Stats, jour de course, Strava, PPS, abonnement.
-Chaque tuto porte `id`/`icon`/`title`/`text` (résumé pour la recherche) et
-`blocks` (paragraphes/titres/liste/image) pour un rendu riche — `text`
-reste le seul champ utilisé par les 7 sections classiques (fallback texte
-brut si `blocks` absent). La recherche (`_helpRecherche`) reste
-transversale aux deux onglets. Reste ouvert : aucun tuto n'a encore
-d'image (le format `blocks` supporte déjà `{type:"img", src, alt,
-caption}` sans changement de code nécessaire).
+séances (cf. section swap ci-dessous pour le mécanisme réel), course
+intermédiaire, modifier son plan, estimation de performance, lire les
+Stats, jour de course, Strava, PPS, abonnement. Chaque tuto porte
+`id`/`icon`/`title`/`text` (résumé pour la recherche) et `blocks`
+(paragraphes/titres/liste/image) pour un rendu riche — `text` reste le
+seul champ utilisé par les 7 sections classiques (fallback texte brut si
+`blocks` absent). La recherche (`_helpRecherche`) reste transversale aux
+deux onglets. Reste ouvert : aucun tuto n'a encore d'image (le format
+`blocks` supporte déjà `{type:"img", src, alt, caption}` sans changement
+de code nécessaire).
 
 **Architecture aide** : contenu extrait dans `public/help-content.js`
 (module de données pur, aucun DOM), importé dynamiquement au premier
@@ -491,37 +502,73 @@ affichant un warning si une fonction attendue est absente au chargement.
 Ne doit lister QUE des fonctions réellement `export`ées ; une fonction
 privée y figurant à tort génère un faux warning permanent.
 
-## Échange de séances (swap) — modèle en paires atomiques
+## Échange de séances (swap) — modèle en table d'assignation directe
 
-Refonte complète (remplace l'ancien modèle en dictionnaire
-`swappedSessions[uid] = uidSource`, qui pouvait perdre ou dupliquer une
-séance lors d'une annulation partielle sur une rotation à 3+ maillons).
-`swapPairs = [{a: uid, b: uid},
-...]` — une liste de paires ATOMIQUES, jamais un dictionnaire à
-demi-cohérent. Chaque paire est un échange complet et réversible en bloc.
+**Historique** — ce mécanisme a connu deux modèles de données successifs :
+1. Un premier modèle en dictionnaire simple (`swappedSessions[uid] =
+   uidSource`), abandonné car il pouvait perdre ou dupliquer une séance
+   lors d'une annulation partielle sur une rotation à 3+ maillons.
+2. Un modèle en paires atomiques (`swapPairs = [{a, b}, ...]`), résolu par
+   parcours de chaîne (`sourceSwap()`). Mathématiquement correct — vérifié
+   par simulation exhaustive sur des milliers de séquences aléatoires —
+   mais produisait un comportement **ambigu et surprenant** dès que 3+
+   positions étaient impliquées dans des échanges qui se chevauchaient :
+   re-glisser une position déjà échangée vers une troisième forçait à
+   trancher ce que devenait son ANCIEN partenaire, sans réponse
+   universellement satisfaisante (le faire "suivre" le nouveau swap
+   recréait le symptôme de décalage non désiré ; le faire revenir à
+   lui-même annulait silencieusement un échange antérieur que
+   l'utilisateur n'avait pas demandé à défaire). **Ce modèle a été
+   entièrement abandonné** — retenir comme principe transverse que ce
+   genre de comportement ambigu, découvert après plusieurs correctifs
+   infructueux sur le même mécanisme, est le signal qu'il faut réévaluer
+   l'architecture elle-même (cf. `inventaire-application.md`, principe
+   "Workflow de développement").
 
-- **`sourceSwap(uid)`** — résout la position d'origine en parcourant
-  `swapPairs` À L'ENVERS (paire la plus récente en premier), "remontant
-  le temps" depuis la position actuelle. Toujours équivalent à un vrai
-  échange physique répété.
-- **`echangerSwap(uidA, uidB)`** — ajoute une paire à `swapPairs`. Un
-  ré-échange de la même paire l'annule (toggle). Enchaîner plusieurs
-  clics produit une vraie ROTATION en chaîne (ex. A↔B puis B↔C donne
-  A=contenu de B initial, B=contenu de C initial, C=contenu de A initial
-  — testé et validé sur ce cas, comme sur des rotations à 4).
-- **`annulerSwapSur(uid)`** — retire la DERNIÈRE paire touchant ce uid,
-  EN BLOC (les deux côtés de la paire ensemble, jamais un seul). C'est ce
-  point précis qui corrige le bug de séance disparue/dupliquée : l'ancien
-  modèle ne retirait qu'un seul côté d'une chaîne, cassant sa cohérence.
+**Modèle actuel — table d'assignation directe** : `swapTable = { uid:
+uidSource }`. Chaque position a une valeur explicite et indépendante,
+jamais déduite d'une chaîne de résolution — un swap entre A et B ne touche
+QUE `swapTable[A]` et `swapTable[B]`, aucune autre entrée n'est jamais lue
+ni modifiée. Cette propriété élimine l'ambiguïté du modèle précédent par
+construction : la question "que devient une position tierce" ne se pose
+simplement plus, puisqu'aucune position tierce n'est jamais concernée par
+un swap qui ne la mentionne pas explicitement.
+
+- **`sourceSwap(uid)`** — lecture directe : `swapTable[uid] || uid`.
+  Protégée par un `try/catch` (piège TDZ, cf. section "Règle TDZ"
+  ci-dessus) : `recalculerAllSessions()` l'appelle en cascade dès le tout
+  premier calcul (ligne ~1118), avant que `let swapTable = ...` (ligne
+  ~1486) ne soit atteinte par le fil principal du script — repli sûr sur
+  `uid` pour ce cas précis, corrigé par le recalcul de rattrapage juste
+  après le vrai chargement de `swapTable`.
+- **`echangerSwap(uidA, uidB)`** — échange ce qui est AFFICHÉ à ces deux
+  positions. Résout `sourceA`/`sourceB` (ce que chaque position affiche
+  actuellement), puis écrit directement `swapTable[uidA] = sourceB` et
+  `swapTable[uidB] = sourceA` (avec `delete` plutôt qu'une valeur
+  identité quand une position doit revenir à afficher son propre
+  contenu). Toggle : si `uidA` et `uidB` étaient déjà mutuellement
+  échangés entre eux, le nouveau clic retire les deux entrées plutôt que
+  d'en recréer, redonnant "chacun affiche soi-même" pour les deux.
+  Vérifié par simulation sur 5000+ séquences aléatoires (bijection
+  toujours maintenue, aucune source dupliquée ni perdue) et sur le
+  scénario réel qui a motivé cette refonte (glisser deux jours affichant
+  déjà un contenu échangé, après plusieurs swaps précédents dans la même
+  semaine — confirmé sans effet sur aucune position tierce).
+- **`annulerSwapSur(uid)`** — retire l'entrée de `uid` dans la table ; si
+  son partenaire (`swapTable[uid]`) affichait réciproquement `uid`, retire
+  aussi l'entrée de ce partenaire, pour ne jamais laisser une relation à
+  moitié défaite.
 - **`getEffectiveSession(week, slotIdx)`** — point d'entrée UNIQUE pour
   lire le contenu affiché d'un slot après swap éventuel. Toute nouvelle
   fonction qui calcule des statistiques ou un affichage à partir des
   séances d'une semaine DOIT passer par cette fonction, jamais lire
   `week.sessions[i]` directement.
 
-Migration automatique et silencieuse depuis l'ancien `lk_swapped_sessions`
-au premier chargement (`lk_swap_pairs`) — ancienne clé conservée en
-storage comme filet de sécurité temporaire.
+Migration automatique et silencieuse depuis l'ancien `lk_swap_pairs` au
+premier chargement (résolution de chaque position concernée via l'ancienne
+logique de chaîne, UNE SEULE FOIS, figée dans `lk_swap_table`) — anciennes
+clés (`lk_swap_pairs`, `lk_swapped_sessions`) conservées en storage comme
+filet de sécurité temporaire.
 
 Utilisée par `renderGrilleJoursSemaine`, `renderWeekDetail`, `weekStats`,
 `weeklyReport`, `weekPct`, `recalculerAllSessions`.
@@ -531,6 +578,87 @@ réalisé"), SAUF pour un jour de la semaine EN COURS (`currentWeek()`)
 sans aucune trace d'activité (statut/note/RPE/saisie) — dans ce cas
 précis, le déplacement reste possible. Toute semaine antérieure reste
 bloquée sans exception.
+
+**Où le glissement est disponible** — uniquement `renderWeekDetail` (vue
+détail de semaine). Retiré du dashboard (`renderDashboard`) après
+plusieurs tentatives infructueuses de le rendre fiable sur cet écran
+(structure de carte partagée "aujourd'hui + demain" trop dense
+visuellement pour une zone de contact tactile fiable au toucher) — les
+cartes du dashboard restent de simples liens de navigation vers
+`weekDetail`, où le glissement réel se fait.
+
+**Mécanisme de glissement (Pointer Events, pas HTML5 Drag & Drop)** —
+`cablerDragDropSeance(cardEl, handleEl, week, slotIdx, peutEtreSource)` :
+- L'API HTML5 Drag & Drop native (`draggable`, `dragstart`/`dragover`/
+  `drop`) a été essayée en premier et abandonnée : elle n'a structurellement
+  pas de support tactile fiable (conçue pour la souris), ne se déclenche
+  pas correctement au doigt sur la plupart des navigateurs mobiles/WebView
+  Android. Remplacée entièrement par les **Pointer Events**
+  (`pointerdown`/`pointermove`/`pointerup`/`pointercancel`), qui unifient
+  souris et tactile dans une seule API, un seul chemin de code pour les
+  deux.
+- **Poignée dédiée** (`handleEl`, icône `⠿`, ~24×24px, affichée en fin de
+  la première ligne de la carte, à côté du badge de statut) — glisser
+  n'importe où sur la carte entière rendait le scroll vertical de la page
+  très difficile (`touch-action:none` devait couvrir toute la carte pour
+  un glissement fiable, bloquant aussi le scroll normal sur cette même
+  zone). Avec la poignée, seule cette petite zone porte
+  `touch-action:none` — le reste de la carte reste scrollable normalement.
+  `cardEl` reçoit toujours `dataset.swapUid` (cible de dépôt, même carte
+  non déplaçable), seul `handleEl` reçoit `draggable`-équivalent
+  (`pointerdown`).
+- **Retour tactile** : vibration (`navigator.vibrate(35)`, échoue
+  silencieusement sur iOS Safari) au contact avec la poignée. Le
+  glissement démarre au premier mouvement franchissant
+  `SEUIL_GLISSEMENT_PX` (12px) — pas de délai d'armement (existait dans
+  une version intermédiaire pour distinguer un scroll d'un glissement sur
+  toute la carte, devenu inutile avec la poignée dédiée qui élimine ce
+  risque de confusion par construction).
+- **Fantôme visuel** : clone de `cardEl` entière (`cloneNode(true)`,
+  jamais juste la poignée), `position:fixed`, suit le pointeur avec un
+  décalage calculé depuis le coin de la carte source (pas de la poignée).
+  Effet "carte soulevée" (`scale(1.04)`, ombre renforcée). Les listeners
+  d'événements ne sont jamais clonés par `cloneNode` — la poignée clonée à
+  l'intérieur du fantôme n'a aucun `pointerdown` actif, aucun risque de
+  double déclenchement.
+- **Cible détectée** via `document.elementFromPoint()` +
+  `closest("[data-swap-uid]")` — le fantôme porte `pointerEvents:"none"`
+  pour ne jamais se cibler lui-même. Limitée à la même semaine que la
+  source.
+- **Auto-scroll** pendant le glissement (`demarrerAutoScrollSiNecessaire()`,
+  boucle `requestAnimationFrame`) : zone de déclenchement 80px depuis le
+  haut/bas de la fenêtre visible, vitesse proportionnelle à la proximité
+  du bord — nécessaire car `touch-action:none` empêche tout scroll natif
+  pendant un glissement actif.
+- Toute séance (y compris REPOS) peut être source de glissement — seule
+  RACE reste exclue. Les gardes de garde anti-séance-déjà-réalisée
+  (`getAvailableSlots`, même logique que le menu tap) s'appliquent
+  identiquement, qu'il s'agisse de source ou de cible.
+
+**Menu tap (alternative au glissement)** — `showSessionMenu()` reste le
+repli pour toute la logique déjà décrite (Déplacer via `showMoveMenu()`,
+Annuler le déplacement). Déclenché par **double tap/double-clic**
+(`attacherDoubleTap()`, deux `click` à moins de 350ms d'intervalle — un
+`click` se déclenche nativement à la fois pour une souris et un tap
+tactile, pas besoin de gérer les deux séparément). L'ancien déclencheur
+(appui long, `touchstart`+`setTimeout(600ms)`, + `contextmenu` pour le
+clic droit desktop) a été retiré entièrement : sur mobile, un appui long
+tactile déclenche NATIVEMENT l'événement `contextmenu` du navigateur, pas
+seulement le clic droit souris — retirer uniquement le timer JS ne
+suffisait pas à empêcher le menu de s'ouvrir à l'appui long, il fallait
+aussi retirer le listener `contextmenu` lui-même. Double tap devient donc
+le seul déclencheur, desktop comme mobile, RACE exclue (comme le
+glissement).
+
+**Comportements natifs désactivés globalement (toute l'app)** — deux
+règles CSS ajoutées suite au glissement de séance, mais appliquées sur
+`*`/`html`/`body`, pas seulement sur les cartes :
+- `overscroll-behavior-y: contain` (`html`, `body`) — empêche le
+  pull-to-refresh natif du navigateur/TWA sur toute l'app.
+- `user-select: none` (global) avec exception `input`/`textarea` (`user-
+  select: text`) — empêche la sélection de texte native partout, sauf
+  dans les vrais champs de saisie qui restent normalement
+  éditables/sélectionnables.
 
 ## Écrans statiques hors JS (splash, chargement)
 
