@@ -1190,9 +1190,14 @@ const STRAVA_CLIENT_ID = "260339";
 // convergence) plutôt que codées en dur — repli sur une chaîne vide si le
 // plan n'a pas ces métadonnées (ex. ancien plan sauvegardé avant leur ajout
 // au wizard).
-const RACE_NAME = window.__PLAN_BRUT__?.paramsOrigine?.raceName || '';
-const RACE_URL = window.__PLAN_BRUT__?.paramsOrigine?.raceUrl || '';
-const RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
+// `let` plutôt que `const` (18/08/2026, même correctif que
+// DATE_COURSE_REFERENCE) — recalculées en tête de render() : sinon un
+// changement de plan via un levier "Modifier mon plan" ne se répercutait
+// jamais sur l'onglet Course (RACE_NAME etc. restaient celles lues au tout
+// premier chargement de la page).
+let RACE_NAME = window.__PLAN_BRUT__?.paramsOrigine?.raceName || '';
+let RACE_URL = window.__PLAN_BRUT__?.paramsOrigine?.raceUrl || '';
+let RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
 
 // ── Phases ──────────────────────────────────────────────────────────────
 // Reconstruites depuis plan.phases (nombre de semaines par phase) plutôt
@@ -2008,14 +2013,16 @@ if (predHistory.length) {
 // raceGoalTime utilise OBJECTIF_REFERENCE comme repli, mais cette dernière
 // était déclarée APRÈS (une const référencée avant sa déclaration lève une
 // ReferenceError en JS, "temporal dead zone" — pas juste undefined).
-const BASE_TIME_REFERENCE = window.__PLAN_BRUT__?.paramsOrigine?.tempsReference
+// `let` plutôt que `const` (18/08/2026, même correctif que
+// DATE_COURSE_REFERENCE/RACE_NAME) — recalculées en tête de render().
+let BASE_TIME_REFERENCE = window.__PLAN_BRUT__?.paramsOrigine?.tempsReference
   ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.tempsReference)
   : 3021;
 
 // Objectif chronométrique connu (paramsOrigine.objectif ou plan.objectif),
 // même principe que BASE_TIME_REFERENCE — repli sur 2910s (48'30", valeur
 // historique de Laurent) si absent.
-const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || window.__PLAN_BRUT__?.objectif)
+let OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || window.__PLAN_BRUT__?.objectif)
   ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine?.objectif || window.__PLAN_BRUT__.objectif)
   : 2910;
 
@@ -2027,7 +2034,7 @@ const OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || win
 // dans le mauvais sens : un temps de Semi divisé par une distance de 10K
 // sous-estime le temps réel par km). Repli sur 10000 (10km, distance
 // historique de Laurent) si absente.
-const DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
+let DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
 
 let raceGoalTime = load(clePourPlan("lk_race_goal"), OBJECTIF_REFERENCE);
 
@@ -3722,7 +3729,9 @@ const PACE_REFS = Object.fromEntries(
 // FC max lue depuis le plan chargé (zoneFC.fcMax, cf. section 7bis du doc de
 // convergence) plutôt que codée en dur — repli sur 181 (valeur historique
 // de Laurent) si le plan n'a pas cette donnée (profil sans fcMaxConnue).
-const FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
+// `let` plutôt que `const` (18/08/2026, même correctif que les autres
+// dérivées du plan) — recalculée en tête de render().
+let FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
 
 // ── Zones FC cible ──────────────────────────────────────────────────────
 // Reconstruites depuis FC_MAX (pourcentages fixes : 65-75% EF/LONGUE,
@@ -14218,11 +14227,27 @@ function renderDiffereChargementInitial() {
 }
 
 function render() {
-  // Recalculée à chaque render() (18/08/2026, correctif) — pas seulement
-  // au chargement, cf. commentaire sur sa déclaration `let` plus haut :
-  // sinon un changement de date de course via le levier "Modifier mon
-  // plan" ne se répercutait jamais sur le countdown/l'affichage.
+  // Recalculées à chaque render() (18/08/2026, correctif étendu) — pas
+  // seulement au chargement, cf. commentaire sur leur déclaration `let`
+  // plus haut : sinon un changement de plan via un levier "Modifier mon
+  // plan" (date de course, objectif, etc.) ne se répercutait jamais sur
+  // ces valeurs dérivées ni sur l'affichage qui en dépend (dashboard,
+  // onglet Course, allures). raceGoalTime n'est volontairement PAS
+  // recalculée ici : c'est un `let` chargé depuis localStorage
+  // (préférence explicite de l'utilisateur si définie), la retoucher
+  // écraserait un objectif manuel déjà choisi.
   DATE_COURSE_REFERENCE = ESTMODEFORME ? null : (window.__PLAN_BRUT__?.dateCourse || "2026-09-06");
+  RACE_NAME = window.__PLAN_BRUT__?.paramsOrigine?.raceName || '';
+  RACE_URL = window.__PLAN_BRUT__?.paramsOrigine?.raceUrl || '';
+  RACE_LOCATION = window.__PLAN_BRUT__?.paramsOrigine?.raceLocation || '';
+  BASE_TIME_REFERENCE = window.__PLAN_BRUT__?.paramsOrigine?.tempsReference
+    ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine.tempsReference)
+    : 3021;
+  OBJECTIF_REFERENCE = (window.__PLAN_BRUT__?.paramsOrigine?.objectif || window.__PLAN_BRUT__?.objectif)
+    ? parseTimeToSeconds(window.__PLAN_BRUT__.paramsOrigine?.objectif || window.__PLAN_BRUT__.objectif)
+    : 2910;
+  DISTANCE_M_REFERENCE = (KM_BY_DISTANCE[window.__PLAN_BRUT__?.distance] ?? 10) * 1000;
+  FC_MAX = window.__PLAN_BRUT__?.zoneFC?.fcMax || 181;
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
   // juste après reconstruirait inutilement le même contenu (double flash).
