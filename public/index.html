@@ -2831,7 +2831,16 @@ const ESTMODEFORME = window.__PLAN_BRUT__?.mode === 'forme';
 // Laurent si absente. En mode Forme, DATE_COURSE_REFERENCE reste null
 // (pas de repli sur l'ancienne date en dur) : countdown() doit refléter
 // l'absence réelle de date de course, pas une fausse valeur.
-const DATE_COURSE_REFERENCE = ESTMODEFORME ? null : (window.__PLAN_BRUT__?.dateCourse || "2026-09-06");
+//
+// `let` plutôt que `const` (18/08/2026, correctif) — recalculée en tête de
+// render() ci-dessous (comme PLAN/ALL_SESSIONS), pas figée au chargement :
+// sinon un changement de date de course via le levier "Modifier mon plan"
+// ne se répercutait jamais sur le countdown/l'affichage (window.__PLAN_BRUT__
+// remplacé après coup, mais cette valeur restait celle lue au tout premier
+// chargement de la page). ESTMODEFORME reste une vraie const : le mode d'un
+// plan (course vs forme) ne change jamais après coup, contrairement à sa
+// date.
+let DATE_COURSE_REFERENCE = ESTMODEFORME ? null : (window.__PLAN_BRUT__?.dateCourse || "2026-09-06");
 function countdown() { return DATE_COURSE_REFERENCE ? Math.ceil((new Date(DATE_COURSE_REFERENCE) - new Date()) / 86400000) : null; }
 function currentWeek() {
   const t = today();
@@ -14195,6 +14204,11 @@ function renderDiffereChargementInitial() {
 }
 
 function render() {
+  // Recalculée à chaque render() (18/08/2026, correctif) — pas seulement
+  // au chargement, cf. commentaire sur sa déclaration `let` plus haut :
+  // sinon un changement de date de course via le levier "Modifier mon
+  // plan" ne se répercutait jamais sur le countdown/l'affichage.
+  DATE_COURSE_REFERENCE = ESTMODEFORME ? null : (window.__PLAN_BRUT__?.dateCourse || "2026-09-06");
   // Annule tout renderDiffere() en attente (04/08/2026) — un appel direct
   // à render() rend déjà tout à jour, un rendu différé qui se déclencherait
   // juste après reconstruirait inutilement le même contenu (double flash).
