@@ -46,7 +46,7 @@ yoria/
 │       ├── table-rate-limiting-beta.sql     # Schéma table tentatives_soumission_beta (cf. §16bis)
 │       └── (autres docs de contexte : jour-de-course, source-donnees-seances, etc.)
 ├── public/
-│   ├── index.html                 # App principale (dashboard, ~13000 lignes)
+│   ├── index.html                 # App principale (dashboard, ~15000 lignes)
 │   ├── help-content.js            # Contenu de l'aide (données pures, cf. §4)
 │   ├── privacy.html
 │   ├── cgu.html                   # Conditions générales d'utilisation et de vente
@@ -109,7 +109,11 @@ yoria/
 sed) — **sauf** les 8 fichiers `decision-engine-*.classic.js`, scripts
 classiques uniques sans équivalent module ES. **Exception** :
 `plan-generator.js` n'a pas de `.classic.js` — `index.html` le charge via
-dynamic `import()` (`window._planGeneratorModule`).
+dynamic `import()` (`window._planGeneratorModule`, séparé de la copie
+`chargerPlanGeneratorApp()`/`_planGeneratorModuleApp` utilisée par
+l'accordéon "Modifier mon plan" ci-dessous — deux imports dynamiques
+distincts du même fichier, le navigateur met en cache le module donc pas
+de double téléchargement/exécution).
 
 **Règle TDZ (temporal dead zone)** : toute promesse globale attendue
 ailleurs (`window.__AUTH_PRET__`), ou toute variable `let`/`const` lue par
@@ -132,6 +136,24 @@ l'APPEL vers la fin du flux synchrone principal (après le premier
 module sont garanties exécutées) plutôt que de continuer à chasser chaque
 variable une à une — cf. `verifierMeteoSeanceDemain()`, désormais appelée
 juste après le premier `render()` plutôt qu'au tout début du script.
+
+**Dérivées du plan recalculées à chaque `render()`, pas seulement au
+chargement** — `DATE_COURSE_REFERENCE`, `RACE_NAME`, `RACE_URL`,
+`RACE_LOCATION`, `BASE_TIME_REFERENCE`, `OBJECTIF_REFERENCE`,
+`DISTANCE_M_REFERENCE`, `FC_MAX`, `PHASES`, `SESSION_TARGETS` — toutes en
+`let` (pas `const`), réassignées en tête de `render()` depuis
+`window.__PLAN_BRUT__` à chaque exécution. Nécessaire depuis l'ajout de
+l'accordéon "Modifier mon plan" (cf. section dédiée ci-dessous) : ces
+variables étaient auparavant calculées UNE SEULE FOIS au chargement de la
+page, donc ne reflétaient jamais un changement de plan appliqué en cours
+de session (countdown, allures, stratégie de course, cibles de validation
+VMA/SEUIL/SPEC restaient figés sur l'état du tout premier chargement).
+`raceGoalTime` reste volontairement exclue de ce recalcul automatique :
+c'est une préférence utilisateur chargée depuis `localStorage`
+(`lk_race_goal`), la retoucher automatiquement écraserait un objectif
+manuel déjà choisi dans Réglages — seul le levier Objectif (ci-dessous) la
+resynchronise explicitement, au moment précis où IL change l'objectif du
+plan.
 
 **Toute mutation d'un état source de `ALL_SESSIONS`** (`statuses`,
 `swapTable`) doit être suivie d'un `ALL_SESSIONS =
@@ -158,13 +180,104 @@ d'accueil) reste la seule voie. Une app native iOS via wrapper Capacitor
 est mentionnée comme "à l'étude" côté communication bêta (page
 d'inscription, mail d'invitation) — aucun développement entamé.
 
-**Écran "Consulter un plan" — accordéon "Modifier mon plan"
-(`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
+**Accordéon "Modifier mon plan" — app principale (`public/index.html`,
+onglet Semaines)** — 5 leviers portés depuis le wizard (Objectif, Jours,
+Volume, Date de course, Course intermédiaire), même principe que la
+version wizard ci-dessous (simulation live, application à partir de la
+semaine suivante uniquement) mais avec une présentation et un cycle de
+vie propres à l'app principale :
+- **En-tête TOUJOURS visible, `position:fixed`** (pas `sticky`) — reste
+  ancré sous le header de l'écran en permanence, y compris tout en bas de
+  la liste des semaines. Montée dans un conteneur DOM séparé
+  (`#accordeon-plan-root`, en dehors de `#app`), même pattern que la nav
+  fixe du bas (`#nav-root`) — jamais détruite/recréée par le cycle de
+  `render()`, seulement vidée/remontée quand on change d'onglet. `top`
+  calé sur `--hauteur-header-sticky`, une variable CSS **mesurée
+  dynamiquement** (`getBoundingClientRect().height`) à chaque `render()`
+  plutôt qu'une valeur en pixels devinée — un premier correctif en dur
+  (52px) s'était révélé faux, cachant l'en-tête sous le vrai header
+  (z-index supérieur) plutôt que de l'afficher juste en dessous. Le
+  contenu déplié d'un levier, lui, reste dans le flux normal de la page
+  (`renderContenuAccordeonPlan()`, appelée dans `renderWeeks()`), jamais
+  fixe — sinon un levier ouvert avec plusieurs champs resterait figé en
+  haut d'écran, hors de proportion sur mobile. Un `padding-top`
+  compensatoire (`--hauteur-accordeon-plan-ferme`, également mesurée
+  dynamiquement) est appliqué au contenu de `renderWeeks()` pour ne
+  jamais passer sous l'en-tête fixe.
+- **Ouverture** : scroll de la page tout en haut (`window.scrollTo`,
+  instantané) au clic sur l'en-tête — sinon le contenu déplié, juste sous
+  l'en-tête fixe, apparaîtrait hors champ si l'utilisateur était déjà
+  scrollé bas dans la liste des semaines.
+- **Fermeture automatique au scroll vers le bas** — écouteur `scroll`
+  global sur `window`, ajouté UNE SEULE FOIS au chargement (jamais à
+  chaque `render()`, qui provoquerait une accumulation de listeners
+  identiques), actif uniquement sur l'onglet Semaines. Petit seuil
+  anti-bruit (4px) pour ignorer le tremblement tactile.
+- **Pont v2→v1** : chaque levier régénère via `Engine.generatePlan()`
+  (import dynamique, cf. ci-dessus), retraduit en v1 via
+  `traduirePlanVersFormatV1()`, persiste via
+  `LkSync.mettreAJourPlanSupabase()`, recalcule `ALL_SESSIONS` — même
+  pont déjà éprouvé ailleurs dans le fichier pour les allures dynamiques
+  (cf. `moteur-plan.md`).
+- **`finaliserRegenerationLevier(planBrut, nouveauxParams,
+  profilPourGeneration, semaineCharniere)`** — fonction commune aux 5
+  leviers : régénère, fusionne (garde les semaines `< semaineCharniere`
+  de l'ancien plan telles quelles, prend le reste du nouveau), gère
+  id/nom/statuses/profilOrigine/paramsOrigine, purge
+  `semaineDepartVolume` de `paramsOrigine` avant sauvegarde (jamais
+  persisté durablement, cf. `moteur-plan.md`), persiste, met à jour
+  `PLAN`/`ALL_SESSIONS`. Corrige aussi une éventuelle rebascule de phase
+  (cf. `appliquerReglesPhaseApp` ci-dessous) et refuse explicitement si
+  le plan régénéré compte moins de semaines que `semaineCharniere` (cas
+  d'un recul important qui raccourcirait le plan sous la charnière —
+  aurait sinon produit un plan tronqué silencieusement, la course
+  elle-même pouvant disparaître).
+- **`semaineCharniere` — toujours `semaine actuelle + 1` sur les 5
+  leviers**, sans exception : la semaine en cours (potentiellement déjà
+  entamée, avec des séances réalisées) ne doit JAMAIS être régénérée. Un
+  bug a existé sur le levier Objectif (charnière sans le `+1`, hérité
+  d'un raisonnement propre au wizard où ce risque n'existait pas) —
+  corrigé, `semaineActuelleOuProchaineApp(planBrut) + 1` partout.
+- **`appliquerReglesPhaseApp(planPropre, phaseActuelle,
+  semaineCharniere)`** — appelée DEPUIS `finaliserRegenerationLevier`
+  (point commun aux 5 leviers, pas seulement Date de course où elle avait
+  d'abord été ajoutée par erreur). Corrige un retour de phase
+  (Spécifique/Affûtage → Construction) introduit par la fusion quand le
+  nouveau plan régénéré a une frontière de phase différente de l'ancien
+  (ex. un gros décalage de date de course change `totalSemaines`, donc la
+  position de chaque phase) — ne se contente pas de renommer l'étiquette
+  de phase, régénère aussi le VRAI contenu qualité (`genererContenuQualite`
+  avec la bonne phase) et recalcule EF/longue en conséquence, sinon
+  l'étiquette de phase affichée serait incohérente avec le contenu réel
+  de la séance (ex. VMA affiché sous une étiquette "Spécifique"). Limite
+  connue : corrige le cas le plus visible, mais la cause structurelle de
+  fond (deux plans régénérés indépendamment, recollés à une charnière,
+  n'ont aucune garantie de s'aligner parfaitement — rotation qualité
+  incluse) n'est pas traitée pour toutes les combinaisons possibles de
+  leviers.
+- **Outils de réparation ponctuelle — déplacés dans Réglages >
+  Maintenance** (pas dans l'accordéon lui-même, retirés de là après un
+  premier essai) : "Vérifier la cohérence des phases"
+  (`reparerCoherencePhasesApp`, recalcule les vraies frontières de phase
+  via `Engine.computePhases()` — jamais en se fiant à `plan.phases`
+  stocké, qui peut lui-même être resté incohérent après une régénération
+  antérieure — et régénère le contenu de toute semaine divergente, y
+  compris la semaine actuelle et les semaines passées, contrairement aux
+  5 leviers normaux) et "Séance qualité de la semaine en cours"
+  (`changerSousTypeSeanceApp`, sélecteur manuel du sous-type d'UNE séance
+  qualité précise, pour restaurer un contenu connu quand la rotation
+  automatique ne le retrouverait pas forcément).
+
+**Écran "Consulter un plan" — accordéon "Modifier mon plan" (WIZARD,
+`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
 (Objectif, Jours, Volume, Date de course), un seul ouvert à la fois.
 Simulation LIVE de l'impact avant validation, jamais appliqué sans clic
 explicite sur "Appliquer". Application à partir de la SEMAINE SUIVANTE
 uniquement — la semaine en cours et les précédentes gardent leur contenu
-original.
+original. **Ce mécanisme wizard reste séparé et distinct de l'accordéon
+app principale ci-dessus** — deux implémentations parallèles du même
+principe, pas encore unifiées (cf. inventaire, chantier "Modifier mon
+plan").
 - **Levier Jours** : réutilise `.days-grid` (`daysGridSimulation`), permet
   aussi de déplacer uniquement la sortie longue. `Engine.nbQualiteFor(nbJours,
   niveau)` fait varier le rythme de progression proportionnellement au
@@ -190,6 +303,13 @@ original.
   ≥8 semaines avertit de créer un nouveau plan plutôt que de prolonger.
   Cycle de décharge peut se désynchroniser légèrement après un changement
   de date — limite mineure acceptée.
+- **Écran résultat (step 10)** — bloc "Plan complet" (semaine par
+  semaine, `renderSemaineHtml`) RETIRÉ : dupliquait un second système de
+  visualisation du plan, différent de celui de l'app principale
+  (`renderWeekDetail`/cartes), créant une rupture visuelle juste après la
+  génération. Le bouton "Terminer" (déjà présent, sauvegarde puis
+  redirige vers l'app) reste le seul point de consultation réelle du
+  plan une fois généré.
 
 **Écran "Choix du type de plan" (`choix-mode-contenu`,
 `public/v2/index.html`)** — tout premier écran du wizard : Objectif
@@ -219,7 +339,8 @@ personnels, cf. ci-dessus) et onboarding (cf. `auth-et-publication.md`).
 
 **Non fait** : audit no-scroll systématique du wizard — nécessite un rendu
 réel en navigateur, approche retenue = tests réels au cas par cas plutôt
-qu'estimation.
+qu'estimation. Padding bas résiduel de l'ancien footer (retiré en v17.6)
+nettoyé dans `.content` (130px → 32px).
 
 ## Écrans de l'app principale (`index.html`)
 
@@ -236,13 +357,14 @@ Fonctions de rendu (`render*`) :
   "Où le glissement est disponible") — cartes "Aujourd'hui" et "⚡ Demain"
   restent de simples liens de navigation vers `weekDetail` sur cet écran.
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine.
-  `renderWeekDetail` est le SEUL écran où le glissement de séance
-  (poignée dédiée) est disponible, cf. section swap ci-dessous.
+  `renderWeeks` porte l'accordéon "Modifier mon plan" (cf. section dédiée
+  ci-dessus). `renderWeekDetail` est le SEUL écran où le glissement de
+  séance (poignée dédiée) est disponible, cf. section swap ci-dessous.
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
 - `renderHelp` — aide (cf. plus bas)
-- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement, recommandations santé (ligne autonome tout en bas, hors accordéon)
+- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement, recommandations santé (ligne autonome tout en bas, hors accordéon), groupe accordéon Maintenance (recalcul km cumulés + les deux outils de réparation ponctuelle de l'accordéon "Modifier mon plan", cf. section dédiée ci-dessus)
 - `renderBadges` — écran détaillé des badges
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
@@ -327,13 +449,17 @@ au renderer `rendreBlocsItem()`.
 
 **Barre de navigation** — montée dans `#nav-root`, conteneur distinct de
 `#app` (via `replaceChildren`), pour éviter le flash de la barre à chaque
-render. `setView()` scrolle en haut AVANT `render()`.
+render. `setView()` scrolle en haut AVANT `render()`. **Même pattern
+réutilisé pour l'en-tête fixe de l'accordéon "Modifier mon plan"**
+(`#accordeon-plan-root`, cf. section dédiée ci-dessus).
 
 **`render()`** — remplacement atomique du contenu : le nouveau
 header/contenu est entièrement construit d'abord, puis substitué à
 l'ancien en une seule opération (`app.replaceChildren(...)`) à la toute
 fin de la fonction — aucune frame intermédiaire avec `#app` vide n'est
-peinte.
+peinte. Recalcule aussi en tête de fonction toutes les dérivées du plan
+(cf. section dédiée plus haut) et monte/vide l'en-tête fixe de l'accordéon
+"Modifier mon plan" selon l'onglet actif.
 
 **`renderDiffere()`** — regroupe les mises à jour asynchrones automatiques
 (badges débloqués, message du coach, météo actuelle, notes météo J+1,
@@ -461,20 +587,23 @@ date d'expiration non retenue (peu fiable sur le gabarit FFA observé) —
 saisie manuelle de la date reste le seul chemin. Alerte visuelle si
 expiration ≤30 jours.
 
-**Onglet Réglages — 6 groupes accordéon + 2 lignes autonomes** — Compte
+**Onglet Réglages — 7 groupes accordéon + 2 lignes autonomes** — Compte
 et abonnement / Profil coureur / Records personnels / Intégrations /
-Export / Version, même mécanisme de persistance d'état que Stats/Course.
-Deux sections restent hors accordéon, toujours visibles : la clôture de
-plan Forme (action irréversible) et le thème clair/sombre (bouton icône
-discret, intégré à l'en-tête de l'app — fond blanc fixe derrière ☀️, fond
-noir fixe derrière 🌙, indépendant du thème actif pour un contraste
-constant). Le groupe "Profil coureur" affiche un simple rappel PPS en
-lecture seule (statut + date d'expiration). Tout en bas de l'écran, hors
-de tout groupe accordéon : lignes "⚕️ Recommandations santé" et "📄
-Conditions générales d'utilisation" / "🔒 Politique de confidentialité"
-(`recommandationsSanteSection`, `cguSection`), ouvrent respectivement
-`ouvrirRecommandationsSanteModale()`, `ouvrirCguModale()`,
-`ouvrirPrivacyModale()`.
+Export / Maintenance / Version, même mécanisme de persistance d'état que
+Stats/Course. Deux sections restent hors accordéon, toujours visibles :
+la clôture de plan Forme (action irréversible) et le thème clair/sombre
+(bouton icône discret, intégré à l'en-tête de l'app — fond blanc fixe
+derrière ☀️, fond noir fixe derrière 🌙, indépendant du thème actif pour
+un contraste constant). Le groupe "Profil coureur" affiche un simple
+rappel PPS en lecture seule (statut + date d'expiration). Le groupe
+"Maintenance" contient le recalcul du badge km cumulés et les deux outils
+de réparation ponctuelle de l'accordéon "Modifier mon plan" (cohérence
+des phases, correction manuelle de séance — cf. section dédiée plus
+haut). Tout en bas de l'écran, hors de tout groupe accordéon : lignes
+"⚕️ Recommandations santé" et "📄 Conditions générales d'utilisation" /
+"🔒 Politique de confidentialité" (`recommandationsSanteSection`,
+`cguSection`), ouvrent respectivement `ouvrirRecommandationsSanteModale()`,
+`ouvrirCguModale()`, `ouvrirPrivacyModale()`.
 
 **Records personnels — grille compacte avec validation explicite** —
 chaque distance (5K/10K/Semi/Marathon) affiche directement sa roulette
