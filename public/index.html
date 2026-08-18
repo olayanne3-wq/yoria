@@ -6331,6 +6331,55 @@ function semaineActuelleOuProchaineApp(plan) {
 // (même mécanisme déjà utilisé par les allures dynamiques, cf.
 // architecture-generale.md) plutôt que assurerPlanExiste (réservé à la
 // création initiale d'un plan, pas à sa modification).
+// Boilerplate commun à tous les leviers "Modifier mon plan" — régénère
+// via Engine.generatePlan(), conserve telles quelles les semaines déjà
+// passées (avant semaineCharniere), copie id/nom/statuses/profilOrigine,
+// purge semaineDepartVolume de paramsOrigine (jamais persisté
+// durablement, cf. mémoire de session), préserve plan.volumeCourant s'il
+// existe, puis persiste et met à jour PLAN/ALL_SESSIONS. Retourne
+// {ok:true} ou {ok:false, message} — l'appelant affiche le message dans
+// son propre msgEl, chaque levier gardant son texte de succès spécifique.
+async function finaliserRegenerationLevier(planBrut, nouveauxParams, profilPourGeneration, semaineCharniere) {
+  const Engine = await chargerPlanGeneratorApp();
+  let planPropre;
+  try {
+    planPropre = Engine.generatePlan(profilPourGeneration, nouveauxParams);
+  } catch (e) {
+    return { ok:false, message: "Erreur de régénération : " + e.message };
+  }
+  if (planPropre?.planInvalide) {
+    return { ok:false, message: planPropre.message ?? "Ce plan ne peut pas être régénéré avec ce changement." };
+  }
+
+  planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
+    if (semaineNouvelle.semaineNum < semaineCharniere) {
+      const semaineAncienne = planBrut.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
+      return semaineAncienne || semaineNouvelle;
+    }
+    return semaineNouvelle;
+  });
+
+  planPropre.id = planBrut.id;
+  planPropre.nom = planBrut.nom;
+  planPropre.statuses = planBrut.statuses;
+  planPropre.profilOrigine = profilPourGeneration;
+  const { semaineDepartVolume, ...paramsSansCharniere } = nouveauxParams;
+  planPropre.paramsOrigine = { ...paramsSansCharniere, volumeActuel: planBrut.paramsOrigine.volumeActuel };
+  if (planBrut.volumeCourant) planPropre.volumeCourant = planBrut.volumeCourant;
+
+  try {
+    await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
+  } catch (e) {
+    return { ok:false, message: "Régénéré mais sauvegarde échouée : " + e.message };
+  }
+
+  window.__PLAN_BRUT__ = planPropre;
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planPropre);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+  return { ok:true };
+}
+
 async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
   if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
@@ -6345,72 +6394,361 @@ async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) 
     return;
   }
 
-  const Engine = await chargerPlanGeneratorApp();
   const texteOriginal = btnAppliquer.textContent;
   btnAppliquer.textContent = "Application…";
   btnAppliquer.disabled = true;
 
   const semaineCharniere = semaineActuelleOuProchaineApp(planBrut) + 1;
   const nouveauxParams = { ...planBrut.paramsOrigine, volumeActuel: nouveauVolume, semaineDepartVolume: semaineCharniere };
-  let planPropre;
-  try {
-    planPropre = Engine.generatePlan(planBrut.profilOrigine, nouveauxParams);
-  } catch (e) {
-    msgEl.textContent = "Erreur de régénération : " + e.message;
+  const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
+
+  if (!resultat.ok) {
+    msgEl.textContent = resultat.message;
     msgEl.style.color = "var(--warn)";
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
   }
-  if (planPropre?.planInvalide) {
-    msgEl.textContent = planPropre.message ?? "Ce plan ne peut pas être régénéré avec ce volume.";
+  // Préserve la dernière intention réelle de volume (distincte du volume
+  // de départ historique) — écrasée après coup car finaliserRegenerationLevier
+  // ne connaît pas la spécificité "ce levier EST le levier Volume".
+  window.__PLAN_BRUT__.volumeCourant = { km: nouveauVolume, semaineNum: semaineCharniere };
+  msgEl.textContent = "✅ Volume mis à jour à partir de la semaine prochaine.";
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
+// ── Levier Objectif ──────────────────────────────────────────────────────
+// Porté depuis verifierFaisabiliteNouvelObjectif()/regenererAvecNouvelObjectif()
+// du wizard (public/v2/index.html) — même garde-fou de faisabilité (avertit
+// seulement, ne bloque jamais), cf. mémoire de session pour l'historique.
+function evaluerFaisabiliteObjectifApp(planBrut, valeurSaisie, Engine) {
+  const refSeconds = Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference);
+  const objSeconds = Engine.parseTimeToSeconds(valeurSaisie);
+  if (!refSeconds || !objSeconds) return null;
+
+  let semainesRestantes = null;
+  if (planBrut.dateCourse) {
+    const joursRestants = (new Date(planBrut.dateCourse) - new Date()) / 86400000;
+    semainesRestantes = Math.max(1, Math.round(joursRestants / 7));
+  }
+
+  if (objSeconds >= refSeconds) {
+    return { texte: "L'objectif n'est pas plus rapide que ton temps de référence actuel — vérifie la valeur saisie.", ico:"⚠️", couleur:"var(--warn)" };
+  }
+  const ampleur = Engine.categoriserAmpleurObjectif(refSeconds, objSeconds);
+  const gainPct = Math.round((refSeconds - objSeconds) / refSeconds * 100);
+  if (ampleur === "ambitieuse" && semainesRestantes !== null && semainesRestantes < 12) {
+    return { texte: `Objectif ambitieux (${gainPct}% de gain visé) sur seulement ${semainesRestantes} semaines restantes — marge de progression serrée.`, ico:"⚠️", couleur:"var(--warn)" };
+  }
+  const qualif = ampleur === "faible" ? "prudent" : (ampleur === "moderee" ? "réaliste" : "ambitieux mais jouable");
+  return { texte: `Objectif ${qualif}${semainesRestantes !== null ? ` sur ${semainesRestantes} semaines restantes` : ""}.`, ico:"✅", couleur:"var(--accent2)" };
+}
+
+async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnAppliquer) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
+    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
     msgEl.style.color = "var(--warn)";
-    btnAppliquer.textContent = texteOriginal;
-    btnAppliquer.disabled = false;
+    return;
+  }
+  if (!nouvelObjectif) {
+    msgEl.textContent = "Renseigne un nouveau temps visé.";
+    msgEl.style.color = "var(--warn)";
     return;
   }
 
-  // Semaines déjà passées (avant la charnière) : conservées TELLES QUELLES
-  // depuis le plan actuel, jamais recalculées — même principe que
-  // lancerAnalyseAdaptation()/appliquerChangementVolume() côté wizard.
-  planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
-    if (semaineNouvelle.semaineNum < semaineCharniere) {
-      const semaineAncienne = planBrut.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
-      return semaineAncienne || semaineNouvelle;
-    }
-    return semaineNouvelle;
+  const texteOriginal = btnAppliquer.textContent;
+  btnAppliquer.textContent = "Application…";
+  btnAppliquer.disabled = true;
+
+  // Charnière = semaine actuelle (pas +1, cf. regenererAvecNouvelObjectif
+  // côté wizard) — l'objectif se répercute dès la semaine en cours, seul
+  // le CONTENU détaillé des séances déjà passées est préservé.
+  const Engine = await chargerPlanGeneratorApp();
+  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut);
+  const nouveauxParams = planBrut.volumeCourant
+    ? { ...planBrut.paramsOrigine, objectif: nouvelObjectif, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
+    : { ...planBrut.paramsOrigine, objectif: nouvelObjectif };
+  const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
+
+  if (!resultat.ok) {
+    msgEl.textContent = resultat.message;
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+  msgEl.textContent = "✅ Objectif mis à jour.";
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
+// ── Levier Jours ─────────────────────────────────────────────────────────
+// Porté depuis renderDaysSimulation()/simulerImpactJours()/
+// appliquerChangementJours() du wizard. Cycle à 3 états par jour (vide →
+// sélectionné → sortie longue → vide), même logique que toggleDayCycle()
+// côté wizard, réimplémentée ici sur un état JS simple plutôt que des
+// classes CSS lues/écrites sur le DOM (pas de raison de reproduire le
+// DOM-comme-état du wizard alors que l'app utilise déjà des variables
+// module-level pour ce genre d'état, cf. levierPlanOuvert).
+let joursSimulesLevier = null; // [0..6] indices des jours sélectionnés, ou null = pas encore initialisé pour cette ouverture
+let jourLongueSimuleLevier = null;
+
+function initJoursSimulesLevier(planBrut) {
+  const joursActuels = planBrut?.profilOrigine?.joursDisponiblesHabituels ?? [1,3,5];
+  joursSimulesLevier = [...joursActuels];
+  jourLongueSimuleLevier = planBrut?.profilOrigine?.jourLongueChoisi ?? Math.max(...joursActuels);
+}
+
+function toggleJourSimuleLevier(i) {
+  const estSelectionne = joursSimulesLevier.includes(i);
+  const estLongue = i === jourLongueSimuleLevier;
+  if (!estSelectionne) {
+    joursSimulesLevier.push(i);
+  } else if (!estLongue) {
+    jourLongueSimuleLevier = i;
+  } else {
+    joursSimulesLevier = joursSimulesLevier.filter(j => j !== i);
+    if (jourLongueSimuleLevier === i) jourLongueSimuleLevier = null;
+  }
+}
+
+// Même règle de pouce que le wizard (26/07/2026, cf. mémoire de session) :
+// rythme de progression supposé proportionnel au nombre de séances QUALITÉ
+// par semaine — approximation assumée, pas un vrai recalcul complet.
+function estimerImpactJoursApp(planBrut, Engine) {
+  if (joursSimulesLevier.length < 2) return { erreur: "Au moins 2 jours sont nécessaires." };
+  const niveau = planBrut?.profilOrigine?.niveau ?? "intermediaire";
+  const joursActuels = planBrut?.profilOrigine?.joursDisponiblesHabituels ?? [];
+  const nbQualiteActuel = Engine.nbQualiteFor(joursActuels.length, niveau);
+  const nbQualiteSimule = Engine.nbQualiteFor(joursSimulesLevier.length, niveau);
+  const refTimeSeconds = Engine.parseTimeToSeconds(planBrut?.paramsOrigine?.tempsReference ?? "50:00");
+  const objectifTimeSeconds = Engine.parseTimeToSeconds(planBrut?.paramsOrigine?.objectif ?? planBrut?.paramsOrigine?.tempsReference ?? "50:00");
+  const gainVise = refTimeSeconds - objectifTimeSeconds;
+  if (nbQualiteActuel === 0 || gainVise <= 0) return { insuffisant: true };
+  const ratio = nbQualiteSimule / nbQualiteActuel;
+  const gainProjeteSimule = Math.round(gainVise * Math.min(ratio, 1));
+  const nouvelObjectifSimule = refTimeSeconds - gainProjeteSimule;
+  return { nbQualiteActuel, nbQualiteSimule, nouvelObjectifSimule, objectifTimeSeconds };
+}
+
+async function appliquerChangementJoursApp(msgEl, btnAppliquer) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
+    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+  if (!joursSimulesLevier || joursSimulesLevier.length < 2) {
+    msgEl.textContent = "Au moins 2 jours sont nécessaires.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const texteOriginal = btnAppliquer.textContent;
+  btnAppliquer.textContent = "Application…";
+  btnAppliquer.disabled = true;
+
+  const nouveauProfil = { ...planBrut.profilOrigine, joursDisponiblesHabituels: [...joursSimulesLevier].sort((a,b)=>a-b), jourLongueChoisi: jourLongueSimuleLevier };
+  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut) + 1;
+  const paramsPourJours = planBrut.volumeCourant
+    ? { ...planBrut.paramsOrigine, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
+    : planBrut.paramsOrigine;
+  const resultat = await finaliserRegenerationLevier(planBrut, paramsPourJours, nouveauProfil, semaineCharniere);
+
+  if (!resultat.ok) {
+    msgEl.textContent = resultat.message;
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+  msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
+// ── Levier Date de course ────────────────────────────────────────────────
+// Porté depuis simulerImpactDateCourse()/appliquerReglesPhase()/
+// appliquerChangementDateCourse() du wizard — mêmes règles de phase (une
+// Spécifique ne repasse jamais en Construction ; un Affûtage avec
+// décalage ≤1 semaine ne recalcule pas du tout, seule la date change).
+function appliquerReglesPhaseApp(planRegenere, phaseActuelle, semaineCharniere) {
+  if (phaseActuelle !== "Specifique" && phaseActuelle !== "Affutage") return planRegenere;
+  const aUneConstructionApresCharniere = planRegenere.semaines.some(s =>
+    s.semaineNum >= semaineCharniere && s.phase === "Construction"
+  );
+  if (!aUneConstructionApresCharniere) return planRegenere;
+  planRegenere.semaines.forEach(s => {
+    if (s.semaineNum >= semaineCharniere && s.phase === "Construction") s.phase = "Specifique";
   });
+  planRegenere.phases = planRegenere.phases.map(p => p.nom === "Construction" ? { ...p, nom: "Specifique" } : p);
+  return planRegenere;
+}
 
-  planPropre.id = planBrut.id;
-  planPropre.nom = planBrut.nom;
-  planPropre.statuses = planBrut.statuses;
-  planPropre.profilOrigine = planBrut.profilOrigine;
-  // semaineDepartVolume ne doit JAMAIS rester dans paramsOrigine au-delà de
-  // cette régénération — cf. mémoire de session (bug déjà rencontré et
-  // corrigé côté wizard le 06/08 : EF/longue tombant à 0min pour toute
-  // régénération future si ce paramètre transitoire restait "collé").
-  const { semaineDepartVolume, ...paramsSansCharniere } = nouveauxParams;
-  planPropre.paramsOrigine = paramsSansCharniere;
-  // Préserve la dernière intention réelle de volume, distincte du volume
-  // de départ historique — cf. mémoire de session, même raisonnement que
-  // le wizard.
-  planPropre.volumeCourant = { km: nouveauVolume, semaineNum: semaineCharniere };
+function evaluerImpactDateCourseApp(planBrut, nouvelleDateCourse) {
+  if (!nouvelleDateCourse || !planBrut?.dateCourse) return null;
+  const ancienneDate = new Date(planBrut.dateCourse + "T00:00:00Z");
+  const nouvelleDate = new Date(nouvelleDateCourse + "T00:00:00Z");
+  const deltaJours = Math.round((nouvelleDate - ancienneDate) / 86400000);
+  const deltaSemaines = deltaJours / 7;
+  if (deltaJours === 0) return { memeDateQu: true };
+  if (nouvelleDate < new Date()) return { erreur: "La nouvelle date ne peut pas être dans le passé." };
 
-  try {
-    await window.LkSync.mettreAJourPlanSupabase(planPropre.id, planPropre);
-  } catch (e) {
-    msgEl.textContent = "Régénéré mais sauvegarde échouée : " + e.message;
+  const semaineNumActuelle = semaineActuelleOuProchaineApp(planBrut);
+  const phaseActuelle = planBrut.semaines.find(s => s.semaineNum === semaineNumActuelle)?.phase ?? null;
+  const messages = [];
+  if (Math.abs(deltaSemaines) >= 8) {
+    messages.push(`Décalage important (${deltaJours >= 0 ? "+" : ""}${Math.round(deltaSemaines)} semaines) — on te recommande plutôt de créer un nouveau plan pour repartir sur une progression cohérente. Tu peux tout de même prolonger celui-ci si tu préfères.`);
+  }
+  if (phaseActuelle === "Specifique") {
+    messages.push("Tu es en phase Spécifique — la suite du plan restera au minimum en Spécifique, jamais un retour en Construction.");
+  } else if (phaseActuelle === "Affutage") {
+    messages.push(Math.abs(deltaSemaines) <= 1
+      ? "Tu es en Affûtage — ce léger décalage ne change pas ta phase actuelle."
+      : "Tu es en Affûtage — vu l'ampleur du décalage, le plan repassera en Spécifique le temps qu'il faut pour recalculer un Affûtage de durée normale juste avant la nouvelle date.");
+  }
+  return { deltaJours, phaseActuelle, messages };
+}
+
+async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAppliquer) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
+    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+  if (!nouvelleDateCourse) {
+    msgEl.textContent = "Choisis une date valide.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const texteOriginal = btnAppliquer.textContent;
+  btnAppliquer.textContent = "Application…";
+  btnAppliquer.disabled = true;
+
+  const semaineNumActuelle = semaineActuelleOuProchaineApp(planBrut);
+  const phaseActuelle = planBrut.semaines.find(s => s.semaineNum === semaineNumActuelle)?.phase ?? null;
+  const semaineCharniere = semaineNumActuelle + 1;
+  const ancienneDate = new Date(planBrut.dateCourse + "T00:00:00Z");
+  const nouvelleDate = new Date(nouvelleDateCourse + "T00:00:00Z");
+  const deltaSemaines = Math.round((nouvelleDate - ancienneDate) / 86400000) / 7;
+
+  // Affûtage + décalage ≤1 semaine : pas de recalcul, seule dateCourse
+  // change (même règle que le wizard).
+  if (phaseActuelle === "Affutage" && Math.abs(deltaSemaines) <= 1) {
+    planBrut.dateCourse = nouvelleDateCourse;
+    planBrut.paramsOrigine = { ...planBrut.paramsOrigine, dateCourse: nouvelleDateCourse };
+    try {
+      await window.LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut);
+    } catch (e) {
+      msgEl.textContent = "Mis à jour mais sauvegarde échouée : " + e.message;
+      msgEl.style.color = "var(--warn)";
+      btnAppliquer.textContent = texteOriginal;
+      btnAppliquer.disabled = false;
+      return;
+    }
+    window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
+    PLAN = window.__PLAN_GENERE__;
+    ALL_SESSIONS = recalculerAllSessions();
+    msgEl.textContent = "✅ Date de course mise à jour (léger décalage, ta phase actuelle ne change pas).";
+    msgEl.style.color = "var(--accent2)";
+    render();
+    return;
+  }
+
+  const nouveauxParams = planBrut.volumeCourant
+    ? { ...planBrut.paramsOrigine, dateCourse: nouvelleDateCourse, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
+    : { ...planBrut.paramsOrigine, dateCourse: nouvelleDateCourse };
+  const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
+  if (!resultat.ok) {
+    msgEl.textContent = resultat.message;
     msgEl.style.color = "var(--warn)";
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
   }
-
-  window.__PLAN_BRUT__ = planPropre;
-  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planPropre);
+  // appliquerReglesPhase() doit s'appliquer APRÈS finaliserRegenerationLevier
+  // (qui a déjà fusionné les semaines passées) — repasse sur window.__PLAN_BRUT__,
+  // seule référence à jour à ce stade.
+  window.__PLAN_BRUT__ = appliquerReglesPhaseApp(window.__PLAN_BRUT__, phaseActuelle, semaineCharniere);
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(window.__PLAN_BRUT__);
   PLAN = window.__PLAN_GENERE__;
   ALL_SESSIONS = recalculerAllSessions();
-  msgEl.textContent = "✅ Volume mis à jour à partir de la semaine prochaine.";
+  msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
+// ── Levier Course intermédiaire ──────────────────────────────────────────
+// Porté depuis simulerImpactCourseIntermediaire()/
+// appliquerChangementCourseIntermediaire() du wizard — pas de
+// appliquerReglesPhase() ni de cas particulier "changement mineur" (l'ajout/
+// retrait d'une course intermédiaire ne change jamais la phase globale,
+// contrairement à un décalage de dateCourse).
+function evaluerImpactCourseIntermediaireApp(planBrut, enabled, date, distance) {
+  const actuelle = planBrut?.paramsOrigine?.courseIntermediaire ?? null;
+  if (!enabled) {
+    if (!actuelle) return { rienAChanger: true };
+    return { action: "retirer", texte: `La course intermédiaire du ${actuelle.date} (${actuelle.distance}) sera retirée à partir de la semaine prochaine.` };
+  }
+  if (!date) return { rienAChanger: true };
+
+  const semaineNumActuelle = semaineActuelleOuProchaineApp(planBrut);
+  const debutPlan = new Date(planBrut.dateDebut + "T00:00:00Z");
+  const semaineCharniere = semaineNumActuelle + 1;
+  const dateChar = new Date(debutPlan);
+  dateChar.setUTCDate(debutPlan.getUTCDate() + (semaineCharniere - planBrut.semaines[0].semaineNum) * 7);
+  const dateChoisie = new Date(date + "T00:00:00Z");
+
+  if (dateChoisie < dateChar) {
+    return { erreur: `La date doit tomber à partir de la semaine prochaine (${dateChar.toISOString().slice(0,10)} ou après) — cette semaine-ci et les précédentes ne peuvent plus être modifiées.` };
+  }
+  if (dateChoisie >= new Date(planBrut.dateCourse + "T00:00:00Z")) {
+    return { erreur: `La date doit être avant ta course finale (${planBrut.dateCourse}).` };
+  }
+  if (actuelle && actuelle.date === date && actuelle.distance === distance) {
+    return { rienAChanger: true, memeValeur: true };
+  }
+  const recupJours = { "5K":1, "10K":2, "Semi":4 }[distance];
+  return { action:"definir", date, distance, recupJours, verbe: actuelle ? "modifiée" : "ajoutée" };
+}
+
+async function appliquerChangementCourseIntermediaireApp(action, date, distance, msgEl, btnAppliquer) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
+    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const texteOriginal = btnAppliquer.textContent;
+  btnAppliquer.textContent = "Application…";
+  btnAppliquer.disabled = true;
+
+  const semaineCharniere = semaineActuelleOuProchaineApp(planBrut) + 1;
+  const nouveauCourseIntermediaire = action === "retirer" ? undefined : { date, distance };
+  const nouveauxParams = planBrut.volumeCourant
+    ? { ...planBrut.paramsOrigine, courseIntermediaire: nouveauCourseIntermediaire, volumeActuel: planBrut.volumeCourant.km, semaineDepartVolume: planBrut.volumeCourant.semaineNum }
+    : { ...planBrut.paramsOrigine, courseIntermediaire: nouveauCourseIntermediaire };
+  const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
+
+  if (!resultat.ok) {
+    msgEl.textContent = resultat.message;
+    msgEl.style.color = "var(--warn)";
+    btnAppliquer.textContent = texteOriginal;
+    btnAppliquer.disabled = false;
+    return;
+  }
+  msgEl.textContent = action === "retirer"
+    ? `✅ Course intermédiaire retirée à partir de la semaine ${semaineCharniere}.`
+    : `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
   msgEl.style.color = "var(--accent2)";
   render();
 }
@@ -6451,18 +6789,323 @@ function renderLevierVolume() {
   return el("div",{}, entete, corps);
 }
 
-// Levier "à venir" — placeholder visuel pour un levier pas encore porté
-// depuis le wizard (cf. mémoire de session pour l'état d'avancement réel).
-// Grisé et non cliquable plutôt qu'absent : rend visible ce qui arrive,
-// sans risquer une confusion avec une vraie action désactivée par erreur.
-function renderLevierAVenir(icone, label) {
-  return el("div",{style:{
-    padding:"10px 4px",display:"flex",alignItems:"center",justifyContent:"space-between",
-    fontSize:"13px",color:"var(--text-muted)",opacity:"0.55",borderTop:"1px solid var(--border-soft)"
-  }},
-    el("span",{},icone+" "+label),
-    el("span",{style:{fontSize:"11px",fontStyle:"italic"}},"Bientôt")
+// Formate un nombre de secondes en "m:ss" — portée depuis formatTimeMinSec()
+// du wizard, utilisée par le levier Jours pour afficher l'objectif estimé.
+function formatTimeMinSecApp(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.round(totalSeconds % 60);
+  return `${m}:${String(s).padStart(2,"0")}`;
+}
+
+// ── Rendu UI levier Objectif ──────────────────────────────────────────────
+function renderLevierObjectif() {
+  const planBrut = window.__PLAN_BRUT__;
+  const ouvert = levierPlanOuvert === "objectif";
+  const valeurInitiale = planBrut?.paramsOrigine?.objectif ?? planBrut?.objectif ?? "";
+
+  const input = el("input",{type:"text",placeholder:"Nouveau temps visé (ex. 47:30)",value:valeurInitiale,style:{
+    width:"100%",marginTop:"8px",padding:"10px 12px",borderRadius:"8px",border:"1px solid var(--border)",
+    background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"14px",fontFamily:"inherit"
+  }});
+  const feasibiliteEl = el("div",{style:{marginTop:"8px"}});
+  const msgEl = el("div",{style:{marginTop:"6px",fontSize:"13px"}});
+  const btnAppliquer = el("button",{style:{
+    marginTop:"10px",width:"100%",padding:"10px",borderRadius:"8px",border:"none",
+    background:"var(--accent)",color:"var(--bg)",fontSize:"13px",fontWeight:"700",cursor:"pointer"
+  }},"Régénérer avec ce nouvel objectif");
+  btnAppliquer.addEventListener("click", () => {
+    appliquerChangementObjectifApp(input.value.trim(), msgEl, btnAppliquer);
+  });
+
+  let debounceObjectif = null;
+  input.addEventListener("input", () => {
+    clearTimeout(debounceObjectif);
+    debounceObjectif = setTimeout(async () => {
+      const valeur = input.value.trim();
+      if (!planBrut?.paramsOrigine || !valeur) { feasibiliteEl.replaceChildren(); return; }
+      const Engine = await chargerPlanGeneratorApp();
+      const eval_ = evaluerFaisabiliteObjectifApp(planBrut, valeur, Engine);
+      feasibiliteEl.replaceChildren(eval_ ? el("div",{style:{
+        padding:"8px 10px",borderRadius:"8px",border:`1px solid ${eval_.couleur}`,fontSize:"12px",
+        display:"flex",gap:"6px",alignItems:"flex-start"
+      }}, el("span",{},eval_.ico), el("span",{},eval_.texte)) : null);
+    }, 250);
+  });
+
+  const corps = el("div",{style:{display:ouvert?"block":"none",padding:"0 4px 14px"}},
+    input, feasibiliteEl,
+    el("p",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5",marginTop:"8px"}},"Change l'allure course visée pour les séances à venir. Les allures VMA/seuil/EF ne changent PAS avec l'objectif — elles dépendent de ta forme réellement mesurée et se resserrent automatiquement quand ta progression le confirme."),
+    btnAppliquer, msgEl
   );
+
+  const chevron = el("span",{style:{fontSize:"11px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
+    el("span",{},"🎯 Objectif de temps"), chevron
+  );
+  entete.addEventListener("click", () => {
+    levierPlanOuvert = (levierPlanOuvert === "objectif") ? null : "objectif";
+    render();
+  });
+
+  return el("div",{}, entete, corps);
+}
+
+// ── Rendu UI levier Jours ─────────────────────────────────────────────────
+function renderLevierJours() {
+  const planBrut = window.__PLAN_BRUT__;
+  const ouvert = levierPlanOuvert === "jours";
+  if (ouvert && joursSimulesLevier === null) initJoursSimulesLevier(planBrut);
+
+  const NOMS_JOURS = ["L","M","M","J","V","S","D"];
+  const impactEl = el("div",{style:{marginTop:"14px"}});
+  const msgEl = el("div",{style:{marginTop:"6px",fontSize:"13px"}});
+  const compteurEl = el("div",{class:"muted",style:{fontSize:"12px",marginTop:"8px"}});
+  const btnAppliquer = el("button",{style:{
+    marginTop:"10px",width:"100%",padding:"10px",borderRadius:"8px",border:"none",
+    background:"var(--accent)",color:"var(--bg)",fontSize:"13px",fontWeight:"700",cursor:"pointer"
+  }},"Appliquer à partir de la semaine prochaine");
+  btnAppliquer.addEventListener("click", () => appliquerChangementJoursApp(msgEl, btnAppliquer));
+
+  async function rafraichirImpactJours() {
+    compteurEl.textContent = "● "+joursSimulesLevier.length+" séances / semaine";
+    if (joursSimulesLevier.length < 2) {
+      impactEl.replaceChildren(el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--warn)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"⚠️"), el("span",{},"Au moins 2 jours sont nécessaires.")
+      ));
+      btnAppliquer.disabled = true;
+      return;
+    }
+    const Engine = await chargerPlanGeneratorApp();
+    const impact = estimerImpactJoursApp(planBrut, Engine);
+    if (impact.erreur) {
+      impactEl.replaceChildren(el("div",{class:"muted",style:{fontSize:"12px"}},impact.erreur));
+      btnAppliquer.disabled = true;
+      return;
+    }
+    if (impact.insuffisant) {
+      impactEl.replaceChildren(el("div",{class:"muted",style:{fontSize:"12px"}},"Pas assez de données sur ce plan pour simuler."));
+      btnAppliquer.disabled = false;
+      return;
+    }
+    impactEl.replaceChildren(
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
+        el("span",{class:"muted"},"Séances qualité/semaine"), el("span",{},impact.nbQualiteActuel+" → "+impact.nbQualiteSimule)
+      ),
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
+        el("span",{class:"muted"},"Objectif estimé"), el("span",{style:{color:"var(--accent)",fontWeight:"700"}},formatTimeMinSecApp(impact.nouvelObjectifSimule))
+      ),
+      el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--border)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"📐"), el("span",{class:"muted"},"Estimation approximative — basée sur le nombre de séances qualité/semaine, pas sur un vrai recalcul complet.")
+      )
+    );
+    btnAppliquer.disabled = false;
+  }
+
+  const grille = el("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"4px",marginTop:"8px"}},
+    ...NOMS_JOURS.map((nom,i) => {
+      const cellule = el("div",{style:{aspectRatio:"1",borderRadius:"8px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontSize:"11px",cursor:"pointer"}});
+      function rafraichirCellule() {
+        const estSelectionne = ouvert && joursSimulesLevier.includes(i);
+        const estLongue = estSelectionne && i === jourLongueSimuleLevier;
+        cellule.style.background = estLongue ? "rgba(var(--accent2-rgb),0.18)" : (estSelectionne ? "rgba(var(--accent-rgb),0.18)" : "rgba(var(--text-rgb),0.05)");
+        cellule.style.color = estLongue ? "var(--accent2)" : (estSelectionne ? "var(--accent)" : "var(--text-muted)");
+        cellule.style.fontWeight = estSelectionne ? "700" : "400";
+        cellule.replaceChildren(el("span",{},nom), el("span",{style:{fontSize:"9px"}},estLongue ? "★" : "●"));
+      }
+      cellule.addEventListener("click", () => {
+        if (!ouvert) return;
+        toggleJourSimuleLevier(i);
+        rafraichirCellule();
+        rafraichirImpactJours();
+      });
+      rafraichirCellule();
+      return cellule;
+    })
+  );
+
+  if (ouvert) rafraichirImpactJours();
+
+  const corps = el("div",{style:{display:ouvert?"block":"none",padding:"0 4px 14px"}},
+    el("p",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Change tes jours dispo (ou juste ta sortie longue) à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas. Reclique sur un jour sélectionné pour en faire ta sortie longue."),
+    compteurEl, grille, impactEl, btnAppliquer, msgEl
+  );
+
+  const chevron = el("span",{style:{fontSize:"11px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
+    el("span",{},"📅 Jours d'entraînement"), chevron
+  );
+  entete.addEventListener("click", () => {
+    levierPlanOuvert = (levierPlanOuvert === "jours") ? null : "jours";
+    if (levierPlanOuvert === "jours") joursSimulesLevier = null; // réinitialise à chaque ouverture, cf. wizard
+    render();
+  });
+
+  return el("div",{}, entete, corps);
+}
+
+// ── Rendu UI levier Date de course ───────────────────────────────────────
+function renderLevierDateCourse() {
+  const planBrut = window.__PLAN_BRUT__;
+  const ouvert = levierPlanOuvert === "dateCourse";
+
+  const input = el("input",{type:"date",value:planBrut?.paramsOrigine?.dateCourse ?? planBrut?.dateCourse ?? "",style:{
+    width:"100%",marginTop:"8px",padding:"10px 12px",borderRadius:"8px",border:"1px solid var(--border)",
+    background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"14px",fontFamily:"inherit"
+  }});
+  const impactEl = el("div",{style:{marginTop:"10px"}});
+  const msgEl = el("div",{style:{marginTop:"6px",fontSize:"13px"}});
+  const btnAppliquer = el("button",{style:{
+    marginTop:"10px",width:"100%",padding:"10px",borderRadius:"8px",border:"none",
+    background:"var(--accent)",color:"var(--bg)",fontSize:"13px",fontWeight:"700",cursor:"pointer"
+  }},"Appliquer à partir de la semaine prochaine");
+  btnAppliquer.addEventListener("click", () => appliquerChangementDateCourseApp(input.value, msgEl, btnAppliquer));
+  btnAppliquer.disabled = true;
+
+  input.addEventListener("input", () => {
+    const impact = evaluerImpactDateCourseApp(planBrut, input.value);
+    if (!impact || impact.memeDateQu) { impactEl.replaceChildren(); btnAppliquer.disabled = true; return; }
+    if (impact.erreur) {
+      impactEl.replaceChildren(el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--warn)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"⚠️"), el("span",{},impact.erreur)
+      ));
+      btnAppliquer.disabled = true;
+      return;
+    }
+    impactEl.replaceChildren(
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
+        el("span",{class:"muted"},"Date de course"),
+        el("span",{},`${planBrut.dateCourse} → ${input.value} (${impact.deltaJours>=0?"+":""}${impact.deltaJours}j)`)
+      ),
+      ...impact.messages.map(m => el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--border)",fontSize:"12px",display:"flex",gap:"6px",marginTop:"6px"}},
+        el("span",{},m)
+      ))
+    );
+    btnAppliquer.disabled = false;
+  });
+
+  const corps = el("div",{style:{display:ouvert?"block":"none",padding:"0 4px 14px"}},
+    el("p",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Change la date de ta course à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas."),
+    input, impactEl, btnAppliquer, msgEl
+  );
+
+  const chevron = el("span",{style:{fontSize:"11px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
+    el("span",{},"📆 Date de course"), chevron
+  );
+  entete.addEventListener("click", () => {
+    levierPlanOuvert = (levierPlanOuvert === "dateCourse") ? null : "dateCourse";
+    render();
+  });
+
+  return el("div",{}, entete, corps);
+}
+
+// ── Rendu UI levier Course intermédiaire ─────────────────────────────────
+function renderLevierCourseIntermediaire() {
+  const planBrut = window.__PLAN_BRUT__;
+  const ouvert = levierPlanOuvert === "courseIntermediaire";
+  const actuelle = planBrut?.paramsOrigine?.courseIntermediaire ?? null;
+
+  let distanceChoisie = actuelle?.distance ?? "10K";
+  const checkbox = el("input",{type:"checkbox",style:{marginRight:"8px"}});
+  checkbox.checked = !!actuelle;
+  const dateInput = el("input",{type:"date",value:actuelle?.date ?? "",style:{
+    width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid var(--border)",
+    background:"rgba(var(--text-rgb),0.04)",color:"var(--text)",fontSize:"14px",fontFamily:"inherit"
+  }});
+  const distGrid = el("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginTop:"8px"}});
+  const champsEl = el("div",{style:{display:actuelle?"block":"none",marginTop:"10px"}}, dateInput, distGrid);
+  const impactEl = el("div",{style:{marginTop:"10px"}});
+  const msgEl = el("div",{style:{marginTop:"6px",fontSize:"13px"}});
+  const btnAppliquer = el("button",{style:{
+    marginTop:"10px",width:"100%",padding:"10px",borderRadius:"8px",border:"none",
+    background:"var(--accent)",color:"var(--bg)",fontSize:"13px",fontWeight:"700",cursor:"pointer"
+  }},"Appliquer à partir de la semaine prochaine");
+  btnAppliquer.disabled = true;
+
+  function rafraichirImpact() {
+    const impact = evaluerImpactCourseIntermediaireApp(planBrut, checkbox.checked, dateInput.value, distanceChoisie);
+    if (impact.rienAChanger) { impactEl.replaceChildren(); btnAppliquer.disabled = true; return; }
+    if (impact.erreur) {
+      impactEl.replaceChildren(el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--warn)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"⚠️"), el("span",{},impact.erreur)
+      ));
+      btnAppliquer.disabled = true;
+      return;
+    }
+    if (impact.action === "retirer") {
+      impactEl.replaceChildren(el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--border)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"🗑️"), el("span",{},impact.texte)
+      ));
+      btnAppliquer.disabled = false;
+      btnAppliquer.dataset.action = "retirer";
+      return;
+    }
+    impactEl.replaceChildren(
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
+        el("span",{class:"muted"},"Course "+impact.verbe), el("span",{},impact.distance+" le "+impact.date)
+      ),
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
+        el("span",{class:"muted"},"Récupération après"), el("span",{},impact.recupJours+" jour"+(impact.recupJours>1?"s":"")+" en EF léger")
+      ),
+      el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--border)",fontSize:"12px",display:"flex",gap:"6px"}},
+        el("span",{},"📈"), el("span",{class:"muted"},"Le résultat de cette course intermédiaire (une fois saisi) recalibrera légèrement ton estimation de référence.")
+      )
+    );
+    btnAppliquer.disabled = false;
+    btnAppliquer.dataset.action = "definir";
+    btnAppliquer.dataset.date = impact.date;
+    btnAppliquer.dataset.distance = impact.distance;
+  }
+
+  ["5K","10K","Semi"].forEach(dist => {
+    const pill = el("div",{style:{
+      padding:"8px",textAlign:"center",borderRadius:"8px",border:`1px solid ${dist===distanceChoisie?"var(--accent)":"var(--border)"}`,
+      background:dist===distanceChoisie?"rgba(var(--accent-rgb),0.12)":"transparent",
+      color:dist===distanceChoisie?"var(--accent)":"var(--text)",fontSize:"13px",fontWeight:"600",cursor:"pointer"
+    }},dist);
+    pill.addEventListener("click", () => {
+      distanceChoisie = dist;
+      [...distGrid.children].forEach(p => {
+        const estCelle = p.textContent === dist;
+        p.style.borderColor = estCelle ? "var(--accent)" : "var(--border)";
+        p.style.background = estCelle ? "rgba(var(--accent-rgb),0.12)" : "transparent";
+        p.style.color = estCelle ? "var(--accent)" : "var(--text)";
+      });
+      rafraichirImpact();
+    });
+    distGrid.appendChild(pill);
+  });
+
+  checkbox.addEventListener("change", () => {
+    champsEl.style.display = checkbox.checked ? "block" : "none";
+    rafraichirImpact();
+  });
+  dateInput.addEventListener("input", rafraichirImpact);
+
+  const label = el("label",{style:{display:"flex",alignItems:"center",marginTop:"10px",fontSize:"13px",cursor:"pointer"}},
+    checkbox, el("span",{},"Je prévois une course intermédiaire")
+  );
+
+  btnAppliquer.addEventListener("click", () => {
+    appliquerChangementCourseIntermediaireApp(btnAppliquer.dataset.action, btnAppliquer.dataset.date, btnAppliquer.dataset.distance, msgEl, btnAppliquer);
+  });
+
+  const corps = el("div",{style:{display:ouvert?"block":"none",padding:"0 4px 14px"}},
+    el("p",{class:"muted",style:{fontSize:"12px",lineHeight:"1.5"}},"Ajoute, modifie ou retire une course intermédiaire à partir de la semaine prochaine — cette semaine-ci et les précédentes ne bougent pas. Jamais de Marathon en course intermédiaire."),
+    label, champsEl, impactEl, btnAppliquer, msgEl
+  );
+
+  const chevron = el("span",{style:{fontSize:"11px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
+    el("span",{},"🏃 Course intermédiaire"), chevron
+  );
+  entete.addEventListener("click", () => {
+    levierPlanOuvert = (levierPlanOuvert === "courseIntermediaire") ? null : "courseIntermediaire";
+    render();
+  });
+
+  return el("div",{}, entete, corps);
 }
 
 function renderModifierPlanAccordeon() {
@@ -6496,11 +7139,11 @@ function renderModifierPlanAccordeon() {
   });
 
   const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
+    renderLevierObjectif(),
+    renderLevierJours(),
     renderLevierVolume(),
-    renderLevierAVenir("🎯","Objectif de temps"),
-    renderLevierAVenir("📅","Jours d'entraînement"),
-    renderLevierAVenir("📆","Date de course"),
-    renderLevierAVenir("🏃","Course intermédiaire")
+    renderLevierDateCourse(),
+    renderLevierCourseIntermediaire()
   ) : null;
 
   return el("div",{style:{
