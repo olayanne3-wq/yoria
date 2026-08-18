@@ -7239,6 +7239,160 @@ function renderLevierCourseIntermediaire() {
   return el("div",{}, entete, corps);
 }
 
+// Répare une incohérence déjà présente en base entre l'étiquette de phase
+// stockée sur chaque semaine (s.phase) et la vraie structure du plan
+// (plan.phases) — contrairement à appliquerReglesPhaseApp (appelée
+// uniquement lors d'une régénération par un levier, jamais sur une semaine
+// déjà passée la charnière), cette fonction retouche N'IMPORTE QUELLE
+// semaine, y compris la semaine actuelle et les semaines passées. À
+// utiliser en réparation ponctuelle (18/08/2026, cf. mémoire de session :
+// bug de rebascule de phase déjà rencontré avant le correctif du moteur),
+// pas comme mécanisme récurrent.
+async function reparerCoherencePhasesApp(msgEl, btn) {
+  const planBrut = window.__PLAN_BRUT__;
+  if (!planBrut?.paramsOrigine || !planBrut?.profilOrigine) {
+    msgEl.textContent = "Ce plan ne peut pas être réparé automatiquement.";
+    msgEl.style.color = "var(--warn)";
+    return;
+  }
+
+  const texteOriginal = btn.textContent;
+  btn.textContent = "Vérification…";
+  btn.disabled = true;
+
+  const Engine = await chargerPlanGeneratorApp();
+
+  // Recalcule les bornes de phase depuis computePhases() (source de vérité
+  // indépendante de tout état hérité) plutôt que depuis planBrut.phases —
+  // ce dernier peut lui-même être resté incohérent après une régénération
+  // précédente (une fusion par charnière ne retouche que planPropre.semaines,
+  // jamais planPropre.phases pour refléter la réalité déjà vécue).
+  const { totalSemaines: totalSemainesReel, phases: phasesReelles } = Engine.computePhases({
+    dateDebut: planBrut.dateDebut,
+    dateCourse: planBrut.dateCourse,
+    distance: planBrut.paramsOrigine.distance,
+    niveau: planBrut.profilOrigine.niveau,
+    ampleurObjectif: planBrut.ampleurObjectif ?? 'moderee'
+  });
+  let curseur = 0;
+  const bornesPhases = phasesReelles.map(p => {
+    const debut = curseur;
+    curseur += p.semaines;
+    return { nom: p.nom, debut, fin: curseur };
+  });
+  const vraiePhaseDe = (semaineNum) => {
+    const b = bornesPhases.find(b => semaineNum > b.debut && semaineNum <= b.fin);
+    return b?.nom ?? null;
+  };
+
+  const semainesIncoherentes = planBrut.semaines.filter(s => {
+    const vraie = vraiePhaseDe(s.semaineNum);
+    return vraie && vraie !== s.phase;
+  });
+
+  if (semainesIncoherentes.length === 0) {
+    msgEl.textContent = "Aucune incohérence détectée — rien à réparer.";
+    msgEl.style.color = "var(--accent2)";
+    btn.textContent = texteOriginal;
+    btn.disabled = false;
+    return;
+  }
+
+  // planBrut.phases lui-même est resynchronisé sur la structure recalculée,
+  // pas seulement les étiquettes individuelles des semaines — sinon la
+  // prochaine régénération via un levier repartirait d'une structure encore
+  // fausse.
+  planBrut.phases = phasesReelles;
+
+  btn.textContent = "Réparation…";
+
+  const alluresSec = Engine.computeAllures({
+    refTimeSeconds: Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
+    refDistanceKm: Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
+    objectifTimeSeconds: Engine.parseTimeToSeconds(planBrut.paramsOrigine.objectif),
+    distanceCibleKm: Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.distance]
+  });
+  const tempsRef10KSec = Engine.riegelPredict(
+    Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
+    Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
+    10
+  );
+
+  for (const semaine of semainesIncoherentes) {
+    const vraiePhase = vraiePhaseDe(semaine.semaineNum);
+    semaine.phase = vraiePhase;
+
+    const semainesMemePhaseTriees = planBrut.semaines
+      .filter(s => s.phase === vraiePhase)
+      .sort((a, b) => a.semaineNum - b.semaineNum);
+    const semaineDansPhase = semainesMemePhaseTriees.findIndex(s => s.semaineNum === semaine.semaineNum);
+
+    let kmQualiteTotal = 0;
+    for (const seance of Object.values(semaine.assignment)) {
+      if (seance.type !== 'qualite') continue;
+      if (seance.estTest || seance.estCourse || seance.estCourseIntermediaire) { kmQualiteTotal += seance.kmEstime ?? 0; continue; }
+      const { sousType, contenu, kmEstime, structureIntervalles } = Engine.genererContenuQualite({
+        distance: planBrut.paramsOrigine.distance,
+        phase: vraiePhase,
+        semaineDansPhase: Math.max(0, semaineDansPhase),
+        indexQualiteSemaine: seance.indexQualite ?? 0,
+        alluresSec,
+        restrictionsAllure: seance.restrictionsAllure,
+        tauxAffutage: semaine.tauxAffutage ?? 1,
+        estDechargeSemaine: semaine.estDechargeSemaine ?? false,
+        niveau: planBrut.profilOrigine?.niveau,
+        volumeHebdoCibleKm: semaine.volumeCibleKm,
+        tempsRef10KSec
+      });
+      seance.sousType = sousType;
+      seance.contenu = contenu;
+      seance.kmEstime = kmEstime;
+      seance.structureIntervalles = structureIntervalles;
+      kmQualiteTotal += kmEstime;
+    }
+
+    if (semaine.volumeCibleKm != null) {
+      const nbEF = Object.values(semaine.assignment).filter(s => s.type === 'ef').length;
+      const aLongue = Object.values(semaine.assignment).some(s => s.type === 'longue');
+      const { kmLongue, kmParEF } = Engine.repartirVolumeSemaine({
+        volumeCibleKm: semaine.volumeCibleKm,
+        kmQualiteTotal,
+        nbEF,
+        aLongue,
+        nbJours: Object.keys(semaine.assignment).length
+      });
+      for (const seance of Object.values(semaine.assignment)) {
+        if (seance.type === 'ef') {
+          const { contenu, kmEstime } = Engine.genererContenuEF({ alluresSec, kmCible: kmParEF, role: seance.role === 'recuperation' ? 'recuperation' : 'standard' });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+        } else if (seance.type === 'longue') {
+          const { contenu, kmEstime } = Engine.genererContenuLongue({ distance: planBrut.paramsOrigine.distance, phase: vraiePhase, alluresSec, kmCible: kmLongue });
+          seance.contenu = contenu;
+          seance.kmEstime = kmEstime;
+        }
+      }
+    }
+  }
+
+  try {
+    await window.LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut);
+  } catch (e) {
+    msgEl.textContent = "Réparé mais sauvegarde échouée : " + e.message;
+    msgEl.style.color = "var(--warn)";
+    btn.textContent = texteOriginal;
+    btn.disabled = false;
+    return;
+  }
+
+  window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
+  PLAN = window.__PLAN_GENERE__;
+  ALL_SESSIONS = recalculerAllSessions();
+  msgEl.textContent = `✅ ${semainesIncoherentes.length} semaine(s) réparée(s) : ${semainesIncoherentes.map(s=>"S"+s.semaineNum).join(", ")}.`;
+  msgEl.style.color = "var(--accent2)";
+  render();
+}
+
 function renderModifierPlanAccordeon() {
   // Rien à modifier sans plan brut chargé (ex. ancien plan sauvegardé
   // avant paramsOrigine/profilOrigine) — groupe entier omis plutôt
@@ -7285,12 +7439,22 @@ function renderModifierPlanAccordeon() {
     render();
   });
 
+  const msgReparation = el("div",{style:{fontSize:"12px",marginTop:"4px"}});
+  const btnReparer = el("button",{style:{
+    width:"100%",padding:"9px",borderRadius:"8px",border:"1px solid var(--border)",
+    background:"transparent",color:"var(--text-muted)",fontSize:"12px",cursor:"pointer"
+  }},"🔧 Vérifier la cohérence du plan");
+  btnReparer.addEventListener("click", () => reparerCoherencePhasesApp(msgReparation, btnReparer));
+
   const contenu = ouvertModifierPlan ? el("div",{style:{padding:"0 16px 14px"}},
     renderLevierObjectif(),
     renderLevierJours(),
     renderLevierVolume(),
     renderLevierDateCourse(),
-    renderLevierCourseIntermediaire()
+    renderLevierCourseIntermediaire(),
+    el("div",{style:{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border-soft)"}},
+      btnReparer, msgReparation
+    )
   ) : null;
 
   return el("div",{style:{
