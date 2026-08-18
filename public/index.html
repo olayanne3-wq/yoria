@@ -6360,6 +6360,20 @@ async function finaliserRegenerationLevier(planBrut, nouveauxParams, profilPourG
     return { ok:false, message: planPropre.message ?? "Ce plan ne peut pas être régénéré avec ce changement." };
   }
 
+  // Garde-fou (18/08/2026) : un décalage important (ex. recul de plusieurs
+  // semaines de la date de course) peut raccourcir le plan régénéré sous
+  // le numéro de la charnière elle-même — sans ce contrôle, la fusion
+  // ci-dessous produirait silencieusement un plan tronqué (aucune semaine
+  // >= semaineCharniere à substituer, la course elle-même disparaîtrait du
+  // plan affiché). Refus explicite plutôt qu'un résultat incohérent.
+  const derniereSemaineNouvelle = planPropre.semaines[planPropre.semaines.length - 1]?.semaineNum ?? 0;
+  if (derniereSemaineNouvelle < semaineCharniere) {
+    return {
+      ok:false,
+      message: `Ce changement raccourcit trop le plan (${derniereSemaineNouvelle} semaine${derniereSemaineNouvelle>1?"s":""} au total) par rapport à la semaine ${semaineCharniere} déjà entamée — crée plutôt un nouveau plan pour ce changement.`
+    };
+  }
+
   planPropre.semaines = planPropre.semaines.map(semaineNouvelle => {
     if (semaineNouvelle.semaineNum < semaineCharniere) {
       const semaineAncienne = planBrut.semaines.find(s => s.semaineNum === semaineNouvelle.semaineNum);
