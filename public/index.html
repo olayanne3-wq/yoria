@@ -177,6 +177,18 @@ window.sentryOnLoad = function () {
    l'auto-scroll du swap par glissement (cf. demarrerAutoScrollSiNecessaire
    dans renderWeekDetail), qui utilise window.scrollBy et reste inchangé. */
 html, body { overscroll-behavior-y: contain; }
+/* Réserve l'espace de la scrollbar en permanence, même quand elle n'est
+   pas nécessaire (contenu tenant sur une seule page) — sinon son
+   apparition/disparition décale légèrement tout le contenu horizontalement
+   (la largeur utile change de quelques pixels selon la présence ou non de
+   la scrollbar). Particulièrement visible pendant l'écran de chargement
+   sur PC (signalé par Laurent, 19/08/2026), où ce petit décalage sautait
+   aux yeux au moment précis où la scrollbar apparaissait. Propriété
+   standard récente (support large sur navigateurs Chromium/Firefox
+   actuels) — sans effet visible négatif si le contenu ne scrolle jamais
+   (l'espace réservé reste simplement vide, pas de scrollbar factice
+   dessinée). */
+html { scrollbar-gutter: stable; }
 /* Anti sélection de texte (ajout, demande explicite de Laurent) — un
    appui prolongé ou un glissement du doigt ne doit jamais déclencher la
    sélection native de texte, sur toute l'application. Exception explicite
