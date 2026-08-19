@@ -343,6 +343,7 @@ input[type=text], input[type=number], input[type=password] {
      réintroduire un flash de transition sur cet écran-là. -->
 <div id="ecran-chargement" style="position:fixed; inset:0; z-index:9998; background:#071732;">
   <video id="logo-ecran-chargement" src="/logo-animation.mp4" autoplay muted playsinline preload="auto" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0; object-fit:cover;"></video>
+  <img id="logo-ecran-chargement-fixe" src="/icon-512.png" alt="" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); border-radius:20%; z-index:0; object-fit:cover;">
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
@@ -360,6 +361,21 @@ input[type=text], input[type=number], input[type=password] {
 // correctement positionné en soi. Corrigé en forçant le scroll à 0 en tout
 // premier, avant même la mesure de window.innerWidth ci-dessous — sans
 // effet si la page était déjà en haut (premier lancement, jamais affecté).
+// BUG NON RÉSOLU sur PC (cf. commentaire détaillé plus bas, conservé pour
+// mémoire) : contourné le 19/08/2026 en remplaçant l'animation vidéo par
+// une image fixe UNIQUEMENT sur PC (détection via matchMedia
+// "pointer:coarse" — un pointeur tactile grossier signale mobile/tablette,
+// standard et plus fiable qu'un test de userAgent). Mobile garde la vraie
+// animation vidéo inchangée, jamais affectée par ce bug. Ne résout pas la
+// cause du bug (toujours inconnue), mais élimine la vidéo comme facteur
+// commun de tous les cas où le décalage a été observé.
+var estPC = !window.matchMedia('(pointer: coarse)').matches;
+if (estPC) {
+  var videoIntro = document.getElementById('logo-ecran-chargement');
+  var imageFixe = document.getElementById('logo-ecran-chargement-fixe');
+  if (videoIntro) { videoIntro.remove(); }
+  if (imageFixe) { imageFixe.style.display = 'block'; }
+}
 window.scrollTo(0, 0);
 // Filet de sécurité complémentaire : si le navigateur restaure le scroll
 // de façon asynchrone (après ce point précis), le scrollTo ci-dessus seul
@@ -390,6 +406,11 @@ window._masquerEcranChargement = function() {
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
   var video = document.getElementById('logo-ecran-chargement');
+  var imageFixe = document.getElementById('logo-ecran-chargement-fixe');
+  if (imageFixe) {
+    imageFixe.style.width = tailleCote;
+    imageFixe.style.height = tailleCote;
+  }
   if (video) {
     video.style.width = tailleCote;
     video.style.height = tailleCote;
