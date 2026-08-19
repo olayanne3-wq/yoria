@@ -369,6 +369,40 @@ window.scrollTo(0, 0);
 // setView(), qui scrolle déjà explicitement en haut avant chaque render(),
 // cf. architecture-generale.md).
 if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }
+// BUG CORRIGÉ (19/08/2026, signalé par Laurent — uniquement PC, uniquement
+// au RECHARGEMENT, jamais au premier lancement, dure toute la durée de la
+// vidéo) : #ecran-chargement (position:fixed;inset:0, censé couvrir tout le
+// viewport par définition CSS) apparaissait confiné dans une zone centrée
+// n'atteignant pas les bords de la fenêtre — comme s'il héritait de la
+// contrainte max-width:430px de <body> au lieu d'ignorer son parent, ce que
+// position:fixed garantit normalement. Ouvrir les DevTools juste avant
+// (ce qui force un vrai resize/reflow du navigateur) faisait disparaître le
+// bug au rechargement suivant — signe d'un rendu de layout figé au tout
+// premier paint de ce rechargement précis, pas d'une valeur JS erronée
+// (aucun calcul JS ne détermine la taille/position de ce fond, uniquement
+// le CSS inset:0). scrollTo/scrollRestoration ci-dessus n'ont pas suffi à
+// eux seuls (testés, sans effet) — ce correctif force explicitement le même
+// type de reflow qu'un vrai resize de fenêtre déclenche, sans dépendre de
+// DevTools : lire une propriété géométrique de l'élément força son layout
+// à se calculer, puis on invalide ce layout via un style no-op, ce qui
+// pousse le navigateur à repeindre depuis une géométrie fraîchement
+// recalculée plutôt que potentiellement héritée d'un état de rendu
+// précédent (rechargement in-place).
+(function forcerReflowEcranChargement() {
+  var ecranChargement = document.getElementById('ecran-chargement');
+  if (!ecranChargement) return;
+  // Lecture d'une propriété géométrique : force le navigateur à calculer
+  // le layout RÉEL de cet élément maintenant, plutôt que de différer ce
+  // calcul (et donc de risquer de peindre une première frame sur un état
+  // de layout pas encore à jour).
+  void ecranChargement.getBoundingClientRect();
+  // Toggle no-op d'une propriété qui ne change rien visuellement mais
+  // invalide le rendu déjà calculé, forçant une repeinture sur la base du
+  // layout fraîchement mesuré ci-dessus plutôt que sur un état antérieur.
+  ecranChargement.style.transform = 'translateZ(0)';
+  void ecranChargement.offsetHeight;
+  ecranChargement.style.transform = '';
+})();
 // Dimensions en pixels calculées en JS, synchrone (pas de DOMContentLoaded)
 // pour garantir la bonne taille dès le premier paint. Slogan repris de
 // manifest.json sans la partie technique "plan généré par le moteur v2".
