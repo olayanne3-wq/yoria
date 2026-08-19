@@ -157,17 +157,13 @@ Tous dans `docs/v2-methodologie/` :
   ignorait le vrai jour choisi pour la course finale ; charnière du levier
   Objectif qui régénérait à tort la semaine en cours ; rebascule de phase
   (Construction/Spécifique) mal réparée à la jointure de deux plans
-  fusionnés.
-- **Limite structurelle non résolue** : la fusion par charnière
-  (`finaliserRegenerationLevier`) recolle un plan régénéré depuis zéro sur
-  l'ancien plan, en supposant que les frontières de phase et la rotation
-  de séances s'alignent parfaitement à la jointure — pas garanti pour
-  toute combinaison de leviers. `appliquerReglesPhaseApp` corrige le cas
-  le plus visible (rebascule de phase) mais pas la cause de fond.
-- **Deux implémentations parallèles non unifiées** : le wizard
-  (`public/v2/index.html`) garde son propre accordéon à 5 leviers,
-  distinct de celui de l'app principale — même principe, code séparé.
-  Aucun retrait du wizard prévu à ce stade.
+  fusionnés ; continuité de rotation qualité à la charnière garantie par
+  construction (`extraireEtatCharniereRotation`), plutôt qu'un recollage
+  a posteriori de deux plans régénérés indépendamment.
+- Source unique : les 5 leviers ne vivent plus que dans l'app principale.
+  Le wizard (`public/v2/index.html`) ne conserve plus sa propre copie —
+  un plan ouvert depuis le wizard renvoie vers l'app principale pour
+  toute modification.
 - Outils de réparation ponctuelle (cohérence des phases, correction
   manuelle de séance) déplacés dans Réglages > Maintenance une fois le
   bug source corrigé — restent disponibles en cas de nouvelle
