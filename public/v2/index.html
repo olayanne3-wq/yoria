@@ -1371,7 +1371,7 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     <div class="screen" data-step="3">
       <span class="eyebrow">Chrono actuel</span>
       <h1><span id="refDistLabel">Ton dernier 10K</span>, ou une estimation</h1>
-      <p class="sub" id="refHelpText">Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.</p>
+      <p class="sub" id="refHelpText">Sers-toi d'une course récente sur cette distance, ou d'une estimation à partir de ton allure seuil.</p>
       <div class="roulette-temps" id="rouletteRef">
         <div class="roulette-fenetre"></div>
         <div class="roulette-mini-colonne" id="rouletteRefHourWrap" style="display:none;">
@@ -3561,9 +3561,22 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
     const longFormat = meta.unit === "h:min:sec";
 
     document.getElementById('refDistLabel').textContent = meta.name;
-    document.getElementById('refHelpText').textContent = longFormat
-      ? "Sers-toi d'une course récente sur cette distance, ou d'une estimation à partir de ton allure seuil."
-      : "Sers-toi d'une course récente, ou d'un 5K x2,1 si tu n'as pas de 10K officiel.";
+    // BUG CORRIGÉ (19/08/2026, signalé par Laurent) : le message "5K x2,1"
+    // n'avait de sens que pour l'objectif 10K (référence = un 10K distinct
+    // de l'objectif, estimable depuis un 5K×2,1) — mais s'affichait pour
+    // TOUTE distance en format court (min:sec), y compris l'objectif 5K
+    // lui-même, où le label juste au-dessus ("Ton dernier 5K") demande déjà
+    // directement un chrono 5K. Contradiction visible : "Ton dernier 5K...
+    // Sers-toi... d'un 5K x2,1 si tu n'as pas de 10K officiel" — n'importe
+    // quel 5K n'est ni un 10K ni besoin d'être multiplié par 2,1 avec
+    // lui-même. Devenu structurellement faux pour toute distance depuis
+    // que 10K est passé en h:min:sec le 31/07/2026 (meta.name demande déjà
+    // "Ton dernier 10K" directement dans ce cas aussi) — plus aucune
+    // distance ne correspond réellement à ce message spécifique. Message
+    // générique (course récente sur LA distance demandée par le label,
+    // quelle qu'elle soit) valable dans tous les cas.
+    document.getElementById('refHelpText').textContent =
+      "Sers-toi d'une course récente sur cette distance, ou d'une estimation à partir de ton allure seuil.";
 
     ['tHour','tHourSep','oHour','oHourSep'].forEach(id=>{
       document.getElementById(id).style.display = longFormat ? 'inline-block' : 'none';
