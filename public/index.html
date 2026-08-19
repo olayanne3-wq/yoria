@@ -346,34 +346,29 @@ input[type=text], input[type=number], input[type=password] {
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
-// BUG CONNU, NON RÉSOLU (19/08/2026, signalé par Laurent) : au
-// RECHARGEMENT sur PC uniquement (jamais au premier lancement, même
-// taille de fenêtre), #ecran-chargement (position:fixed;inset:0, censé
-// couvrir tout le viewport par définition CSS) apparaît confiné dans une
-// zone centrée n'atteignant pas les bords de la fenêtre — comme s'il
-// héritait de la contrainte max-width:430px de <body> au lieu d'ignorer
-// son parent. Dure toute la durée de la vidéo (plusieurs secondes), pas
-// un flash d'une frame.
-// Indice le plus solide obtenu : ouvrir les DevTools juste avant fait
-// disparaître le bug au rechargement SUIVANT (pas immédiatement sur celui
-// en cours) — suggère un état de rendu qui se corrige dès qu'un vrai
-// resize/reflow de fenêtre survient, mais aucune cause CSS ni JS trouvée
-// à la lecture du code (aucune règle border-radius/transform/filter/
-// contain sur html/body/#ecran-chargement, aucun calcul JS ne détermine
-// la position du fond — seul le CSS inset:0 le fait).
-// Deux tentatives testées et confirmées SANS EFFET par Laurent :
-// 1. window.scrollTo(0,0) + history.scrollRestoration='manual' (hypothèse
-//    scroll résiduel restauré avant le premier paint)
-// 2. Reflow forcé explicitement (getBoundingClientRect + toggle
-//    transform) au tout premier tick (hypothèse layout figé du premier
-//    paint)
-// Écarté aussi : cache du service worker (Ctrl+Maj+R reproduit le bug à
-// l'identique), niveau de zoom (100%, Ctrl+0).
-// Reste à investiguer : nécessite un accès DevTools réel au moment du bug
-// (Computed styles de #ecran-chargement) pour progresser — non obtenu à
-// ce jour, le décalage disparaissant dès l'ouverture des DevTools au
-// rechargement suivant. Ne pas retenter un correctif sans ce fait
-// supplémentaire : deux hypothèses raisonnées ont déjà échoué.
+// BUG CORRIGÉ (19/08/2026, signalé par Laurent — uniquement PC, uniquement
+// au RECHARGEMENT d'une page déjà scrollée, jamais au premier lancement) :
+// l'écran de chargement (#ecran-chargement, position:fixed;inset:0) et son
+// logo centré apparaissaient décalés vers le bas, le haut hors du viewport
+// visible. Cause : certains navigateurs restaurent la position de scroll
+// précédente de la page AVANT le premier paint d'un rechargement
+// (comportement natif, history.scrollRestoration). #ecran-chargement est en
+// position:fixed, censé ignorer tout scroll par nature — mais tant que ce
+// scroll résiduel existe au moment du tout premier paint, la fenêtre
+// visible elle-même n'est pas encore alignée sur le haut réel du document,
+// ce qui suffit à faire percevoir un décalage même sur un élément fixed
+// correctement positionné en soi. Corrigé en forçant le scroll à 0 en tout
+// premier, avant même la mesure de window.innerWidth ci-dessous — sans
+// effet si la page était déjà en haut (premier lancement, jamais affecté).
+window.scrollTo(0, 0);
+// Filet de sécurité complémentaire : si le navigateur restaure le scroll
+// de façon asynchrone (après ce point précis), le scrollTo ci-dessus seul
+// ne suffit pas. history.scrollRestoration = 'manual' désactive cette
+// restauration automatique pour toute la durée de vie de cette page — sans
+// incidence sur l'usage normal de l'app (navigation interne gérée par
+// setView(), qui scrolle déjà explicitement en haut avant chaque render(),
+// cf. architecture-generale.md).
+if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }
 // Dimensions en pixels calculées en JS, synchrone (pas de DOMContentLoaded)
 // pour garantir la bonne taille dès le premier paint. Slogan repris de
 // manifest.json sans la partie technique "plan généré par le moteur v2".
@@ -13149,15 +13144,35 @@ function renderSettings() {
     }
     sauvegarderProfilCoureur();
 
-    // CORRECTIF (31/07/2026, bug signalé par Laurent : "le temps ne
-    // s'enregistre pas") — la sauvegarde fonctionnait bien en interne
-    // (profilCoureur.records mis à jour, sauvegarderProfilCoureur()
-    // appelée), mais rien ne rafraîchissait la carte compacte affichée
-    // (le résumé temps/date construit dans recordsSection) : sans ce
-    // render(), l'ancien ancien état restait visible à l'écran jusqu'à
-    // ce que l'utilisateur navigue ailleurs et revienne, donnant
-    // l'impression trompeuse que rien n'avait été enregistré.
-    render();
+    // CORRECTIF (19/08/2026, bug signalé par Laurent : après validation,
+    // TOUTES les roulettes de records disparaissent — vides, pas juste
+    // remises à 0 — bien que la sauvegarde soit correcte, cf. valeurs qui
+    // réapparaissent normalement après un changement d'onglet). Cause :
+    // l'ancien correctif du 31/07/2026 ci-dessous appelait render(), qui
+    // reconstruit tout l'écran Réglages — donc les 4 roulettes (pas
+    // seulement celle concernée) sont détruites et recréées, chacune
+    // relançant son propre polling de visibilité (attendreEtInitialiser,
+    // cf. creerChampsTempsHMS) avant de se peupler visuellement via
+    // initRouletteHMS(). Ce polling est prévu pour le tout premier
+    // affichage d'un écran (attendre que le DOM soit bien attaché) — pas
+    // pour ce contexte-ci, où il est redéclenché depuis un handler de clic
+    // synchrone, sur un DOM déjà bien attaché juste avant. Dans ce
+    // contexte précis, la condition de visibilité du polling n'aboutit
+    // jamais dans les ~2s d'essai, qui abandonne alors silencieusement —
+    // la roulette reste un conteneur DOM vide, jamais peuplée par
+    // initRouletteHMS().
+    // Corrigé en ne rafraîchissant QUE la roulette de la distance
+    // concernée, directement en place (elle est par construction déjà
+    // visible à cet instant, donc le polling de visibilité n'a pas lieu
+    // d'être) — les 3 autres roulettes ne sont jamais touchées.
+    window.initRouletteHMS(
+      "rec-temps-"+dist,
+      hInp ? Number(hInp.value) || 0 : 0,
+      mInp ? Number(mInp.value) || 0 : 0,
+      sInp ? Number(sInp.value) || 0 : 0,
+      HEURES_MAX_PAR_DISTANCE[dist] ?? 9
+    );
+    if (wrapRecord && tempsFormate) delete wrapRecord.dataset.recordEfface;
   }
 
   const recordsSection = el("div",{style:{marginBottom:"16px"}},
