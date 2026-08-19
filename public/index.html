@@ -383,15 +383,28 @@ if (estPC) {
   if (imageFixe) { imageFixe.style.display = 'block'; }
 }
 window.scrollTo(0, 0);
-// Couleur de fond appliquée à TOUTE la page (pas seulement
-// #ecran-chargement) pendant que l'écran de chargement est visible — sinon
-// tout débord/marge visible autour de #ecran-chargement (ex. colonne
-// centrée du body sur un écran large, cf. max-width:430px) laisse
-// apparaître la couleur de fond normale de l'app plutôt que le bleu marine
-// de l'écran de chargement, une incohérence visuelle demandée à corriger
-// par Laurent. Retirée dans window._masquerEcranChargement ci-dessous, au
-// moment du vrai masquage.
-document.body.style.background = '#071732';
+// Couleur de fond appliquée à <html> (PAS seulement <body>) pendant que
+// l'écran de chargement est visible. CORRECTIF (19/08/2026) : un premier
+// essai avait appliqué cette couleur sur document.body uniquement, sans
+// effet visible sur PC — cause : body a max-width:430px;margin:0 auto
+// (colonne centrée mobile-first, cf. architecture-generale.md), donc
+// teindre body ne colore que l'intérieur de cette colonne de 430px,
+// jamais la zone hors colonne sur un écran large (qui reste blanche, la
+// couleur par défaut du navigateur pour <html>, jamais définie
+// explicitement ailleurs dans ce fichier).
+document.documentElement.style.background = '#071732';
+// CORRECTIF SUPPLÉMENTAIRE : au-delà de la couleur, le fond bleu de
+// #ecran-chargement lui-même (position:fixed;inset:0, censé ignorer toute
+// contrainte de son parent par définition CSS) apparaissait pourtant
+// visuellement limité à la largeur de la colonne 430px de <body> — cause
+// exacte non confirmée avec certitude (piste : max-width sur un ancêtre
+// combiné à certains comportements de containment implicite navigateur),
+// mais neutraliser explicitement cette contrainte le temps de l'écran de
+// chargement élimine le problème quelle qu'en soit la cause précise,
+// sans risque : body redevient normal dès le retrait de ces styles au
+// masquage (window._masquerEcranChargement ci-dessous).
+document.body.style.maxWidth = 'none';
+document.body.style.margin = '0';
 // Filet de sécurité complémentaire : si le navigateur restaure le scroll
 // de façon asynchrone (après ce point précis), le scrollTo ci-dessus seul
 // ne suffit pas. history.scrollRestoration = 'manual' désactive cette
@@ -431,14 +444,35 @@ window._masquerEcranChargement = function() {
     ecranChargement.style.display = 'none';
     ecranChargement.remove();
   }
-  // Retire la couleur de fond forcée sur body (posée plus haut) — l'app
+  // Retire la couleur de fond forcée sur html (posée plus haut) — l'app
   // applique de toute façon sa propre couleur de thème (var(--bg)) juste
-  // après, mais on ne laisse jamais #071732 orphelin sur body au-delà du
-  // masquage réel de l'écran de chargement.
-  document.body.style.background = '';
+  // après, mais on ne laisse jamais #071732 orphelin au-delà du masquage
+  // réel de l'écran de chargement.
+  document.documentElement.style.background = '';
+  // Restaure body à son état normal (max-width:430px;margin:0 auto vient
+  // du CSS externe, ces styles inline neutralisaient temporairement cette
+  // règle — les retirer laisse le CSS externe reprendre la main).
+  document.body.style.maxWidth = '';
+  document.body.style.margin = '';
 };
 (function() {
-  var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
+  // CORRECTIF (19/08/2026, signalé par Laurent — slogan invisible sur PC) :
+  // tailleCote basé uniquement sur window.innerWidth, jamais sur
+  // window.innerHeight. Sur mobile (portrait, largeur < hauteur), 76.5%
+  // de la largeur reste raisonnablement contenu dans la hauteur — d'où
+  // l'absence de problème visible là où ce calcul a été calibré à
+  // l'origine (cf. commentaire plus haut sur cette calibration). Sur un
+  // écran PC large (largeur >> hauteur), ce même calcul produit un logo
+  // disproportionné, et le slogan positionné en dessous (demiCote + 24px)
+  // se retrouvait poussé largement hors de la fenêtre visible. Corrigé en
+  // basant tailleCote sur la plus PETITE des deux dimensions du viewport
+  // — garantit que le logo (et donc le slogan sous lui) reste toujours
+  // contenu dans le viewport, quel que soit son ratio largeur/hauteur.
+  // Sans effet sur mobile : innerWidth y est déjà la plus petite dimension
+  // la plupart du temps, Math.min ne change donc rien à la calibration
+  // déjà validée sur cette plateforme.
+  var plusPetiteDimension = Math.min(window.innerWidth, window.innerHeight);
+  var tailleCote = Math.round(plusPetiteDimension * 0.765) + 'px';
   var video = document.getElementById('logo-ecran-chargement');
   var imageFixe = document.getElementById('logo-ecran-chargement-fixe');
   if (imageFixe) {
@@ -469,7 +503,7 @@ window._masquerEcranChargement = function() {
   }
   var slogan = document.getElementById('slogan-ecran-chargement');
   if (slogan) {
-    var demiCote = Math.round(window.innerWidth * 0.765 / 2);
+    var demiCote = Math.round(plusPetiteDimension * 0.765 / 2);
     slogan.style.marginTop = (demiCote + 24) + 'px';
   }
 })();
