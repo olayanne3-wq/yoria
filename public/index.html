@@ -6391,9 +6391,23 @@ function semaineActuelleOuProchaineApp(plan) {
 // son propre msgEl, chaque levier gardant son texte de succès spécifique.
 async function finaliserRegenerationLevier(planBrut, nouveauxParams, profilPourGeneration, semaineCharniere) {
   const Engine = await chargerPlanGeneratorApp();
+
+  // Continuité de rotation qualité à la charnière (garantie "par
+  // construction", cf. architecture-generale.md chantier "limite
+  // structurelle finaliserRegenerationLevier") — extrait de planBrut
+  // (l'ancien plan, avant régénération), stateless : recalculé à chaque
+  // appel depuis les données les plus fondamentales du plan courant,
+  // jamais chaîné/accumulé d'une charnière à l'autre. Ne transporte QUE
+  // la position dans la rotation qualité (à préserver) — jamais la phase
+  // elle-même, toujours recalculée par Engine.computePhases() à partir de
+  // la nouvelle durée/distance, y compris pour la semaine de la charnière
+  // (un prolongement/raccourcissement peut légitimement faire changer de
+  // phase à cet endroit — cf. échange avec Laurent).
+  const continuiteRotation = Engine.extraireEtatCharniereRotation(planBrut, semaineCharniere);
+
   let planPropre;
   try {
-    planPropre = Engine.generatePlan(profilPourGeneration, nouveauxParams);
+    planPropre = Engine.generatePlan(profilPourGeneration, { ...nouveauxParams, continuiteRotation });
   } catch (e) {
     return { ok:false, message: "Erreur de régénération : " + e.message };
   }
