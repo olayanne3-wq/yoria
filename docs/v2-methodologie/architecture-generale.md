@@ -249,12 +249,16 @@ vie propres à l'app principale :
   de phase, régénère aussi le VRAI contenu qualité (`genererContenuQualite`
   avec la bonne phase) et recalcule EF/longue en conséquence, sinon
   l'étiquette de phase affichée serait incohérente avec le contenu réel
-  de la séance (ex. VMA affiché sous une étiquette "Spécifique"). Limite
-  connue : corrige le cas le plus visible, mais la cause structurelle de
-  fond (deux plans régénérés indépendamment, recollés à une charnière,
-  n'ont aucune garantie de s'aligner parfaitement — rotation qualité
-  incluse) n'est pas traitée pour toutes les combinaisons possibles de
-  leviers.
+  de la séance (ex. VMA affiché sous une étiquette "Spécifique"). La
+  cause structurelle de fond (continuité de rotation qualité à la
+  charnière) est désormais résolue PAR CONSTRUCTION via
+  `extraireEtatCharniereRotation()`/`params.continuiteRotation`
+  (`plan-generator.js`, cf. `moteur-plan.md`) — `finaliserRegenerationLevier`
+  transmet systématiquement cet état, plus besoin de recoller deux plans
+  régénérés indépendamment en espérant l'alignement. `appliquerReglesPhaseApp`
+  reste en place comme filet de sécurité pour le cas résiduel de rebascule
+  d'étiquette, mais n'a plus vocation à compenser une divergence de
+  rotation qualité.
 - **Outils de réparation ponctuelle — déplacés dans Réglages >
   Maintenance** (pas dans l'accordéon lui-même, retirés de là après un
   premier essai) : "Vérifier la cohérence des phases"
@@ -268,41 +272,14 @@ vie propres à l'app principale :
   qualité précise, pour restaurer un contenu connu quand la rotation
   automatique ne le retrouverait pas forcément).
 
-**Écran "Consulter un plan" — accordéon "Modifier mon plan" (WIZARD,
-`public/v2/index.html`)** — 4 leviers de simulation d'un plan actif
-(Objectif, Jours, Volume, Date de course), un seul ouvert à la fois.
-Simulation LIVE de l'impact avant validation, jamais appliqué sans clic
-explicite sur "Appliquer". Application à partir de la SEMAINE SUIVANTE
-uniquement — la semaine en cours et les précédentes gardent leur contenu
-original. **Ce mécanisme wizard reste séparé et distinct de l'accordéon
-app principale ci-dessus** — deux implémentations parallèles du même
-principe, pas encore unifiées (cf. inventaire, chantier "Modifier mon
-plan").
-- **Levier Jours** : réutilise `.days-grid` (`daysGridSimulation`), permet
-  aussi de déplacer uniquement la sortie longue. `Engine.nbQualiteFor(nbJours,
-  niveau)` fait varier le rythme de progression proportionnellement au
-  nombre de séances QUALITÉ.
-- **Levier Objectif** : garde-fou de faisabilité en direct
-  (`verifierFaisabiliteNouvelObjectif`), avertit seulement — change QUE
-  l'allure course (`allures.C`), jamais VMA/SEUIL/EF (dépendent uniquement
-  de la forme réellement mesurée, cf. `moteur-plan.md` allures dynamiques).
-- **Levier Volume** : `appliquerChangementVolume()` calcule
-  `semaineCharniere` AVANT l'appel à `generatePlan()` et la transmet via le
-  paramètre `semaineDepartVolume` (cf. `moteur-plan.md`) — la progression redémarre
-  réellement depuis ce niveau plutôt que de recalculer toute la courbe
-  depuis la semaine 1. `semaineDepartVolume` ne doit **jamais** être
-  persisté dans `paramsOrigine` (retiré par destructuring avant toute
-  sauvegarde, dans les 4 leviers et le bouton "Analyser et adapter") — la
-  dernière intention réelle de volume vit dans `plan.volumeCourant: {km,
-  semaineNum}`, champ séparé, lu en priorité par toute régénération
-  complète future.
-- **Levier Date de course** : régénération complète via
-  `Engine.generatePlan()`, avec règles de phase (`appliquerReglesPhase()`)
-  — Spécifique en cours ne repasse jamais en Construction ; Affûtage +
-  décalage ≤1 semaine ne recalcule pas (juste la date change) ; décalage
-  ≥8 semaines avertit de créer un nouveau plan plutôt que de prolonger.
-  Cycle de décharge peut se désynchroniser légèrement après un changement
-  de date — limite mineure acceptée.
+**Écran "Consulter un plan" (WIZARD, `public/v2/index.html`)** — ne
+contient plus les leviers de modification (retirés le 19/08/2026, cf.
+inventaire) : un bouton "Retrouver ce plan dans l'application"
+(`retrouverPlanDansApp()`) sauvegarde le plan puis renvoie vers l'app
+principale, seule source des 5 leviers désormais. Réutilise le même
+mécanisme de sauvegarde que le bouton "Terminer" du wizard
+(`assurerPlanExiste` + `localStorage['v2_preview_plan_id']` +
+redirection).
 - **Écran résultat (step 10)** — bloc "Plan complet" (semaine par
   semaine, `renderSemaineHtml`) RETIRÉ : dupliquait un second système de
   visualisation du plan, différent de celui de l'app principale
