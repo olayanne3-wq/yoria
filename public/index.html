@@ -347,6 +347,12 @@ input[type=text], input[type=number], input[type=password] {
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
+// Timestamp de départ — utilisé plus bas par window._masquerEcranChargement
+// pour garantir un délai minimum d'affichage de cet écran, quelle que soit
+// la rapidité de chargement de l'app (notamment sur PC, où sans vidéo à
+// attendre le masquage pouvait survenir en un clin d'œil, empêchant Laurent
+// de voir le slogan). Posé en tout premier, avant tout autre traitement.
+var _debutEcranChargement = Date.now();
 // BUG CORRIGÉ (19/08/2026, signalé par Laurent — uniquement PC, uniquement
 // au RECHARGEMENT d'une page déjà scrollée, jamais au premier lancement) :
 // l'écran de chargement (#ecran-chargement, position:fixed;inset:0) et son
@@ -377,6 +383,15 @@ if (estPC) {
   if (imageFixe) { imageFixe.style.display = 'block'; }
 }
 window.scrollTo(0, 0);
+// Couleur de fond appliquée à TOUTE la page (pas seulement
+// #ecran-chargement) pendant que l'écran de chargement est visible — sinon
+// tout débord/marge visible autour de #ecran-chargement (ex. colonne
+// centrée du body sur un écran large, cf. max-width:430px) laisse
+// apparaître la couleur de fond normale de l'app plutôt que le bleu marine
+// de l'écran de chargement, une incohérence visuelle demandée à corriger
+// par Laurent. Retirée dans window._masquerEcranChargement ci-dessous, au
+// moment du vrai masquage.
+document.body.style.background = '#071732';
 // Filet de sécurité complémentaire : si le navigateur restaure le scroll
 // de façon asynchrone (après ce point précis), le scrollTo ci-dessus seul
 // ne suffit pas. history.scrollRestoration = 'manual' désactive cette
@@ -397,11 +412,30 @@ if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }
 // avant que la vidéo n'ait fini. Écrit ici (avant tout render()) pour être
 // définie avant que quiconque n'en ait besoin.
 window._masquerEcranChargement = function() {
+  // Délai minimum garanti (3s) avant le masquage réel — sur mobile, la
+  // vidéo de 8s dépassait déjà largement ce minimum donc pas d'effet
+  // pratique ; sur PC, sans vidéo à attendre depuis le contournement du
+  // 19/08/2026, l'app pouvait être prête en quelques centaines de ms
+  // seulement, masquant l'écran de chargement (et son slogan) trop vite
+  // pour être vu — demande explicite de Laurent de le garder visible
+  // quelques secondes. _debutEcranChargement posé tout en haut du script
+  // précédent, avant tout autre traitement.
+  var ecoule = Date.now() - _debutEcranChargement;
+  var DELAI_MIN_MS = 3000;
+  if (ecoule < DELAI_MIN_MS) {
+    setTimeout(window._masquerEcranChargement, DELAI_MIN_MS - ecoule);
+    return;
+  }
   var ecranChargement = document.getElementById('ecran-chargement');
   if (ecranChargement) {
     ecranChargement.style.display = 'none';
     ecranChargement.remove();
   }
+  // Retire la couleur de fond forcée sur body (posée plus haut) — l'app
+  // applique de toute façon sa propre couleur de thème (var(--bg)) juste
+  // après, mais on ne laisse jamais #071732 orphelin sur body au-delà du
+  // masquage réel de l'écran de chargement.
+  document.body.style.background = '';
 };
 (function() {
   var tailleCote = Math.round(window.innerWidth * 0.765) + 'px';
