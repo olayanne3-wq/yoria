@@ -2060,12 +2060,37 @@ export function generatePlan(profil, params) {
   const semaines = [];
   const warningsSemaines = [];
   let semaineGlobale = 0;
-  const nbApparitionsParSousType = {};
+  const nbApparitionsParSousType = { ...(params.continuiteRotation?.nbApparitionsParSousType ?? {}) };
+
+  // Offset appliqué UNE SEULE FOIS, à la première occurrence de la phase
+  // correspondant à continuiteRotation.phase — garantie "par construction"
+  // de continuité de rotation qualité à une charnière (cf.
+  // architecture-generale.md, chantier "limite structurelle
+  // finaliserRegenerationLevier", et extraireEtatCharniereRotation dans ce
+  // même fichier). Ne transporte JAMAIS la phase elle-même : celle-ci
+  // reste toujours déterminée par la boucle des phases ci-dessous, issue
+  // de computePhases() sur la nouvelle durée/distance — y compris pour la
+  // semaine de la charnière (un prolongement/raccourcissement du plan peut
+  // légitimement faire changer de phase à cet endroit, décision actée avec
+  // Laurent). Si le plan ne retraverse pas cette phase plus tard (cas
+  // actuel : chaque nom de phase apparaît au plus une fois dans
+  // phasesAvecReacclimatation), ce drapeau est sans effet après sa
+  // première consommation.
+  let offsetRotationRestant = params.continuiteRotation
+    ? { phase: params.continuiteRotation.phase, offset: params.continuiteRotation.semaineDansPhase }
+    : null;
+
   let nbSemainesConstructionTotal = 0;
   let nbSemainesConstructionSousSeuil = 0;
   let nbSemainesLongueExcessive2j = 0;
   for (const phase of phasesAvecReacclimatation) {
-    for (let i = 0; i < phase.semaines; i++) {
+    let departPhase = 0;
+    if (offsetRotationRestant && phase.nom === offsetRotationRestant.phase) {
+      departPhase = offsetRotationRestant.offset;
+      offsetRotationRestant = null; // consommé, ne s'applique plus après
+    }
+
+    for (let i = departPhase; i < departPhase + phase.semaines; i++) {
       semaineGlobale++;
       const { assignment, warnings: warningsPlacement } = placerSemaine({
         joursDisponibles: profil.joursDisponiblesHabituels,
@@ -2220,6 +2245,91 @@ export function generatePlan(profil, params) {
   injecterPourquoiSeance(plan);
 
   return plan;
+}
+
+// ---------------------------------------------------------------------------
+// Continuité de rotation qualité à la charnière (garantie "par
+// construction" — cf. architecture-generale.md, chantier "limite
+// structurelle finaliserRegenerationLevier"). Fonction pure, stateless :
+// recalculée à chaque appel depuis les données les plus fondamentales du
+// plan courant, jamais chaîné/accumulé d'une charnière à l'autre — reste
+// correcte même après plusieurs changements de plan successifs, chacun
+// repartant d'un état propre plutôt que d'un historique cumulé.
+//
+// Ne transporte JAMAIS la phase elle-même (toujours recalculée par
+// computePhases() dans le nouveau plan, y compris pour la semaine de la
+// charnière — un prolongement ou raccourcissement du plan peut
+// légitimement faire changer de phase à cet endroit, décision actée avec
+// Laurent) — seulement la position dans la rotation qualité de la phase
+// active à la charnière, pour que la rotation continue sans redémarrer à
+// zéro si cette même phase existe encore au même endroit relatif dans le
+// nouveau découpage.
+//
+// PRÉCONDITION : semaineCharniere doit toujours respecter la règle
+// "semaine actuelle + 1" déjà en vigueur pour les 5 leviers (jamais la
+// semaine en cours elle-même, cf. inventaire-application.md §16). Cette
+// fonction ne le vérifie pas et ne le peut pas (elle ne connaît pas la
+// date du jour) — elle suppose que toutes les semaines < semaineCharniere
+// sont figées (réalisées ou non, peu importe pour la rotation). Si ce lien
+// venait à être cassé (un futur mécanisme régénérant depuis la semaine en
+// cours), une séance qualité déjà validée dans cette semaine compterait
+// dans nbApparitionsParSousType alors même que cette semaine serait aussi
+// régénérée avec un nouveau contenu — double comptage. Documenté ici pour
+// rendre visible cette dépendance si l'un des deux mécanismes change.
+//
+// @param {object} ancienPlan - le plan brut (v2) AVANT régénération, tel
+//   que window.__PLAN_BRUT__ côté index.html.
+// @param {number} semaineCharniere - semaine à partir de laquelle le
+//   nouveau plan prend le relais (incluse).
+// @returns {object|null} { phase, semaineDansPhase,
+//   nbApparitionsParSousType }, à passer tel quel dans
+//   params.continuiteRotation de generatePlan() — ou null si rien à
+//   préserver (charnière en toute première semaine du plan, ou phase
+//   introuvable).
+export function extraireEtatCharniereRotation(ancienPlan, semaineCharniere) {
+  if (!ancienPlan?.semaines?.length) return null;
+
+  const semainesAvant = ancienPlan.semaines
+    .filter(s => s.semaineNum < semaineCharniere)
+    .sort((a, b) => a.semaineNum - b.semaineNum);
+
+  if (semainesAvant.length === 0) return null;
+
+  const derniereSemaine = semainesAvant[semainesAvant.length - 1];
+  const phaseCharniere = derniereSemaine.phase;
+
+  // Position dans la phase : compte combien de semaines consécutives de
+  // CETTE phase précèdent (et incluent) derniereSemaine, en remontant
+  // depuis elle. Ne suppose jamais que semaineNum commence à 1 pour cette
+  // phase (robuste même si l'ancien plan a lui-même déjà subi une fusion
+  // imparfaite en amont — on ne fait confiance qu'à ce qu'on peut compter
+  // directement).
+  let semaineDansPhase = 0;
+  for (let i = semainesAvant.length - 1; i >= 0; i--) {
+    if (semainesAvant[i].phase !== phaseCharniere) break;
+    semaineDansPhase++;
+  }
+
+  // Cumul des apparitions par sous-type, sur TOUT l'ancien plan jusqu'à la
+  // charnière (pas seulement la phase courante) — même périmètre que
+  // nbApparitionsParSousType dans generatePlan(), qui est un cumul global
+  // du plan, jamais réinitialisé par phase (cf. genererContenuQualite,
+  // paramètre utilisé pour la progression des reps/paliers type i-30-30).
+  const nbApparitionsParSousType = {};
+  for (const semaine of semainesAvant) {
+    for (const seance of Object.values(semaine.assignment ?? {})) {
+      if (seance.type === 'qualite' && seance.sousType) {
+        nbApparitionsParSousType[seance.sousType] =
+          (nbApparitionsParSousType[seance.sousType] ?? 0) + 1;
+      }
+    }
+  }
+
+  return {
+    phase: phaseCharniere,
+    semaineDansPhase,
+    nbApparitionsParSousType
+  };
 }
 
 export const ACWR_SEUIL_RISQUE = 1.5;
