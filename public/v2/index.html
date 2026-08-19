@@ -3181,8 +3181,8 @@ window.__AUTH_PRET__ = new Promise((resolve) => { window.__resoudreAuthPret__ = 
         // n'est jamais mis à jour automatiquement).
         const boutonRenommer = p.mode === 'forme' ? '' : `<span style="cursor:pointer;" onclick="renommerPlanUI('${p.id}')" title="Renommer">✏️</span>`;
         return `<div class="bib-row">
-          <span style="cursor:pointer; font-size:16px; font-weight:600; color:var(--paper);" onclick="chargerPlanExistant('${p.id}')">${titre}</span>
-          <span style="display:flex; align-items:center; gap:10px;">
+          <span style="cursor:pointer; font-size:16px; font-weight:600; color:var(--paper); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;" onclick="chargerPlanExistant('${p.id}')" title="${titre}">${titre}</span>
+          <span style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
             <span class="v" style="text-align:right;">${date}${nbFaites ? ` · ${nbFaites} séance(s)` : ''}</span>
             ${boutonRenommer}
             <span style="cursor:pointer;" onclick="supprimerPlanUI('${p.id}')" title="Supprimer">🗑️</span>
