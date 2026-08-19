@@ -346,6 +346,29 @@ input[type=text], input[type=number], input[type=password] {
   <div id="slogan-ecran-chargement" style="position:absolute; top:50%; left:50%; transform:translate(-50%, 0); color:#FFFFFF; font-family:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif; font-size:19px; font-weight:300; font-style:italic; letter-spacing:0.02em; text-align:center; white-space:nowrap; opacity:0.9; z-index:0;">Ton coach running personnel</div>
 </div>
 <script>
+// BUG CORRIGÉ (19/08/2026, signalé par Laurent — uniquement PC, uniquement
+// au RECHARGEMENT d'une page déjà scrollée, jamais au premier lancement) :
+// l'écran de chargement (#ecran-chargement, position:fixed;inset:0) et son
+// logo centré apparaissaient décalés vers le bas, le haut hors du viewport
+// visible. Cause : certains navigateurs restaurent la position de scroll
+// précédente de la page AVANT le premier paint d'un rechargement
+// (comportement natif, history.scrollRestoration). #ecran-chargement est en
+// position:fixed, censé ignorer tout scroll par nature — mais tant que ce
+// scroll résiduel existe au moment du tout premier paint, la fenêtre
+// visible elle-même n'est pas encore alignée sur le haut réel du document,
+// ce qui suffit à faire percevoir un décalage même sur un élément fixed
+// correctement positionné en soi. Corrigé en forçant le scroll à 0 en tout
+// premier, avant même la mesure de window.innerWidth ci-dessous — sans
+// effet si la page était déjà en haut (premier lancement, jamais affecté).
+window.scrollTo(0, 0);
+// Filet de sécurité complémentaire : si le navigateur restaure le scroll
+// de façon asynchrone (après ce point précis), le scrollTo ci-dessus seul
+// ne suffit pas. history.scrollRestoration = 'manual' désactive cette
+// restauration automatique pour toute la durée de vie de cette page — sans
+// incidence sur l'usage normal de l'app (navigation interne gérée par
+// setView(), qui scrolle déjà explicitement en haut avant chaque render(),
+// cf. architecture-generale.md).
+if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }
 // Dimensions en pixels calculées en JS, synchrone (pas de DOMContentLoaded)
 // pour garantir la bonne taille dès le premier paint. Slogan repris de
 // manifest.json sans la partie technique "plan généré par le moteur v2".
