@@ -2861,7 +2861,21 @@ function currentWeek() {
   for (const w of PLAN) {
     if (t >= w.sessions[0].date && t <= w.sessions[6].date) return w.week;
   }
-  return t < PLAN[0].sessions[0].date ? 1 : 11;
+  // BUG CORRIGÉ (19/08/2026, signalé par Laurent — "S11 · NaN%" affiché en
+  // Mode Forme sur un plan généré puis rouvert plusieurs semaines après,
+  // jamais entamé). Avant : repli sur la constante 11 codée en dur, héritée
+  // du plan fixe historique de Laurent (11 semaines) — sans aucun rapport
+  // avec le PLAN réellement chargé. En Mode Forme (bloc de 4 semaines,
+  // renuméroté 1-4 à chaque bloc, cf. plan-forme.js), quand le bloc entier
+  // est dans le passé, cette constante 11 était hors des bornes de
+  // construirePhases() (Mode Forme : phase unique 1..nbSemaines) —
+  // phaseOf(11) retombait sur une phase sans `weeks`, d'où 0/0 = NaN% dans
+  // le calcul de progression de phase du dashboard.
+  // Corrigé : avant le premier jour du plan chargé -> sa première semaine ;
+  // après son dernier jour (bloc entier dans le passé, quel que soit le
+  // mode ou le nombre de semaines) -> sa dernière semaine. Toujours dans
+  // les bornes réelles du PLAN chargé, jamais une constante indépendante.
+  return t < PLAN[0].sessions[0].date ? PLAN[0].week : PLAN[PLAN.length - 1].week;
 }
 function fmtDate(d) { return new Date(d+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"}); }
 function fmtPace(speedMs) {
