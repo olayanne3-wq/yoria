@@ -281,6 +281,14 @@ Proches de l'existant :
   n'est encore stockée/exposée pour ce graphe.
 - **Partage/export** d'une séance ou du plan complet en image/texte pour
   Strava ou un ami.
+- **Date des records personnels non exploitée** — `profilCoureur.records[dist].date`
+  est saisie et stockée, mais jamais lue par aucun mécanisme (ni le
+  moteur de plan, ni le wizard, ni les comparaisons de cohérence entre
+  records). Un record ancien et un record d'hier ont aujourd'hui
+  exactement le même poids. Piste : pondérer la fiabilité d'un record
+  selon son ancienneté (ex. pour le choix automatique du record de
+  référence dans le wizard, ou un avertissement si le seul record
+  disponible pour une distance date de plusieurs années).
 
 Plus de travail, forte valeur perçue :
 - **Notifications/rappels** — veille d'une séance qualité, ou séance non
