@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+successfully downloaded text file (SHA: 34a9df41b34016a4b3386f5e99d60a0a4e166498)<!DOCTYPE html>
 <html lang="fr">
 <head>
 <!-- Sentry (suivi d'erreurs, ajouté le 20/07/2026 pour les beta testeurs).
@@ -4389,7 +4389,7 @@ function renderSelecteurPlan() {
     background:"rgba(var(--accent-rgb),0.07)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"8px",
     padding:"6px 12px",color:"var(--accent)",fontSize:"14px",fontWeight:"700",
     textDecoration:"none",cursor:"pointer",whiteSpace:"nowrap"
-  }},"Configurer plan");
+  }},"+ Nouveau plan");
 
   return el("div",{style:{padding:"8px 0",display:"flex",gap:"8px",alignItems:"center"}}, select, lienNouveauPlan);
 }
@@ -6229,10 +6229,11 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     helpBtn
   );
 
-  // Sélecteur de plan (docs/v2-methodologie/convergence-v1-v2.md, section 7)
-  // — toujours visible en haut du dashboard, juste après l'en-tête
-  // principal (décision d'emplacement tranchée le 6 juillet 2026).
-  const selecteurPlanEl = renderSelecteurPlan();
+  // Sélecteur de plan déplacé vers l'onglet Course (20/08/2026) — action
+  // rare (changer/créer un plan), ne mérite plus une place fixe sur
+  // l'écran le plus consulté. Course en devient le point de gestion
+  // "quel plan je suis / j'en commence un nouveau", y compris son état
+  // vide en Mode Forme (cf. renderCourse()).
 
   // Bandeau de notification badges (27/07/2026) — même famille visuelle
   // que adaptationEl/moteurDecisionEl (bordure gauche colorée, dismissible),
@@ -6337,7 +6338,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       )
     : null;
 
-  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,selecteurPlanEl,anniversaireDashEl,recommandationsSanteDashEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
+  return el("div",{style:{padding:"0 16px 100px"}},dashHeaderEl,anniversaireDashEl,recommandationsSanteDashEl,heroPredHybride,stravaDeconnecteEl,badgesNotifEl,progressionMarcheCourseEl,blocSuivantEl,completerTestEl,adaptationEl,alluresDynamiquesEl,moteurDecisionEl,courseInterResultBannerEl,prochainPalierEl,todayEl||"",bilanEl,phaseEl);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -10802,7 +10803,25 @@ function renderGroupeAccordeonCourse(icone, titre, couleurVar, contenuElements) 
 }
 
 function renderCourse() {
+  // État vide Mode Forme sans plan course actif — l'onglet Course reste
+  // visible en permanence (cf. NAV), mais son contenu habituel (jour J,
+  // stratégie, parcours) n'a pas de sens sans course ciblée. Réutilise
+  // renderSelecteurPlan() tel quel (sélecteur + bouton "+ Nouveau plan"
+  // dans le même conteneur flex), retiré du dashboard au profit de cet
+  // emplacement unique.
+  if (ESTMODEFORME) {
+    return el("div",{},
+      renderSelecteurPlan(),
+      el("div",{style:{textAlign:"center",padding:"48px 20px"}},
+        el("div",{style:{fontSize:"40px",marginBottom:"12px"}},"🏁"),
+        el("div",{style:{fontSize:"17px",fontWeight:"700",marginBottom:"8px"}},"Aucune course en préparation"),
+        el("div",{class:"muted",style:{fontSize:"14px",lineHeight:"1.5"}},"Tu es actuellement en Mode Forme. Si tu vises une course, tu peux créer un plan dédié.")
+      )
+    );
+  }
   const cd = countdown();
+
+  const selecteurPlanEl = renderSelecteurPlan();
 
   const infoCard = el("div",{style:{background:"linear-gradient(135deg,var(--bg) 0%,var(--border-soft) 100%)",border:"1px solid rgba(var(--accent-rgb),0.2)",borderRadius:"12px",padding:"16px",marginBottom:"16px"}},
     el("div",{style:{display:"flex",alignItems:"center",gap:"14px",marginBottom:"12px"}},
@@ -11263,6 +11282,7 @@ function renderCourse() {
   // assez de contenu pour justifier un groupe repliable).
   return el("div",{style:{padding:"0 16px 100px"}},
     el("div",{style:{marginTop:"8px"}}),
+    selecteurPlanEl,
     infoCard,
 
     renderGroupeAccordeonCourse("🎒","Préparation pratique","var(--accent)", [
@@ -15038,8 +15058,7 @@ function render() {
   else if (vueEffective==="weekDetail") content=renderWeekDetail(selectedWeek);
   else if (vueEffective==="stats") content=renderStats();
   else if (vueEffective==="badges") content=renderBadges();
-  else if (vueEffective==="course" && !ESTMODEFORME) content=renderCourse();
-  else if (vueEffective==="course" && ESTMODEFORME) content=renderDashboard(); // repli : onglet Course n'existe pas en mode Forme
+  else if (vueEffective==="course") content=renderCourse(); // gère elle-même l'état vide en Mode Forme sans plan course
   else if (vueEffective==="help") content=renderHelp();
   else content=renderSettings();
 
@@ -15047,7 +15066,7 @@ function render() {
     {id:"dashboard",icon:"⚡",label:"Dashboard"},
     {id:"weeks",    icon:"📅",label:"Semaines"},
     {id:"stats",    icon:"📊",label:"Stats"},
-    ...(ESTMODEFORME ? [] : [{id:"course",   icon:"🏁",label:"Course"}]),
+    {id:"course",   icon:"🏁",label:"Course"},
     {id:"settings", icon:"⚙️",label:"Paramètres"},
   ];
   const activeNav=["dashboard","stats","settings","course","help"].includes(vueEffective)?vueEffective:"weeks";
