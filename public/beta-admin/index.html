@@ -169,8 +169,8 @@
         </div>
 
         <div class="card">
-          <h2>Corriger le sous-type d'une séance qualité</h2>
-          <p><small>Force le sous-type d'une séance qualité précise (semaine + jour), sur le plan ciblé. Le jour est indexé 0 (lundi) à 6 (dimanche).</small></p>
+          <h2>Corriger une séance qualité</h2>
+          <p><small>Force le sous-type ET son contenu exact (répétitions, durée, récupération) d'une séance qualité précise, sur le plan ciblé. Le jour est indexé 0 (lundi) à 6 (dimanche) — position telle qu'AFFICHÉE dans l'app (résolue automatiquement si la séance a été déplacée via la fonction d'échange). Saisie manuelle plutôt que calculée par le moteur : le nombre de reps généré automatiquement ne reflète pas fiablement la progression réelle du coureur pour une séance forcée hors rotation.</small></p>
           <div class="filters">
             <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
             <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
@@ -189,8 +189,14 @@
               <option value="allure-course">Allure course</option>
               <option value="allure-course-court">Allure course (court)</option>
             </select>
+          </div>
+          <div class="filters" style="margin-top:8px;">
+            <input id="maintenance-seance-reps" type="number" min="1" placeholder="Répétitions (ex. 5)">
+            <input id="maintenance-seance-duree-effort" type="number" min="1" placeholder="Durée effort (sec, ex. 480 pour 8min)">
+            <input id="maintenance-seance-duree-recup" type="number" min="0" placeholder="Récup (sec, ex. 120 pour 2min)">
             <button id="maintenance-seance-btn" class="secondary">Appliquer</button>
           </div>
+          <p><small>La durée s'exprime toujours en secondes (480 = 8min, 30 = 30s) — l'échauffement et le retour au calme restent calculés automatiquement selon la phase du plan.</small></p>
           <div id="maintenance-seance-status" class="notice" hidden></div>
         </div>
       </section>
