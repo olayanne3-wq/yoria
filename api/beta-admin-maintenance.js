@@ -538,9 +538,54 @@ async function actionReparerPhases(config, email, planId) {
 }
 
 // ---------------------------------------------------------------------------
-// Action 3 — Corriger le sous-type d'une séance qualité précise.
+// Action 3 — Corriger une séance qualité précise, EN SAISIE DIRECTE
+// (20/08/2026, réécrite suite à un test réel : le nombre de répétitions
+// généré était incohérent).
+//
+// genererContenuQualite() du moteur ne permet PAS de demander "génère-moi
+// le contenu détaillé pour CE sous-type précis" — elle détermine TOUJOURS
+// elle-même le sous-type à partir de sa position dans ROTATION_SOUS_TYPE
+// (rotation[(semaineDansPhase + indexQualiteSemaine) % rotation.length]).
+// La première version de cet outil contournait ça en calculant une valeur
+// artificielle de semaineDansPhase, choisie uniquement pour que la
+// rotation retombe sur le sous-type demandé — mais ce même paramètre pilote
+// aussi le nombre de répétitions générées (reduireSelonNiveauProgression),
+// donc le nombre de reps produit n'avait plus de rapport avec la vraie
+// progression du coureur à cette semaine. Corriger le calcul de
+// semaineDansPhase pour qu'il soit réaliste résout le nombre de reps, mais
+// casse alors le forçage du sous-type (la rotation retombe sur le sous-type
+// "naturel", pas celui demandé) — les deux ne peuvent pas être corrects
+// simultanément en passant par cette fonction, elle n'a pas été conçue pour
+// un forçage explicite.
+//
+// Solution retenue avec Laurent : sortir complètement de
+// genererContenuQualite() pour cette action. L'admin saisit directement le
+// sous-type, le nombre de répétitions, la durée (ou distance) de chaque
+// répétition, et le temps de récupération — la séance est construite
+// manuellement à partir de ces valeurs, avec le même format texte que le
+// moteur produit normalement (cohérent avec l'affichage habituel de l'app,
+// cf. parserContenuQualite dans v1-bridge.js qui attend ce format précis :
+// "Échauffement Xmin @ ... (EF) + [corps] + Retour au calme Ymin @ ...
+// (EF)"). Échauffement/retour au calme restent calculés par le moteur
+// (DUREE_ECHAUFFEMENT_MIN/DUREE_RETOUR_CALME_MIN, valeurs fixes 15/10min
+// non affectées par le problème de progression ci-dessus).
 // ---------------------------------------------------------------------------
-async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId) {
+
+const ALLURE_PAR_SOUS_TYPE = {
+  'seuil-court': 'T', 'seuil': 'T', 'seuil-negatif': 'T', 'seuil-2min': 'T', 'tempo-court': 'T',
+  'i-30-30': 'I', 'i-3min': 'I', 'pyramidale': 'I',
+  'vitesse': 'V', 'cotes': 'V',
+  'allure-course': 'C', 'allure-course-court': 'C',
+};
+
+const LABEL_PAR_SOUS_TYPE = {
+  'seuil-court': 'Seuil', 'seuil': 'Seuil', 'seuil-negatif': 'Seuil', 'seuil-2min': 'Seuil', 'tempo-court': 'Seuil léger',
+  'i-30-30': 'VMA', 'i-3min': 'VMA', 'pyramidale': 'VMA',
+  'vitesse': 'Vitesse', 'cotes': 'effort soutenu (côte)',
+  'allure-course': 'allure course', 'allure-course-court': 'allure course',
+};
+
+async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId, repetitions, dureeEffortSec, dureeRecupSec) {
   const user = await trouverUserIdParEmail(config, email);
   if (!user) return { status: 404, body: { message: "Aucun compte trouvé avec cette adresse e-mail." } };
 
@@ -567,10 +612,6 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
   const semaine = planBrut.semaines.find((s) => s.semaineNum === semaineNum);
   const seance = semaine?.assignment?.[jourIndexPhysique];
   if (!seance || seance.type !== "qualite") {
-    // DIAGNOSTIC TEMPORAIRE (20/08/2026) — le message générique
-    // "Séance introuvable" ne permettait pas de comprendre si c'est la
-    // semaine, le jour, ou le type qui posait problème. À retirer une
-    // fois la vraie cause identifiée et corrigée.
     const suffixeEchange = futEchangee ? ` (position résolue depuis un échange : jour affiché ${jourIndex} -> jour physique ${jourIndexPhysique})` : "";
     if (!semaine) {
       const semainesDisponibles = planBrut.semaines.map((s) => s.semaineNum).join(", ");
@@ -589,39 +630,48 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
     objectifTimeSeconds: Engine.parseTimeToSeconds(planBrut.paramsOrigine.objectif),
     distanceCibleKm: Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.distance],
   });
-  const tempsRef10KSec = Engine.riegelPredict(
-    Engine.parseTimeToSeconds(planBrut.paramsOrigine.tempsReference),
-    Engine.KM_BY_DISTANCE[planBrut.paramsOrigine.refDistance ?? planBrut.paramsOrigine.distance],
-    10,
-  );
 
-  const distance = planBrut.paramsOrigine.distance;
-  const rotation = Engine.ROTATION_SOUS_TYPE?.[distance]?.[semaine.phase];
-  let semaineDansPhaseChoisie = 0;
-  if (rotation) {
-    const idx = rotation.indexOf(nouveauSousType);
-    if (idx >= 0) semaineDansPhaseChoisie = idx - (seance.indexQualite ?? 0);
+  const zoneAllure = ALLURE_PAR_SOUS_TYPE[nouveauSousType];
+  if (!zoneAllure) {
+    return { status: 400, body: { message: `Sous-type "${nouveauSousType}" non reconnu.` } };
   }
+  const paceEffortSec = alluresSec[zoneAllure];
+  const paceE = alluresSec.E;
 
-  const { sousType, contenu, kmEstime, structureIntervalles } = Engine.genererContenuQualite({
-    distance,
-    phase: semaine.phase,
-    semaineDansPhase: Math.max(0, semaineDansPhaseChoisie),
-    indexQualiteSemaine: seance.indexQualite ?? 0,
-    alluresSec,
-    restrictionsAllure: seance.restrictionsAllure,
-    tauxAffutage: semaine.tauxAffutage ?? 1,
-    estDechargeSemaine: semaine.estDechargeSemaine ?? false,
-    niveau: planBrut.profilOrigine?.niveau,
-    volumeHebdoCibleKm: semaine.volumeCibleKm,
-    tempsRef10KSec,
-  });
+  // Facteur de réduction identique à celui du moteur (Affûtage/décharge) —
+  // seul point encore emprunté au calcul normal, cohérent avec le reste
+  // du plan pour l'échauffement/retour au calme.
+  const facteurReduction = semaine.estDechargeSemaine ? 0.75 : (semaine.phase === 'Affutage' ? (semaine.tauxAffutage ?? 1) : 1);
+  const dureeEchauffementMin = Math.max(8, Math.round(15 * facteurReduction));
+  const dureeRetourCalmeMin = Math.max(5, Math.round(10 * facteurReduction));
+  const kmEchauffement = (dureeEchauffementMin * 60) / paceE;
+  const kmRetourCalme = (dureeRetourCalmeMin * 60) / paceE;
 
-  if (sousType !== nouveauSousType) {
-    return { status: 200, body: { success: false, message: `Impossible de générer une séance "${nouveauSousType}" pour cette phase/distance.` } };
-  }
+  const kmDepuisSec = (sec) => sec / paceEffortSec;
+  const kmCorps = kmDepuisSec(repetitions * dureeEffortSec);
+  const kmEstime = kmCorps + kmEchauffement + kmRetourCalme;
 
-  seance.sousType = sousType;
+  const labelSousType = LABEL_PAR_SOUS_TYPE[nouveauSousType] || nouveauSousType;
+  const formatPaceLocal = (secPerKm) => {
+    const total = Math.round(secPerKm);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, '0')}/km`;
+  };
+  const dureeEffortLabel = dureeEffortSec % 60 === 0 ? `${dureeEffortSec / 60}min` : `${dureeEffortSec}s`;
+  const dureeRecupLabel = dureeRecupSec % 60 === 0 ? `${dureeRecupSec / 60}min` : `${dureeRecupSec}s`;
+  const corpsTexte = `${repetitions}×${dureeEffortLabel} @ ${formatPaceLocal(paceEffortSec)} (${labelSousType}), récup ${dureeRecupLabel}`;
+
+  const contenu = `Échauffement ${dureeEchauffementMin}min @ ${formatPaceLocal(paceE)} (EF) + ${corpsTexte} + Retour au calme ${dureeRetourCalmeMin}min @ ${formatPaceLocal(paceE)} (EF)`;
+
+  const structureIntervalles = {
+    blocs: [{ repetitions, dureeEffortSec, allure: formatPaceLocal(paceEffortSec), dureeRecupSec }],
+    echauffementSec: dureeEchauffementMin * 60,
+    retourCalmeSec: dureeRetourCalmeMin * 60,
+    allureEchauffement: formatPaceLocal(paceE),
+  };
+
+  seance.sousType = nouveauSousType;
   seance.contenu = contenu;
   seance.kmEstime = kmEstime;
   seance.structureIntervalles = structureIntervalles;
@@ -629,7 +679,7 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
   await ecrirePlanBrut(config, planIdCible, planBrut);
 
   const suffixeEchangeSucces = futEchangee ? ` (jour affiché ${jourIndex} résolu vers jour physique ${jourIndexPhysique} suite à un échange)` : "";
-  return { status: 200, body: { success: true, message: `Séance S${semaineNum} mise à jour : ${sousType}${suffixeEchangeSucces}.` } };
+  return { status: 200, body: { success: true, message: `Séance S${semaineNum} mise à jour : ${repetitions}×${dureeEffortLabel} ${labelSousType}, récup ${dureeRecupLabel}${suffixeEchangeSucces}.` } };
 }
 
 // ---------------------------------------------------------------------------
@@ -694,10 +744,18 @@ export default async function handler(request, response) {
       const jourIndex = Number(body.jourIndex);
       const nouveauSousType = String(body.nouveauSousType || "");
       const planId = String(body.planId || "").trim() || null;
-      if (!Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType) {
-        return json(response, 400, { message: "Paramètres manquants (semaineNum, jourIndex, nouveauSousType)." });
+      const repetitions = Number(body.repetitions);
+      const dureeEffortSec = Number(body.dureeEffortSec);
+      const dureeRecupSec = Number(body.dureeRecupSec);
+      if (
+        !Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType ||
+        !Number.isFinite(repetitions) || repetitions <= 0 ||
+        !Number.isFinite(dureeEffortSec) || dureeEffortSec <= 0 ||
+        !Number.isFinite(dureeRecupSec) || dureeRecupSec < 0
+      ) {
+        return json(response, 400, { message: "Paramètres manquants ou invalides (semaineNum, jourIndex, nouveauSousType, repetitions, dureeEffortSec, dureeRecupSec)." });
       }
-      const result = await actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId);
+      const result = await actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId, repetitions, dureeEffortSec, dureeRecupSec);
       return json(response, result.status, result.body);
     }
 
