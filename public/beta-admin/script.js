@@ -290,16 +290,58 @@ $("#maintenance-recalc-km-btn").onclick = async () => {
   }
 };
 
+// CORRECTIF (20/08/2026, bug "Séance introuvable" signalé par Laurent) : un
+// compte avec plusieurs plans (ex. plan Forme + plan course en parallèle)
+// peut avoir son plan le plus récemment CRÉÉ différent de celui réellement
+// SUIVI — les actions "Réparer les phases" et "Changer le sous-type"
+// ciblaient toujours le plus récent, à tort. Ce bouton liste les plans du
+// compte pour permettre de choisir explicitement lequel cibler.
+$("#maintenance-lister-plans-btn").onclick = async () => {
+  const email = emailMaintenanceOuErreur("#maintenance-lister-plans-status");
+  if (!email) return;
+  const btn = $("#maintenance-lister-plans-btn");
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Recherche…";
+  $("#maintenance-lister-plans-status").hidden = true;
+  const select = $("#maintenance-plan-cible");
+  select.style.display = "none";
+  select.innerHTML = '<option value="">Plan le plus récent (par défaut)</option>';
+  try {
+    const r = await maintenanceReq({ action: "lister_plans", email });
+    if (!r.plans.length) {
+      afficherStatutMaintenance("#maintenance-lister-plans-status", "error", "Aucun plan pour ce compte.");
+      return;
+    }
+    r.plans.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      const label2 = p.mode === "forme"
+        ? `Mode Forme${p.dateCloture ? " (clôturé " + p.dateCloture + ")" : ""} — créé le ${date(p.createdAt)}`
+        : `${p.distance || "?"} · objectif ${p.objectif || "?"} — créé le ${date(p.createdAt)}`;
+      opt.textContent = label2;
+      select.appendChild(opt);
+    });
+    select.style.display = "block";
+    afficherStatutMaintenance("#maintenance-lister-plans-status", "", `${r.plans.length} plan(s) trouvé(s) — choisis celui à cibler ci-dessous si besoin.`);
+  } catch (e) {
+    afficherStatutMaintenance("#maintenance-lister-plans-status", "error", e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
+
 $("#maintenance-reparer-phases-btn").onclick = async () => {
   const email = emailMaintenanceOuErreur("#maintenance-reparer-phases-status");
   if (!email) return;
-  if (!confirm(`Vérifier et réparer la cohérence des phases du plan actif le plus récent de ${email} ?`)) return;
+  const planId = $("#maintenance-plan-cible").value || undefined;
+  const cibleTexte = planId ? "le plan sélectionné" : "le plan le plus récent";
+  if (!confirm(`Vérifier et réparer la cohérence des phases de ${cibleTexte} de ${email} ?`)) return;
   const btn = $("#maintenance-reparer-phases-btn");
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "Vérification…";
   $("#maintenance-reparer-phases-status").hidden = true;
   try {
-    const r = await maintenanceReq({ action: "reparer_phases", email });
+    const r = await maintenanceReq({ action: "reparer_phases", email, planId });
     afficherStatutMaintenance("#maintenance-reparer-phases-status", r.success === false ? "error" : "", r.message);
   } catch (e) {
     afficherStatutMaintenance("#maintenance-reparer-phases-status", "error", e.message);
@@ -314,17 +356,19 @@ $("#maintenance-seance-btn").onclick = async () => {
   const semaineNum = Number($("#maintenance-seance-semaine").value);
   const jourIndex = Number($("#maintenance-seance-jour").value);
   const nouveauSousType = $("#maintenance-seance-soustype").value.trim();
+  const planId = $("#maintenance-plan-cible").value || undefined;
   if (!Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType) {
     afficherStatutMaintenance("#maintenance-seance-status", "error", "Renseigne le n° de semaine, le jour (0-6) et le sous-type visé.");
     return;
   }
-  if (!confirm(`Forcer le sous-type "${nouveauSousType}" sur la séance S${semaineNum}/jour ${jourIndex} de ${email} ?`)) return;
+  const cibleTexte = planId ? "le plan sélectionné" : "le plan le plus récent";
+  if (!confirm(`Forcer le sous-type "${nouveauSousType}" sur la séance S${semaineNum}/jour ${jourIndex} de ${cibleTexte} de ${email} ?`)) return;
   const btn = $("#maintenance-seance-btn");
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "Application…";
   $("#maintenance-seance-status").hidden = true;
   try {
-    const r = await maintenanceReq({ action: "changer_sous_type_seance", email, semaineNum, jourIndex, nouveauSousType });
+    const r = await maintenanceReq({ action: "changer_sous_type_seance", email, semaineNum, jourIndex, nouveauSousType, planId });
     afficherStatutMaintenance("#maintenance-seance-status", r.success === false ? "error" : "", r.message);
   } catch (e) {
     afficherStatutMaintenance("#maintenance-seance-status", "error", e.message);
