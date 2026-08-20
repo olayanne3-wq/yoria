@@ -27,6 +27,14 @@
 // fichier lisible — les deux partagent le même pattern d'auth par cookie,
 // dupliqué volontairement plutôt que factorisé prématurément (peu de code
 // commun réel : isValidToken/parseCookies/safe/sign, ~40 lignes).
+//
+// CORRECTIF (20/08/2026, bug signalé par Laurent — le front n'affichait que
+// "Erreur" sans détail) : toute exception non anticipée pouvait auparavant
+// remonter sans message exploitable (ex. error.message vide/undefined selon
+// le type d'erreur JS levée). Chaque étape logge maintenant explicitement
+// côté serveur (console.error avec contexte) ET garantit un message non vide
+// dans la réponse JSON, pour qu'un problème futur soit diagnosticable depuis
+// les logs Vercel sans avoir à deviner où ça a cassé.
 // ----------------------------------------------------------------------------
 
 import crypto from "node:crypto";
@@ -77,18 +85,26 @@ const isValidToken = (token, key) => {
 
 // ---------------------------------------------------------------------------
 // Accès Supabase — même pattern que beta-admin.js (fetch direct REST, pas
-// de client supabase-js côté serveur dans ce projet).
+// de client supabase-js côté serveur dans ce projet). CORRECTIF : logge
+// maintenant le path et le corps de la requête en cas d'échec, et retourne
+// un message d'erreur avec le détail Supabase plutôt qu'un message générique.
 // ---------------------------------------------------------------------------
 async function supabaseRequest(config, path, options = {}) {
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      apikey: config.supabaseKey,
-      Authorization: `Bearer ${config.supabaseKey}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, {
+      ...options,
+      headers: {
+        apikey: config.supabaseKey,
+        Authorization: `Bearer ${config.supabaseKey}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (networkErr) {
+    console.error("Erreur réseau Supabase beta-admin-maintenance :", path, networkErr.message);
+    throw new Error(`Erreur réseau vers Supabase (${path}) : ${networkErr.message}`);
+  }
   const text = await response.text();
   let data = text;
   try {
@@ -97,17 +113,28 @@ async function supabaseRequest(config, path, options = {}) {
     // reste du texte
   }
   if (!response.ok) {
-    console.error("Erreur Supabase beta-admin-maintenance :", response.status, data);
-    throw new Error("Erreur Supabase");
+    console.error("Erreur Supabase beta-admin-maintenance :", path, response.status, options.method || "GET", JSON.stringify(data));
+    const detail = data?.message || data?.hint || data?.error || (typeof data === "string" ? data : JSON.stringify(data)) || "réponse vide";
+    throw new Error(`Supabase a refusé la requête (${response.status} sur ${path}) : ${detail}`);
   }
   return data;
 }
 
 async function trouverUserIdParEmail(config, email) {
-  const usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
-    headers: { apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` },
-  });
-  if (!usersResponse.ok) throw new Error("Erreur lors de la recherche du compte.");
+  let usersResponse;
+  try {
+    usersResponse = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+      headers: { apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` },
+    });
+  } catch (networkErr) {
+    console.error("Erreur réseau recherche utilisateur :", networkErr.message);
+    throw new Error(`Erreur réseau lors de la recherche du compte : ${networkErr.message}`);
+  }
+  if (!usersResponse.ok) {
+    const text = await usersResponse.text().catch(() => "");
+    console.error("Erreur recherche utilisateur :", usersResponse.status, text);
+    throw new Error(`Recherche du compte échouée (${usersResponse.status}).`);
+  }
   const usersData = await usersResponse.json();
   const users = Array.isArray(usersData) ? usersData : usersData.users || [];
   const user = users.find((u) => (u.email || "").toLowerCase() === email.toLowerCase());
@@ -186,6 +213,11 @@ async function actionRecalculerKm(config, email) {
       const manualPerf = donnees.lk_manual_perf || {};
       const stravaActivities = donnees.lk_strava_activities || [];
 
+      if (!plan.plan_brut?.dateDebut || !Array.isArray(plan.plan_brut?.semaines)) {
+        console.warn("Recalcul km : plan sans dateDebut/semaines exploitables, ignoré :", plan.id);
+        continue;
+      }
+
       const planTraduit = traduirePlanVersFormatV1(plan.plan_brut);
       if (!planTraduit?.length) continue;
 
@@ -215,16 +247,12 @@ async function actionRecalculerKm(config, email) {
         kmComptesParUidPlanLePlusRecent = kmComptesParUidCePlan;
       }
     } catch (err) {
-      console.warn("Recalcul km (maintenance admin) : lecture d'un plan échouée, ignoré :", plan.id, err.message);
+      console.error("Recalcul km (maintenance admin) : traitement d'un plan échoué, ignoré :", plan.id, err.message, err.stack);
     }
   }
 
   const kmCumulesTotal = Math.round(totalGlobal * 10) / 10;
 
-  // Écrit le total recalculé dans profils_coureur (comme profilCoureur.kmCumulesTotal
-  // côté client) ET kmComptesParUid du plan le plus récent dans plan_donnees
-  // (comme lk_km_comptes_par_uid côté client) — même paire de clés mise à
-  // jour ensemble que dans recalcKmSection.
   await ecrireProfilCoureur(config, user.id, { kmCumulesTotal });
   if (planLePlusRecentId && kmComptesParUidPlanLePlusRecent) {
     const donneesExistantes = await chargerPlanDonnees(config, planLePlusRecentId);
@@ -247,11 +275,7 @@ async function actionRecalculerKm(config, email) {
 
 // ---------------------------------------------------------------------------
 // Action 2 — Vérifier/réparer la cohérence des phases (portage de
-// reparerCoherencePhasesApp). Cible le plan ACTIF le plus récent du compte
-// (pas de notion de "plan actuellement affiché" côté serveur — un
-// administrateur cible toujours le compte, la fonction traite son plan le
-// plus récent, cohérent avec le fait qu'un seul plan course peut être actif
-// à la fois, cf. garde-fou anti-chevauchement).
+// reparerCoherencePhasesApp).
 // ---------------------------------------------------------------------------
 async function actionReparerPhases(config, email) {
   const user = await trouverUserIdParEmail(config, email);
@@ -391,9 +415,7 @@ async function actionReparerPhases(config, email) {
 }
 
 // ---------------------------------------------------------------------------
-// Action 3 — Corriger le sous-type d'une séance qualité précise (portage de
-// changerSousTypeSeanceApp). Nécessite semaineNum + jourIndex + nouveauSousType
-// en plus de l'email, contrairement aux deux autres actions.
+// Action 3 — Corriger le sous-type d'une séance qualité précise.
 // ---------------------------------------------------------------------------
 async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType) {
   const user = await trouverUserIdParEmail(config, email);
@@ -477,7 +499,12 @@ export default async function handler(request, response) {
   };
 
   if (!config.supabaseUrl || !config.supabaseKey || !config.password) {
-    return json(response, 500, { message: "Configuration administrateur incomplète." });
+    console.error("beta-admin-maintenance : configuration incomplète", {
+      supabaseUrl: !!config.supabaseUrl,
+      supabaseKey: !!config.supabaseKey,
+      password: !!config.password,
+    });
+    return json(response, 500, { message: "Configuration administrateur incomplète (variable d'environnement manquante côté serveur)." });
   }
 
   const cookies = parseCookies(request.headers.cookie);
@@ -520,9 +547,10 @@ export default async function handler(request, response) {
       return json(response, result.status, result.body);
     }
 
-    return json(response, 400, { message: "Action inconnue." });
+    return json(response, 400, { message: `Action inconnue : "${action}".` });
   } catch (error) {
-    console.error("Erreur beta-admin-maintenance :", error);
-    return json(response, 500, { message: error.message || "L'opération a échoué." });
+    console.error("Erreur beta-admin-maintenance :", action, email, error?.message, error?.stack);
+    const messageClient = error?.message?.trim() || `Une erreur inattendue est survenue pendant l'action "${action}" (voir les logs serveur).`;
+    return json(response, 500, { message: messageClient });
   }
 }
