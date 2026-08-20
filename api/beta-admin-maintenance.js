@@ -523,7 +523,19 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
   const semaine = planBrut.semaines.find((s) => s.semaineNum === semaineNum);
   const seance = semaine?.assignment?.[jourIndex];
   if (!seance || seance.type !== "qualite") {
-    return { status: 404, body: { message: "Séance introuvable." } };
+    // DIAGNOSTIC TEMPORAIRE (20/08/2026) — le message générique
+    // "Séance introuvable" ne permettait pas de comprendre si c'est la
+    // semaine, le jour, ou le type qui posait problème. À retirer une
+    // fois la vraie cause identifiée et corrigée.
+    if (!semaine) {
+      const semainesDisponibles = planBrut.semaines.map((s) => s.semaineNum).join(", ");
+      return { status: 404, body: { message: `Semaine ${semaineNum} introuvable dans ce plan. Semaines disponibles : ${semainesDisponibles}.` } };
+    }
+    const joursDisponibles = Object.keys(semaine.assignment || {}).join(", ");
+    if (!seance) {
+      return { status: 404, body: { message: `Semaine ${semaineNum} trouvée, mais aucun jour "${jourIndex}" dans son assignment. Jours présents : [${joursDisponibles}].` } };
+    }
+    return { status: 404, body: { message: `Semaine ${semaineNum}, jour ${jourIndex} trouvé, mais son type est "${seance.type}" (pas "qualite"). Contenu : ${seance.contenu || "(vide)"}` } };
   }
 
   const alluresSec = Engine.computeAllures({
