@@ -152,15 +152,25 @@
         </div>
 
         <div class="card">
+          <h2>Plan ciblé (pour les 2 outils ci-dessous)</h2>
+          <p><small>Si ce compte a plusieurs plans, choisis lequel cibler — sinon le plan le plus récemment créé est utilisé par défaut, qui n'est pas toujours celui réellement suivi.</small></p>
+          <button id="maintenance-lister-plans-btn" class="secondary">Lister les plans de ce compte</button>
+          <div id="maintenance-lister-plans-status" class="notice" hidden></div>
+          <select id="maintenance-plan-cible" style="margin-top:10px;display:none;">
+            <option value="">Plan le plus récent (par défaut)</option>
+          </select>
+        </div>
+
+        <div class="card">
           <h2>Vérifier la cohérence des phases</h2>
-          <p><small>Détecte et corrige une éventuelle divergence entre l'étiquette de phase stockée sur chaque semaine et la vraie structure du plan actif le plus récent de ce compte.</small></p>
+          <p><small>Détecte et corrige une éventuelle divergence entre l'étiquette de phase stockée sur chaque semaine et la vraie structure du plan ciblé.</small></p>
           <button id="maintenance-reparer-phases-btn" class="secondary">Vérifier et réparer</button>
           <div id="maintenance-reparer-phases-status" class="notice" hidden></div>
         </div>
 
         <div class="card">
           <h2>Corriger le sous-type d'une séance qualité</h2>
-          <p><small>Force le sous-type d'une séance qualité précise (semaine + jour), sur le plan actif le plus récent de ce compte. Le jour est indexé 0 (lundi) à 6 (dimanche).</small></p>
+          <p><small>Force le sous-type d'une séance qualité précise (semaine + jour), sur le plan ciblé. Le jour est indexé 0 (lundi) à 6 (dimanche).</small></p>
           <div class="filters">
             <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
             <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
