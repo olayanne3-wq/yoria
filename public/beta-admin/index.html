@@ -164,7 +164,21 @@
           <div class="filters">
             <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
             <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
-            <input id="maintenance-seance-soustype" type="text" placeholder="Sous-type (ex. seuil, i-3min, allure-course)">
+            <select id="maintenance-seance-soustype">
+              <option value="">Sous-type…</option>
+              <option value="cotes">Côtes</option>
+              <option value="i-30-30">30/30 (VMA)</option>
+              <option value="i-3min">3min (VMA)</option>
+              <option value="vitesse">Vitesse (300m)</option>
+              <option value="pyramidale">Pyramidale</option>
+              <option value="seuil-court">Seuil court</option>
+              <option value="seuil">Seuil</option>
+              <option value="seuil-negatif">Seuil négatif</option>
+              <option value="seuil-2min">Seuil 2min</option>
+              <option value="tempo-court">Tempo court</option>
+              <option value="allure-course">Allure course</option>
+              <option value="allure-course-court">Allure course (court)</option>
+            </select>
             <button id="maintenance-seance-btn" class="secondary">Appliquer</button>
           </div>
           <div id="maintenance-seance-status" class="notice" hidden></div>
