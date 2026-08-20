@@ -356,19 +356,27 @@ $("#maintenance-seance-btn").onclick = async () => {
   const semaineNum = Number($("#maintenance-seance-semaine").value);
   const jourIndex = Number($("#maintenance-seance-jour").value);
   const nouveauSousType = $("#maintenance-seance-soustype").value.trim();
+  const repetitions = Number($("#maintenance-seance-reps").value);
+  const dureeEffortSec = Number($("#maintenance-seance-duree-effort").value);
+  const dureeRecupSec = Number($("#maintenance-seance-duree-recup").value);
   const planId = $("#maintenance-plan-cible").value || undefined;
-  if (!Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType) {
-    afficherStatutMaintenance("#maintenance-seance-status", "error", "Renseigne le n° de semaine, le jour (0-6) et le sous-type visé.");
+  if (
+    !Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType ||
+    !Number.isFinite(repetitions) || repetitions <= 0 ||
+    !Number.isFinite(dureeEffortSec) || dureeEffortSec <= 0 ||
+    !Number.isFinite(dureeRecupSec) || dureeRecupSec < 0
+  ) {
+    afficherStatutMaintenance("#maintenance-seance-status", "error", "Renseigne le n° de semaine, le jour (0-6), le sous-type, les répétitions, la durée d'effort et la récup (en secondes).");
     return;
   }
   const cibleTexte = planId ? "le plan sélectionné" : "le plan le plus récent";
-  if (!confirm(`Forcer le sous-type "${nouveauSousType}" sur la séance S${semaineNum}/jour ${jourIndex} de ${cibleTexte} de ${email} ?`)) return;
+  if (!confirm(`Forcer ${repetitions}×${dureeEffortSec}s "${nouveauSousType}" (récup ${dureeRecupSec}s) sur la séance S${semaineNum}/jour ${jourIndex} de ${cibleTexte} de ${email} ?`)) return;
   const btn = $("#maintenance-seance-btn");
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "Application…";
   $("#maintenance-seance-status").hidden = true;
   try {
-    const r = await maintenanceReq({ action: "changer_sous_type_seance", email, semaineNum, jourIndex, nouveauSousType, planId });
+    const r = await maintenanceReq({ action: "changer_sous_type_seance", email, semaineNum, jourIndex, nouveauSousType, repetitions, dureeEffortSec, dureeRecupSec, planId });
     afficherStatutMaintenance("#maintenance-seance-status", r.success === false ? "error" : "", r.message);
   } catch (e) {
     afficherStatutMaintenance("#maintenance-seance-status", "error", e.message);
