@@ -38,7 +38,7 @@ function signalementsTable(){const x=signalementsFiltered();$("#signalements-tbo
 function stats(){const group=(f)=>S.items.reduce((a,i)=>(a[i[f]]=(a[i[f]]||0)+1,a),{}),bar=(obj,labels)=>`<div class="bar-list">${Object.entries(obj).map(([k,v])=>`<div class="bar"><span>${esc(labels[k]||k)}</span><div class="track"><div class="fill" style="width:${pct(v,S.items.length)}%"></div></div><strong>${pct(v,S.items.length)}%</strong></div>`).join("")}</div>`;
 $("#statistics").innerHTML=`<article class="card"><h2>Plateformes</h2>${bar(group("platform"),P)}</article><article class="card"><h2>Niveaux</h2>${bar(group("running_level"),LV)}</article><article class="card"><h2>Distances</h2>${bar(group("favorite_distance"),D)}</article><article class="card"><h2>Engagement</h2>${bar({strava:S.items.filter(i=>i.uses_strava).length,feedback:S.items.filter(i=>i.accepts_feedback).length},{strava:"Strava",feedback:"Questionnaire"})}</article>`}
 // Boutons "Sélectionner"/"Marquer actif" retirés de la modale (statuts
-// simplifiés, cf. commentaire en tête de fichier) — restent "Envoyer
+// simplifiés, cf. commentaire en tête de fichier). restent "Envoyer
 // l'invitation" (invited), "Créer abonnement gratuit", "Refuser"
 // (rejected), et "Supprimer définitivement".
 function open(id){const c=S.items.find(i=>i.id===id);if(!c)return;S.id=id;const invited=c.invited_at?`<div class="detail"><span>Invitation envoyée</span><strong>${esc(date(c.invited_at))}</strong></div>`:"";$("#modal-content").innerHTML=`<h2>${esc(c.first_name)}</h2><p>${esc(c.email)}</p><div class="details">${[["Plateforme",P[c.platform]],["Niveau",LV[c.running_level]],["Sorties",c.runs_per_week+"/semaine"],["Distance",D[c.favorite_distance]],["Strava",c.uses_strava?"Oui":"Non"],["Questionnaire",c.accepts_feedback?"Oui":"Non"],["Statut",L[c.status]],["Inscription",date(c.created_at)]].map(x=>`<div class="detail"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("")}${invited}</div><div class="message">${c.message?esc(c.message):"Aucun message."}</div><div class="modal-actions"><button data-send-invitation>📧 Envoyer l'invitation</button><button data-create-subscription>💳 Créer abonnement gratuit</button><button data-status="rejected">Refuser</button><button data-delete-application class="danger">🗑️ Supprimer définitivement</button></div>`;$("#modal").hidden=false}
@@ -237,6 +237,101 @@ function decisionsCard(decisions){
     </table></div>
   </article>`;
 }
+
+/*
+ * Onglet "Maintenance" (20/08/2026) — 3 outils de réparation ponctuelle
+ * portés depuis l'accordéon Réglages > 🔧 Maintenance de l'app principale
+ * (retiré le même jour, cf. api/beta-admin-maintenance.js pour le détail
+ * de la décision). Un seul champ e-mail partagé par les 3 outils — pas de
+ * bouton "Rechercher" séparé comme le module Comptes : chaque outil
+ * résout lui-même le compte à l'appel, l'e-mail est juste lu au moment du
+ * clic plutôt que déclenchant un chargement préalable.
+ */
+const MAINTENANCE_API = "/api/beta-admin-maintenance";
+
+async function maintenanceReq(body) {
+  const r = await fetch(MAINTENANCE_API, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let j = {};
+  try { j = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(j.message || "Erreur"); e.status = r.status; throw e; }
+  return j;
+}
+
+function afficherStatutMaintenance(id, classe, texte) {
+  const el = $(id);
+  el.hidden = false;
+  el.className = "notice " + classe;
+  el.textContent = texte;
+}
+
+function emailMaintenanceOuErreur(statusId) {
+  const email = $("#maintenance-email").value.trim();
+  if (!email) {
+    afficherStatutMaintenance(statusId, "error", "Saisis d'abord l'adresse e-mail du compte ciblé (en haut de cet onglet).");
+    return null;
+  }
+  return email;
+}
+
+$("#maintenance-recalc-km-btn").onclick = async () => {
+  const email = emailMaintenanceOuErreur("#maintenance-recalc-km-status");
+  if (!email) return;
+  const btn = $("#maintenance-recalc-km-btn");
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Calcul en cours…";
+  $("#maintenance-recalc-km-status").hidden = true;
+  try {
+    const r = await maintenanceReq({ action: "recalculer_km", email });
+    afficherStatutMaintenance("#maintenance-recalc-km-status", "", r.message);
+  } catch (e) {
+    afficherStatutMaintenance("#maintenance-recalc-km-status", "error", e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
+
+$("#maintenance-reparer-phases-btn").onclick = async () => {
+  const email = emailMaintenanceOuErreur("#maintenance-reparer-phases-status");
+  if (!email) return;
+  if (!confirm(`Vérifier et réparer la cohérence des phases du plan actif le plus récent de ${email} ?`)) return;
+  const btn = $("#maintenance-reparer-phases-btn");
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Vérification…";
+  $("#maintenance-reparer-phases-status").hidden = true;
+  try {
+    const r = await maintenanceReq({ action: "reparer_phases", email });
+    afficherStatutMaintenance("#maintenance-reparer-phases-status", r.success === false ? "error" : "", r.message);
+  } catch (e) {
+    afficherStatutMaintenance("#maintenance-reparer-phases-status", "error", e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
+
+$("#maintenance-seance-btn").onclick = async () => {
+  const email = emailMaintenanceOuErreur("#maintenance-seance-status");
+  if (!email) return;
+  const semaineNum = Number($("#maintenance-seance-semaine").value);
+  const jourIndex = Number($("#maintenance-seance-jour").value);
+  const nouveauSousType = $("#maintenance-seance-soustype").value.trim();
+  if (!Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType) {
+    afficherStatutMaintenance("#maintenance-seance-status", "error", "Renseigne le n° de semaine, le jour (0-6) et le sous-type visé.");
+    return;
+  }
+  if (!confirm(`Forcer le sous-type "${nouveauSousType}" sur la séance S${semaineNum}/jour ${jourIndex} de ${email} ?`)) return;
+  const btn = $("#maintenance-seance-btn");
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Application…";
+  $("#maintenance-seance-status").hidden = true;
+  try {
+    const r = await maintenanceReq({ action: "changer_sous_type_seance", email, semaineNum, jourIndex, nouveauSousType });
+    afficherStatutMaintenance("#maintenance-seance-status", r.success === false ? "error" : "", r.message);
+  } catch (e) {
+    afficherStatutMaintenance("#maintenance-seance-status", "error", e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+};
 
 /*
  * Onglet "Sauvegarde" (01/08/2026) — export global (auto-découverte des
@@ -487,6 +582,6 @@ function cascadesResultHtml(result) {
   return html;
 }
 
-const titles={dashboard:"Tableau de bord",applications:"Candidatures",invited:"Invités",signalements:"Signalements",accounts:"Comptes",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
+const titles={dashboard:"Tableau de bord",applications:"Candidatures",invited:"Invités",signalements:"Signalements",accounts:"Comptes",maintenance:"Maintenance",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
