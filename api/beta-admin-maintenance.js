@@ -158,6 +158,23 @@ async function chargerPlanDonnees(config, planId) {
   return Array.isArray(rows) && rows[0] ? rows[0].data || {} : {};
 }
 
+// CORRECTIF (20/08/2026, bug "0 km" signalé par Laurent) : lk_strava_activities
+// n'est PAS stockée dans plan_donnees.data — c'est une clé globale
+// (sauvegardée via save("lk_strava_activities", ...) sans clePourPlan() côté
+// client, cf. index.html), donc synchronisée dans la table integrations
+// (colonne strava_activities_cache), pas dans plan_donnees. Le premier
+// portage lisait donnees.lk_strava_activities depuis plan_donnees, qui n'y
+// est jamais écrit — le total tombait toujours à 0 dès qu'une distance
+// provenait de Strava plutôt que d'une saisie manuelle.
+async function chargerStravaActivitiesUtilisateur(config, userId) {
+  const rows = await supabaseRequest(
+    config,
+    `integrations?user_id=eq.${encodeURIComponent(userId)}&select=strava_activities_cache`,
+    { method: "GET" },
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0].strava_activities_cache || [] : [];
+}
+
 async function ecrirePlanBrut(config, planId, planBrutComplet) {
   const payload = { plan_brut: planBrutComplet };
   if (planBrutComplet?.nom) payload.nom = planBrutComplet.nom;
@@ -206,12 +223,13 @@ async function actionRecalculerKm(config, email) {
   let kmComptesParUidPlanLePlusRecent = null;
   let planLePlusRecentId = plans[0].id; // déjà trié created_at.desc
 
+  const stravaActivities = await chargerStravaActivitiesUtilisateur(config, user.id);
+
   for (const plan of plans) {
     try {
       const donnees = await chargerPlanDonnees(config, plan.id);
       const statuts = donnees.lk_statuses || {};
       const manualPerf = donnees.lk_manual_perf || {};
-      const stravaActivities = donnees.lk_strava_activities || [];
 
       if (!plan.plan_brut?.dateDebut || !Array.isArray(plan.plan_brut?.semaines)) {
         console.warn("Recalcul km : plan sans dateDebut/semaines exploitables, ignoré :", plan.id);
