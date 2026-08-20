@@ -27,6 +27,10 @@
       "dest": "/api/beta-admin.js"
     },
     {
+      "src": "/api/beta-admin-maintenance",
+      "dest": "/api/beta-admin-maintenance.js"
+    },
+    {
       "src": "/api/backup",
       "dest": "/api/backup.js"
     },
