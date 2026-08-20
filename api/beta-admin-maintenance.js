@@ -149,6 +149,26 @@ async function chargerPlansActifUtilisateur(config, userId) {
   );
 }
 
+// CORRECTIF (20/08/2026, bug "Séance introuvable" signalé par Laurent) :
+// les actions 2 et 3 ciblaient systématiquement plans[0] (le plan le plus
+// RÉCEMMENT CRÉÉ), pas forcément le plan ACTIF/suivi dans l'app — un
+// compte avec 2 plans (ex. un plan Forme + un plan course en parallèle,
+// cf. garde-fou anti-chevauchement qui autorise ce cas) peut très bien
+// avoir son plan le plus récent différent de celui que l'utilisateur
+// regarde. Plutôt que de deviner lequel est "actif" (pas de champ
+// explicite dans le schéma pour ça), on demande maintenant le planId en
+// paramètre optionnel — s'il est fourni, on cible ce plan précis ; sinon,
+// on retombe sur l'ancien comportement (le plus récent) pour ne pas
+// casser l'usage simple à un seul plan.
+function resoudrePlanCible(plans, planId) {
+  if (planId) {
+    const trouve = plans.find((p) => p.id === planId);
+    if (!trouve) return { erreur: `Aucun plan avec l'id "${planId}" pour ce compte.` };
+    return { plan: trouve };
+  }
+  return { plan: plans[0] };
+}
+
 async function chargerPlanDonnees(config, planId) {
   const rows = await supabaseRequest(
     config,
@@ -214,6 +234,36 @@ async function ecrireProfilCoureur(config, userId, patchDonnees) {
     body: JSON.stringify({ user_id: userId, data: nouveauProfil }),
   });
   return nouveauProfil;
+}
+
+// ---------------------------------------------------------------------------
+// Action 0 — Lister les plans d'un compte (ajoutée pour permettre de choisir
+// le bon planId avant d'utiliser les actions 2/3, cf. bug "Séance
+// introuvable" — un compte avec plusieurs plans n'a pas forcément son plan
+// le plus récent comme étant celui réellement suivi).
+// ---------------------------------------------------------------------------
+async function actionListerPlans(config, email) {
+  const user = await trouverUserIdParEmail(config, email);
+  if (!user) return { status: 404, body: { message: "Aucun compte trouvé avec cette adresse e-mail." } };
+
+  const plans = await chargerPlansActifUtilisateur(config, user.id);
+  return {
+    status: 200,
+    body: {
+      success: true,
+      plans: plans.map((p) => ({
+        id: p.id,
+        nom: p.nom,
+        mode: p.plan_brut?.mode || "course",
+        distance: p.plan_brut?.distance || null,
+        objectif: p.plan_brut?.objectif || null,
+        dateDebut: p.plan_brut?.dateDebut || null,
+        dateCourse: p.plan_brut?.dateCourse || null,
+        dateCloture: p.plan_brut?.dateCloture || null,
+        createdAt: p.created_at,
+      })),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -310,15 +360,18 @@ async function actionRecalculerKm(config, email) {
 // Action 2 — Vérifier/réparer la cohérence des phases (portage de
 // reparerCoherencePhasesApp).
 // ---------------------------------------------------------------------------
-async function actionReparerPhases(config, email) {
+async function actionReparerPhases(config, email, planId) {
   const user = await trouverUserIdParEmail(config, email);
   if (!user) return { status: 404, body: { message: "Aucun compte trouvé avec cette adresse e-mail." } };
 
   const plans = await chargerPlansActifUtilisateur(config, user.id);
   if (!plans.length) return { status: 404, body: { message: "Aucun plan actif pour ce compte." } };
 
-  const planBrut = plans[0].plan_brut;
-  const planId = plans[0].id;
+  const { plan: planCible, erreur } = resoudrePlanCible(plans, planId);
+  if (erreur) return { status: 404, body: { message: erreur } };
+
+  const planBrut = planCible.plan_brut;
+  const planIdCible = planCible.id;
 
   if (!planBrut?.paramsOrigine || !planBrut?.profilOrigine) {
     return { status: 200, body: { success: false, message: "Ce plan ne peut pas être réparé automatiquement (paramsOrigine/profilOrigine absents)." } };
@@ -435,7 +488,7 @@ async function actionReparerPhases(config, email) {
     }
   }
 
-  await ecrirePlanBrut(config, planId, planBrut);
+  await ecrirePlanBrut(config, planIdCible, planBrut);
 
   return {
     status: 200,
@@ -450,15 +503,18 @@ async function actionReparerPhases(config, email) {
 // ---------------------------------------------------------------------------
 // Action 3 — Corriger le sous-type d'une séance qualité précise.
 // ---------------------------------------------------------------------------
-async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType) {
+async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId) {
   const user = await trouverUserIdParEmail(config, email);
   if (!user) return { status: 404, body: { message: "Aucun compte trouvé avec cette adresse e-mail." } };
 
   const plans = await chargerPlansActifUtilisateur(config, user.id);
   if (!plans.length) return { status: 404, body: { message: "Aucun plan actif pour ce compte." } };
 
-  const planBrut = plans[0].plan_brut;
-  const planId = plans[0].id;
+  const { plan: planCible, erreur } = resoudrePlanCible(plans, planId);
+  if (erreur) return { status: 404, body: { message: erreur } };
+
+  const planBrut = planCible.plan_brut;
+  const planIdCible = planCible.id;
 
   if (!planBrut?.paramsOrigine || !planBrut?.profilOrigine) {
     return { status: 200, body: { success: false, message: "Ce plan ne peut pas être modifié directement (paramsOrigine/profilOrigine absents)." } };
@@ -513,7 +569,7 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
   seance.kmEstime = kmEstime;
   seance.structureIntervalles = structureIntervalles;
 
-  await ecrirePlanBrut(config, planId, planBrut);
+  await ecrirePlanBrut(config, planIdCible, planBrut);
 
   return { status: 200, body: { success: true, message: `Séance S${semaineNum} mise à jour : ${sousType}.` } };
 }
@@ -559,13 +615,19 @@ export default async function handler(request, response) {
   }
 
   try {
+    if (action === "lister_plans") {
+      const result = await actionListerPlans(config, email);
+      return json(response, result.status, result.body);
+    }
+
     if (action === "recalculer_km") {
       const result = await actionRecalculerKm(config, email);
       return json(response, result.status, result.body);
     }
 
     if (action === "reparer_phases") {
-      const result = await actionReparerPhases(config, email);
+      const planId = String(body.planId || "").trim() || null;
+      const result = await actionReparerPhases(config, email, planId);
       return json(response, result.status, result.body);
     }
 
@@ -573,10 +635,11 @@ export default async function handler(request, response) {
       const semaineNum = Number(body.semaineNum);
       const jourIndex = Number(body.jourIndex);
       const nouveauSousType = String(body.nouveauSousType || "");
+      const planId = String(body.planId || "").trim() || null;
       if (!Number.isFinite(semaineNum) || !Number.isFinite(jourIndex) || !nouveauSousType) {
         return json(response, 400, { message: "Paramètres manquants (semaineNum, jourIndex, nouveauSousType)." });
       }
-      const result = await actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType);
+      const result = await actionChangerSousTypeSeance(config, email, semaineNum, jourIndex, nouveauSousType, planId);
       return json(response, result.status, result.body);
     }
 
