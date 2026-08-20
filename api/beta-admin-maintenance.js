@@ -175,7 +175,22 @@ async function chargerStravaActivitiesUtilisateur(config, userId) {
   return Array.isArray(rows) && rows[0] ? rows[0].strava_activities_cache || [] : [];
 }
 
+// CORRECTIF (20/08/2026, vérification demandée par Laurent après le bug
+// Strava) : mettreAJourPlanSupabase (sync-storage.js, côté client) refuse
+// d'écrire sur un plan Forme déjà clôturé (dateCloture posée) — garde-fou
+// absent du premier portage de cette fonction. Sans lui, un admin pourrait
+// accidentellement modifier un plan Forme censé être figé définitivement.
 async function ecrirePlanBrut(config, planId, planBrutComplet) {
+  const planExistantRows = await supabaseRequest(
+    config,
+    `plans_actif?id=eq.${encodeURIComponent(planId)}&select=plan_brut`,
+    { method: "GET" },
+  );
+  const planExistant = Array.isArray(planExistantRows) && planExistantRows[0] ? planExistantRows[0].plan_brut : null;
+  if (planExistant?.mode === "forme" && planExistant.dateCloture) {
+    throw new Error(`Ce plan est clôturé depuis le ${planExistant.dateCloture} et ne peut plus être modifié.`);
+  }
+
   const payload = { plan_brut: planBrutComplet };
   if (planBrutComplet?.nom) payload.nom = planBrutComplet.nom;
   await supabaseRequest(config, `plans_actif?id=eq.${encodeURIComponent(planId)}`, {
