@@ -17,6 +17,7 @@
       <button class="nav" data-view="invited">✉ Invités</button>
       <button class="nav" data-view="signalements">🐛 Signalements</button>
       <button class="nav" data-view="accounts">👤 Comptes</button>
+      <button class="nav" data-view="maintenance">🔧 Maintenance</button>
       <button class="nav" data-view="backup">💾 Sauvegarde</button>
       <button class="nav" data-view="cascades">🔗 Cascades</button>
       <button class="nav" data-view="statistics">↗ Statistiques</button>
@@ -132,6 +133,42 @@
         </div>
         <div id="account-status" class="notice" hidden></div>
         <div id="account-result"></div>
+      </section>
+
+      <section class="view" data-panel="maintenance">
+        <div class="card">
+          <h2>🔧 Outils de réparation ponctuelle</h2>
+          <p><small>Ces outils agissent sur le compte ciblé par e-mail ci-dessous — pas sur ton propre compte administrateur. Retirés de l'app principale le 20/08/2026 : ce ne sont pas des réglages d'usage courant, réservés depuis à cet écran.</small></p>
+          <div class="filters">
+            <input id="maintenance-email" type="search" placeholder="Adresse e-mail du testeur">
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Recalculer le badge km cumulés</h2>
+          <p><small>Reconstruit le total à partir des séances réellement validées, tous plans confondus pour ce compte.</small></p>
+          <button id="maintenance-recalc-km-btn" class="secondary">Recalculer</button>
+          <div id="maintenance-recalc-km-status" class="notice" hidden></div>
+        </div>
+
+        <div class="card">
+          <h2>Vérifier la cohérence des phases</h2>
+          <p><small>Détecte et corrige une éventuelle divergence entre l'étiquette de phase stockée sur chaque semaine et la vraie structure du plan actif le plus récent de ce compte.</small></p>
+          <button id="maintenance-reparer-phases-btn" class="secondary">Vérifier et réparer</button>
+          <div id="maintenance-reparer-phases-status" class="notice" hidden></div>
+        </div>
+
+        <div class="card">
+          <h2>Corriger le sous-type d'une séance qualité</h2>
+          <p><small>Force le sous-type d'une séance qualité précise (semaine + jour), sur le plan actif le plus récent de ce compte. Le jour est indexé 0 (lundi) à 6 (dimanche).</small></p>
+          <div class="filters">
+            <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
+            <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
+            <input id="maintenance-seance-soustype" type="text" placeholder="Sous-type (ex. seuil, i-3min, allure-course)">
+            <button id="maintenance-seance-btn" class="secondary">Appliquer</button>
+          </div>
+          <div id="maintenance-seance-status" class="notice" hidden></div>
+        </div>
       </section>
 
       <section class="view" data-panel="backup">
