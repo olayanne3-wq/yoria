@@ -40,15 +40,24 @@ export const HELP_SECTIONS = [
         ]
       },
       { id: "creer-plan", icon: "🏁", title: "Créer un plan",
-        text: "Depuis le configurateur, choisis ton objectif (Objectif course, Mode forme ou Reprise en douceur). Le plan Objectif course se construit en 8 étapes (distance, point de départ, objectif, dates, contraintes, jours disponibles, récapitulatif). Le Mode forme tient en 4 étapes.",
+        text: "Depuis l'onglet Course, le bouton \"+ Nouveau plan\" t'amène au configurateur. Choisis ton objectif (Objectif course, Mode forme ou Reprise en douceur). Le plan Objectif course se construit en 8 étapes (distance, point de départ, objectif, dates, contraintes, jours disponibles, récapitulatif). Le Mode forme tient en 4 étapes.",
         blocks: [
-          { type: "p", text: "Depuis le dashboard, le bouton \"🏁 Configurer un plan\" t'amène au configurateur. Trois options s'offrent à toi : 🏁 Objectif course si tu prépares une date précise (5K, 10K, semi, marathon), 💓 Mode forme si tu veux simplement entretenir ta forme sans échéance, ou 🌱 Reprise en douceur si tu repars après une pause ou une blessure — ce dernier fonctionne indépendamment de ton niveau habituel." },
+          { type: "p", text: "Depuis l'onglet 🏁 Course, le bouton \"+ Nouveau plan\" t'amène au configurateur (en Mode Forme sans course en préparation, c'est le premier bouton que tu vois sur cet écran). Trois options s'offrent à toi : 🏁 Objectif course si tu prépares une date précise (5K, 10K, semi, marathon), 💓 Mode forme si tu veux simplement entretenir ta forme sans échéance, ou 🌱 Reprise en douceur si tu repars après une pause ou une blessure — ce dernier fonctionne indépendamment de ton niveau habituel." },
           { type: "h", text: "Pour un objectif course" },
           { type: "p", text: "Le configurateur te guide en 8 étapes : la distance visée, ton chrono actuel (ou un temps équivalent sur une autre distance si tu n'as pas couru celle-là récemment), le chrono que tu vises, puis les dates — début du plan et jour de la course, avec la possibilité d'ajouter le nom, le lieu et le lien de l'épreuve. Vient ensuite une étape sur tes éventuelles contraintes (blessure en cours, douleur chronique, reprise après une longue pause), qui permet d'adapter la prudence du plan dès le départ. Tu précises enfin tes jours disponibles dans la semaine, puis un récapitulatif complet s'affiche avant de générer le plan." },
           { type: "p", text: "Si tu n'as pas de référence chronométrée récente, un test semi-Cooper (6 minutes à allure maximale soutenable) peut t'être proposé pour estimer ton niveau avant de continuer." },
           { type: "h", text: "Pour le mode forme" },
           { type: "p", text: "Le parcours est plus court : ton niveau, le volume hebdomadaire souhaité, tes jours disponibles, et l'accent que tu veux mettre (le type d'effort à privilégier). Ce plan se renouvelle ensuite par blocs de 4 semaines." },
-          { type: "p", text: "Une fois ton plan généré, tu peux revenir au configurateur à tout moment pour consulter tes plans sauvegardés ou en créer un nouveau." },
+          { type: "p", text: "Une fois ton nouveau plan généré, il vient s'ajouter à tes plans existants — rien n'est écrasé. Tu peux ensuite naviguer entre tous tes plans depuis le sélecteur de l'onglet Course (voir le tuto \"Changer de plan actif\")." },
+        ]
+      },
+      { id: "changer-plan", icon: "🔀", title: "Changer de plan actif",
+        text: "Si tu as plusieurs plans (par exemple un plan course et un plan Forme), le sélecteur en haut de l'onglet 🏁 Course te permet de basculer de l'un à l'autre. Le plan choisi devient celui affiché sur le dashboard et l'écran Semaines.",
+        blocks: [
+          { type: "p", text: "Si tu as plus d'un plan enregistré — par exemple un plan Forme que tu suis au quotidien et un plan Objectif course en préparation à côté — un sélecteur apparaît en haut de l'onglet 🏁 Course, juste au-dessus du reste de l'écran. Il liste tous tes plans, avec leur nom et leur type." },
+          { type: "p", text: "Choisir un plan dans ce sélecteur le rend actif : c'est lui qui s'affiche ensuite sur le dashboard (séance du jour) et sur l'écran Semaines. L'autre plan n'est pas supprimé pour autant, il reste disponible et tu peux y revenir à tout moment de la même façon." },
+          { type: "p", text: "Le garde-fou anti-chevauchement de Yoria t'empêche de faire se recouvrir les dates de deux plans course en même temps, mais un plan Forme peut cohabiter avec un plan Objectif course sans souci — c'est justement pensé pour ce cas d'usage (entretenir sa forme en continu, tout en préparant ponctuellement une échéance)." },
+          { type: "p", text: "Si tu n'as qu'un seul plan, ce sélecteur ne s'affiche pas — inutile de choisir quand il n'y a rien à choisir. Il réapparaît automatiquement dès qu'un deuxième plan existe." },
         ]
       },
       { id: "import-fit", icon: "📁", title: "Importer un fichier .fit",
@@ -154,14 +163,14 @@ export const HELP_SECTIONS = [
         ]
       },
       { id: "jour-course", icon: "🏆", title: "Préparer ton jour de course",
-        text: "L'écran Course regroupe deux accordéons : Préparation pratique (horaires, checklist équipement, parcours) et Stratégie (allures de passage, conseil du coach). Absent en Mode Forme, qui n'a pas de date de course.",
+        text: "L'écran Course regroupe deux accordéons : Préparation pratique (horaires, checklist équipement, parcours) et Stratégie (allures de passage, conseil du coach). En Mode Forme sans plan course actif, cet écran affiche à la place le sélecteur de plan et un accès pour en créer un.",
         blocks: [
           { type: "p", text: "L'écran Course rassemble tout ce dont tu as besoin pour le jour J, organisé en deux blocs repliables." },
           { type: "h", text: "Préparation pratique" },
           { type: "p", text: "Tu peux renseigner tes horaires personnels (retrait des dossards, départ, etc.), cocher au fur et à mesure ta checklist d'équipement, et consulter les infos de parcours si tu les as ajoutées en créant ton plan." },
           { type: "h", text: "Stratégie" },
           { type: "p", text: "Cette section te donne les allures de passage à viser selon ton objectif, ainsi qu'un conseil du coach pensé spécifiquement pour l'approche de course — gestion du stress, logistique des derniers jours, ou point sur l'écart entre ton estimation actuelle et ton objectif." },
-          { type: "p", text: "En haut de l'écran, un compte à rebours et un résumé (objectif, allure cible) restent toujours visibles, quel que soit le bloc que tu consultes. Cet écran n'existe que pour un plan Objectif course : en Mode Forme, il n'y a pas de date de course à préparer." },
+          { type: "p", text: "En haut de l'écran, un compte à rebours et un résumé (objectif, allure cible) restent toujours visibles, quel que soit le bloc que tu consultes. Si tu es en Mode Forme et que tu n'as pas de plan course actif, cet écran affiche à la place un message le rappelant, avec le sélecteur de plan et le bouton \"+ Nouveau plan\" pour en démarrer un si tu le souhaites." },
         ]
       },
       { id: "gerer-strava", icon: "🟠", title: "Connecter ou reconnecter Strava",
@@ -202,7 +211,7 @@ export const HELP_SECTIONS = [
       { title: "📊 Stats",
         text: "Ta progression vers l'objectif, ton Indice d'Économie (IE), ta cadence, et un référentiel complet des allures et zones FC." },
       { title: "🏁 Course",
-        text: "Horaires, checklist équipement, stratégie et allures de passage le jour J. Absent en Mode Forme, qui n'a pas de date de course." },
+        text: "Horaires, checklist équipement, stratégie et allures de passage le jour J. Regroupe aussi le sélecteur de plan et la création d'un nouveau plan — en Mode Forme sans plan course actif, cet écran affiche ces deux éléments à la place du contenu habituel." },
       { title: "⚙️ Paramètres",
         text: "Ton profil, ton objectif, ta source de données, ta connexion Strava. Sauvegarde automatique dans le cloud." },
     ]
@@ -319,7 +328,7 @@ export const HELP_SECTIONS = [
 export const TUTOS_GROUPES = [
   { label: "Démarrer", icon: "🚀", itemIds: ["creer-plan", "test-cooper", "source-donnees"] },
   { label: "Au quotidien", icon: "🏃", itemIds: ["carte-aujourdhui", "import-fit", "programmer-montre", "readiness-rpe"] },
-  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement", "echanger-seance", "course-intermediaire", "modifier-plan"] },
+  { label: "Gérer son plan", icon: "🗂️", itemIds: ["ajustement", "echanger-seance", "course-intermediaire", "modifier-plan", "changer-plan"] },
   { label: "Suivi", icon: "📈", itemIds: ["estimation-performance", "lire-stats", "jour-course"] },
   { label: "Compte", icon: "⚙️", itemIds: ["gerer-strava", "gerer-pps", "gerer-abonnement"] },
 ];
