@@ -178,6 +178,43 @@ async function chargerPlanDonnees(config, planId) {
   return Array.isArray(rows) && rows[0] ? rows[0].data || {} : {};
 }
 
+// AJOUTÉ (20/08/2026, suite à un cas réel : "Séance introuvable" alors que
+// la séance était bien visible dans l'app — elle avait été déplacée via la
+// fonction d'échange du dashboard/Semaines). Ce que voit l'utilisateur à
+// une position donnée (ex. "S7, vendredi") peut différer de ce qui est
+// réellement stocké à cette position dans plan_brut.semaines[].assignment
+// — un échange (glisser-déposer une séance, ou double-tap > Déplacer,
+// cf. tuto "Échanger deux séances") ne réécrit JAMAIS assignment lui-même,
+// il pose une redirection dans une table séparée (lk_swap_table, clé
+// préfixée par plan dans plan_donnees.data — cf. index.html, commentaire
+// "RETOUR D'EXPÉRIENCE 17/08/2026" sur ce choix d'architecture délibéré :
+// une table plutôt que des paires, pour que résoudre une position ne
+// dépende jamais d'une chaîne d'échanges antérieurs). Le format en table
+// est simple à répliquer ici : swapTable[uidAffiche] = uidPhysiqueSource.
+//
+// Cette fonction traduit donc une position AFFICHÉE (ce que l'utilisateur
+// voit/communique, ex. "vendredi S7") vers la position PHYSIQUE réelle
+// dans assignment (ex. "jeudi", jour 3) — à utiliser AVANT toute lecture
+// de semaine.assignment[jourIndex] quand jourIndex vient d'une
+// communication humaine plutôt que d'une source déjà garantie physique
+// (ex. un export ou un calcul interne au plan lui-même).
+//
+// Symétrique par construction (mêmes clés jouent les deux rôles selon le
+// sens de lecture) : si swapTable ne contient aucune entrée pour cette
+// position, la position affichée EST la position physique (cas normal,
+// aucun échange n'a jamais eu lieu sur ce jour).
+async function resoudrePositionAffichee(config, planId, semaineNum, jourIndexAffiche) {
+  const donnees = await chargerPlanDonnees(config, planId);
+  const swapTable = donnees.lk_swap_table || {};
+  const uidAffiche = `${semaineNum}-${jourIndexAffiche}`;
+  const uidPhysique = swapTable[uidAffiche] || uidAffiche;
+  const [, jourIndexPhysiqueStr] = uidPhysique.split("-");
+  return {
+    jourIndexPhysique: Number(jourIndexPhysiqueStr),
+    futEchangee: uidPhysique !== uidAffiche,
+  };
+}
+
 // CORRECTIF (20/08/2026, bug "0 km" signalé par Laurent) : lk_strava_activities
 // n'est PAS stockée dans plan_donnees.data — c'est une clé globale
 // (sauvegardée via save("lk_strava_activities", ...) sans clePourPlan() côté
@@ -520,22 +557,30 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
     return { status: 200, body: { success: false, message: "Ce plan ne peut pas être modifié directement (paramsOrigine/profilOrigine absents)." } };
   }
 
+  // Résolution position affichée -> physique (cf. resoudrePositionAffichee)
+  // AVANT toute lecture de assignment — jourIndex reçu ici vient d'une
+  // communication humaine (semaine + jour tels que VUS dans l'app), qui
+  // peut différer du jour physiquement stocké si la séance a été déplacée
+  // via la fonction d'échange.
+  const { jourIndexPhysique, futEchangee } = await resoudrePositionAffichee(config, planIdCible, semaineNum, jourIndex);
+
   const semaine = planBrut.semaines.find((s) => s.semaineNum === semaineNum);
-  const seance = semaine?.assignment?.[jourIndex];
+  const seance = semaine?.assignment?.[jourIndexPhysique];
   if (!seance || seance.type !== "qualite") {
     // DIAGNOSTIC TEMPORAIRE (20/08/2026) — le message générique
     // "Séance introuvable" ne permettait pas de comprendre si c'est la
     // semaine, le jour, ou le type qui posait problème. À retirer une
     // fois la vraie cause identifiée et corrigée.
+    const suffixeEchange = futEchangee ? ` (position résolue depuis un échange : jour affiché ${jourIndex} -> jour physique ${jourIndexPhysique})` : "";
     if (!semaine) {
       const semainesDisponibles = planBrut.semaines.map((s) => s.semaineNum).join(", ");
       return { status: 404, body: { message: `Semaine ${semaineNum} introuvable dans ce plan. Semaines disponibles : ${semainesDisponibles}.` } };
     }
     const joursDisponibles = Object.keys(semaine.assignment || {}).join(", ");
     if (!seance) {
-      return { status: 404, body: { message: `Semaine ${semaineNum} trouvée, mais aucun jour "${jourIndex}" dans son assignment. Jours présents : [${joursDisponibles}].` } };
+      return { status: 404, body: { message: `Semaine ${semaineNum} trouvée, mais aucun jour "${jourIndexPhysique}" dans son assignment${suffixeEchange}. Jours présents : [${joursDisponibles}].` } };
     }
-    return { status: 404, body: { message: `Semaine ${semaineNum}, jour ${jourIndex} trouvé, mais son type est "${seance.type}" (pas "qualite"). Contenu : ${seance.contenu || "(vide)"}` } };
+    return { status: 404, body: { message: `Semaine ${semaineNum}, jour ${jourIndexPhysique} trouvé${suffixeEchange}, mais son type est "${seance.type}" (pas "qualite"). Contenu : ${seance.contenu || "(vide)"}` } };
   }
 
   const alluresSec = Engine.computeAllures({
@@ -583,7 +628,8 @@ async function actionChangerSousTypeSeance(config, email, semaineNum, jourIndex,
 
   await ecrirePlanBrut(config, planIdCible, planBrut);
 
-  return { status: 200, body: { success: true, message: `Séance S${semaineNum} mise à jour : ${sousType}.` } };
+  const suffixeEchangeSucces = futEchangee ? ` (jour affiché ${jourIndex} résolu vers jour physique ${jourIndexPhysique} suite à un échange)` : "";
+  return { status: 200, body: { success: true, message: `Séance S${semaineNum} mise à jour : ${sousType}${suffixeEchangeSucces}.` } };
 }
 
 // ---------------------------------------------------------------------------
