@@ -16,6 +16,31 @@
  * que dupliqué depuis la logique de génération — au prix d'un léger risque
  * de fragilité si le format texte de v2 change, avec un repli explicite
  * (contenu brut affiché tel quel) si le parsing échoue.
+ *
+ * ⚠️ PIÈGE ASSIGNMENT vs SWAPTABLE (documenté le 20/08/2026, suite à un bug
+ * réel côté beta-admin — cf. api/beta-admin-maintenance.js pour le détail
+ * complet) : cette fonction lit semaine.assignment[jourIndex] TEL QUEL —
+ * elle ne connaît pas et n'applique JAMAIS lk_swap_table. Le résultat
+ * qu'elle produit reflète donc la position PHYSIQUE de chaque séance dans
+ * le plan, pas ce que l'utilisateur voit réellement affiché après un
+ * éventuel échange de séances (glisser-déposer, ou double-tap > Déplacer,
+ * cf. tuto "Échanger deux séances" dans index.html/help-content.js).
+ *
+ * C'est un choix délibéré, pas un oubli : échanger deux séances ne réécrit
+ * jamais assignment lui-même (cf. le commentaire "RETOUR D'EXPÉRIENCE
+ * 17/08/2026" dans index.html sur ce choix d'architecture) — c'est
+ * getEffectiveSession() côté client (index.html) qui applique la
+ * résolution swap, uniquement à l'AFFICHAGE, après avoir appelé cette
+ * fonction pont. Toute lecture de PLAN[semaine].sessions[jourIndex] issue
+ * de traduirePlanVersFormatV1() (que ce soit ici, dans beta-admin.js pour
+ * le module "Comptes", ou tout futur consommateur) obtient donc la
+ * structure PHYSIQUE — si le code appelant a besoin de savoir ce que
+ * l'utilisateur voit réellement à une position donnée, il doit résoudre
+ * lk_swap_table lui-même en plus (cf. resoudrePositionAffichee dans
+ * api/beta-admin-maintenance.js pour un exemple de cette résolution côté
+ * serveur, appliquée AVANT toute lecture de assignment quand la position
+ * vient d'une communication humaine plutôt que d'une source déjà garantie
+ * physique).
  */
 
 const JOUR_NOMS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -110,6 +135,10 @@ function parserContenuEfOuLongue(contenu) {
  * dateDebut doit être fournie (ex: plan.dateDebut) pour reconstruire la
  * date calendaire de chaque jour — le plan v2 n'a que semaineNum/jourIndex,
  * pas de date explicite par séance (contrairement au PLAN v1 statique).
+ *
+ * Rappel : cf. l'avertissement en tête de fichier — le résultat retourné
+ * ici est la structure PHYSIQUE du plan (assignment brut), jamais résolue
+ * via lk_swap_table.
  */
 export function traduirePlanVersFormatV1(plan) {
   // BUG CORRIGÉ (15/07/2026, signalé par Laurent — dates de séances toutes
@@ -210,6 +239,10 @@ export function traduirePlanVersFormatV1(plan) {
  * traduit — identique à la ligne `const ALL_SESSIONS = PLAN.flatMap(...)`
  * de index.html, fournie ici pour que le pont expose directement les deux
  * structures dont l'interface a besoin.
+ *
+ * Rappel (cf. avertissement en tête de fichier) : uid = "{week}-{jourIndex}"
+ * référence toujours la position PHYSIQUE (jourIndex de assignment), pas la
+ * position affichée après un éventuel échange de séances.
  */
 export function construireAllSessions(planTraduit) {
   return planTraduit.flatMap(w => w.sessions.map((s, i) => ({ ...s, week: w.week, phase: w.phase, uid: `${w.week}-${i}` })));
