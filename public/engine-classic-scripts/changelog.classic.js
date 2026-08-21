@@ -27,7 +27,12 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.47", title:"Modifier mon plan directement depuis Semaines, toujours accessible", current:true, notes:[
+      { ver:"v2.48", title:"Onglet Course pour gérer tes plans, aide à jour", current:true, notes:[
+        "🏁 Le changement de plan et la création d'un nouveau plan se font maintenant depuis l'onglet Course, accessible aussi en Mode Forme",
+        "📋 L'onglet Course affiche un état dédié tant qu'aucune course n'est en préparation, avec un accès direct pour en créer une",
+        "❓ Nouveau tuto \"Changer de plan actif\" dans l'aide",
+      ]},
+      { ver:"v2.47", title:"Modifier mon plan directement depuis Semaines, toujours accessible", current:false, notes:[
         "📝 Nouveau : modifie ton objectif, tes jours, ton volume, ta date de course ou ajoute une course intermédiaire directement depuis l'onglet Semaines — plus besoin de repasser par le wizard",
         "📌 Cet accès reste visible en permanence en haut de l'écran, même en faisant défiler tes semaines",
         "🎯 Même principe que dans le wizard : simulation avant application, ta semaine en cours n'est jamais modifiée",
