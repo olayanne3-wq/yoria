@@ -28,7 +28,8 @@ yoria/
 │   ├── delete-account.js         # Suppression définitive d'un compte (cascade)
 │   ├── backup.js                 # Export global / ciblé utilisateur / réinjection / diagnostic cascades (cf. §5)
 │   ├── beta.js                   # Candidature bêta (public, cf. §16bis)
-│   └── beta-admin.js             # Administration bêta (invitations, abonnements gratuits, signalements, cf. §16bis)
+│   ├── beta-admin.js             # Administration bêta (invitations, abonnements gratuits, signalements, comptes, cf. site-beta-admin.md)
+│   └── beta-admin-maintenance.js # Outils de réparation ponctuelle sur un compte ciblé (cf. site-beta-admin.md)
 ├── lib/                          # Modules serveur PARTAGÉS entre plusieurs
 │                                  # fichiers api/*.js — jamais compilés en
 │                                  # fonction serverless (hors du dossier
@@ -63,7 +64,7 @@ yoria/
 │   │   └── assets/                # Screenshots + logo SVG (PNG mort supprimé), image Open Graph dédiée
 │   ├── beta-admin/                # Interface admin bêta (index.html, script.js, styles.css)
 │   │                              # Onglets : Candidatures, Invités, Signalements,
-│   │                              # Comptes, Sauvegarde, Cascades, Statistiques
+│   │                              # Comptes, Maintenance, Sauvegarde, Cascades, Statistiques
 │   │                              # (statuts simplifiés à pending/invited/rejected —
 │   │                              # "Sélectionnés"/"Actifs" retirés)
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
@@ -85,7 +86,10 @@ yoria/
 │           │                      # global via Object.assign(window, ...),
 │           │                      # comme v1-bridge.js, pas via window._xxxModule
 │           ├── fit-detection.js   # Détection d'intervalles depuis un .fit sans marqueurs natifs (cf. §10)
-│           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html)
+│           ├── v1-bridge.js       # Traduction plan brut v2 -> format v1 (index.html) —
+│           │                      # renvoie toujours la position PHYSIQUE des séances
+│           │                      # (assignment brut), jamais résolue via lk_swap_table,
+│           │                      # cf. section swap plus bas
 │           ├── strava.js, weather.js, gist-sync.js
 │           └── auth.js, sync-storage.js
 └── vercel.json                    # Routing explicite en whitelist (toute route API
@@ -259,18 +263,13 @@ vie propres à l'app principale :
   reste en place comme filet de sécurité pour le cas résiduel de rebascule
   d'étiquette, mais n'a plus vocation à compenser une divergence de
   rotation qualité.
-- **Outils de réparation ponctuelle — déplacés dans Réglages >
-  Maintenance** (pas dans l'accordéon lui-même, retirés de là après un
-  premier essai) : "Vérifier la cohérence des phases"
-  (`reparerCoherencePhasesApp`, recalcule les vraies frontières de phase
-  via `Engine.computePhases()` — jamais en se fiant à `plan.phases`
-  stocké, qui peut lui-même être resté incohérent après une régénération
-  antérieure — et régénère le contenu de toute semaine divergente, y
-  compris la semaine actuelle et les semaines passées, contrairement aux
-  5 leviers normaux) et "Séance qualité de la semaine en cours"
-  (`changerSousTypeSeanceApp`, sélecteur manuel du sous-type d'UNE séance
-  qualité précise, pour restaurer un contenu connu quand la rotation
-  automatique ne le retrouverait pas forcément).
+- **Outils de réparation ponctuelle — retirés de l'app principale,
+  déplacés dans `beta-admin` (onglet Maintenance)** (20/08/2026) : ce
+  n'était pas des réglages d'usage courant justifiant une place
+  accessible à tout compte — cf. `site-beta-admin.md` pour le détail
+  complet des 3 outils (recalcul du badge km cumulés, vérification/
+  réparation de la cohérence des phases, correction manuelle d'une
+  séance qualité avec saisie directe des répétitions/durée/récupération).
 
 **Écran "Consulter un plan" (WIZARD, `public/v2/index.html`)** — ne
 contient plus les leviers de modification (retirés le 19/08/2026, cf.
@@ -322,26 +321,36 @@ nettoyé dans `.content` (130px → 32px).
 ## Écrans de l'app principale (`index.html`)
 
 Fonctions de rendu (`render*`) :
-- `renderSelecteurPlan` — sélection entre plusieurs plans actifs, condensé
-  sur la même ligne que le bouton "Configurer plan" (`display:flex`, plus
-  d'empilement pleine largeur)
-- `renderDashboard` — écran d'accueil, résumé de la semaine. Deux
-  bandeaux en tête (après le sélecteur de plan) : anniversaire
-  (`estAnniversaireAujourdhui()`, éphémère, disparaît de lui-même le
-  lendemain, pas de bouton fermer) et recommandations santé (persiste
-  jusqu'à fermeture explicite, cf. bandeaux iOS/santé plus haut). Ne
-  propose PAS le glissement de séance (cf. section swap ci-dessous,
-  "Où le glissement est disponible") — cartes "Aujourd'hui" et "⚡ Demain"
-  restent de simples liens de navigation vers `weekDetail` sur cet écran.
+- `renderDashboard` — écran d'accueil, résumé de la semaine. Ne contient
+  plus le sélecteur de plan (déplacé vers l'onglet Course, cf.
+  `renderCourse` ci-dessous — action rare, ne justifiait plus une place
+  fixe sur l'écran le plus consulté de l'app). Deux bandeaux en tête :
+  anniversaire (`estAnniversaireAujourdhui()`, éphémère, disparaît de
+  lui-même le lendemain, pas de bouton fermer) et recommandations santé
+  (persiste jusqu'à fermeture explicite, cf. bandeaux iOS/santé plus
+  haut). Ne propose PAS le glissement de séance (cf. section swap
+  ci-dessous, "Où le glissement est disponible") — cartes "Aujourd'hui"
+  et "⚡ Demain" restent de simples liens de navigation vers `weekDetail`
+  sur cet écran.
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine.
   `renderWeeks` porte l'accordéon "Modifier mon plan" (cf. section dédiée
   ci-dessus). `renderWeekDetail` est le SEUL écran où le glissement de
   séance (poignée dédiée) est disponible, cf. section swap ci-dessous.
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
-- `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie)
+- `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie). Porte
+  aussi `renderSelecteurPlan` (sélection entre plusieurs plans actifs +
+  bouton "+ Nouveau plan", déplacés depuis le dashboard le 20/08/2026 —
+  action rare, cohérente thématiquement avec cet onglet plutôt qu'avec
+  l'écran consulté au quotidien) en tête d'écran, avant le reste du
+  contenu. Toujours visible dans la nav, y compris en Mode Forme
+  (auparavant masqué en Mode Forme) : si aucun plan course actif
+  (Mode Forme sans course en préparation), affiche un état vide
+  (message + sélecteur + bouton "+ Nouveau plan") à la place du contenu
+  habituel (stratégie/parcours/jour J), qui n'a pas de sens sans course
+  ciblée.
 - `renderHelp` — aide (cf. plus bas)
-- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement, recommandations santé (ligne autonome tout en bas, hors accordéon), groupe accordéon Maintenance (recalcul km cumulés + les deux outils de réparation ponctuelle de l'accordéon "Modifier mon plan", cf. section dédiée ci-dessus)
+- `renderSettings` — profil coureur, records personnels, tokens, notifications, abonnement, recommandations santé (ligne autonome tout en bas, hors accordéon)
 - `renderBadges` — écran détaillé des badges
 - `render` — orchestrateur principal
 - `ouvrirSignalementProbleme` — modale accessible via le bouton 💬 des headers
@@ -403,20 +412,20 @@ données / FAQ, rendu en accordéon inchangé). Sélecteur à deux onglets
 segmentés ("Aide" / "Tutos", style pilule) en haut de l'écran — l'onglet
 Tutos affiche une grille de tuiles (2 colonnes, hauteur fixe 112px, icône
 + titre) regroupées par thème (`TUTOS_GROUPES` : Démarrer / Au quotidien /
-Gérer son plan / Suivi / Compte), un clic ouvre le tuto en vue détail. 17
-tutos couvrant : créer un plan, test semi-Cooper, choisir sa source de
-données, carte "Aujourd'hui", import .fit, programmer sur montre,
-readiness/RPE, répondre à une proposition d'ajustement, échanger deux
-séances (cf. section swap ci-dessous pour le mécanisme réel), course
-intermédiaire, modifier son plan, estimation de performance, lire les
-Stats, jour de course, Strava, PPS, abonnement. Chaque tuto porte
-`id`/`icon`/`title`/`text` (résumé pour la recherche) et `blocks`
-(paragraphes/titres/liste/image) pour un rendu riche — `text` reste le
-seul champ utilisé par les 7 sections classiques (fallback texte brut si
-`blocks` absent). La recherche (`_helpRecherche`) reste transversale aux
-deux onglets. Reste ouvert : aucun tuto n'a encore d'image (le format
-`blocks` supporte déjà `{type:"img", src, alt, caption}` sans changement
-de code nécessaire).
+Gérer son plan / Suivi / Compte), un clic ouvre le tuto en vue détail. 18
+tutos couvrant : créer un plan, changer de plan actif, test semi-Cooper,
+choisir sa source de données, carte "Aujourd'hui", import .fit, programmer
+sur montre, readiness/RPE, répondre à une proposition d'ajustement,
+échanger deux séances (cf. section swap ci-dessous pour le mécanisme
+réel), course intermédiaire, modifier son plan, estimation de
+performance, lire les Stats, jour de course, Strava, PPS, abonnement.
+Chaque tuto porte `id`/`icon`/`title`/`text` (résumé pour la recherche) et
+`blocks` (paragraphes/titres/liste/image) pour un rendu riche — `text`
+reste le seul champ utilisé par les 7 sections classiques (fallback texte
+brut si `blocks` absent). La recherche (`_helpRecherche`) reste
+transversale aux deux onglets. Reste ouvert : aucun tuto n'a encore
+d'image (le format `blocks` supporte déjà `{type:"img", src, alt,
+caption}` sans changement de code nécessaire).
 
 **Architecture aide** : contenu extrait dans `public/help-content.js`
 (module de données pur, aucun DOM), importé dynamiquement au premier
@@ -428,7 +437,8 @@ au renderer `rendreBlocsItem()`.
 `#app` (via `replaceChildren`), pour éviter le flash de la barre à chaque
 render. `setView()` scrolle en haut AVANT `render()`. **Même pattern
 réutilisé pour l'en-tête fixe de l'accordéon "Modifier mon plan"**
-(`#accordeon-plan-root`, cf. section dédiée ci-dessus).
+(`#accordeon-plan-root`, cf. section dédiée ci-dessus). Onglet Course
+toujours présent (y compris Mode Forme, cf. `renderCourse` ci-dessus).
 
 **`render()`** — remplacement atomique du contenu : le nouveau
 header/contenu est entièrement construit d'abord, puis substitué à
@@ -527,15 +537,15 @@ niveau module (`etatGroupesAccordeon`, indexé par titre de groupe — les
 titres doivent rester uniques tous onglets confondus). Stats : 6 groupes
 (Objectif et progression / Charge et récupération / Performance technique
 / Référence / Mes courses / Tests). Course : 2 groupes (Préparation
-pratique / Stratégie) — Météo et Résumé de préparation restent hors
-accordéon. Accepte un callback optionnel `onOuverture`, appelé à chaque
-ouverture du groupe : utile pour tout contenu construit alors que le
-groupe est fermé et qui a besoin d'un traitement différé une fois
-réellement visible. Réservé aux groupes ayant réellement PLUSIEURS
-éléments — un groupe à un seul élément (ex. l'ancienne section "Santé")
-n'apporte rien et double le nombre de clics nécessaires ; dans ce cas,
-insérer l'élément directement dans l'assemblage final (cf. inventaire,
-principe UI dédié).
+pratique / Stratégie) — Météo, Résumé de préparation, et le sélecteur de
+plan en tête d'écran restent hors accordéon. Accepte un callback optionnel
+`onOuverture`, appelé à chaque ouverture du groupe : utile pour tout
+contenu construit alors que le groupe est fermé et qui a besoin d'un
+traitement différé une fois réellement visible. Réservé aux groupes ayant
+réellement PLUSIEURS éléments — un groupe à un seul élément (ex. l'ancienne
+section "Santé") n'apporte rien et double le nombre de clics nécessaires ;
+dans ce cas, insérer l'élément directement dans l'assemblage final (cf.
+inventaire, principe UI dédié).
 
 **"🏅 Mes courses" (Stats)** — groupe accordéon listant l'historique des
 résultats de course saisis sur TOUS les plans du compte (pas seulement le
@@ -564,23 +574,24 @@ date d'expiration non retenue (peu fiable sur le gabarit FFA observé) —
 saisie manuelle de la date reste le seul chemin. Alerte visuelle si
 expiration ≤30 jours.
 
-**Onglet Réglages — 7 groupes accordéon + 2 lignes autonomes** — Compte
+**Onglet Réglages — 6 groupes accordéon + 2 lignes autonomes** — Compte
 et abonnement / Profil coureur / Records personnels / Intégrations /
-Export / Maintenance / Version, même mécanisme de persistance d'état que
-Stats/Course. Deux sections restent hors accordéon, toujours visibles :
-la clôture de plan Forme (action irréversible) et le thème clair/sombre
-(bouton icône discret, intégré à l'en-tête de l'app — fond blanc fixe
-derrière ☀️, fond noir fixe derrière 🌙, indépendant du thème actif pour
-un contraste constant). Le groupe "Profil coureur" affiche un simple
-rappel PPS en lecture seule (statut + date d'expiration). Le groupe
-"Maintenance" contient le recalcul du badge km cumulés et les deux outils
-de réparation ponctuelle de l'accordéon "Modifier mon plan" (cohérence
-des phases, correction manuelle de séance — cf. section dédiée plus
-haut). Tout en bas de l'écran, hors de tout groupe accordéon : lignes
-"⚕️ Recommandations santé" et "📄 Conditions générales d'utilisation" /
-"🔒 Politique de confidentialité" (`recommandationsSanteSection`,
-`cguSection`), ouvrent respectivement `ouvrirRecommandationsSanteModale()`,
-`ouvrirCguModale()`, `ouvrirPrivacyModale()`.
+Export / Version, même mécanisme de persistance d'état que Stats/Course
+(le groupe Maintenance a été retiré le 20/08/2026, cf. section "Accordéon
+Modifier mon plan" ci-dessus et `site-beta-admin.md` — ses 3 outils vivent
+désormais dans `beta-admin`, onglet Maintenance, ciblés par email plutôt
+qu'accessibles à tout compte). Deux sections restent hors accordéon,
+toujours visibles : la clôture de plan Forme (action irréversible) et le
+thème clair/sombre (bouton icône discret, intégré à l'en-tête de l'app —
+fond blanc fixe derrière ☀️, fond noir fixe derrière 🌙, indépendant du
+thème actif pour un contraste constant). Le groupe "Profil coureur"
+affiche un simple rappel PPS en lecture seule (statut + date
+d'expiration). Tout en bas de l'écran, hors de tout groupe accordéon :
+lignes "⚕️ Recommandations santé" et "📄 Conditions générales
+d'utilisation" / "🔒 Politique de confidentialité"
+(`recommandationsSanteSection`, `cguSection`), ouvrent respectivement
+`ouvrirRecommandationsSanteModale()`, `ouvrirCguModale()`,
+`ouvrirPrivacyModale()`.
 
 **Records personnels — grille compacte avec validation explicite** —
 chaque distance (5K/10K/Semi/Marathon) affiche directement sa roulette
@@ -639,6 +650,20 @@ ni modifiée. Cette propriété élimine l'ambiguïté du modèle précédent pa
 construction : la question "que devient une position tierce" ne se pose
 simplement plus, puisqu'aucune position tierce n'est jamais concernée par
 un swap qui ne la mentionne pas explicitement.
+
+⚠️ **`swapTable` n'affecte QUE l'affichage côté client — jamais
+`plan_brut.semaines[].assignment` lui-même**, qui reste en permanence la
+structure PHYSIQUE d'origine (cf. `v1-bridge.js`, dont
+`traduirePlanVersFormatV1()`/`construireAllSessions()` renvoient toujours
+cette structure physique brute, jamais résolue via `swapTable`). Tout
+code EXTERNE à `index.html` qui consomme un plan (ex. le module
+"Comptes"/"Maintenance" de `beta-admin`, cf. `site-beta-admin.md`) doit
+résoudre `lk_swap_table` (stockée dans `plan_donnees.data`, préfixée par
+plan) lui-même s'il a besoin de savoir ce que l'utilisateur voit
+réellement affiché à une position donnée — sans quoi une position
+communiquée par l'utilisateur ("la séance de vendredi S7") peut ne
+correspondre à aucune entrée réelle dans `assignment` si cette séance a
+été déplacée depuis sa position physique d'origine.
 
 - **`sourceSwap(uid)`** — lecture directe : `swapTable[uid] || uid`.
   Protégée par un `try/catch` (piège TDZ, cf. section "Règle TDZ"
