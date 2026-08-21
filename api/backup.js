@@ -517,7 +517,7 @@ async function executerSauvegardeAutomatique(config) {
   const nom = nomFichierAuto(new Date());
 
   const blob = await put(nom, contenu, {
-    access: 'public',
+    access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
   });
