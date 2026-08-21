@@ -214,6 +214,75 @@ mise en service de ces outils).
   directement depuis le message affiché, sans repasser par une session
   de debug complète.
 
+**Module "Sauvegarde" (`beta-admin`, onglet dédié, `api/backup.js`)** —
+comble l'absence de sauvegarde automatique du plan Supabase actuel
+(Free) : trois volets, export manuel, export ciblé par utilisateur,
+réinjection, complétés le 21/08/2026 par des sauvegardes automatiques.
+Découverte des tables auto (introspection PostgREST), jamais de liste
+blanche codée en dur — seule une liste noire d'exclusion existe
+(`TABLES_EXCLUES`, vide actuellement), à laquelle toute future table
+sensible (tokens, secrets) doit être ajoutée explicitement à sa
+création (cf. principe dédié dans `inventaire-application.md`, section
+Sécurité). Portée strictement réparatrice (bug applicatif, mauvaise
+manipulation) — jamais un moyen de contourner une suppression de compte
+volontaire au titre du droit à l'effacement.
+
+- **Export global** (bouton, `GET /api/backup`) — télécharge un JSON de
+  toutes les tables découvertes. **Export ciblé par utilisateur**
+  (email) — mêmes données mais filtrées sur un seul compte, y compris
+  ses `decision_events`/`decision_outcomes`. **Réinjection** — upload
+  d'un fichier JSON exporté précédemment, upsert des lignes (écrase les
+  lignes existantes de même id) ; un export global peut être filtré à un
+  seul utilisateur au moment de la réinjection (isolé par email, sans
+  nécessiter un export ciblé séparé) ; recrée automatiquement le compte
+  Auth si absent, à condition qu'au moins une ligne du fichier porte
+  bien son `user_id` (sinon refus explicite plutôt qu'un compte vide).
+- **Diagnostic des cascades ON DELETE** (onglet séparé "Cascades", même
+  fichier `api/backup.js`) — vérifie que chaque table liée à `user_id`
+  a bien `ON DELETE CASCADE` vers `auth.users`, condition dont dépend
+  `api/delete-account.js` pour ne jamais échouer en erreur de contrainte.
+  Nécessite les fonctions RPC de
+  `docs/v2-methodologie/diagnostic-cascades-user-id.sql`, à exécuter une
+  fois côté Supabase avant la première utilisation. À lancer
+  occasionnellement (avant une mise en production), pas à chaque table
+  ajoutée.
+
+**Sauvegardes automatiques (21/08/2026)** — 3 crons Vercel
+(`vercel.json`, horaires distincts 04h/12h/20h UTC) appellent
+`GET /api/backup` avec l'en-tête `Authorization: Bearer ${CRON_SECRET}`
+(variable auto-provisionnée par Vercel), authentification distincte du
+cookie admin classique, réservée à ce seul chemin. Chaque exécution
+génère un export global (même fonction que le bouton manuel), l'uploade
+sur **Vercel Blob** (store créé en accès **Private** — les exports
+contiennent des données personnelles de testeurs), sous
+`backups/auto-AAAA-MM-JJTHH-mm.json`, puis purge les fichiers de plus de
+7 jours (rétention glissante). Contournement volontaire de la limite du
+plan Hobby (1 exécution/jour par cron) : 3 crons distincts pointant vers
+le même endpoint plutôt qu'un seul cron plus fréquent (non disponible
+sur ce plan).
+
+- **Lecture en mode Private** — toute lecture (pas seulement
+  l'écriture) requiert une authentification côté Vercel Blob ; un lien
+  `<a href>` direct vers l'URL du blob ne fonctionne pas. Le listage
+  (`lister_sauvegardes_auto`) et le téléchargement
+  (`telecharger_sauvegarde_auto`, via `get()` du SDK, jamais un
+  `fetch()` brut sur l'URL) passent systématiquement par le serveur
+  (authentifié par cookie admin classique, pas par `CRON_SECRET`) — le
+  bouton "Télécharger" de l'admin déclenche cette lecture serveur puis
+  un téléchargement local, jamais un lien direct.
+- **`access: 'private'` sur `put()`/`get()`** exige `@vercel/blob` en
+  version récente (≥2.x) — un premier déploiement avec une version trop
+  ancienne du package (`^0.27.1`) a échoué en `SyntaxError` (export
+  `get` absent) puis en erreur `access must be "public"` une fois `get`
+  disponible mais toujours sur l'ancienne version, avant identification
+  de la cause racine (version figée dans `package.json`, jamais mise à
+  jour depuis l'ajout initial du module).
+- **Onglet admin** — carte "Sauvegardes automatiques" dans le même
+  onglet Sauvegarde que les 3 volets manuels ci-dessus (pas un onglet
+  séparé) : liste les fichiers déjà produits, bouton de déclenchement
+  manuel de test (`declencher_sauvegarde_auto`, hors horaire programmé,
+  utile pour valider la chaîne sans attendre le prochain cron).
+
 **Modules partagés (`lib/`, cf. `architecture-generale.md`)** :
 - `beta-invitation-email.js` — génération HTML de l'email d'invitation
   (blocs Android/iOS conditionnels) + envoi Brevo. Génère aussi l'email
