@@ -57,7 +57,7 @@
 // par Vercel dès qu'un store Blob est créé sur le projet) et le paquet
 // @vercel/blob en dépendance.
 
-import { put, list, del } from '@vercel/blob';
+import { put, list, del, get } from '@vercel/blob';
 
 const TABLES_EXCLUES = [];
 
@@ -517,7 +517,7 @@ async function executerSauvegardeAutomatique(config) {
   const nom = nomFichierAuto(new Date());
 
   const blob = await put(nom, contenu, {
-    access: 'public',
+    access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
   });
@@ -547,29 +547,25 @@ async function listerSauvegardesAutomatiques() {
 }
 
 // Store Blob créé en accès Private (21/08/2026, données personnelles de
-// testeurs dans les exports) — b.url seule ne suffit plus à lire le
-// contenu depuis le navigateur (le token BLOB_READ_WRITE_TOKEN est requis
-// pour toute lecture, pas seulement l'écriture, en mode Private). Cette
-// fonction récupère donc le contenu CÔTÉ SERVEUR (où le token est
-// disponible via l'import @vercel/blob) puis le renvoie au client — pas
-// de lien <a href> direct possible vers b.url comme en mode Public.
+// testeurs dans les exports) — en Private, TOUTE lecture (pas seulement
+// l'écriture) requiert une authentification : un simple fetch(blob.url)
+// échoue. On utilise donc get() du SDK, qui gère cette authentification
+// (OIDC ou BLOB_READ_WRITE_TOKEN selon la configuration du projet) —
+// jamais de lien <a href> direct vers blob.url côté client, qui ne
+// fonctionnerait pas non plus en mode Private.
 async function telechargerSauvegardeAutomatique(pathname) {
-  const { blobs } = await list({ prefix: PREFIXE_BLOB_AUTO });
-  const blob = blobs.find((b) => b.pathname === pathname);
-  if (!blob) {
+  const result = await get(pathname, { access: 'private' });
+  if (!result) {
     const err = new Error('Sauvegarde introuvable (a peut-être déjà été purgée).');
     err.status = 404;
     throw err;
   }
 
-  const response = await fetch(blob.url, {
-    headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
-  });
-  if (!response.ok) {
-    throw new Error(`Impossible de lire la sauvegarde sur Vercel Blob (${response.status}).`);
+  const chunks = [];
+  for await (const chunk of result.stream) {
+    chunks.push(chunk);
   }
-
-  return response.text();
+  return Buffer.concat(chunks).toString('utf-8');
 }
 
 // ============================================================
