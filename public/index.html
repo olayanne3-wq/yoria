@@ -6872,6 +6872,24 @@ async function appliquerReglesPhaseApp(planRegenere, phaseActuelle, semaineCharn
         seance.contenu = contenu;
         seance.kmEstime = kmEstime;
         seance.structureIntervalles = structureIntervalles;
+        // CORRECTIF (21/08/2026, bug signalé par Laurent : texte "Pourquoi
+        // cette séance" affichant un texte VMA sur une séance dont le
+        // contenu réel était "allure course") — cette fonction régénère
+        // déjà sousType/contenu/structureIntervalles ci-dessus pour rester
+        // cohérente avec la nouvelle phase Specifique, mais oubliait de
+        // recalculer seance.pourquoi en conséquence : le texte restait
+        // celui de l'ANCIEN sousType (ex. VMA, hérité de la phase
+        // Construction d'origine), orphelin du nouveau contenu affiché.
+        // Même logique de lookup que determinerCleFamillePourquoi()
+        // (plan-generator.js, fonction privée non exportée — reproduite
+        // ici via Engine.FAMILLE_SOUS_TYPE/Engine.POURQUOI_SEANCE, tous
+        // deux exportés) pour le cas 'qualite' : jamais le cas estTest ici,
+        // une séance test ne traverse pas ce chemin de rebascule de phase.
+        const clePourquoi = Engine.FAMILLE_SOUS_TYPE[sousType] ?? null;
+        if (clePourquoi && Engine.POURQUOI_SEANCE[clePourquoi]) {
+          const banqueCle = Engine.POURQUOI_SEANCE[clePourquoi];
+          seance.pourquoi = banqueCle["Specifique"] ?? banqueCle["default"];
+        }
         kmQualiteTotal += kmEstime;
       }
       if (semaine.volumeCibleKm != null) {
