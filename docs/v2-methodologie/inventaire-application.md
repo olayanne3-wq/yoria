@@ -45,7 +45,7 @@ Tous dans `docs/v2-methodologie/` :
 | `moteur-decision.md` | Les 5 modules du moteur de décision (état coureur, analyse séance/semaine/tendance, moteur de règles) |
 | `saisie-et-integrations.md` | Saisie manuelle, RPE, statuts de séance, import FIT, intégrations externes (Strava, météo, coach, Stripe) |
 | `auth-et-publication.md` | Authentification Supabase, onboarding, publication Play Store, Mode Forme, jour de course |
-| `site-beta-admin.md` | Site public de candidature bêta, administration bêta (dont le module Maintenance), modules partagés `lib/` |
+| `site-beta-admin.md` | Site public de candidature bêta, administration bêta (dont les modules Maintenance et Sauvegarde), modules partagés `lib/` |
 | `securite.md` | Audit et durcissement sécurité : traité / reste à faire |
 | `bibliotheque-seances.md` | Méthodologie des types de séances qualité *(fichier déjà existant, inchangé)* |
 | `import-fit-intervalles.md` | Détail conception/implémentation de l'import .fit *(fichier déjà existant, inchangé)* |
@@ -67,12 +67,13 @@ Tous dans `docs/v2-methodologie/` :
 - Avant de croire qu'un mécanisme existe déjà dans le code (auto-ouverture, callback), vérifier positivement sa présence plutôt que de se fier à un commentaire qui décrit une intention jamais implémentée ou retirée depuis.
 - En cas de bug d'affichage résistant à plusieurs correctifs, diagnostiquer par tests directs en console (`getElementById`, `getBoundingClientRect()`, valeurs réelles des variables globales) plutôt que par relecture répétée du code — épuiser l'hypothèse "erreur dans le code qu'on vient d'écrire" avant d'accuser un mécanisme externe (cache, CDN).
 - Face à un bug rapporté comme "toujours pas résolu" après un correctif technique validé, ne pas empiler des correctifs supplémentaires sur la même hypothèse non confirmée — obtenir un fait concret (donnée réelle, capture d'écran, log exact, vidéo frame par frame) avant de continuer, quitte à demander explicitement à l'utilisateur de le fournir. Un correctif qui "semble juste" en isolation peut rester sans effet si le vrai problème est ailleurs (ex. écart entre l'intention métier de l'utilisateur et le comportement techniquement correct du code, ou une hypothèse de diagnostic simplement fausse — cf. VMA en rotation légitime de phase Spécifique, confondu un temps avec le symptôme d'un vrai bug de charnière). Un bug de timing/ordre d'exécution (ex. fermeture d'une fenêtre d'état avant qu'un `setTimeout` planifié par la même source n'ait eu lieu) peut nécessiter plusieurs itérations même avec un diagnostic correct à chaque étape — se méfier d'un fix qui déplace le symptôme plutôt que de l'éliminer.
+- **Un correctif appliqué à une fonction de RÉGÉNÉRATION (ex. `appliquerReglesPhaseApp`, `appliquerAdaptations`) ne peut avoir d'effet que sur les semaines effectivement traversées par cette fonction** — vérifier explicitement, avant de conclure qu'un correctif est inopérant, si la semaine concernée passe bien par le chemin corrigé (ex. `semaineCharniere = semaine actuelle + 1` : la semaine EN COURS n'est structurellement jamais régénérée par un levier, quel que soit le nombre de fois où il est appliqué — un correctif touchant la logique de régénération n'aura donc jamais d'effet visible sur elle). Cf. le principe dédié plus bas sur `semaineCharniere` toujours `+1`.
 - Un message affiché par un outil de lecture de fichier (préfixe type "successfully downloaded...") ne fait PAS partie du contenu réel du fichier — ne jamais le confondre avec une pollution effective du fichier sur le dépôt distant sans vérifier d'abord sur un fichier témoin non modifié (ex. relire un petit fichier stable connu avec le même outil) : le même préfixe y apparaît aussi si c'est un artefact d'affichage, ce qui règle immédiatement l'ambiguïté sans nouvelle manipulation.
 - Une fonction commune appelée par plusieurs points d'entrée (ex. `finaliserRegenerationLevier`, cf. `architecture-generale.md`) doit recevoir tout correctif transversal EN SON SEIN, jamais dans un seul appelant particulier — un correctif ajouté après coup dans UN SEUL appelant (parce que c'est celui qui a révélé le bug) laisse les autres appelants exposés au même risque, silencieusement, jusqu'au prochain signalement.
 - Un mécanisme basé sur un compteur de sources asynchrones (fermeture d'état après N signaux) est fragile si l'ordre réel de résolution diffère de l'ordre supposé — préférer un filet de sécurité basé sur le temps écoulé (ex. délai fixe depuis un timestamp de départ) en complément, pas en remplacement, pour absorber les cas où le compteur seul ne suffit pas.
 - Un déploiement Vercel qui reste bloqué en `QUEUED` sans jamais démarrer de build (pas de logs) n'est pas un problème de code — souvent causé par une rafale de commits/push rapprochés (quelques secondes d'écart, ex. plusieurs delete/rename manuels d'affilée) qui embouteille la file de déploiement. Un redeploy manuel depuis le dashboard Vercel une fois la rafale terminée débloque la situation ; inutile de chercher une cause applicative.
 - Avant de concevoir un nouveau chantier touchant à la structure d'un plan (nouvelle séance spéciale, nouveau paramètre affectant plusieurs semaines), clarifier explicitement si le paramètre doit vivre côté génération (`generatePlan()`, régénération complète via wizard/leviers) ou côté patch a posteriori sur un plan déjà figé — les deux approches changent radicalement l'implémentation, à trancher AVANT de coder, pas après un premier essai (cf. revirement course intermédiaire, `moteur-plan.md`).
-- Deux plans régénérés INDÉPENDAMMENT puis recollés à une charnière (ancien avant, nouveau après) n'ont AUCUNE garantie de s'aligner parfaitement à la jointure — frontières de phase, position dans une rotation de séances, tout ce qui dépend d'un compteur qui redémarre à zéro dans le nouveau plan (`semaineDansPhase`, `semaineGlobale`...) peut diverger de ce que l'ancien plan avait établi au même point calendaire. Un correctif qui renomme/répare seulement l'ÉTIQUETTE (ex. la phase affichée) sans régénérer le VRAI contenu sous-jacent laisse une incohérence visible (ex. contenu de type Construction affiché sous une étiquette Spécifique) — cf. `appliquerReglesPhaseApp`, `architecture-generale.md`.
+- Deux plans régénérés INDÉPENDAMMENT puis recollés à une charnière (ancien avant, nouveau après) n'ont AUCUNE garantie de s'aligner parfaitement à la jointure — frontières de phase, position dans une rotation de séances, tout ce qui dépend d'un compteur qui redémarre à zéro dans le nouveau plan (`semaineDansPhase`, `semaineGlobale`...) peut diverger de ce que l'ancien plan avait établi au même point calendaire. Un correctif qui renomme/répare seulement l'ÉTIQUETTE (ex. la phase affichée) sans régénérer le VRAI contenu sous-jacent laisse une incohérence visible (ex. contenu de type Construction affiché sous une étiquette Spécifique) — cf. `appliquerReglesPhaseApp`, `architecture-generale.md`. **Cette même fonction, en régénérant `sousType`/`contenu`/`structureIntervalles` d'une séance rebasculée, doit aussi recalculer tout champ DÉRIVÉ du sous-type (ex. `seance.pourquoi`, cf. `pourquoi-seance.md`) — un correctif qui ne couvre que certains champs dérivés en laisse d'autres orphelins de l'ancien sous-type, silencieusement.**
 - La semaine EN COURS (potentiellement déjà entamée, avec des séances réalisées) ne doit JAMAIS être régénérée par un mécanisme de modification de plan — la charnière de toute régénération doit systématiquement être `semaine actuelle + 1`, sans exception d'un point d'entrée à l'autre (cf. bug du levier Objectif sans le `+1`, hérité d'un raisonnement propre à un contexte différent — `architecture-generale.md`).
 - Un mécanisme de réparation ponctuelle (correctif manuel d'un état déjà cassé) doit recalculer sa référence de vérité depuis les données les plus fondamentales possibles (ex. `computePhases()` recalculée depuis `dateDebut`/`dateCourse`, pas `plan.phases` déjà stocké) — une structure dérivée stockée peut elle-même être restée incohérente suite à un bug antérieur, la relire telle quelle comme référence de comparaison fait rater exactement le cas qu'on cherche à détecter.
 - Un mécanisme de réparation ponctuelle, une fois le bug source corrigé, n'a plus vocation à rester visible dans le flux d'usage courant — le déplacer vers un espace de maintenance dédié plutôt que de le laisser dans l'écran où le bug s'est manifesté (ex. les 3 outils de réparation de plan, retirés de l'app principale et déplacés dans `beta-admin`, ciblés par compte plutôt qu'accessibles à tout utilisateur — cf. `site-beta-admin.md`), ou le retirer entièrement s'il n'a plus d'utilité prévisible.
@@ -84,6 +85,7 @@ Tous dans `docs/v2-methodologie/` :
 - Avant de condenser ou réécrire des commentaires volumineux dans un gros fichier (`index.html`), valider par un diff automatisé strict (lignes de CODE réel identiques avant/après, commentaires exclus) que zéro ligne exécutable n'a changé — un nettoyage éditorial ne doit jamais être confondu avec un changement fonctionnel, et cette preuve permet d'écarter rapidement le nettoyage comme cause d'une régression signalée ensuite.
 - Une interaction tactile (glissement, geste personnalisé) qui fonctionne sur desktop (souris) n'est pas automatiquement fonctionnelle sur mobile — HTML5 Drag & Drop n'a pas de support tactile fiable par construction ; les Pointer Events (`pointerdown`/`pointermove`/`pointerup`) sont l'API à privilégier d'emblée pour tout geste devant fonctionner identiquement à la souris et au doigt. Un geste de glissement personnalisé sur toute une carte/zone large entre en conflit avec le scroll natif de la page (`touch-action` doit être restreint à une poignée dédiée, pas la zone entière) — et sur mobile, un appui long déclenche NATIVEMENT `contextmenu` en plus du timer JS éventuel : retirer un mécanisme d'appui long nécessite de retirer aussi ce listener, pas seulement le `setTimeout`.
 - Un script PowerShell qui construit un body JSON via `ConvertTo-Json` peut échouer silencieusement sur les très longues chaînes (Base64 d'un gros fichier) en PowerShell 5.1 — construction manuelle de la chaîne JSON avec échappement explicite (`\\`, `"`, retours ligne) comme contournement, déjà en place dans le script de push existant.
+- Une dépendance externe (`package.json`) figée sur une ancienne version dès son ajout initial peut rester silencieusement obsolète pendant des semaines si rien ne la met à jour — une fonctionnalité récente du SDK (ex. `access: 'private'`/`get()` de `@vercel/blob`, non disponibles avant la version majeure 2.x) échoue alors avec des messages d'erreur trompeurs (`SyntaxError`, contradiction apparente entre deux erreurs successives) qui orientent d'abord vers un mauvais diagnostic (code applicatif) avant de penser à vérifier la version du package elle-même.
 
 **Persistance et données**
 - Préfixage des données de plan obligatoire (`clePourPlan()`) — une clé globale non préfixée est un risque de contamination inter-plans. Certaines clés restent volontairement globales (non préfixées) car elles décrivent le compte entier, pas un plan précis — ex. `lk_strava_activities` (cache d'activités Strava, stocké côté Supabase dans la table `integrations`, pas dans `plan_donnees`) : tout code consommant un plan depuis l'extérieur de `index.html` (ex. `beta-admin`) doit aller chercher cette donnée au bon endroit, pas supposer qu'elle vit dans les données du plan comme les statuts/saisies manuelles.
@@ -99,6 +101,7 @@ Tous dans `docs/v2-methodologie/` :
 - Diagnostic des cascades ON DELETE (`beta-admin`, onglet Cascades) à lancer occasionnellement (avant une mise en production), pas à chaque table ajoutée.
 - Ne jamais toucher `public/beta/`, `api/beta.js`, routes `/beta*` sans demande explicite.
 - Toute évolution de la Content-Security-Policy doit d'abord passer par un mode non bloquant de test (Report-Only) avant de devenir bloquante — détail de la méthode dans `securite.md`.
+- Un store de stockage tiers (ex. Vercel Blob) accessible depuis un module admin qui manipule des données personnelles doit être créé en accès Private dès sa création (irréversible après coup) — même si le SDK correspondant nécessite alors un chemin de lecture authentifié côté serveur (jamais un lien direct exposé côté client) plutôt qu'une simple URL publique.
 
 **Génération de plan et calculs**
 - Une seule variable modifiée à la fois pour la progressive overload. Niveau intermédiaire = valeur historique inchangée à chaque différenciation par niveau (zéro régression). Validation historique avant codage pour toute nouvelle métrique.
@@ -167,9 +170,22 @@ Tous dans `docs/v2-methodologie/` :
   ignorait le vrai jour choisi pour la course finale ; charnière du levier
   Objectif qui régénérait à tort la semaine en cours ; rebascule de phase
   (Construction/Spécifique) mal réparée à la jointure de deux plans
-  fusionnés ; continuité de rotation qualité à la charnière garantie par
-  construction (`extraireEtatCharniereRotation`), plutôt qu'un recollage
-  a posteriori de deux plans régénérés indépendamment.
+  fusionnés (le champ `pourquoi` d'une séance rebasculée n'était pas
+  recalculé en cohérence avec son nouveau sous-type — corrigé dans
+  `appliquerReglesPhaseApp` le 21/08/2026, cf. principe dédié plus haut
+  et `pourquoi-seance.md`) ; continuité de rotation qualité à la
+  charnière garantie par construction (`extraireEtatCharniereRotation`),
+  plutôt qu'un recollage a posteriori de deux plans régénérés
+  indépendamment.
+- **Limite connue résiduelle** : la semaine EN COURS au moment où un
+  levier est appliqué (`semaineCharniere = semaine actuelle + 1`) n'est
+  jamais retouchée par construction — un champ incohérent constaté sur
+  CETTE semaine précise (ex. `pourquoi` orphelin d'un ancien sous-type)
+  ne peut pas être corrigé en réappliquant un levier, quel que soit le
+  nombre de tentatives ; seule l'arrivée naturelle à la semaine suivante
+  (nouvelle génération) ou un correctif de rattrapage ciblé peut le
+  résoudre. Cas réel observé et laissé filer (bénin, une seule semaine
+  concernée) plutôt que de justifier un rattrapage dédié.
 - Source unique : les 5 leviers ne vivent plus que dans l'app principale.
   Le wizard (`public/v2/index.html`) ne conserve plus sa propre copie —
   un plan ouvert depuis le wizard renvoie vers l'app principale pour
@@ -177,8 +193,8 @@ Tous dans `docs/v2-methodologie/` :
 - Outils de réparation ponctuelle (recalcul du badge km, cohérence des
   phases, correction manuelle de séance) retirés de l'app principale,
   déplacés vers `beta-admin` (onglet Maintenance) — ciblés par compte
-  via email plutôt qu'accessibles à tout utilisateur, cohérent avec leur
-  usage rare et ponctuel. Détail complet dans `site-beta-admin.md`.
+  via email plutôt qu'accessibles à tout utilisateur. Détail complet
+  dans `site-beta-admin.md`.
 
 **Sélecteur de plan et création d'un nouveau plan**
 
@@ -229,7 +245,8 @@ Tous dans `docs/v2-methodologie/` :
 
 Détail complet (traité / reste à faire) dans `securite.md`. En bref :
 headers HTTP globaux (HSTS, CSP, nosniff) posés et calibrés, RLS
-auditée table par table, CORS/rate limiting/signature webhook en place.
+auditée table par table, CORS/rate limiting/signature webhook en place,
+sauvegardes automatiques Vercel Blob en place (cf. `site-beta-admin.md`).
 Reste : validation d'intégrité `plan_donnees.data`, 2FA sur `beta-admin`
 à évaluer.
 
