@@ -235,6 +235,15 @@
           <div id="backup-reinject-status" class="notice" hidden></div>
           <div id="backup-reinject-report"></div>
         </div>
+
+        <div class="card">
+          <h2>Sauvegardes automatiques</h2>
+          <p><small>3 crons Vercel déclenchent un export global identique à celui ci-dessus, stocké sur Vercel Blob (pas de téléchargement local) — horaires : 04h00, 12h00, 20h00 UTC (plan Hobby : chaque cron limité à 1x/jour, l'heure exacte de déclenchement peut glisser dans l'heure programmée). Rétention glissante de 7 jours : les fichiers plus anciens sont supprimés automatiquement à chaque exécution.</small></p>
+          <button id="backup-auto-list-btn" class="secondary">🔄 Actualiser la liste</button>
+          <button id="backup-auto-run-btn" class="secondary">▶️ Déclencher maintenant (test)</button>
+          <div id="backup-auto-status" class="notice" hidden></div>
+          <div id="backup-auto-list"></div>
+        </div>
       </section>
 
       <section class="view" data-panel="cascades">
