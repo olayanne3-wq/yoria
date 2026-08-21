@@ -579,6 +579,77 @@ function rapportReinjectionHtml(rapport) {
 }
 
 /*
+ * Sauvegardes automatiques (21/08/2026) — carte dans le même onglet
+ * Sauvegarde, sous la réinjection. 3 crons Vercel appellent GET
+ * /api/backup avec Bearer CRON_SECRET (cf. commentaire de conception en
+ * tête de api/backup.js) ; ce module côté admin se contente de LISTER les
+ * fichiers déjà produits (Vercel Blob, action lister_sauvegardes_auto) et
+ * de permettre un déclenchement manuel de test (action
+ * declencher_sauvegarde_auto) sans attendre le prochain horaire — les
+ * deux passent par le même endpoint POST /api/backup que le reste de cet
+ * onglet, authentifiées par le cookie admin classique (pas de
+ * CRON_SECRET côté client, réservé aux requêtes Vercel elles-mêmes).
+ */
+function tailleLisible(octets) {
+  if (octets < 1024) return octets + " o";
+  if (octets < 1024 * 1024) return (octets / 1024).toFixed(1) + " Ko";
+  return (octets / (1024 * 1024)).toFixed(2) + " Mo";
+}
+
+function sauvegardesAutoListHtml(sauvegardes) {
+  if (!sauvegardes.length) {
+    return `<div class="empty">Aucune sauvegarde automatique pour l'instant — le premier cron n'a peut-être pas encore tourné.</div>`;
+  }
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Fichier</th><th>Date</th><th>Taille</th><th></th></tr></thead>
+    <tbody>${sauvegardes.map((b) => `<tr>
+      <td><small>${esc(b.pathname)}</small></td>
+      <td><small>${esc(date(b.uploadedAt))}</small></td>
+      <td><small>${esc(tailleLisible(b.taille))}</small></td>
+      <td><a href="${esc(b.url)}" target="_blank" rel="noopener">Télécharger</a></td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+async function chargerSauvegardesAuto() {
+  const btn = $("#backup-auto-list-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Actualisation…";
+  $("#backup-auto-status").hidden = true;
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "lister_sauvegardes_auto" }) });
+    $("#backup-auto-list").innerHTML = sauvegardesAutoListHtml(result.sauvegardes);
+    afficherStatutBackup("#backup-auto-status", "", `${result.sauvegardes.length} sauvegarde(s) automatique(s) trouvée(s) (rétention 7 jours).`);
+  } catch (e) {
+    afficherStatutBackup("#backup-auto-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+$("#backup-auto-list-btn").onclick = chargerSauvegardesAuto;
+
+$("#backup-auto-run-btn").onclick = async () => {
+  if (!confirm("Déclencher une sauvegarde automatique maintenant, hors horaire programmé (utile pour tester la chaîne complète) ?")) return;
+  const btn = $("#backup-auto-run-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Sauvegarde en cours…";
+  $("#backup-auto-status").hidden = true;
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "declencher_sauvegarde_auto" }) });
+    afficherStatutBackup("#backup-auto-status", "", `Sauvegarde créée : ${result.blob.pathname} (${tailleLisible(result.blob.taille)}, ${result.tables} table(s)).${result.purge.supprimes ? " " + result.purge.supprimes + " ancienne(s) sauvegarde(s) purgée(s)." : ""}`);
+    chargerSauvegardesAuto();
+  } catch (e) {
+    afficherStatutBackup("#backup-auto-status", "error", e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+};
+
+/*
  * Onglet "Cascades" (01/08/2026) — diagnostic proactif des tables
  * applicatives liées à user_id sans ON DELETE CASCADE vers auth.users.
  * cf. commentaire de conception dans api/backup.js (diagnostiquerCascades).
