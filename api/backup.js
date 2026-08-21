@@ -10,7 +10,11 @@
 // Authentification : réutilise EXACTEMENT le même cookie de session que
 // api/beta-admin.js (même secret BETA_ADMIN_PASSWORD, même format de
 // token HMAC) — ce fichier n'introduit pas un second système d'auth,
-// pour rester cohérent avec le reste de l'admin bêta.
+// pour rester cohérent avec le reste de l'admin bêta. Exception : les
+// requêtes cron (GET uniquement) portent l'en-tête
+// `Authorization: Bearer CRON_SECRET` généré automatiquement par Vercel
+// et sont acceptées sans cookie — cf. section "Sauvegardes automatiques"
+// plus bas.
 //
 // Découverte des tables — auto via information_schema.tables (schéma
 // public), PAS de liste blanche codée en dur. Toute nouvelle table créée
@@ -27,12 +31,40 @@
 // sert UNIQUEMENT à réparer une perte accidentelle (bug applicatif,
 // mauvaise manipulation), jamais à contourner une suppression de compte
 // volontaire au titre du droit à l'effacement (art. 17 RGPD). Un export
-// téléchargé doit être traité comme temporaire par whoever le conserve
-// (Laurent) — pas un filet permanent équivalent à une non-suppression.
+// téléchargé ou stocké sur Vercel Blob doit être traité comme temporaire
+// (cf. rétention 7 jours ci-dessous) — pas un filet permanent équivalent
+// à une non-suppression.
+//
+// ============================================================
+// Sauvegardes automatiques (21/08/2026)
+// ============================================================
+// 3 crons Vercel (vercel.json, horaires distincts — le plan Hobby limite
+// chaque cron à 1 exécution/jour, 3 crons séparés contournent cette
+// limite sans passer Pro) appellent GET /api/backup avec l'en-tête
+// `Authorization: Bearer ${CRON_SECRET}` (variable d'env auto-
+// provisionnée par Vercel, rien à définir manuellement). Ce chemin :
+//   1. authentifie via CRON_SECRET (ni cookie, ni mot de passe admin) ;
+//   2. génère un export global (exportGlobal(), identique à l'export
+//      manuel) ;
+//   3. l'uploade sur Vercel Blob, nom horodaté
+//      `backups/auto-AAAA-MM-JJTHH-mm.json` ;
+//   4. purge les fichiers du dossier `backups/` vieux de plus de
+//      RETENTION_JOURS (7) — glissant, pas d'accumulation illimitée.
+// Toute requête GET sans cookie NI Bearer valide continue de recevoir
+// 401 comme avant — ce chemin s'ajoute, ne remplace rien.
+//
+// Nécessite la variable d'env BLOB_READ_WRITE_TOKEN (auto-provisionnée
+// par Vercel dès qu'un store Blob est créé sur le projet) et le paquet
+// @vercel/blob en dépendance.
+
+import { put, list, del } from '@vercel/blob';
 
 const TABLES_EXCLUES = [];
 
 const COLONNES_USER = ['user_id', 'id_utilisateur'];
+
+const RETENTION_JOURS = 7;
+const PREFIXE_BLOB_AUTO = 'backups/auto-';
 
 const json = (response, status, payload) =>
   response.status(status).json(payload);
@@ -457,6 +489,64 @@ async function reinjecter(config, exportDataBrut, filtrerEmail, userIdManuel) {
 }
 
 // ============================================================
+// Sauvegardes automatiques — Vercel Blob (21/08/2026)
+// ============================================================
+
+function nomFichierAuto(date) {
+  const iso = date.toISOString(); // ex. 2026-08-21T04:00:12.345Z
+  const horodatage = iso.slice(0, 16).replace(/:/g, '-'); // 2026-08-21T04-00
+  return `${PREFIXE_BLOB_AUTO}${horodatage}.json`;
+}
+
+async function purgerAnciennesSauvegardes() {
+  const { blobs } = await list({ prefix: PREFIXE_BLOB_AUTO });
+  const seuil = Date.now() - RETENTION_JOURS * 24 * 60 * 60 * 1000;
+  const aSupprimer = blobs.filter((b) => new Date(b.uploadedAt).getTime() < seuil);
+
+  if (aSupprimer.length === 0) {
+    return { supprimes: 0 };
+  }
+
+  await del(aSupprimer.map((b) => b.url));
+  return { supprimes: aSupprimer.length };
+}
+
+async function executerSauvegardeAutomatique(config) {
+  const exportData = await exportGlobal(config);
+  const contenu = JSON.stringify(exportData);
+  const nom = nomFichierAuto(new Date());
+
+  const blob = await put(nom, contenu, {
+    access: 'public',
+    contentType: 'application/json',
+    addRandomSuffix: false,
+  });
+
+  const purge = await purgerAnciennesSauvegardes();
+
+  return {
+    type: 'sauvegarde_automatique',
+    genereLe: exportData.genereLe,
+    tables: exportData.tables,
+    erreursExport: exportData.erreurs,
+    blob: { url: blob.url, pathname: blob.pathname, taille: contenu.length },
+    purge,
+  };
+}
+
+async function listerSauvegardesAutomatiques() {
+  const { blobs } = await list({ prefix: PREFIXE_BLOB_AUTO });
+  return blobs
+    .map((b) => ({
+      pathname: b.pathname,
+      url: b.url,
+      taille: b.size,
+      uploadedAt: b.uploadedAt,
+    }))
+    .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+}
+
+// ============================================================
 // Diagnostic des cascades ON DELETE (01/08/2026)
 // ============================================================
 // api/delete-account.js dépend entièrement de ce que chaque table
@@ -520,6 +610,13 @@ async function diagnostiquerCascades(config) {
   };
 }
 
+function isValidCronRequest(request) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const authHeader = request.headers.authorization || '';
+  return authHeader === `Bearer ${secret}`;
+}
+
 export default async function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Frame-Options', 'DENY');
@@ -534,6 +631,21 @@ export default async function handler(request, response) {
     return json(response, 500, {
       message: 'Configuration administrateur incomplète.',
     });
+  }
+
+  // Requête cron authentifiée par CRON_SECRET (Bearer) : contourne le
+  // cookie admin, réservée au GET déclenché par vercel.json (voir
+  // section "Sauvegardes automatiques" en tête de fichier).
+  if (request.method === 'GET' && isValidCronRequest(request)) {
+    try {
+      const rapport = await executerSauvegardeAutomatique(config);
+      return json(response, 200, rapport);
+    } catch (error) {
+      console.error('[backup] Erreur sauvegarde automatique :', error);
+      return json(response, 500, {
+        message: error.message || "La sauvegarde automatique a échoué.",
+      });
+    }
   }
 
   const crypto = await import('node:crypto');
@@ -636,6 +748,32 @@ export default async function handler(request, response) {
           message: messageFonctionManquante
             ? "Les fonctions SQL de diagnostic n'existent pas encore côté Supabase — exécute d'abord docs/v2-methodologie/diagnostic-cascades-user-id.sql dans le SQL Editor (à faire une seule fois)."
             : (error.message || "Le diagnostic n'a pas pu être généré."),
+        });
+      }
+    }
+
+    if (action === 'lister_sauvegardes_auto') {
+      try {
+        const sauvegardes = await listerSauvegardesAutomatiques();
+        return json(response, 200, { sauvegardes });
+      } catch (error) {
+        console.error('[backup] Erreur listage sauvegardes auto :', error);
+        return json(response, 500, {
+          message: error.message || "Impossible de lister les sauvegardes automatiques.",
+        });
+      }
+    }
+
+    if (action === 'declencher_sauvegarde_auto') {
+      // Déclenchement manuel depuis beta-admin, hors cron — utile pour
+      // tester la chaîne complète sans attendre le prochain horaire.
+      try {
+        const rapport = await executerSauvegardeAutomatique(config);
+        return json(response, 200, rapport);
+      } catch (error) {
+        console.error('[backup] Erreur déclenchement manuel sauvegarde auto :', error);
+        return json(response, 500, {
+          message: error.message || "La sauvegarde n'a pas pu être générée.",
         });
       }
     }
