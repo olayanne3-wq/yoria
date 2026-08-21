@@ -596,6 +596,12 @@ function tailleLisible(octets) {
   return (octets / (1024 * 1024)).toFixed(2) + " Mo";
 }
 
+// Store Blob en accès Private (21/08/2026) — b.url seule ne suffit plus
+// pour un lien <a href> direct depuis le navigateur (token requis même en
+// lecture). Le bouton "Télécharger" appelle donc l'action
+// telecharger_sauvegarde_auto, qui va chercher le contenu côté serveur
+// avec le token, puis déclenche le download en local comme les autres
+// exports de cet onglet (réutilise telechargerJson()).
 function sauvegardesAutoListHtml(sauvegardes) {
   if (!sauvegardes.length) {
     return `<div class="empty">Aucune sauvegarde automatique pour l'instant — le premier cron n'a peut-être pas encore tourné.</div>`;
@@ -606,10 +612,29 @@ function sauvegardesAutoListHtml(sauvegardes) {
       <td><small>${esc(b.pathname)}</small></td>
       <td><small>${esc(date(b.uploadedAt))}</small></td>
       <td><small>${esc(tailleLisible(b.taille))}</small></td>
-      <td><a href="${esc(b.url)}" target="_blank" rel="noopener">Télécharger</a></td>
+      <td><button class="secondary" data-telecharger-auto="${esc(b.pathname)}">Télécharger</button></td>
     </tr>`).join("")}</tbody>
   </table></div>`;
 }
+
+$("#backup-auto-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-telecharger-auto]");
+  if (!btn) return;
+  const pathname = btn.dataset.telechargerAuto;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Téléchargement…";
+  try {
+    const result = await backupReq({ method: "POST", body: JSON.stringify({ action: "telecharger_sauvegarde_auto", pathname }) });
+    const nomFichier = pathname.split("/").pop();
+    telechargerJson(result.contenu, nomFichier);
+  } catch (e2) {
+    alert(e2.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+});
 
 async function chargerSauvegardesAuto() {
   const btn = $("#backup-auto-list-btn");
