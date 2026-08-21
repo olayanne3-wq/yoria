@@ -546,6 +546,32 @@ async function listerSauvegardesAutomatiques() {
     .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
 }
 
+// Store Blob créé en accès Private (21/08/2026, données personnelles de
+// testeurs dans les exports) — b.url seule ne suffit plus à lire le
+// contenu depuis le navigateur (le token BLOB_READ_WRITE_TOKEN est requis
+// pour toute lecture, pas seulement l'écriture, en mode Private). Cette
+// fonction récupère donc le contenu CÔTÉ SERVEUR (où le token est
+// disponible via l'import @vercel/blob) puis le renvoie au client — pas
+// de lien <a href> direct possible vers b.url comme en mode Public.
+async function telechargerSauvegardeAutomatique(pathname) {
+  const { blobs } = await list({ prefix: PREFIXE_BLOB_AUTO });
+  const blob = blobs.find((b) => b.pathname === pathname);
+  if (!blob) {
+    const err = new Error('Sauvegarde introuvable (a peut-être déjà été purgée).');
+    err.status = 404;
+    throw err;
+  }
+
+  const response = await fetch(blob.url, {
+    headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Impossible de lire la sauvegarde sur Vercel Blob (${response.status}).`);
+  }
+
+  return response.text();
+}
+
 // ============================================================
 // Diagnostic des cascades ON DELETE (01/08/2026)
 // ============================================================
@@ -760,6 +786,22 @@ export default async function handler(request, response) {
         console.error('[backup] Erreur listage sauvegardes auto :', error);
         return json(response, 500, {
           message: error.message || "Impossible de lister les sauvegardes automatiques.",
+        });
+      }
+    }
+
+    if (action === 'telecharger_sauvegarde_auto') {
+      const pathname = String(body.pathname || '').trim();
+      if (!pathname) {
+        return json(response, 400, { message: 'Chemin de fichier manquant.' });
+      }
+      try {
+        const contenu = await telechargerSauvegardeAutomatique(pathname);
+        return json(response, 200, { pathname, contenu: JSON.parse(contenu) });
+      } catch (error) {
+        console.error('[backup] Erreur téléchargement sauvegarde auto :', error);
+        return json(response, error.status || 500, {
+          message: error.message || "Impossible de télécharger cette sauvegarde.",
         });
       }
     }
