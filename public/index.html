@@ -13823,7 +13823,7 @@ function renderSettings() {
       // etatGroupesAccordeon, lu par renderGroupeAccordeonStats), lance la
       // réparation immédiatement — sinon rien ne le fera tant que
       // l'utilisateur ne re-clique pas manuellement sur l'en-tête.
-      if (etatGroupesAccordeon["Records personnels"]) reparerRoulettesRecords();
+      if (etatGroupesAccordeon["Records personnels"]) setTimeout(reparerRoulettesRecords, 0);
 
       return renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
         recordsSection
