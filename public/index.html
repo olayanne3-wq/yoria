@@ -2162,6 +2162,40 @@ function afficherMessage(cible, texte, type, dureeMs) {
   }
 }
 
+// ── Alerte bloquante custom (22/08/2026) ────────────────────────────────
+// Remplace progressivement alert() natif : même garantie de lecture (un
+// seul bouton à cliquer, rien d'autre interactif tant que la modale est
+// ouverte) mais cohérente visuellement avec le reste de l'app plutôt que
+// le popup système gris du navigateur. Overlay assombri (0.55, pas noir
+// plein comme ouvrirModaleTexte() à 0.92) — choix validé avec Laurent :
+// laisse deviner le contenu derrière plutôt que de le masquer totalement,
+// cohérent avec le mockup présenté avant codage.
+// type: "erreur" | "info" — pilote la couleur de l'icône/bouton.
+function afficherAlerte(message, type) {
+  const couleur = type === "info" ? "var(--accent)" : "var(--warn)";
+  const icone = type === "info" ? "ℹ️" : "⚠️";
+  const fermer = () => { if (document.body.contains(overlay)) document.body.removeChild(overlay); };
+  const overlay = el("div",{style:{
+    position:"fixed", inset:"0", background:"rgba(0,0,0,0.55)", zIndex:"9999",
+    display:"flex", alignItems:"center", justifyContent:"center", padding:"20px"
+  }},
+    el("div",{style:{
+      width:"100%", maxWidth:"300px", background:"var(--bg)", borderRadius:"14px",
+      padding:"20px", boxShadow:"0 12px 32px rgba(0,0,0,0.3)"
+    }},
+      el("div",{style:{display:"flex", alignItems:"flex-start", gap:"10px", marginBottom:"14px"}},
+        el("span",{style:{fontSize:"22px", lineHeight:"1"}}, icone),
+        el("div",{style:{fontSize:"14px", color:"var(--text)", lineHeight:"1.4"}}, message)
+      ),
+      el("button",{style:{
+        width:"100%", padding:"11px", borderRadius:"8px", border:"none",
+        background:couleur, color:"#F8FAFC", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+      }, onClick: fermer}, "Compris")
+    )
+  );
+  document.body.appendChild(overlay);
+}
+
 let syncing = false;
 let syncMsg = "";
 let stravaAuthInvalide = false; // 16 juillet 2026 : détecte un access_token
@@ -2570,13 +2604,13 @@ function ouvrirPpsModale() {
           const expInput = document.getElementById("pps-modale-expiration-input");
           const statutEl = document.getElementById("pps-modale-extraction-statut");
           const fichier = fileInput?.files?.[0];
-          if (!fichier && !expInput?.value) { alert("Choisis un fichier ou renseigne au moins une date d'expiration."); return; }
+          if (!fichier && !expInput?.value) { afficherAlerte("Choisis un fichier ou renseigne au moins une date d'expiration.", "erreur"); return; }
           const libelleOriginal = btn.textContent;
           btn.textContent = "⏳ Enregistrement...";
           btn.disabled = true;
           try {
             if (fichier) {
-              if (fichier.size > 15*1024*1024) { alert("Fichier trop volumineux (max 15 Mo)."); btn.textContent = libelleOriginal; btn.disabled = false; return; }
+              if (fichier.size > 15*1024*1024) { afficherAlerte("Fichier trop volumineux (max 15 Mo).", "erreur"); btn.textContent = libelleOriginal; btn.disabled = false; return; }
               if (fichier.type === "application/pdf") {
                 if (statutEl) statutEl.textContent = "🔍 Conversion du PDF...";
                 const dataUrlBrut = await new Promise((resolve, reject) => {
@@ -2618,7 +2652,7 @@ function ouvrirPpsModale() {
             setTimeout(() => { fermer(); render(); }, 600);
           } catch (err) {
             console.error("Erreur enregistrement PPS:", err);
-            alert("Échec de l'enregistrement : "+(err.message||"erreur inconnue")+". Réessaie avec une photo plus légère si le problème persiste.");
+            afficherAlerte("Échec de l'enregistrement : "+(err.message||"erreur inconnue")+". Réessaie avec une photo plus légère si le problème persiste.", "erreur");
             btn.textContent = libelleOriginal;
             btn.disabled = false;
           }
@@ -4596,7 +4630,7 @@ function renderDashboard() {
         // utilisé ailleurs dans l'app pour le même besoin.
         const recordDispo = profilStocke?.records && Object.entries(profilStocke.records).find(([, r]) => r?.temps);
         if (!recordDispo) {
-          alert("Impossible de générer le bloc suivant : aucun record de référence trouvé dans ton profil. Renseigne un temps de référence dans Réglages.");
+          afficherAlerte("Impossible de générer le bloc suivant : aucun record de référence trouvé dans ton profil. Renseigne un temps de référence dans Réglages.", "erreur");
           return;
         }
         const [refDistanceLabel, refRecord] = recordDispo;
@@ -4631,7 +4665,7 @@ function renderDashboard() {
         }
         window.location.reload();
       } catch (e) {
-        alert("La génération du bloc suivant a échoué : " + e.message);
+        afficherAlerte("La génération du bloc suivant a échoué : " + e.message, "erreur");
         console.error(e);
       } finally {
         if (boutonClique) { boutonClique.disabled = false; boutonClique.textContent = "Générer le bloc suivant"; }
@@ -4721,7 +4755,7 @@ function renderDashboard() {
         }
         window.location.reload();
       } catch (e) {
-        alert("La génération de la suite de ton plan a échoué : " + e.message);
+        afficherAlerte("La génération de la suite de ton plan a échoué : " + e.message, "erreur");
         console.error(e);
       } finally {
         if (boutonClique) { boutonClique.disabled = false; boutonClique.textContent = "Générer la suite de mon plan"; }
@@ -5324,7 +5358,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               // silencieux sans effet apparent — cf. principe "sécurité
               // avant performance", qui s'applique aussi à la clarté de
               // l'information donnée, pas seulement à la protection physique.
-              alert("Cet ajustement n'a pas pu être appliqué : " + resultat.raison);
+              afficherAlerte("Cet ajustement n'a pas pu être appliqué : " + resultat.raison, "erreur");
               return;
             }
             const dejaJournalise = load(clePourPlan("lk_dernier_decision_event_id"), null);
@@ -7880,7 +7914,7 @@ async function changerPalierGrandDebutant(nouveauPalierId) {
   try {
     nouveauPlan = generatePlanForme(profil, params);
   } catch (e) {
-    alert("Erreur lors du changement de palier : " + e.message);
+    afficherAlerte("Erreur lors du changement de palier : " + e.message, "erreur");
     console.error(e);
     return;
   }
@@ -7977,7 +8011,7 @@ function renderTestSemiCooperRow(uid, seance, stravaRun) {
 
   const validerResultat = (distanceMetres) => {
     if (!distanceMetres || distanceMetres < 200 || distanceMetres > 3000) {
-      alert("Distance invalide — vérifie la valeur (attendu entre 200m et 3000m environ pour 6 minutes de course).");
+      afficherAlerte("Distance invalide — vérifie la valeur (attendu entre 200m et 3000m environ pour 6 minutes de course).", "erreur");
       return;
     }
     const { refTimeSeconds, refDistanceKm, vmaKmh } = estimerReferenceDepuisSemiCooper(distanceMetres);
@@ -11550,7 +11584,7 @@ function showSessionMenu(week, slotIdx) {
 
 function showMoveMenu(week, slotIdx) {
   const slots = getAvailableSlots(week, slotIdx);
-  if (!slots.length) { alert("Aucune autre séance à échanger cette semaine (toutes déjà validées, ou une seule séance dans la semaine)."); return; }
+  if (!slots.length) { afficherAlerte("Aucune autre séance à échanger cette semaine (toutes déjà validées, ou une seule séance dans la semaine).", "info"); return; }
 
   document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
   const overlay = document.createElement("div");
@@ -11962,7 +11996,7 @@ document.addEventListener("pointercancel", (e) => {
 
 function showRestoreMenu(week, slotIdx) {
   const slots = getAvailableSlots(week, slotIdx);
-  if (!slots.length) { alert("Aucun jour disponible."); return; }
+  if (!slots.length) { afficherAlerte("Aucun jour disponible.", "info"); return; }
 
   document.querySelectorAll(".sess-overlay").forEach(m=>m.remove());
   const overlay = document.createElement("div");
@@ -12120,7 +12154,7 @@ function exportPdfPlanVierge() {
 
 function exportPdfResultats() {
   const raceRes=load(clePourPlan("lk_race_result"),null);
-  if(!raceRes){alert("Saisis ton resultat dans onglet Course !");return;}
+  if(!raceRes){afficherAlerte("Saisis ton resultat dans onglet Course !", "info");return;}
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const W=210,M=20; let y=20;
@@ -13178,7 +13212,7 @@ function renderSettings() {
         const secondesSaisies = parseTimeToSeconds(tempsFormate);
         const recordMonde = RECORDS_MONDE_SECONDES[dist];
         if (recordMonde && secondesSaisies < recordMonde) {
-          alert(`Temps plus rapide que le record du monde actuel sur : ${dist} — non enregistré, vérifie ta saisie.`);
+          afficherAlerte(`Temps plus rapide que le record du monde actuel sur : ${dist} — non enregistré, vérifie ta saisie.`, "erreur");
           return; // ne sauvegarde pas, laisse la roulette dans son état actuel
         }
       } catch (e) { /* format de temps invalide, ignoré ici — non bloquant pour ce garde-fou précis */ }
@@ -13663,7 +13697,7 @@ function renderSettings() {
     try {
       const { data: { session } } = await LkAuth.supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) { alert("Merci de te reconnecter."); return; }
+      if (!token) { afficherAlerte("Merci de te reconnecter.", "info"); return; }
       const resp = await fetch("/api/stripe-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
@@ -13673,11 +13707,11 @@ function renderSettings() {
       if (data.success && data.url) {
         window.open(data.url, "_blank");
       } else {
-        alert(data.message || "Impossible de démarrer le paiement.");
+        afficherAlerte(data.message || "Impossible de démarrer le paiement.", "erreur");
       }
     } catch (e) {
       console.warn("Erreur démarrage Checkout :", e.message);
-      alert("Une erreur est survenue.");
+      afficherAlerte("Une erreur est survenue.", "erreur");
     } finally {
       if (boutonClique) { boutonClique.disabled = false; boutonClique.textContent = "S'abonner — 7€/mois"; }
     }
