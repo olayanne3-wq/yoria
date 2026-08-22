@@ -13801,30 +13801,23 @@ function renderSettings() {
         ["5K","10K","Semi","Marathon"].forEach((dist) => {
           const idPrefix = "rec-temps-"+dist;
           const roulette = roulettesActivesReglages[idPrefix];
-          // Vérifie que le VRAI conteneur DOM est encore attaché au
-          // document actuel — un render() antérieur (ex. changement de
-          // thème) peut avoir détruit les anciens nœuds tout en laissant
-          // roulettesActivesReglages[idPrefix] pointer dessus (objet API
-          // fantôme). definirValeur() sur ces nœuds détachés ne lève
-          // aucune erreur mais n'a aucun effet visible — d'où le bug
-          // (confirmé par diagnostic console : 0 enfants dans le
-          // conteneur malgré une entrée "roulette" non-null).
-          const conteneurEncoreAttache = document.body.contains(document.getElementById(idPrefix + "-rouletteM"));
+          const conteneurReel = document.getElementById(idPrefix + "-rouletteM");
+          const conteneurEncoreAttache = document.body.contains(conteneurReel);
+          if (idPrefix === "rec-temps-5K") {
+            console.log("DIAG2:", idPrefix, "roulette=", !!roulette, "conteneurReel=", conteneurReel, "attaché=", conteneurEncoreAttache, "enfants avant=", conteneurReel?.children.length);
+          }
           if (roulette && conteneurEncoreAttache) {
-            // Vraiment déjà construite et toujours attachée — simple
-            // repositionnement défensif.
             roulette.h?.definirValeur(roulette.h.valeur(), false);
             roulette.m?.definirValeur(roulette.m.valeur(), false);
             roulette.s?.definirValeur(roulette.s.valeur(), false);
+            if (idPrefix === "rec-temps-5K") console.log("DIAG2: branche REPOSITIONNER prise, enfants après=", conteneurReel?.children.length);
             return;
           }
-          // Jamais construite (groupe fermé au chargement, DOM pas encore
-          // layouté au moment du polling initial), OU entrée fantôme
-          // détachée (cf. commentaire ci-dessus) — reconstruction directe.
           const rec = profilCoureur.records?.[dist];
           const hms = window.parserTempsRecordEnHMS(rec?.temps);
           const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
           window.initRouletteHMS(idPrefix, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0, heuresMax);
+          if (idPrefix === "rec-temps-5K") console.log("DIAG2: branche RECONSTRUIRE prise, enfants après=", document.getElementById(idPrefix + "-rouletteM")?.children.length);
         });
       };
 
