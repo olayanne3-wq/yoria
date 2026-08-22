@@ -521,6 +521,7 @@ window._masquerEcranChargement = function() {
 })();
 </script>
 <div id="app"></div>
+<div id="frise-semaines-root"></div>
 <div id="accordeon-plan-root"></div>
 <div id="nav-root"></div>
 <!-- Toast (22/08/2026) — même pattern que nav-root ci-dessus : conteneur
@@ -7599,7 +7600,7 @@ function renderModifierPlanAccordeon() {
   // fixe du bas, cohérente avec le layout mobile de l'app.
   const entete = el("button",{style:{
     all:"unset",boxSizing:"border-box",cursor:"pointer",
-    position:"fixed",top:"var(--hauteur-header-sticky, 60px)",left:"50%",
+    position:"fixed",top:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px))",left:"50%",
     transform:"translateX(-50%)",width:"100%",maxWidth:"430px",zIndex:"9",
     display:"flex",alignItems:"center",gap:"12px",padding:"14px 16px",
     background:"var(--bg)",borderRadius:"0 0 14px 14px",
@@ -7659,9 +7660,48 @@ function renderContenuAccordeonPlan() {
   );
 }
 
+// ── Frise de navigation rapide entre semaines (22/08/2026) ─────────────────
+// Position fixed sous le header sticky principal — même raisonnement que
+// l'accordéon "Modifier mon plan" juste au-dessus dans ce fichier (cf. son
+// commentaire détaillé) : sticky ne convient pas ici (ancêtres avec
+// overflow potentiels), fixed garantit un affichage permanent en haut,
+// monté dans son propre conteneur DOM (#frise-semaines-root, en dehors de
+// #app) pour ne jamais être détruit/recréé par le cycle de render().
+function renderFriseSemaines() {
+  const cw = currentWeek();
+  const pastilles = PLAN.map(week => {
+    const isActive = week.week === cw;
+    const color = phaseOf(week.week).color;
+    const pastille = el("button",{style:{
+      all:"unset", boxSizing:"border-box", cursor:"pointer", flexShrink:"0",
+      width:"34px", height:"34px", borderRadius:"8px", background:color,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      fontSize:"12px", fontWeight:"700", color:"#F8FAFC",
+      boxShadow: isActive ? `0 0 0 2px ${color}, 0 0 0 4px var(--bg)` : "none"
+    }}, "S"+week.week);
+    pastille.addEventListener("click", () => {
+      const carteCible = document.getElementById("carte-semaine-"+week.week);
+      if (carteCible) {
+        carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
+      }
+    });
+    return pastille;
+  });
+
+  return el("div",{id:"frise-semaines-barre",style:{
+    position:"fixed", top:"var(--hauteur-header-sticky, 60px)", left:"50%",
+    transform:"translateX(-50%)", width:"100%", maxWidth:"430px", zIndex:"8",
+    background:"rgba(var(--bg-rgb),0.95)", backdropFilter:"blur(12px)",
+    borderBottom:"1px solid var(--border)", padding:"10px 16px",
+    boxSizing:"border-box"
+  }},
+    el("div",{style:{display:"flex", gap:"6px", overflowX:"auto"}}, ...pastilles)
+  );
+}
+
 function renderWeeks() {
   const cw=currentWeek();
-  return el("div",{style:{padding:"0 16px 100px",paddingTop:"var(--hauteur-accordeon-plan-ferme, 56px)"}},
+  return el("div",{style:{padding:"0 16px 100px",paddingTop:"calc(var(--hauteur-accordeon-plan-ferme, 56px) + var(--hauteur-frise-semaines, 0px))"}},
     el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"var(--text2)",fontSize:"14px"}},"Semaine actuelle : ",el("span",{style:{color:"var(--accent)",fontWeight:"700"}},"S"+cw)),
     renderContenuAccordeonPlan(),
     ...PLAN.map(week=>{
@@ -15031,6 +15071,22 @@ function render() {
   // jamais vidé par innerHTML="" — replaceChildren() remplace son unique
   // enfant de façon atomique (pas de frame intermédiaire vide).
   document.getElementById("nav-root").replaceChildren(nav);
+
+  // Frise de navigation rapide entre semaines (22/08/2026, demande de
+  // Laurent) — même pattern de montage que l'accordéon juste en dessous :
+  // conteneur séparé, jamais détruit par render(), vidé sur toute vue
+  // autre que Semaines. Montée AVANT l'accordéon dans le flux visuel
+  // (top:hauteur-header-sticky), l'accordéon est décalé d'autant via
+  // --hauteur-frise-semaines pour ne jamais se superposer.
+  const friseSemainesRoot = document.getElementById("frise-semaines-root");
+  if (vueEffective === "weeks") {
+    const friseEl = renderFriseSemaines();
+    friseSemainesRoot.replaceChildren(friseEl);
+    document.documentElement.style.setProperty("--hauteur-frise-semaines", (friseEl.getBoundingClientRect().height) + "px");
+  } else {
+    friseSemainesRoot.replaceChildren();
+    document.documentElement.style.setProperty("--hauteur-frise-semaines", "0px");
+  }
 
   // En-tête fixe de l'accordéon "Modifier mon plan" (18/08/2026, demande
   // explicite de Laurent : "toujours en haut de l'écran, même en scrollant
