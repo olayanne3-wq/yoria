@@ -13823,7 +13823,16 @@ function renderSettings() {
       // etatGroupesAccordeon, lu par renderGroupeAccordeonStats), lance la
       // réparation immédiatement — sinon rien ne le fera tant que
       // l'utilisateur ne re-clique pas manuellement sur l'en-tête.
-      if (etatGroupesAccordeon["Records personnels"]) setTimeout(reparerRoulettesRecords, 0);
+      console.log("DIAG: etatGroupesAccordeon['Records personnels'] =", etatGroupesAccordeon["Records personnels"]);
+      if (etatGroupesAccordeon["Records personnels"]) {
+        console.log("DIAG: setTimeout programmé");
+        setTimeout(() => {
+          console.log("DIAG: setTimeout exécuté, roulettesActivesReglages =", roulettesActivesReglages);
+          console.log("DIAG: recordsSection encore dans le DOM ?", document.body.contains(document.getElementById("rec-temps-5K-h")));
+          reparerRoulettesRecords();
+          console.log("DIAG: après reparerRoulettesRecords, enfants rouletteM =", document.getElementById("rec-temps-5K-rouletteM")?.children.length);
+        }, 0);
+      }
 
       return renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
         recordsSection
