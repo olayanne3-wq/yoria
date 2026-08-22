@@ -5810,9 +5810,10 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
     let detailPredOuvert = false;
     const detailPredWrap = el("div",{style:{display:"none",marginTop:"12px"}}, heroPred);
 
+    const chevronPred = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform 0.15s",transform:"rotate(0deg)"}},"›");
     const summaryRowPred = el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",cursor:"pointer"}},
       el("div",{class:"muted",style:{fontSize:"12px"}},"🏁 "+RACE_NAME+(DATE_COURSE_REFERENCE?" — "+new Date(DATE_COURSE_REFERENCE+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long"}):"")),
-      el("span",{class:"muted",style:{fontSize:"13px"}},"▼ détail")
+      el("div",{style:{display:"flex",alignItems:"center",gap:"2px"}}, el("span",{class:"muted",style:{fontSize:"13px"}},"détail"), chevronPred)
     );
 
     // Écart mis en valeur (retour de Laurent : "l'écart est petit et pas
@@ -5864,7 +5865,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       e.stopPropagation();
       detailPredOuvert = !detailPredOuvert;
       detailPredWrap.style.display = detailPredOuvert ? "block" : "none";
-      summaryRowPred.lastChild.textContent = detailPredOuvert ? "▲ masquer" : "▼ détail";
+      chevronPred.style.transform = detailPredOuvert ? "rotate(90deg)" : "rotate(0deg)";
     });
 
     return bloc;
@@ -8317,15 +8318,16 @@ function renderPourquoiToggle(pourquoi) {
   if (!pourquoi) return null;
   const detail = el("div",{style:{display:"none",fontSize:"14px",color:"var(--text2)",lineHeight:"1.5",paddingTop:"8px",marginTop:"4px",borderTop:"1px solid var(--border)"}}, pourquoi);
   let open = false;
+  const chevronPourquoi = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform 0.15s",transform:"rotate(0deg)"}},"›");
   const summaryRow = el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--border-soft)",borderRadius:"8px",padding:"8px 10px",cursor:"pointer",marginBottom:"8px"}},
     el("span",{style:{color:"var(--text2)",fontSize:"13px"}},"🎯 Pourquoi cette séance"),
-    el("span",{class:"muted",style:{fontSize:"12px"}},"▼ détail")
+    el("div",{style:{display:"flex",alignItems:"center",gap:"2px"}}, el("span",{class:"muted",style:{fontSize:"12px"}},"détail"), chevronPourquoi)
   );
   summaryRow.addEventListener("click", avecRetourTactile((e)=>{
     e.stopPropagation();
     open = !open;
     detail.style.display = open ? "block" : "none";
-    summaryRow.lastChild.textContent = open ? "▲ masquer" : "▼ détail";
+    chevronPourquoi.style.transform = open ? "rotate(90deg)" : "rotate(0deg)";
   }));
   const wrap = el("div",{});
   wrap.appendChild(summaryRow);
@@ -8931,18 +8933,19 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     const tgt = SESSION_TARGETS[s.type];
     const nb = tgt ? effortLaps.filter(l=>(1000/l.average_speed)<=tgt.okPace).length : null;
     let lapsOpen = false;
+    const chevronLaps = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform 0.15s",transform:"rotate(0deg)"}},"›");
     const summaryRow = el("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--border-soft)",borderRadius:"8px",padding:"8px 10px",cursor:"pointer"}},
       el("span",{style:{color:"var(--text2)",fontSize:"13px"}},effortLaps.length+" répétition"+(effortLaps.length>1?"s":"")),
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
         nb!==null?el("span",{style:{color:nb===effortLaps.length?"var(--accent2)":"var(--warn)",fontSize:"13px",fontWeight:"700"}},nb+"/"+effortLaps.length+" dans la cible"):null,
-        el("span",{class:"muted",style:{fontSize:"12px"}},"▼ détail")
+        el("div",{style:{display:"flex",alignItems:"center",gap:"2px"}}, el("span",{class:"muted",style:{fontSize:"12px"}},"détail"), chevronLaps)
       )
     );
     summaryRow.addEventListener("click", avecRetourTactile((e)=>{
       e.stopPropagation();
       lapsOpen = !lapsOpen;
       detailLaps.style.display = lapsOpen ? "block" : "none";
-      summaryRow.lastChild.lastChild.textContent = lapsOpen ? "▲ masquer" : "▼ détail";
+      chevronLaps.style.transform = lapsOpen ? "rotate(90deg)" : "rotate(0deg)";
     }));
     wrap.appendChild(summaryRow);
     wrap.appendChild(detailLaps);
