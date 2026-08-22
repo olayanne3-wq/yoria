@@ -7368,7 +7368,7 @@ function renderLevierJours() {
         cellule.style.background = estLongue ? "rgba(var(--accent2-rgb),0.18)" : (estSelectionne ? "rgba(var(--accent-rgb),0.18)" : "rgba(var(--text-rgb),0.05)");
         cellule.style.color = estLongue ? "var(--accent2)" : (estSelectionne ? "var(--accent)" : "var(--text-muted)");
         cellule.style.fontWeight = estSelectionne ? "700" : "400";
-        cellule.replaceChildren(el("span",{},nom), el("span",{style:{fontSize:"9px"}},estLongue ? "★" : "●"));
+        cellule.replaceChildren(el("span",{},nom), el("span",{style:{fontSize: estLongue ? "13px" : "9px", fontWeight: estLongue ? "700" : "400"}},estLongue ? "★" : "●"));
       }
       rafraichisseurs.push(rafraichirCellule);
       cellule.addEventListener("click", () => {
