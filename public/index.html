@@ -8724,20 +8724,6 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       rebuildPredHistory();
     };
 
-    // "Retirer pour réimporter" (comportement historique, 03/08/2026) —
-    // la date reste libre, la prochaine synchro peut réimporter une
-    // version fraîche de cette activité.
-    const retirerBtn = el("a",{href:"#",title:"Retirer cette activité pour la resynchroniser ensuite",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🔄");
-    retirerBtn.addEventListener("click", avecRetourTactile(async (e)=>{
-      e.preventDefault(); e.stopPropagation();
-      if (!confirm("Retirer cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" pour la resynchroniser ensuite ?")) return;
-      retirerBtn.textContent = "⏳";
-      await retirerActiviteLocalement();
-      render();
-      afficherMessage("toast", "Activité retirée, prête pour un nouvel import", "succes");
-    }));
-    liensDroite.appendChild(retirerBtn);
-
     // "Supprimer définitivement" (22/08/2026, nouveau) — ajoute la date à
     // la liste d'exclusion : aucun réimport automatique tant que le
     // badge 🚫 n'est pas cliqué explicitement pour réactiver.
