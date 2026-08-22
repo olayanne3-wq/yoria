@@ -135,115 +135,133 @@
         <div id="account-result"></div>
       </section>
 
-      <section class="view" data-panel="maintenance">
-        <div class="card">
-          <h2>🔧 Outils de réparation ponctuelle</h2>
-          <p><small>Ces outils agissent sur le compte ciblé par e-mail ci-dessous — pas sur ton propre compte administrateur. Retirés de l'app principale le 20/08/2026 : ce ne sont pas des réglages d'usage courant, réservés depuis à cet écran.</small></p>
-          <div class="filters">
-            <input id="maintenance-email" type="search" placeholder="Adresse e-mail du testeur">
+      <section class="view" data-panel="maintenance" data-accordeon>
+        <article class="card ouverte">
+          <div class="card-entete">🔧 Outils de réparation ponctuelle <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Ces outils agissent sur le compte ciblé par e-mail ci-dessous — pas sur ton propre compte administrateur. Retirés de l'app principale le 20/08/2026 : ce ne sont pas des réglages d'usage courant, réservés depuis à cet écran.</small></p>
+            <div class="filters">
+              <input id="maintenance-email" type="search" placeholder="Adresse e-mail du testeur">
+            </div>
           </div>
-        </div>
+        </article>
 
-        <div class="card">
-          <h2>Recalculer le badge km cumulés</h2>
-          <p><small>Reconstruit le total à partir des séances réellement validées, tous plans confondus pour ce compte.</small></p>
-          <button id="maintenance-recalc-km-btn" class="secondary">Recalculer</button>
-          <div id="maintenance-recalc-km-status" class="notice" hidden></div>
-        </div>
+        <article class="card">
+          <div class="card-entete">Recalculer le badge km cumulés <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Reconstruit le total à partir des séances réellement validées, tous plans confondus pour ce compte.</small></p>
+            <button id="maintenance-recalc-km-btn" class="secondary">Recalculer</button>
+            <div id="maintenance-recalc-km-status" class="notice" hidden></div>
+          </div>
+        </article>
 
-        <div class="card">
-          <h2>Plan ciblé (pour les 2 outils ci-dessous)</h2>
-          <p><small>Si ce compte a plusieurs plans, choisis lequel cibler — sinon le plan le plus récemment créé est utilisé par défaut, qui n'est pas toujours celui réellement suivi.</small></p>
-          <button id="maintenance-lister-plans-btn" class="secondary">Lister les plans de ce compte</button>
-          <div id="maintenance-lister-plans-status" class="notice" hidden></div>
-          <select id="maintenance-plan-cible" style="margin-top:10px;display:none;">
-            <option value="">Plan le plus récent (par défaut)</option>
-          </select>
-        </div>
-
-        <div class="card">
-          <h2>Vérifier la cohérence des phases</h2>
-          <p><small>Détecte et corrige une éventuelle divergence entre l'étiquette de phase stockée sur chaque semaine et la vraie structure du plan ciblé.</small></p>
-          <button id="maintenance-reparer-phases-btn" class="secondary">Vérifier et réparer</button>
-          <div id="maintenance-reparer-phases-status" class="notice" hidden></div>
-        </div>
-
-        <div class="card">
-          <h2>Corriger une séance qualité</h2>
-          <p><small>Force le sous-type ET son contenu exact (répétitions, durée, récupération) d'une séance qualité précise, sur le plan ciblé. Le jour est indexé 0 (lundi) à 6 (dimanche) — position telle qu'AFFICHÉE dans l'app (résolue automatiquement si la séance a été déplacée via la fonction d'échange). Saisie manuelle plutôt que calculée par le moteur : le nombre de reps généré automatiquement ne reflète pas fiablement la progression réelle du coureur pour une séance forcée hors rotation.</small></p>
-          <div class="filters">
-            <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
-            <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
-            <select id="maintenance-seance-soustype">
-              <option value="">Sous-type…</option>
-              <option value="cotes">Côtes</option>
-              <option value="i-30-30">30/30 (VMA)</option>
-              <option value="i-3min">3min (VMA)</option>
-              <option value="vitesse">Vitesse (300m)</option>
-              <option value="pyramidale">Pyramidale</option>
-              <option value="seuil-court">Seuil court</option>
-              <option value="seuil">Seuil</option>
-              <option value="seuil-negatif">Seuil négatif</option>
-              <option value="seuil-2min">Seuil 2min</option>
-              <option value="tempo-court">Tempo court</option>
-              <option value="allure-course">Allure course</option>
-              <option value="allure-course-court">Allure course (court)</option>
+        <article class="card">
+          <div class="card-entete">Plan ciblé (pour les 2 outils ci-dessous) <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Si ce compte a plusieurs plans, choisis lequel cibler — sinon le plan le plus récemment créé est utilisé par défaut, qui n'est pas toujours celui réellement suivi.</small></p>
+            <button id="maintenance-lister-plans-btn" class="secondary">Lister les plans de ce compte</button>
+            <div id="maintenance-lister-plans-status" class="notice" hidden></div>
+            <select id="maintenance-plan-cible" style="margin-top:10px;display:none;">
+              <option value="">Plan le plus récent (par défaut)</option>
             </select>
           </div>
-          <div class="filters" style="margin-top:8px;">
-            <input id="maintenance-seance-reps" type="number" min="1" placeholder="Répétitions (ex. 5)">
-            <input id="maintenance-seance-duree-effort" type="number" min="1" placeholder="Durée effort (sec, ex. 480 pour 8min)">
-            <input id="maintenance-seance-duree-recup" type="number" min="0" placeholder="Récup (sec, ex. 120 pour 2min)">
-            <button id="maintenance-seance-btn" class="secondary">Appliquer</button>
+        </article>
+
+        <article class="card">
+          <div class="card-entete">Vérifier la cohérence des phases <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Détecte et corrige une éventuelle divergence entre l'étiquette de phase stockée sur chaque semaine et la vraie structure du plan ciblé.</small></p>
+            <button id="maintenance-reparer-phases-btn" class="secondary">Vérifier et réparer</button>
+            <div id="maintenance-reparer-phases-status" class="notice" hidden></div>
           </div>
-          <p><small>La durée s'exprime toujours en secondes (480 = 8min, 30 = 30s) — l'échauffement et le retour au calme restent calculés automatiquement selon la phase du plan.</small></p>
-          <div id="maintenance-seance-status" class="notice" hidden></div>
-        </div>
+        </article>
+
+        <article class="card">
+          <div class="card-entete">Corriger une séance qualité <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Force le sous-type ET son contenu exact (répétitions, durée, récupération) d'une séance qualité précise, sur le plan ciblé. Le jour est indexé 0 (lundi) à 6 (dimanche) — position telle qu'AFFICHÉE dans l'app (résolue automatiquement si la séance a été déplacée via la fonction d'échange). Saisie manuelle plutôt que calculée par le moteur : le nombre de reps généré automatiquement ne reflète pas fiablement la progression réelle du coureur pour une séance forcée hors rotation.</small></p>
+            <div class="filters">
+              <input id="maintenance-seance-semaine" type="number" min="1" placeholder="N° de semaine">
+              <input id="maintenance-seance-jour" type="number" min="0" max="6" placeholder="Jour (0-6)">
+              <select id="maintenance-seance-soustype">
+                <option value="">Sous-type…</option>
+                <option value="cotes">Côtes</option>
+                <option value="i-30-30">30/30 (VMA)</option>
+                <option value="i-3min">3min (VMA)</option>
+                <option value="vitesse">Vitesse (300m)</option>
+                <option value="pyramidale">Pyramidale</option>
+                <option value="seuil-court">Seuil court</option>
+                <option value="seuil">Seuil</option>
+                <option value="seuil-negatif">Seuil négatif</option>
+                <option value="seuil-2min">Seuil 2min</option>
+                <option value="tempo-court">Tempo court</option>
+                <option value="allure-course">Allure course</option>
+                <option value="allure-course-court">Allure course (court)</option>
+              </select>
+            </div>
+            <div class="filters" style="margin-top:8px;">
+              <input id="maintenance-seance-reps" type="number" min="1" placeholder="Répétitions (ex. 5)">
+              <input id="maintenance-seance-duree-effort" type="number" min="1" placeholder="Durée effort (sec, ex. 480 pour 8min)">
+              <input id="maintenance-seance-duree-recup" type="number" min="0" placeholder="Récup (sec, ex. 120 pour 2min)">
+              <button id="maintenance-seance-btn" class="secondary">Appliquer</button>
+            </div>
+            <p><small>La durée s'exprime toujours en secondes (480 = 8min, 30 = 30s) — l'échauffement et le retour au calme restent calculés automatiquement selon la phase du plan.</small></p>
+            <div id="maintenance-seance-status" class="notice" hidden></div>
+          </div>
+        </article>
       </section>
 
-      <section class="view" data-panel="backup">
-        <div class="card">
-          <h2>Export global</h2>
-          <p><small>Découvre automatiquement toutes les tables de la base (via introspection PostgREST) et exporte l'intégralité de leur contenu en un fichier JSON téléchargeable. Filet de sécurité en cas de désastre complet — le plan Supabase actuel (Free) ne fait aucune sauvegarde automatique.</small></p>
-          <button id="backup-global-btn" class="secondary">📦 Télécharger l'export global</button>
-          <div id="backup-global-status" class="notice" hidden></div>
-        </div>
-
-        <div class="card">
-          <h2>Export ciblé par utilisateur</h2>
-          <p><small>Exporte uniquement les données d'un testeur précis (retrouvé par e-mail), y compris ses décisions du moteur. Le scénario le plus probable en pratique : un testeur signale un souci sur son plan.</small></p>
-          <div class="filters">
-            <input id="backup-user-email" type="search" placeholder="Adresse e-mail du testeur">
-            <button id="backup-user-btn" class="secondary">Exporter cet utilisateur</button>
+      <section class="view" data-panel="backup" data-accordeon>
+        <article class="card ouverte">
+          <div class="card-entete">Export global <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Découvre automatiquement toutes les tables de la base (via introspection PostgREST) et exporte l'intégralité de leur contenu en un fichier JSON téléchargeable. Filet de sécurité en cas de désastre complet — le plan Supabase actuel (Free) ne fait aucune sauvegarde automatique.</small></p>
+            <button id="backup-global-btn" class="secondary">📦 Télécharger l'export global</button>
+            <div id="backup-global-status" class="notice" hidden></div>
           </div>
-          <div id="backup-user-status" class="notice" hidden></div>
-        </div>
+        </article>
 
-        <div class="card">
-          <h2>Réinjection</h2>
-          <p><small>Réimporte un fichier JSON exporté précédemment (global ou ciblé). Écrase les lignes existantes ayant le même identifiant (upsert). Si l'export cible un utilisateur dont le compte a depuis été supprimé, le compte est recréé automatiquement avec le même identifiant avant réinjection des données.</small></p>
-          <input id="backup-file-input" type="file" accept="application/json">
-          <label style="display:block;margin-top:10px;">
-            Limiter à un seul utilisateur <small>(optionnel — uniquement pour un export global ; laisser vide pour tout réinjecter)</small>
-            <input id="backup-reinject-email" type="search" placeholder="Adresse e-mail à isoler dans cet export">
-          </label>
-          <label id="backup-reinject-userid-wrap" style="display:none;margin-top:10px;">
-            Identifiant utilisateur <small>(le compte a été supprimé et n'a pas d'abonnement enregistré — colle son "user_id", visible dans une ligne de l'export JSON pour cet utilisateur)</small>
-            <input id="backup-reinject-userid" type="text" placeholder="uuid, ex. 3f2e1a9c-...">
-          </label>
-          <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
-          <div id="backup-reinject-status" class="notice" hidden></div>
-          <div id="backup-reinject-report"></div>
-        </div>
+        <article class="card">
+          <div class="card-entete">Export ciblé par utilisateur <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Exporte uniquement les données d'un testeur précis (retrouvé par e-mail), y compris ses décisions du moteur. Le scénario le plus probable en pratique : un testeur signale un souci sur son plan.</small></p>
+            <div class="filters">
+              <input id="backup-user-email" type="search" placeholder="Adresse e-mail du testeur">
+              <button id="backup-user-btn" class="secondary">Exporter cet utilisateur</button>
+            </div>
+            <div id="backup-user-status" class="notice" hidden></div>
+          </div>
+        </article>
 
-        <div class="card">
-          <h2>Sauvegardes automatiques</h2>
-          <p><small>3 crons Vercel déclenchent un export global identique à celui ci-dessus, stocké sur Vercel Blob (pas de téléchargement local) — horaires : 04h00, 12h00, 20h00 UTC (plan Hobby : chaque cron limité à 1x/jour, l'heure exacte de déclenchement peut glisser dans l'heure programmée). Rétention glissante de 7 jours : les fichiers plus anciens sont supprimés automatiquement à chaque exécution.</small></p>
-          <button id="backup-auto-list-btn" class="secondary">🔄 Actualiser la liste</button>
-          <button id="backup-auto-run-btn" class="secondary">▶️ Déclencher maintenant (test)</button>
-          <div id="backup-auto-status" class="notice" hidden></div>
-          <div id="backup-auto-list"></div>
-        </div>
+        <article class="card">
+          <div class="card-entete">Réinjection <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>Réimporte un fichier JSON exporté précédemment (global ou ciblé). Écrase les lignes existantes ayant le même identifiant (upsert). Si l'export cible un utilisateur dont le compte a depuis été supprimé, le compte est recréé automatiquement avec le même identifiant avant réinjection des données.</small></p>
+            <input id="backup-file-input" type="file" accept="application/json">
+            <label style="display:block;margin-top:10px;">
+              Limiter à un seul utilisateur <small>(optionnel — uniquement pour un export global ; laisser vide pour tout réinjecter)</small>
+              <input id="backup-reinject-email" type="search" placeholder="Adresse e-mail à isoler dans cet export">
+            </label>
+            <label id="backup-reinject-userid-wrap" style="display:none;margin-top:10px;">
+              Identifiant utilisateur <small>(le compte a été supprimé et n'a pas d'abonnement enregistré — colle son "user_id", visible dans une ligne de l'export JSON pour cet utilisateur)</small>
+              <input id="backup-reinject-userid" type="text" placeholder="uuid, ex. 3f2e1a9c-...">
+            </label>
+            <button id="backup-reinject-btn" class="secondary" disabled>♻️ Réinjecter</button>
+            <div id="backup-reinject-status" class="notice" hidden></div>
+            <div id="backup-reinject-report"></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-entete">Sauvegardes automatiques <span class="chevron">▸</span></div>
+          <div class="card-corps">
+            <p><small>3 crons Vercel déclenchent un export global identique à celui ci-dessus, stocké sur Vercel Blob (pas de téléchargement local) — horaires : 04h00, 12h00, 20h00 UTC (plan Hobby : chaque cron limité à 1x/jour, l'heure exacte de déclenchement peut glisser dans l'heure programmée). Rétention glissante de 7 jours : les fichiers plus anciens sont supprimés automatiquement à chaque exécution.</small></p>
+            <button id="backup-auto-list-btn" class="secondary">🔄 Actualiser la liste</button>
+            <button id="backup-auto-run-btn" class="secondary">▶️ Déclencher maintenant (test)</button>
+            <div id="backup-auto-status" class="notice" hidden></div>
+            <div id="backup-auto-list"></div>
+          </div>
+        </article>
       </section>
 
       <section class="view" data-panel="cascades">
