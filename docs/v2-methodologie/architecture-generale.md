@@ -26,7 +26,7 @@ yoria/
 │   ├── stripe-checkout.js        # Création session Stripe Checkout
 │   ├── stripe-webhook.js         # Réception événements Stripe (statut abonnement)
 │   ├── delete-account.js         # Suppression définitive d'un compte (cascade)
-│   ├── backup.js                 # Export global / ciblé utilisateur / réinjection / diagnostic cascades (cf. §5)
+│   ├── backup.js                 # Export global / ciblé utilisateur / réinjection / diagnostic cascades / sauvegardes automatiques (cf. §5)
 │   ├── beta.js                   # Candidature bêta (public, cf. §16bis)
 │   ├── beta-admin.js             # Administration bêta (invitations, abonnements gratuits, signalements, comptes, cf. site-beta-admin.md)
 │   └── beta-admin-maintenance.js # Outils de réparation ponctuelle sur un compte ciblé (cf. site-beta-admin.md)
@@ -66,7 +66,11 @@ yoria/
 │   │                              # Onglets : Candidatures, Invités, Signalements,
 │   │                              # Comptes, Maintenance, Sauvegarde, Cascades, Statistiques
 │   │                              # (statuts simplifiés à pending/invited/rejected —
-│   │                              # "Sélectionnés"/"Actifs" retirés)
+│   │                              # "Sélectionnés"/"Actifs" retirés). Ergonomie mobile
+│   │                              # dédiée (nav compacte en grille, accordéon sur
+│   │                              # Maintenance/Sauvegarde, cartes remplaçant les
+│   │                              # tableaux Candidatures/Signalements sous 800px)
+│   │                              # — cf. `site-beta-admin.md`.
 │   ├── .well-known/assetlinks.json  # Digital Asset Links (TWA Android)
 │   ├── engine-classic-scripts/    # Copies non-module (.classic.js) du moteur v2
 │   │   ├── changelog.classic.js    # Historique versions (source de vérité directe,
@@ -96,7 +100,13 @@ yoria/
                                     # doit y être déclarée, sinon 404 silencieux) +
                                     # headers de sécurité globaux (HSTS,
                                     # X-Content-Type-Options, CSP) sur la route
-                                    # catch-all, cf. inventaire chantier Sécurité
+                                    # catch-all, cf. inventaire chantier Sécurité +
+                                    # 3 crons vers /api/backup (04h/12h/20h UTC,
+                                    # authentifiés par CRON_SECRET — variable
+                                    # d'environnement à créer MANUELLEMENT dans
+                                    # Vercel, jamais auto-provisionnée malgré ce que
+                                    # peut laisser penser la documentation générale
+                                    # sur les crons Vercel, cf. site-beta-admin.md)
 ```
 
 ## Les deux interfaces
@@ -312,11 +322,70 @@ visible, `offsetParent !== null`, polling 16ms) plutôt que par délai
 arbitraire — un `setTimeout`/`requestAnimationFrame` seul est insuffisant
 au tout premier rendu d'un écran. Même composant côté Réglages (records
 personnels, cf. ci-dessus) et onboarding (cf. `auth-et-publication.md`).
+**Piège découvert le 22/08/2026 (roulettes des records personnels,
+Réglages)** : un `render()` global (ex. changement de thème) reconstruit
+le contenu de la section, mais le registre `roulettesActivesReglages`
+(qui associe un `idPrefix` à son objet API de roulette) survit au
+`render()` — l'ancien objet référence alors des nœuds DOM DÉTRUITS par ce
+`render()`, tout en restant non-null. `definirValeur()` appelé sur ces
+nœuds fantômes ne lève aucune erreur mais n'a aucun effet visible (0
+enfants dans le conteneur malgré une entrée non-null dans le registre).
+Corrigé en testant directement le SYMPTÔME réel (`conteneur.children.length
+> 0`) plutôt que l'existence de l'entrée dans le registre — un id
+identique existe toujours après un `render()` (recréé à l'identique), donc
+`document.getElementById()`/`document.body.contains()` seuls ne
+suffisent pas à distinguer un conteneur réellement peuplé d'un nouveau
+conteneur vide associé par erreur à l'ancien objet API. Second piège sur
+le même correctif : un appel de réparation exécuté de façon SYNCHRONE, à
+l'intérieur de la fonction qui construit le contenu (`renderSettings()`),
+s'exécute AVANT que l'appelant (`render()`) n'insère réellement ce
+contenu dans le document — `document.getElementById()` ne peut alors rien
+trouver, quel que soit le contenu construit. Corrigé via
+`setTimeout(fn, 0)`, qui repousse l'appel à la fin du cycle d'exécution
+JS en cours, une fois l'insertion réelle faite.
 
 **Non fait** : audit no-scroll systématique du wizard — nécessite un rendu
 réel en navigateur, approche retenue = tests réels au cas par cas plutôt
 qu'estimation. Padding bas résiduel de l'ancien footer (retiré en v17.6)
 nettoyé dans `.content` (130px → 32px).
+
+## Système de feedback unifié (22/08/2026)
+
+Deux fonctions communes remplacent la dispersion antérieure de patterns de
+message ad hoc (chacun avec sa propre logique de couleur/timing) :
+
+- **`afficherMessage(cible, texte, type, dureeMs)`** — message léger, non
+  bloquant. `type: "succes"|"erreur"|"info"` pilote couleur/icône. Deux
+  modes selon `cible` :
+  - `cible = "toast"` : construit/affiche dans `#toast-root` (conteneur DOM
+    séparé de `#app`, même pattern que `#nav-root`/`#accordeon-plan-root`
+    — jamais détruit par le cycle de `render()`), `position:fixed`
+    au-dessus de la nav du bas, auto-effacé après `dureeMs` (3000ms par
+    défaut). Réservé aux actions SANS zone de message dédiée à l'écran, ou
+    dont l'élément disparaît après l'action (suppression).
+  - `cible = <élément DOM>` : pose le texte/couleur directement sur cet
+    élément déjà monté à l'écran (remplace `statutMsg` du formulaire de
+    signalement). `dureeMs = 0` désactive l'auto-effacement — réservé aux
+    messages qui doivent rester lisibles tant que l'utilisateur n'a pas
+    corrigé quelque chose (ex. "Décris le problème avant d'envoyer").
+- **`afficherAlerte(message, type)`** — remplace progressivement `alert()`
+  natif (16 appels migrés le 22/08/2026, cf. changelog) : modale bloquante
+  custom, overlay `rgba(0,0,0,0.55)` (assombri, pas noir plein — cohérent
+  visuellement avec `ouvrirModaleTexte()` mais plus léger que son
+  `0.92`), un seul bouton "Compris". `type: "info"|"erreur"` pilote
+  couleur/icône. Garde le vrai avantage d'`alert()` (l'utilisateur DOIT
+  interagir pour continuer, donc le message est garanti vu) sans le popup
+  système du navigateur — choix délibéré de ne PAS migrer ces messages
+  vers un toast, qui peut être manqué (auto-effacement) sur un message
+  d'erreur/validation qu'il faut vraiment que l'utilisateur voie.
+
+`syncMsg` (résultat de synchro Strava/FIT) reste volontairement HORS de ce
+système pour son état "en cours" (`syncing`, affiché directement sur le
+bouton, ex. "⏳ Connexion à Strava...") — seul son résultat FINAL
+(succès/erreur) est désormais posé en toast, SAUF le cas "connexion Strava
+expirée" qui reste inline (le bouton "Reconnecter Strava" juste en
+dessous n'a pas de timer propre ; un toast qui s'efface seul laisserait ce
+bouton sans contexte).
 
 ## Écrans de l'app principale (`index.html`)
 
@@ -334,8 +403,12 @@ Fonctions de rendu (`render*`) :
   sur cet écran.
 - `renderWeeks` / `renderWeekDetail` — vue calendrier et détail semaine.
   `renderWeeks` porte l'accordéon "Modifier mon plan" (cf. section dédiée
-  ci-dessus). `renderWeekDetail` est le SEUL écran où le glissement de
-  séance (poignée dédiée) est disponible, cf. section swap ci-dessous.
+  ci-dessus) et, sous l'onglet Semaines, la frise de navigation rapide
+  entre semaines (cf. section dédiée ci-dessous). `renderWeekDetail` est
+  le SEUL écran où le glissement de séance (poignée dédiée) est
+  disponible, cf. section swap ci-dessous. Les jours de repos sont
+  cliquables dans la grille jours-de-semaine au même titre que les autres
+  jours (22/08/2026 — auparavant exclus du listener de clic).
 - `renderStatusRow`, `showSessionMenu`, `showMoveMenu`, `showRestoreMenu` — gestion des séances (cf. section swap ci-dessous pour le modèle de données)
 - `renderStats` — statistiques (ACWR, monotonie de charge, section "Mes courses", etc.)
 - `renderCourse` — page jour de course (horaires, parcours, résultat enrichi, stratégie). Porte
@@ -398,11 +471,72 @@ laissé redondant avec la montre selon Laurent ("c'est tout de même
 important"). Dès qu'un statut ✅/⚠️/❌ est posé, le bloc "Réalisé"
 (`renderBlocRealise`) prend le relais : résumé chiffré + ligne "X
 répétitions · Y/Z dans la cible · ▼ détail" qui déplie les laps
-individuels au clic. Stylo ✏️ coloré (fond `var(--accent)` plein, texte
+individuels au clic — voir aussi la section "Suppression d'une activité
+Strava/FIT importée" ci-dessous, qui détaille les cas où ce bloc reste
+volontairement masqué. Stylo ✏️ coloré (fond `var(--accent)` plein, texte
 blanc) quand une saisie manuelle existe (`manualPerf[uid]`), gris neutre
 sinon. Cas sans Strava ET sans saisie manuelle existante : le clic sur
 ✅/⚠️/❌ ouvre automatiquement le formulaire de saisie manuelle une seule
 fois (`uidAOuvrirPopoverSaisie`, variable transitoire de scope module).
+
+**Suppression d'une activité Strava/FIT importée — deux intentions
+distinctes (22/08/2026)** — `renderBlocRealise` propose désormais deux
+actions séparées sur toute séance avec activité importée, plutôt qu'un
+unique bouton "Supprimer" :
+- **"🗑️ Supprimer définitivement"** — retire l'activité localement ET
+  ajoute la date à `datesExcluesSync` (nouvelle donnée persistée,
+  préfixée par plan, clé indexée par DATE et non par uid — le blocage doit
+  tenir même si le plan est régénéré/modifié entre-temps). `syncStrava()`
+  et `importerFichierFit()` ignorent désormais toute activité dont la
+  date figure dans cette liste (silencieusement pour la synchro
+  automatique ; avec confirmation explicite pour l'import `.fit` manuel,
+  geste volontaire de l'utilisateur). Un badge `🚫 Bloqué` (vrai
+  `<button>`, pas un `<span>` — accessibilité clavier/lecteur d'écran)
+  remplace alors le badge de source habituel (🟠 Strava/📁 FIT), cliquable
+  pour retirer l'exclusion et relancer une synchro. Ce badge doit
+  s'afficher que la carte ait ou non encore une activité visible à côté —
+  la logique de garde-fou (`estExclue`) doit couvrir TOUS les blocs qui
+  dépendent de `stravaRun` dans cette fonction (résumé chiffré,
+  répétitions, avertissement décomposition approximative), pas
+  seulement le badge lui-même : un bug initial ne couvrait que le badge,
+  laissant les données affichées malgré l'exclusion.
+- L'ancien bouton unique "🔄 Retirer pour resynchroniser" (comportement
+  historique du 03/08/2026, sans exclusion — la date reste libre pour un
+  réimport) a été RETIRÉ le 22/08/2026 : jamais utilisé en pratique,
+  encombrait la carte en permanence pour un besoin quasi inexistant. Sa
+  fonction interne (`retirerActiviteLocalement`) reste utilisée par
+  "Supprimer définitivement".
+- **Correctif race condition (fire-and-forget vs rechargement de page)** —
+  `save()` retourne désormais la promesse de `synchroniserVersSupabase()`
+  (elle-même corrigée pour réellement `return` cette promesse sur ses 3
+  branches — auparavant fire-and-forget pur, sans aucune valeur de retour
+  exploitable malgré un commentaire qui le suggérait). La suppression
+  d'activité (`retirerActiviteLocalement`) est devenue `async`, attend
+  cette confirmation d'écriture avant de continuer — sans quoi un
+  rechargement de page trop rapide après le clic pouvait déclencher
+  `precharger()` AVANT que Supabase n'ait reçu la suppression, qui
+  écrasait alors `localStorage` avec l'ANCIENNE valeur encore côté cloud.
+  Reste fire-and-forget sur le FOND (un échec réseau n'empêche jamais la
+  suppression locale de s'appliquer, la file d'attente de rejeu existante
+  prend le relais) — seule la TENTATIVE d'écriture est désormais attendue,
+  pas sa réussite.
+- **Bug de fond révélé par ce chantier — date incorrecte après un swap** :
+  `renderWeekDetail` transmettait `effSess` (contenu résolu du slot après
+  échange éventuel, cf. section swap ci-dessous) à `renderBlocRealise`
+  sous le nom de paramètre `s` — mais `effSess.date` porte la date
+  D'ORIGINE du contenu échangé, pas la date réelle du slot affiché (déjà
+  utilisée correctement pour retrouver `stravaRun` via
+  `getStravaRunSiPasManuel(s.date, ...)`, avec le VRAI `s`). Le filtre de
+  suppression comparait alors la date réelle de l'activité à cette
+  mauvaise date, ne trouvant jamais de correspondance — la suppression
+  semblait s'appliquer (toast de confirmation affiché) mais l'activité
+  n'était en réalité jamais retirée. Corrigé en composant
+  `{...effSess, date: s.date}` à l'appel — garde le CONTENU résolu par le
+  swap, mais force la vraie date du slot. Symptomatique du principe déjà
+  documenté sur `getEffectiveSession()`/`swapTable` (cf. section swap plus
+  bas) : tout appelant qui transmet le résultat de cette résolution à une
+  fonction tierce doit vérifier explicitement quel champ `.date` cette
+  fonction tierce va effectivement utiliser.
 
 **Aide — tutos par action en tuiles** — section "🛠️ Tutos par action" dans
 `HELP_SECTIONS`, en coexistence avec 7 sections thématiques classiques
@@ -437,8 +571,11 @@ au renderer `rendreBlocsItem()`.
 `#app` (via `replaceChildren`), pour éviter le flash de la barre à chaque
 render. `setView()` scrolle en haut AVANT `render()`. **Même pattern
 réutilisé pour l'en-tête fixe de l'accordéon "Modifier mon plan"**
-(`#accordeon-plan-root`, cf. section dédiée ci-dessus). Onglet Course
-toujours présent (y compris Mode Forme, cf. `renderCourse` ci-dessus).
+(`#accordeon-plan-root`, cf. section dédiée ci-dessus), **le conteneur de
+toast** (`#toast-root`, cf. section "Système de feedback unifié"
+ci-dessus), et **la frise de navigation entre semaines** (`#frise-semaines-root`,
+cf. section dédiée ci-dessous). Onglet Course toujours présent (y compris
+Mode Forme, cf. `renderCourse` ci-dessus).
 
 **`render()`** — remplacement atomique du contenu : le nouveau
 header/contenu est entièrement construit d'abord, puis substitué à
@@ -446,7 +583,8 @@ l'ancien en une seule opération (`app.replaceChildren(...)`) à la toute
 fin de la fonction — aucune frame intermédiaire avec `#app` vide n'est
 peinte. Recalcule aussi en tête de fonction toutes les dérivées du plan
 (cf. section dédiée plus haut) et monte/vide l'en-tête fixe de l'accordéon
-"Modifier mon plan" selon l'onglet actif.
+"Modifier mon plan" ainsi que la frise de navigation semaines (cf.
+sections dédiées) selon l'onglet actif.
 
 **`renderDiffere()`** — regroupe les mises à jour asynchrones automatiques
 (badges débloqués, message du coach, météo actuelle, notes météo J+1,
@@ -518,7 +656,45 @@ la lisibilité (`el("span", {fontSize:"20px"}, statutEffectif)`).
 global `STYPES`, couvrent tous les types de séance dont `TEST`.
 `renderGrilleJoursSemaine()` passe par `getEffectiveSession()` (cf.
 section swap ci-dessous) pour refléter le contenu réel après un
-échange.
+échange. Chaque cellule jour est désormais toujours un `<button>` (y
+compris REPOS, 22/08/2026 — auparavant un `<div>` sans listener de clic
+pour ce cas), avec le même comportement de clic (scroll + surlignage vers
+la carte de détail correspondante) que les autres jours.
+
+**Frise de navigation rapide entre semaines (22/08/2026)** —
+`renderFriseSemaines()`, montée en `position:fixed` dans son propre
+conteneur DOM (`#frise-semaines-root`, cf. pattern général ci-dessus),
+sous le header sticky principal, au-dessus de l'accordéon "Modifier mon
+plan" (décalée de sa hauteur via une variable CSS combinée). Une pastille
+par semaine du plan (label "S1", "S2"...), colorée selon la phase de
+cette semaine (`phaseOf(week.week).color`), la semaine active (
+`currentWeek()`) mise en évidence par un contour (`border`, 2px, couleur
+`var(--text)` — PAS `var(--accent)`, qui coïncide exactement avec la
+couleur de fond de la phase "Spécifique" et y serait invisible ; PAS non
+plus une couleur claire fixe type `#F8FAFC`, qui coïncide avec `--bg` en
+thème clair). Le contour utilise `border`, pas `box-shadow` — un
+conteneur parent `overflow-x:auto` (défilement horizontal de la frise)
+peut couper un `box-shadow` qui déborde verticalement de la pastille,
+selon le comportement du navigateur sur la combinaison des deux axes
+overflow. Remplace le libellé texte "Semaine actuelle : SX" retiré du
+haut de `renderWeeks()`, devenu redondant.
+- **Clic sur une pastille** : scroll vers la carte de la semaine
+  correspondante (`carte-semaine-{n}`), via `scrollIntoView({block:"start"})`
+  combiné à `scroll-margin-top` posé sur la carte elle-même (`calc()`
+  combinant header sticky + hauteur de la frise + hauteur de l'accordéon,
+  toutes mesurées dynamiquement) — approche retenue après plusieurs
+  échecs d'un calcul manuel de position de scroll (`window.scrollTo` avec
+  décalage calculé à la volée), qui donnait des résultats incohérents
+  selon le moment exact de la mesure des éléments fixes. `scroll-margin-top`
+  est une propriété CSS faite pour ce cas précis : `scrollIntoView()` en
+  tient compte automatiquement, sans calcul JS fragile.
+- **`padding-bottom` de la liste des semaines** porté à `100vh` — sans
+  cet espace de respiration en bas, le document atteint sa hauteur de
+  scroll maximale AVANT que la dernière semaine du plan ne puisse remonter
+  jusqu'en haut de l'écran au clic sur sa pastille (le navigateur ne peut
+  jamais scroller au-delà de la hauteur totale du document) ; un calcul
+  additif des hauteurs d'éléments fixes seul (au lieu de `100vh`) s'est
+  révélé insuffisant en pratique.
 
 **Bandeau "Strava déconnecté" sur le dashboard** — affiché seulement si
 `dataSource === "strava"` ET (`stravaAuthInvalide` : token présent mais
@@ -604,7 +780,9 @@ sauvegarde pas non plus tout seul — il faut valider avec ✓. Même
 composant déployé sur les roulettes du wizard (cf. ci-dessus) et de l'onboarding
 (cf. `auth-et-publication.md`). Le badge "record_battu" ne se déclenche PAS depuis cette saisie
 manuelle — une simple correction de record dans Réglages n'est pas
-considérée comme un événement "célébrable".
+considérée comme un événement "célébrable". Piège de fond découvert et
+corrigé le 22/08/2026 sur ce composant précis : cf. section "Roulettes de
+saisie de temps/volume" plus haut.
 
 **Composants nichés dans un groupe accordéon fermé au chargement** — tout
 composant scrollable (roulette, carrousel) construit alors que son
@@ -612,7 +790,13 @@ conteneur parent est dans un groupe accordéon fermé doit prévoir un
 callback `onOuverture` qui le construit à la demande s'il n'existe pas
 encore, en plus de la tentative au chargement — sinon le conteneur n'est
 jamais visible pendant la fenêtre d'attente, et l'élément n'est jamais
-construit du tout.
+construit du tout. **Extension du 22/08/2026** : ce même callback
+`onOuverture` (ou son équivalent) doit AUSSI être invoqué si le contenu
+est reconstruit alors que le groupe est DÉJÀ ouvert au moment d'un
+`render()` global (ex. changement de thème) — sans quoi le contenu
+peut se retrouver visuellement vide malgré des données intactes en
+mémoire (cf. section "Roulettes de saisie de temps/volume" plus haut pour
+le cas concret et son vrai correctif).
 
 **Garde-fou de fonctions critiques** (`CRITICAL_FNS_REFS`) — vérification
 affichant un warning si une fonction attendue est absente au chargement.
@@ -663,7 +847,13 @@ plan) lui-même s'il a besoin de savoir ce que l'utilisateur voit
 réellement affiché à une position donnée — sans quoi une position
 communiquée par l'utilisateur ("la séance de vendredi S7") peut ne
 correspondre à aucune entrée réelle dans `assignment` si cette séance a
-été déplacée depuis sa position physique d'origine.
+été déplacée depuis sa position physique d'origine. **Ce même principe
+s'applique aussi à l'INTÉRIEUR d'`index.html`** entre deux fonctions qui
+se transmettent un objet séance déjà résolu : cf. section "Suppression
+d'une activité Strava/FIT importée" plus haut pour un cas concret où
+`renderWeekDetail` a transmis à `renderBlocRealise` un objet dont le champ
+`.date` ne correspondait pas à la date réellement utilisée pour retrouver
+l'activité associée.
 
 - **`sourceSwap(uid)`** — lecture directe : `swapTable[uid] || uid`.
   Protégée par un `try/catch` (piège TDZ, cf. section "Règle TDZ"
