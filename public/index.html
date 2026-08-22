@@ -1632,6 +1632,13 @@ let manualPerf = load(clePourPlan("lk_manual_perf"), {});
 // retiré le 16 juillet 2026, résidu mort, cf. plus bas).
 let derniereUrlSyncApp = null;
 let hiddenSessions = load(clePourPlan("lk_hidden_sessions"), {}); // {uid: true}
+// Dates exclues de la synchro Strava/FIT (22/08/2026) — activées via
+// "Supprimer définitivement" sur une activité importée. syncStrava() et
+// importerFichierFit() ignorent toute activité dont la date est présente
+// ici, jusqu'à réactivation explicite (clic sur le badge 🚫, cf.
+// renderBlocRealise). Indexé par date (pas uid) : le blocage doit tenir
+// même si le plan est régénéré/modifié entre-temps.
+let datesExcluesSync = load(clePourPlan("lk_dates_exclues_sync"), {}); // {date: true}
 
 // ── MODÈLE DE SWAP ──────────────────────────────────────────────────────
 // swapTable = { uid: uidSource } — RETOUR D'EXPÉRIENCE (17/08/2026, après
@@ -8607,19 +8614,39 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   // limite l'ampleur du changement, sans revenu fonctionnel perdu.
   const correctionSlot = el("div",{style:{display:"none",marginTop:"8px"}});
   const liensDroite = el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}});
-  // Badge de source + bouton de suppression — ajoutés le 03/08/2026, suite
-  // à la demande de Laurent de pouvoir voir la provenance d'une activité
-  // déjà importée (Strava/FIT) et la retirer explicitement. Nécessaire
-  // depuis que syncStrava() protège la première activité importée sur une
-  // date (cf. son commentaire, même date) : sans un moyen de suppression,
-  // il n'y aurait plus AUCUN moyen de remplacer une activité une fois
-  // importée, quelle que soit sa source.
+  // Badge de source + actions de suppression — ajoutés le 03/08/2026,
+  // scindés en deux intentions distinctes le 22/08/2026 (demande de
+  // Laurent) : une simple suppression laissait la date libre, donc la
+  // prochaine synchro (auto ou manuelle) réimportait l'activité telle
+  // quelle — aucun moyen d'exprimer "je ne veux vraiment plus de cette
+  // activité" par opposition à "je veux juste forcer un réimport frais".
   if (stravaRun) {
     const estFit = stravaRun._source === "fit";
-    liensDroite.appendChild(el("span",{
-      title: estFit ? "Importé depuis un fichier .fit" : "Synchronisé depuis Strava",
-      style:{fontSize:"12px",color:"var(--text-muted)",display:"flex",alignItems:"center",gap:"3px"}
-    }, estFit ? "📁 FIT" : "🟠 Strava"));
+    const estExclue = !!datesExcluesSync[s.date];
+
+    if (estExclue) {
+      // Badge sens interdit (22/08/2026) — remplace le badge de source
+      // habituel à l'identique emplacement quand cette date est bloquée.
+      // Cliquable : retire l'exclusion et relance une synchro pour
+      // retrouver l'activité, sans passer par un second écran.
+      const badgeReactiver = el("span",{
+        title: "Import Strava bloqué pour cette date — cliquer pour réactiver",
+        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700"}
+      }, "🚫 Bloqué");
+      badgeReactiver.addEventListener("click", avecRetourTactile(() => {
+        delete datesExcluesSync[s.date];
+        save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+        render();
+        afficherMessage("toast", "Import réactivé pour cette date", "info");
+        syncStrava();
+      }));
+      liensDroite.appendChild(badgeReactiver);
+    } else {
+      liensDroite.appendChild(el("span",{
+        title: estFit ? "Importé depuis un fichier .fit" : "Synchronisé depuis Strava",
+        style:{fontSize:"12px",color:"var(--text-muted)",display:"flex",alignItems:"center",gap:"3px"}
+      }, estFit ? "📁 FIT" : "🟠 Strava"));
+    }
 
     // Lien Strava réel — uniquement si stravaRun est une vraie activité
     // Strava (cf. commentaire précédent, bug id_str undefined sinon).
@@ -8627,35 +8654,46 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       liensDroite.appendChild(el("a",{href:"https://www.strava.com/activities/"+stravaRun.id_str,target:"_blank",style:{color:"var(--warn)",fontSize:"12px",fontWeight:"700",textDecoration:"none"}},"🔗"));
     }
 
-    const supprimerBtn = el("a",{href:"#",title:"Supprimer cette activité importée",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🗑️");
-    supprimerBtn.addEventListener("click", avecRetourTactile((e)=>{
-      e.preventDefault(); e.stopPropagation();
-      if (!confirm("Supprimer cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Cette action ne peut pas être annulée — il faudra réimporter ou resynchroniser.")) return;
+    // Fonction commune aux deux boutons — retire l'activité localement,
+    // nettoie le statut orphelin et recalcule tout ce qui en dépend (même
+    // logique qu'avant le 22/08/2026, inchangée).
+    const retirerActiviteLocalement = () => {
       stravaActivities = (stravaActivities || []).filter(a => a.start_date_local?.slice(0,10) !== s.date);
       window.stravaActivities = stravaActivities;
       save("lk_strava_activities", stravaActivities);
       matchActivitiesToPlan(stravaActivities);
-      // Bug corrigé le 03/08/2026 (signalé par Laurent) : le statut
-      // ✅/⚠️/❌ déjà posé restait affiché après suppression de l'activité,
-      // faisant référence à une donnée qui vient d'être effacée — même
-      // logique que le bouton "✕ Annuler" de la saisie manuelle
-      // (renderManualPerfRow, cf. son commentaire) : repartir d'une page
-      // blanche (statut "—") plutôt que garder un statut orphelin.
       delete statuses[uid];
       save(clePourPlan("lk_statuses"), statuses);
-      ALL_SESSIONS = recalculerAllSessions(); // cf. correctif 26/07/2026 (bug badge 😴)
-      // Cumul km + estimation 10K (05/08/2026) — même bug que
-      // renderStatusRow (cf. son commentaire) : la suppression d'une
-      // activité qui avait un statut ✅/⚠️/❌ posé retire le statut
-      // (ci-dessus) sans jamais ajuster le cumul km ni recalculer
-      // predHistory, qui restaient figés sur les anciennes valeurs
-      // incluant cette activité désormais supprimée.
+      ALL_SESSIONS = recalculerAllSessions();
       recalculerKmComptesPourUid(uid, s.date);
       rebuildPredHistory();
+    };
+
+    // "Retirer pour réimporter" (comportement historique, 03/08/2026) —
+    // la date reste libre, la prochaine synchro peut réimporter une
+    // version fraîche de cette activité.
+    const retirerBtn = el("a",{href:"#",title:"Retirer cette activité pour la resynchroniser ensuite",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🔄");
+    retirerBtn.addEventListener("click", avecRetourTactile((e)=>{
+      e.preventDefault(); e.stopPropagation();
+      if (!confirm("Retirer cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" pour la resynchroniser ensuite ?")) return;
+      retirerActiviteLocalement();
       render();
-      // Toast (22/08/2026) — la carte se redessine sans l'activité, mais
-      // rien ne confirmait explicitement que la suppression avait réussi.
-      afficherMessage("toast", "Activité supprimée", "succes");
+      afficherMessage("toast", "Activité retirée, prête pour un nouvel import", "succes");
+    }));
+    liensDroite.appendChild(retirerBtn);
+
+    // "Supprimer définitivement" (22/08/2026, nouveau) — ajoute la date à
+    // la liste d'exclusion : aucun réimport automatique tant que le
+    // badge 🚫 n'est pas cliqué explicitement pour réactiver.
+    const supprimerBtn = el("a",{href:"#",title:"Supprimer définitivement cette activité (bloque le réimport)",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🗑️");
+    supprimerBtn.addEventListener("click", avecRetourTactile((e)=>{
+      e.preventDefault(); e.stopPropagation();
+      if (!confirm("Supprimer définitivement cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Elle ne sera plus jamais réimportée automatiquement — réactivable via le badge 🚫 sur la carte.")) return;
+      retirerActiviteLocalement();
+      datesExcluesSync[s.date] = true;
+      save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+      render();
+      afficherMessage("toast", "Activité supprimée définitivement", "succes");
     }));
     liensDroite.appendChild(supprimerBtn);
   }
@@ -13970,6 +14008,18 @@ async function importerFichierFit(file) {
       return;
     }
     const dateActivite = activite.start_date_local.slice(0, 10);
+    // Date exclue de la synchro (22/08/2026) — geste explicite ici (fichier
+    // choisi à la main), donc avertissement plutôt que blocage silencieux :
+    // l'utilisateur peut vouloir réimporter volontairement malgré
+    // l'exclusion précédente, mais doit être informé de son existence.
+    if (datesExcluesSync[dateActivite]) {
+      if (!confirm("Le " + dateActivite + " est marqué comme définitivement supprimé (import Strava bloqué). Importer quand même ce fichier .fit pour cette date ?")) {
+        syncing = false; render();
+        return;
+      }
+      delete datesExcluesSync[dateActivite];
+      save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+    }
     // Correctif du 03/08/2026 (demande explicite de Laurent) : la
     // première activité importée sur une date reste en place, peu importe
     // sa source — cohérent avec le même principe appliqué à syncStrava()
@@ -14078,7 +14128,13 @@ async function syncStrava(force = false) {
     const resp = await fetch(`/api/strava/activities?token=${stravaToken}&interval_dates=${intervalDates}&plan_start=${planStart}&interval_expected=${encodeURIComponent(intervalExpected)}`);
     const activities = await resp.json();
     if (Array.isArray(activities)) {
-      const runs = activities.filter(a => a.type === "Run" || a.sport_type === "Run");
+      // Dates exclues (22/08/2026) — jamais réimportées automatiquement,
+      // synchro silencieuse ici contrairement à l'import FIT manuel (cf.
+      // importerFichierFit) : aucune interaction possible pendant une
+      // synchro auto/arrière-plan, le blocage doit tenir sans dialogue.
+      const runs = activities
+        .filter(a => a.type === "Run" || a.sport_type === "Run")
+        .filter(a => !datesExcluesSync[a.start_date_local?.slice(0,10)]);
       // Correctif du 03/08/2026 (demande explicite de Laurent) : la
       // première activité importée sur une date donnée, peu importe sa
       // source (Strava, FIT, ou une future source), reste en place —
@@ -14375,8 +14431,8 @@ function matchActivitiesToPlan(activities) {
 // manuelle soit faite. Ajout d'une seconde condition : activités vides
 // force la resynchro immédiatement, même si lastSyncTime est récent.
 (function autoSync() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const syncAncienne = (Date.now() - lastSyncTime) > ONE_HOUR;
+  const DELAI_SYNC_AUTO = 30 * 60 * 1000; // 30 min (réduit depuis 1h le 22/08/2026)
+  const syncAncienne = (Date.now() - lastSyncTime) > DELAI_SYNC_AUTO;
   const activitesVides = !stravaActivities || stravaActivities.length === 0;
   if (stravaToken && (syncAncienne || activitesVides)) {
     setTimeout(() => syncStrava(), 1500);
