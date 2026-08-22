@@ -8582,6 +8582,28 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
 // donnée existante (Strava ou manuelle) comme point de départ.
 function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   if (!stravaRun && !manuelExistant) {
+    // Date exclue de la synchro (22/08/2026) — cas distinct du lien
+    // générique "Aucune donnée — saisir" ci-dessous : ce bloc entier
+    // était auparavant retourné AVANT d'atteindre le code du badge 🚫
+    // (qui vivait plus bas, dans un `if (stravaRun)` jamais vrai une fois
+    // l'activité supprimée) — la carte perdait alors tout moyen de
+    // réactiver l'import, sans le savoir. Traité ici en tout premier
+    // pour rester visible même sans aucune activité/saisie existante.
+    if (datesExcluesSync[s.date]) {
+      const wrapExclu = el("div",{style:{marginTop:"4px",borderTop:"1px solid var(--border)",paddingTop:"8px",display:"flex",flexDirection:"column",gap:"6px"}});
+      const badgeReactiver = el("a",{href:"#",style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",color:"var(--warn)",textDecoration:"none",fontWeight:"600"}},
+        "🚫 Import Strava bloqué pour cette date · réactiver");
+      badgeReactiver.addEventListener("click", avecRetourTactile((e)=>{
+        e.preventDefault(); e.stopPropagation();
+        delete datesExcluesSync[s.date];
+        save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+        render();
+        afficherMessage("toast", "Import réactivé pour cette date", "info");
+        syncStrava();
+      }));
+      wrapExclu.appendChild(badgeReactiver);
+      return wrapExclu;
+    }
     // Aucune donnée du tout (ni Strava ni manuelle) : lien discret vers la
     // saisie plutôt qu'un bloc vide.
     const wrap2 = el("div",{style:{marginTop:"4px"}});
