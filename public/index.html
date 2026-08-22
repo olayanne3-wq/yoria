@@ -13786,39 +13786,49 @@ function renderSettings() {
       profileSection, niveauSection, sexeSection, ppsDocumentSection
     ]),
 
-    renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
-      recordsSection
-    ], () => {
-      // Construit/repositionne les roulettes de records à l'ouverture du
-      // groupe (01/08/2026, cf. commentaire dans renderGroupeAccordeonStats
-      // et attendreEtInitialiser) — diagnostic en direct (console) a montré
-      // que le groupe étant FERMÉ au tout premier chargement de page,
-      // attendreEtInitialiser abandonne (après ~2s) AVANT que l'utilisateur
-      // n'ouvre la section — la roulette n'est alors jamais construite du
-      // tout (0 item dans le DOM, pas juste mal positionnée). Un simple
-      // repositionnement (definirValeur sur une roulette déjà existante)
-      // ne suffisait donc pas : il faut appeler initRouletteHMS pour de
-      // vrai si la roulette n'existe pas encore dans le registre.
-      ["5K","10K","Semi","Marathon"].forEach((dist) => {
-        const idPrefix = "rec-temps-"+dist;
-        const roulette = roulettesActivesReglages[idPrefix];
-        if (roulette) {
-          // Déjà construite (cas où attendreEtInitialiser a réussi avant
-          // l'abandon) — simple repositionnement défensif.
-          roulette.h?.definirValeur(roulette.h.valeur(), false);
-          roulette.m?.definirValeur(roulette.m.valeur(), false);
-          roulette.s?.definirValeur(roulette.s.valeur(), false);
-          return;
-        }
-        // Jamais construite (cas normal si le groupe était fermé au
-        // chargement) — construction directe maintenant que le conteneur
-        // est réellement visible (le clic vient d'ouvrir le groupe).
-        const rec = profilCoureur.records?.[dist];
-        const hms = window.parserTempsRecordEnHMS(rec?.temps);
-        const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
-        window.initRouletteHMS(idPrefix, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0, heuresMax);
-      });
-    }),
+    (() => {
+      // Répare/reconstruit les roulettes de records (01/08/2026, étendu le
+      // 22/08/2026) — factorisé en fonction nommée pour être appelé à la
+      // fois au clic d'ouverture de l'accordéon (onOuverture ci-dessous,
+      // comportement inchangé) ET immédiatement après ce render si le
+      // groupe est DÉJÀ ouvert au moment où ce contenu est construit (cas
+      // découvert le 22/08/2026 : un changement de thème déclenche un
+      // render() global qui reconstruit ce contenu sans jamais passer par
+      // le clic — sans cet appel supplémentaire, les roulettes restaient
+      // visuellement vides malgré des données intactes en mémoire,
+      // confirmé par diagnostic console).
+      const reparerRoulettesRecords = () => {
+        ["5K","10K","Semi","Marathon"].forEach((dist) => {
+          const idPrefix = "rec-temps-"+dist;
+          const roulette = roulettesActivesReglages[idPrefix];
+          if (roulette) {
+            // Déjà construite (cas où attendreEtInitialiser a réussi avant
+            // l'abandon) — simple repositionnement défensif.
+            roulette.h?.definirValeur(roulette.h.valeur(), false);
+            roulette.m?.definirValeur(roulette.m.valeur(), false);
+            roulette.s?.definirValeur(roulette.s.valeur(), false);
+            return;
+          }
+          // Jamais construite (groupe fermé au chargement, ou DOM pas
+          // encore layouté au moment du polling initial) — construction
+          // directe maintenant que le conteneur est réellement visible.
+          const rec = profilCoureur.records?.[dist];
+          const hms = window.parserTempsRecordEnHMS(rec?.temps);
+          const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
+          window.initRouletteHMS(idPrefix, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0, heuresMax);
+        });
+      };
+
+      // Si le groupe est déjà ouvert à la construction de CE render (cf.
+      // etatGroupesAccordeon, lu par renderGroupeAccordeonStats), lance la
+      // réparation immédiatement — sinon rien ne le fera tant que
+      // l'utilisateur ne re-clique pas manuellement sur l'en-tête.
+      if (etatGroupesAccordeon["Records personnels"]) reparerRoulettesRecords();
+
+      return renderGroupeAccordeonStats("🏅","Records personnels","var(--accent2)", [
+        recordsSection
+      ], reparerRoulettesRecords);
+    })(),
 
     renderGroupeAccordeonStats("🔗","Intégrations","var(--warn)", [
       dataSourceSection, stravaSection, importFitSection,
