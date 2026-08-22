@@ -5946,7 +5946,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"10px",
           padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"
         },
-        onClick:()=>{ selectedWeek=tomorrowKey.week; setView("weekDetail"); }
+        onClick:()=>{
+          selectedWeek=tomorrowKey.week; setView("weekDetail");
+          setTimeout(() => {
+            const carteCible = document.getElementById("carte-"+tomorrowKey.uid);
+            if (carteCible) carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
+          }, 0);
+        }
       },
         el("div",{},
           el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"3px"}},"⚡ Demain"),
@@ -6096,7 +6102,13 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           })(),
           // Prochaine séance
           nextSess?el("div",{style:{borderTop:"1px solid var(--border)",paddingTop:"10px",marginTop:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"},
-            onClick:()=>{ selectedWeek=nextSess.week; setView("weekDetail"); }
+            onClick:()=>{
+              selectedWeek=nextSess.week; setView("weekDetail");
+              setTimeout(() => {
+                const carteCible = document.getElementById("carte-"+nextSess.uid);
+                if (carteCible) carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
+              }, 0);
+            }
           },
             el("div",{},
               el("div",{class:"muted",style:{fontSize:"12px",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:"3px"}},"Prochaine séance · "+new Date(nextSess.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})),
@@ -9237,7 +9249,8 @@ function renderWeekDetail(weekNum) {
       borderTop:`3px solid ${st.color}`,
       borderRadius:"12px",
       boxShadow:`0 6px 24px ${st.colorSoft}0.1), 0 2px 8px rgba(0,0,0,0.4)`,
-      padding:"12px 14px",marginBottom:"8px"
+      padding:"12px 14px",marginBottom:"8px",
+      scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px))"
     }},
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
         el("div",{style:{color:isPast?"var(--text-muted)":"var(--text2)",fontSize:"13px",fontWeight:"700",minWidth:"60px"}},s.day+" "+s.date.slice(8)),
