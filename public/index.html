@@ -8598,9 +8598,10 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     // pour rester visible même sans aucune activité/saisie existante.
     if (datesExcluesSync[s.date]) {
       const wrapExclu = el("div",{style:{marginTop:"4px",borderTop:"1px solid var(--border)",paddingTop:"8px",display:"flex",justifyContent:"flex-end"}});
-      const badgeReactiver = el("span",{
+      const badgeReactiver = el("button",{
+        type: "button",
         title: "Import Strava bloqué pour cette date — cliquer pour réactiver",
-        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700"}
+        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700",background:"none",border:"none",padding:"0",fontFamily:"inherit"}
       }, "🚫 Bloqué");
       badgeReactiver.addEventListener("click", avecRetourTactile(async (e)=>{
         e.preventDefault(); e.stopPropagation();
@@ -8666,9 +8667,10 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       // habituel à l'identique emplacement quand cette date est bloquée.
       // Cliquable : retire l'exclusion et relance une synchro pour
       // retrouver l'activité, sans passer par un second écran.
-      const badgeReactiver = el("span",{
+      const badgeReactiver = el("button",{
+        type: "button",
         title: "Import Strava bloqué pour cette date — cliquer pour réactiver",
-        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700"}
+        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700",background:"none",border:"none",padding:"0",fontFamily:"inherit"}
       }, "🚫 Bloqué");
       badgeReactiver.addEventListener("click", avecRetourTactile(async () => {
         delete datesExcluesSync[s.date];
