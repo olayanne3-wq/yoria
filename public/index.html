@@ -1554,8 +1554,14 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
   // Synchronisation Supabase en arrière-plan (fire-and-forget) — ajouté
   // le 13 juillet 2026, chantier v2.5 migration (inventaire §8bis).
-  // N'attend pas la réponse réseau : localStorage reste la source de
-  // vérité immédiate pour l'affichage, Supabase suit derrière.
+  // N'attend pas la réponse réseau par défaut : localStorage reste la
+  // source de vérité immédiate pour l'affichage, Supabase suit derrière.
+  // save() RETOURNE désormais la promesse de synchro (22/08/2026,
+  // correctif race condition suppression Strava) — tous les appelants
+  // existants ignorent déjà cette valeur de retour (fire-and-forget),
+  // donc rien ne change pour eux ; un nouvel appelant peut faire
+  // `await save(...)` pour être notifié une fois l'écriture Supabase
+  // réellement tentée, avant de continuer une action qui en dépend.
   try {
     const resultatSync = LkSync.synchroniserVersSupabase(
       window.__UTILISATEUR__?.id,
@@ -1575,6 +1581,7 @@ function save(key, val) {
         afficherMessage("toast", "Sauvegarde en attente de connexion", "info");
       });
     }
+    return resultatSync;
   } catch (e) {
     console.warn('Synchronisation Supabase non déclenchée :', e.message);
     afficherMessage("toast", "Sauvegarde en attente de connexion", "info");
@@ -8593,10 +8600,11 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       const wrapExclu = el("div",{style:{marginTop:"4px",borderTop:"1px solid var(--border)",paddingTop:"8px",display:"flex",flexDirection:"column",gap:"6px"}});
       const badgeReactiver = el("a",{href:"#",style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",color:"var(--warn)",textDecoration:"none",fontWeight:"600"}},
         "🚫 Import Strava bloqué pour cette date · réactiver");
-      badgeReactiver.addEventListener("click", avecRetourTactile((e)=>{
+      badgeReactiver.addEventListener("click", avecRetourTactile(async (e)=>{
         e.preventDefault(); e.stopPropagation();
+        badgeReactiver.textContent = "⏳ Réactivation...";
         delete datesExcluesSync[s.date];
-        save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+        await save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
         render();
         afficherMessage("toast", "Import réactivé pour cette date", "info");
         syncStrava();
@@ -8660,9 +8668,9 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
         title: "Import Strava bloqué pour cette date — cliquer pour réactiver",
         style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700"}
       }, "🚫 Bloqué");
-      badgeReactiver.addEventListener("click", avecRetourTactile(() => {
+      badgeReactiver.addEventListener("click", avecRetourTactile(async () => {
         delete datesExcluesSync[s.date];
-        save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+        await save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
         render();
         afficherMessage("toast", "Import réactivé pour cette date", "info");
         syncStrava();
@@ -8684,10 +8692,28 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     // Fonction commune aux deux boutons — retire l'activité localement,
     // nettoie le statut orphelin et recalcule tout ce qui en dépend (même
     // logique qu'avant le 22/08/2026, inchangée).
-    const retirerActiviteLocalement = () => {
+    const retirerActiviteLocalement = async () => {
       stravaActivities = (stravaActivities || []).filter(a => a.start_date_local?.slice(0,10) !== s.date);
       window.stravaActivities = stravaActivities;
-      save("lk_strava_activities", stravaActivities);
+      // Correctif race condition (22/08/2026, bug signalé par Laurent :
+      // une activité supprimée réapparaissait après rechargement de la
+      // page). Cause racine : save() était fire-and-forget — un
+      // rechargement de page pouvait déclencher precharger() AVANT que
+      // Supabase n'ait fini de recevoir cette suppression, qui écrasait
+      // alors localStorage avec l'ANCIENNE valeur encore côté cloud. La
+      // vraie clé à risque est spécifiquement lk_strava_activities (les
+      // autres save() de cette fonction restent fire-and-forget comme
+      // avant, moins critiques ici). Un échec réseau n'empêche jamais la
+      // suppression LOCALE de s'appliquer (résultatSync peut rejeter,
+      // c'est géré par save() elle-même via la file d'attente) — on
+      // attend seulement que la TENTATIVE d'écriture Supabase ait eu
+      // lieu, pas forcément qu'elle ait réussi.
+      try {
+        await save("lk_strava_activities", stravaActivities);
+      } catch (e) {
+        // rejet inattendu (hors gestion normale déjà faite dans save()) —
+        // la suppression locale reste appliquée, on continue quand même.
+      }
       matchActivitiesToPlan(stravaActivities);
       delete statuses[uid];
       save(clePourPlan("lk_statuses"), statuses);
@@ -8700,10 +8726,11 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     // la date reste libre, la prochaine synchro peut réimporter une
     // version fraîche de cette activité.
     const retirerBtn = el("a",{href:"#",title:"Retirer cette activité pour la resynchroniser ensuite",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🔄");
-    retirerBtn.addEventListener("click", avecRetourTactile((e)=>{
+    retirerBtn.addEventListener("click", avecRetourTactile(async (e)=>{
       e.preventDefault(); e.stopPropagation();
       if (!confirm("Retirer cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" pour la resynchroniser ensuite ?")) return;
-      retirerActiviteLocalement();
+      retirerBtn.textContent = "⏳";
+      await retirerActiviteLocalement();
       render();
       afficherMessage("toast", "Activité retirée, prête pour un nouvel import", "succes");
     }));
@@ -8713,12 +8740,13 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     // la liste d'exclusion : aucun réimport automatique tant que le
     // badge 🚫 n'est pas cliqué explicitement pour réactiver.
     const supprimerBtn = el("a",{href:"#",title:"Supprimer définitivement cette activité (bloque le réimport)",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🗑️");
-    supprimerBtn.addEventListener("click", avecRetourTactile((e)=>{
+    supprimerBtn.addEventListener("click", avecRetourTactile(async (e)=>{
       e.preventDefault(); e.stopPropagation();
       if (!confirm("Supprimer définitivement cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Elle ne sera plus jamais réimportée automatiquement — réactivable via le badge 🚫 sur la carte.")) return;
-      retirerActiviteLocalement();
+      supprimerBtn.textContent = "⏳";
+      await retirerActiviteLocalement();
       datesExcluesSync[s.date] = true;
-      save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
+      await save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
       render();
       afficherMessage("toast", "Activité supprimée définitivement", "succes");
     }));
