@@ -2197,6 +2197,53 @@ function afficherAlerte(message, type) {
   document.body.appendChild(overlay);
 }
 
+// ── Modale de confirmation custom (22/08/2026) ──────────────────────────
+// Remplace confirm() natif — même overlay/style qu'afficherAlerte(), mais
+// deux boutons (Annuler/Confirmer) et retourne une PROMESSE (true si
+// confirmé, false sinon), pour remplacer `if (!confirm(msg)) return;` par
+// `if (!(await afficherConfirmation(msg))) return;`. options.dangereux
+// (bool) colore le bouton de confirmation en --warn plutôt que --accent,
+// pour une action irréversible (suppression, clôture) — cohérent avec le
+// rouge/orange déjà utilisé ailleurs dans l'app pour ce type d'action.
+// options.texteConfirmer personnalise le libellé du bouton (par défaut
+// "Confirmer") — utile pour un verbe plus explicite ("Supprimer",
+// "Clôturer") plutôt qu'un "Confirmer" générique.
+function afficherConfirmation(message, options = {}) {
+  const { dangereux = false, texteConfirmer = "Confirmer" } = options;
+  return new Promise((resolve) => {
+    const couleurConfirmer = dangereux ? "var(--warn)" : "var(--accent)";
+    const fermer = (reponse) => {
+      if (document.body.contains(overlay)) document.body.removeChild(overlay);
+      resolve(reponse);
+    };
+    const overlay = el("div",{style:{
+      position:"fixed", inset:"0", background:"rgba(0,0,0,0.55)", zIndex:"9999",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:"20px"
+    }},
+      el("div",{style:{
+        width:"100%", maxWidth:"300px", background:"var(--bg)", borderRadius:"14px",
+        padding:"20px", boxShadow:"0 12px 32px rgba(0,0,0,0.3)"
+      }},
+        el("div",{style:{display:"flex", alignItems:"flex-start", gap:"10px", marginBottom:"18px"}},
+          el("span",{style:{fontSize:"22px", lineHeight:"1"}}, dangereux ? "⚠️" : "❓"),
+          el("div",{style:{fontSize:"14px", color:"var(--text)", lineHeight:"1.4", whiteSpace:"pre-line"}}, message)
+        ),
+        el("div",{style:{display:"flex", gap:"8px"}},
+          el("button",{style:{
+            flex:"1", padding:"11px", borderRadius:"8px", border:"1px solid var(--border)",
+            background:"none", color:"var(--text)", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+          }, onClick: () => fermer(false)}, "Annuler"),
+          el("button",{style:{
+            flex:"1", padding:"11px", borderRadius:"8px", border:"none",
+            background:couleurConfirmer, color:"#F8FAFC", fontSize:"14px", fontWeight:"700", cursor:"pointer"
+          }, onClick: () => fermer(true)}, texteConfirmer)
+        )
+      )
+    );
+    document.body.appendChild(overlay);
+  });
+}
+
 let syncing = false;
 let syncMsg = "";
 let stravaAuthInvalide = false; // 16 juillet 2026 : détecte un access_token
@@ -2576,8 +2623,8 @@ function ouvrirPpsModale() {
       ppsDocActuel ? el("button",{style:{
         padding:"10px", borderRadius:"8px", border:"1px solid rgba(255,255,255,0.3)",
         background:"transparent", color:"#fff", fontSize:"13px", cursor:"pointer"
-      }, onClick: avecRetourTactile(()=>{
-        if (!confirm("Supprimer le PPS enregistré ?")) return;
+      }, onClick: avecRetourTactile(async ()=>{
+        if (!(await afficherConfirmation("Supprimer le PPS enregistré ?", { dangereux:true, texteConfirmer:"Supprimer" }))) return;
         profilCoureur.ppsDocument = null;
         profilCoureur.ppsExpiration = null;
         sauvegarderProfilCoureur();
@@ -6748,15 +6795,13 @@ async function finaliserRegenerationLevier(planBrut, nouveauxParams, profilPourG
 
 async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
-  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut) { afficherMessage(msgEl, "Aucun plan chargé.", "erreur", 0); return; }
   if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
-    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.", "erreur", 0);
     return;
   }
   if (!nouveauVolume || nouveauVolume <= 0) {
-    msgEl.textContent = "Renseigne un volume valide.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Renseigne un volume valide.", "erreur", 0);
     return;
   }
 
@@ -6769,8 +6814,7 @@ async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) 
   const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
 
   if (!resultat.ok) {
-    msgEl.textContent = resultat.message;
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, resultat.message, "erreur", 0);
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
@@ -6779,8 +6823,7 @@ async function appliquerChangementVolumeApp(nouveauVolume, msgEl, btnAppliquer) 
   // de départ historique) — écrasée après coup car finaliserRegenerationLevier
   // ne connaît pas la spécificité "ce levier EST le levier Volume".
   window.__PLAN_BRUT__.volumeCourant = { km: nouveauVolume, semaineNum: semaineCharniere };
-  msgEl.textContent = "✅ Volume mis à jour à partir de la semaine prochaine.";
-  msgEl.style.color = "var(--accent2)";
+  afficherMessage(msgEl, "Volume mis à jour à partir de la semaine prochaine.", "succes");
   render();
 }
 
@@ -6813,15 +6856,13 @@ function evaluerFaisabiliteObjectifApp(planBrut, valeurSaisie, Engine) {
 
 async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
-  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut) { afficherMessage(msgEl, "Aucun plan chargé.", "erreur", 0); return; }
   if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
-    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.", "erreur", 0);
     return;
   }
   if (!nouvelObjectif) {
-    msgEl.textContent = "Renseigne un nouveau temps visé.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Renseigne un nouveau temps visé.", "erreur", 0);
     return;
   }
 
@@ -6844,8 +6885,7 @@ async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnApplique
   const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
 
   if (!resultat.ok) {
-    msgEl.textContent = resultat.message;
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, resultat.message, "erreur", 0);
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
@@ -6860,8 +6900,7 @@ async function appliquerChangementObjectifApp(nouvelObjectif, msgEl, btnApplique
   // l'objectif du plan, il doit donc primer au moment où il s'applique.
   raceGoalTime = Engine.parseTimeToSeconds(nouvelObjectif);
   save(clePourPlan("lk_race_goal"), raceGoalTime);
-  msgEl.textContent = "✅ Objectif mis à jour.";
-  msgEl.style.color = "var(--accent2)";
+  afficherMessage(msgEl, "Objectif mis à jour.", "succes");
   render();
 }
 
@@ -6916,15 +6955,13 @@ function estimerImpactJoursApp(planBrut, Engine) {
 
 async function appliquerChangementJoursApp(msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
-  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut) { afficherMessage(msgEl, "Aucun plan chargé.", "erreur", 0); return; }
   if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
-    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.", "erreur", 0);
     return;
   }
   if (!joursSimulesLevier || joursSimulesLevier.length < 2) {
-    msgEl.textContent = "Au moins 2 jours sont nécessaires.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Au moins 2 jours sont nécessaires.", "erreur", 0);
     return;
   }
 
@@ -6940,14 +6977,12 @@ async function appliquerChangementJoursApp(msgEl, btnAppliquer) {
   const resultat = await finaliserRegenerationLevier(planBrut, paramsPourJours, nouveauProfil, semaineCharniere);
 
   if (!resultat.ok) {
-    msgEl.textContent = resultat.message;
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, resultat.message, "erreur", 0);
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
   }
-  msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
-  msgEl.style.color = "var(--accent2)";
+  afficherMessage(msgEl, `Changement appliqué à partir de la semaine ${semaineCharniere}.`, "succes");
   render();
 }
 
@@ -7088,15 +7123,13 @@ function evaluerImpactDateCourseApp(planBrut, nouvelleDateCourse) {
 
 async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
-  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut) { afficherMessage(msgEl, "Aucun plan chargé.", "erreur", 0); return; }
   if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
-    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.", "erreur", 0);
     return;
   }
   if (!nouvelleDateCourse) {
-    msgEl.textContent = "Choisis une date valide.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Choisis une date valide.", "erreur", 0);
     return;
   }
 
@@ -7119,8 +7152,7 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
     try {
       await window.LkSync.mettreAJourPlanSupabase(planBrut.id, planBrut);
     } catch (e) {
-      msgEl.textContent = "Mis à jour mais sauvegarde échouée : " + e.message;
-      msgEl.style.color = "var(--warn)";
+      afficherMessage(msgEl, "Mis à jour mais sauvegarde échouée : " + e.message, "erreur", 0);
       btnAppliquer.textContent = texteOriginal;
       btnAppliquer.disabled = false;
       return;
@@ -7128,8 +7160,7 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
     window.__PLAN_GENERE__ = traduirePlanVersFormatV1(planBrut);
     PLAN = window.__PLAN_GENERE__;
     ALL_SESSIONS = recalculerAllSessions();
-    msgEl.textContent = "✅ Date de course mise à jour (léger décalage, ta phase actuelle ne change pas).";
-    msgEl.style.color = "var(--accent2)";
+    afficherMessage(msgEl, "Date de course mise à jour (léger décalage, ta phase actuelle ne change pas).", "succes");
     render();
     return;
   }
@@ -7139,8 +7170,7 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
     : { ...planBrut.paramsOrigine, dateCourse: nouvelleDateCourse };
   const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
   if (!resultat.ok) {
-    msgEl.textContent = resultat.message;
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, resultat.message, "erreur", 0);
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
@@ -7149,8 +7179,7 @@ async function appliquerChangementDateCourseApp(nouvelleDateCourse, msgEl, btnAp
   // finaliserRegenerationLevier (18/08/2026, cf. son commentaire) — point
   // commun à tous les leviers, plus la peine de la rappeler ici.
   ALL_SESSIONS = recalculerAllSessions();
-  msgEl.textContent = `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
-  msgEl.style.color = "var(--accent2)";
+  afficherMessage(msgEl, `Changement appliqué à partir de la semaine ${semaineCharniere}.`, "succes");
   render();
 }
 
@@ -7190,10 +7219,9 @@ function evaluerImpactCourseIntermediaireApp(planBrut, enabled, date, distance) 
 
 async function appliquerChangementCourseIntermediaireApp(action, date, distance, msgEl, btnAppliquer) {
   const planBrut = window.__PLAN_BRUT__;
-  if (!planBrut) { msgEl.textContent = "Aucun plan chargé."; msgEl.style.color = "var(--warn)"; return; }
+  if (!planBrut) { afficherMessage(msgEl, "Aucun plan chargé.", "erreur", 0); return; }
   if (!planBrut.profilOrigine || !planBrut.paramsOrigine) {
-    msgEl.textContent = "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.";
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, "Ce plan a été sauvegardé avant l'ajout de cette fonctionnalité et ne peut pas être modifié directement.", "erreur", 0);
     return;
   }
 
@@ -7209,16 +7237,14 @@ async function appliquerChangementCourseIntermediaireApp(action, date, distance,
   const resultat = await finaliserRegenerationLevier(planBrut, nouveauxParams, planBrut.profilOrigine, semaineCharniere);
 
   if (!resultat.ok) {
-    msgEl.textContent = resultat.message;
-    msgEl.style.color = "var(--warn)";
+    afficherMessage(msgEl, resultat.message, "erreur", 0);
     btnAppliquer.textContent = texteOriginal;
     btnAppliquer.disabled = false;
     return;
   }
-  msgEl.textContent = action === "retirer"
-    ? `✅ Course intermédiaire retirée à partir de la semaine ${semaineCharniere}.`
-    : `✅ Changement appliqué à partir de la semaine ${semaineCharniere}.`;
-  msgEl.style.color = "var(--accent2)";
+  afficherMessage(msgEl, action === "retirer"
+    ? `Course intermédiaire retirée à partir de la semaine ${semaineCharniere}.`
+    : `Changement appliqué à partir de la semaine ${semaineCharniere}.`, "succes");
   render();
 }
 
@@ -8819,7 +8845,7 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     const supprimerBtn = el("a",{href:"#",title:"Supprimer définitivement cette activité (bloque le réimport)",style:{color:"var(--text-muted)",fontSize:"12px",fontWeight:"700",textDecoration:"none",cursor:"pointer"}},"🗑️");
     supprimerBtn.addEventListener("click", avecRetourTactile(async (e)=>{
       e.preventDefault(); e.stopPropagation();
-      if (!confirm("Supprimer définitivement cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Elle ne sera plus jamais réimportée automatiquement — réactivable via le badge 🚫 sur la carte.")) return;
+      if (!(await afficherConfirmation("Supprimer définitivement cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Elle ne sera plus jamais réimportée automatiquement — réactivable via le badge 🚫 sur la carte.", { dangereux:true, texteConfirmer:"Supprimer" }))) return;
       supprimerBtn.disabled = true;
       supprimerBtn.textContent = "⏳";
       await retirerActiviteLocalement();
@@ -12508,7 +12534,7 @@ function renderSettings() {
         ),
         el("button",{style:{background:"rgba(var(--warn-rgb),0.13)",border:"1px solid rgba(var(--warn-rgb),0.33)",borderRadius:"8px",padding:"8px 14px",color:"var(--warn)",fontWeight:"700",fontSize:"14px",cursor:"pointer"},
           onClick: async ()=>{
-            if (!confirm("Se déconnecter de Yoria ?")) return;
+            if (!(await afficherConfirmation("Se déconnecter de Yoria ?", { texteConfirmer:"Se déconnecter" }))) return;
             await LkAuth.deconnecter();
             window.location.reload();
           }
@@ -13655,17 +13681,16 @@ function renderSettings() {
       "Clôturer définitivement à cette date");
     confirmBtn.addEventListener("click", async () => {
       const val = inp.value;
-      if (!val) { msgEl.textContent = "Choisis une date."; msgEl.style.color = "var(--accent)"; return; }
+      if (!val) { afficherMessage(msgEl, "Choisis une date.", "info", 0); return; }
       if (val < window.__PLAN_BRUT__.dateDebut) {
-        msgEl.textContent = "La date de clôture doit être après le début du plan (" + window.__PLAN_BRUT__.dateDebut + ").";
-        msgEl.style.color = "var(--warn)";
+        afficherMessage(msgEl, "La date de clôture doit être après le début du plan (" + window.__PLAN_BRUT__.dateDebut + ").", "erreur", 0);
         return;
       }
       // Action irréversible (13 juillet 2026) : une vraie confirmation
       // explicite est nécessaire, contrairement à la plupart des autres
       // sauvegardes de ce fichier — pas de bouton "Retirer" possible après.
       const dateAffichee = new Date(val+"T00:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
-      if (!confirm(`Clôturer définitivement ce plan au ${dateAffichee} ?\n\nCette action est IRRÉVERSIBLE : le plan deviendra figé (lecture seule, plus de synchro Strava, plus aucune modification possible).`)) return;
+      if (!(await afficherConfirmation(`Clôturer définitivement ce plan au ${dateAffichee} ?\n\nCette action est IRRÉVERSIBLE : le plan deviendra figé (lecture seule, plus de synchro Strava, plus aucune modification possible).`, { dangereux:true, texteConfirmer:"Clôturer" }))) return;
 
       window.__PLAN_BRUT__.dateCloture = val;
 
@@ -13683,19 +13708,16 @@ function renderSettings() {
         window.__PLAN_BRUT__.nom = `${label} — ${fmt(window.__PLAN_BRUT__.dateDebut)} au ${fmt(val)}`;
       }
 
-      msgEl.textContent = "Sauvegarde…";
-      msgEl.style.color = "var(--text-muted)";
+      afficherMessage(msgEl, "Sauvegarde…", "info", 0);
       try {
         // Supabase — mécanisme principal (v2.8, 15/07/2026).
         if (window.__UTILISATEUR__?.id && window.LkSync?.mettreAJourPlanSupabase && window.__PLAN_BRUT__.id) {
           await window.LkSync.mettreAJourPlanSupabase(window.__PLAN_BRUT__.id, window.__PLAN_BRUT__);
         }
-        msgEl.textContent = "✅ Plan clôturé. Tu peux maintenant planifier un plan course à partir du lendemain.";
-        msgEl.style.color = "var(--accent2)";
+        afficherMessage(msgEl, "Plan clôturé. Tu peux maintenant planifier un plan course à partir du lendemain.", "succes");
         render();
       } catch (e) {
-        msgEl.textContent = "❌ " + e.message;
-        msgEl.style.color = "var(--warn)";
+        afficherMessage(msgEl, e.message, "erreur");
         console.error(e);
       }
     });
@@ -14176,7 +14198,7 @@ async function importerFichierFit(file) {
     // l'utilisateur peut vouloir réimporter volontairement malgré
     // l'exclusion précédente, mais doit être informé de son existence.
     if (datesExcluesSync[dateActivite]) {
-      if (!confirm("Le " + dateActivite + " est marqué comme définitivement supprimé (import Strava bloqué). Importer quand même ce fichier .fit pour cette date ?")) {
+      if (!(await afficherConfirmation("Le " + dateActivite + " est marqué comme définitivement supprimé (import Strava bloqué). Importer quand même ce fichier .fit pour cette date ?", { texteConfirmer:"Importer quand même" }))) {
         syncing = false; render();
         return;
       }
