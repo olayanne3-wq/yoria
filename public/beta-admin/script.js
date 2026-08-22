@@ -733,3 +733,31 @@ function cascadesResultHtml(result) {
 const titles={dashboard:"Tableau de bord",applications:"Candidatures",invited:"Invités",signalements:"Signalements",accounts:"Comptes",maintenance:"Maintenance",backup:"Sauvegarde",cascades:"Cascades",statistics:"Statistiques"};
 $$(".nav").forEach(b=>b.onclick=()=>{$$(".nav").forEach(x=>x.classList.toggle("active",x===b));$$(".view").forEach(x=>x.classList.toggle("active",x.dataset.panel===b.dataset.view));$("#title").textContent=titles[b.dataset.view]});
 (async()=>{try{await req({method:"GET"});auth(true);load()}catch(e){auth(false)}})();
+
+/*
+ * Accordéon de cartes (22/08/2026, ergonomie mobile) — utilisé sur les
+ * onglets Maintenance et Sauvegarde (cf. index.html, attribut
+ * data-accordeon sur le <section> parent, classes .card-entete/
+ * .card-corps/.ouverte sur chaque <article class="card">). Clic sur
+ * .card-entete : ouvre cette carte, referme les autres cartes du MÊME
+ * accordéon (un seul panneau ouvert à la fois par onglet, cohérent avec
+ * le principe déjà appliqué à la nav globale .view/.view.active). La
+ * première carte de chaque accordéon est ouverte par défaut dans le HTML
+ * (classe .ouverte déjà posée), pour ne jamais présenter un onglet
+ * totalement vide à l'arrivée.
+ * Délégation d'événement sur document (même pattern que le reste de ce
+ * fichier, ex. #account-result) — les cartes ne sont jamais reconstruites
+ * dynamiquement ici (contrairement à #account-result), un binding direct
+ * aurait aussi fonctionné, mais la délégation reste cohérente avec le
+ * style du fichier.
+ */
+document.addEventListener("click", (e) => {
+  const entete = e.target.closest(".card-entete");
+  if (!entete) return;
+  const carteCliquee = entete.closest(".card");
+  const accordeon = entete.closest("[data-accordeon]");
+  if (!carteCliquee || !accordeon) return;
+  const dejaOuverte = carteCliquee.classList.contains("ouverte");
+  [...accordeon.querySelectorAll(".card")].forEach((c) => c.classList.remove("ouverte"));
+  if (!dejaOuverte) carteCliquee.classList.add("ouverte");
+});
