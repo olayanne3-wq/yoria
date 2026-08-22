@@ -2118,8 +2118,8 @@ function afficherMessage(cible, texte, type, dureeMs) {
     if (!root) return;
     const toastEl = document.createElement("div");
     toastEl.style.cssText =
-      "position:fixed; left:12px; right:12px; bottom:calc(66px + env(safe-area-inset-bottom,0px));" +
-      " max-width:398px; margin:0 auto; z-index:9990;" +
+      "position:fixed; left:12px; right:12px; bottom:70px;" +
+      " max-width:398px; margin:0 auto; z-index:10000;" +
       " display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px;" +
       " font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,0.15);" +
       " background:" + couleurs.bg + "; color:" + couleurs.text + ";";
