@@ -5951,7 +5951,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
           setTimeout(() => {
             const carteCible = document.getElementById("carte-"+tomorrowKey.uid);
             if (carteCible) carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
-          }, 0);
+          }, 100);
         }
       },
         el("div",{},
@@ -6107,7 +6107,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
               setTimeout(() => {
                 const carteCible = document.getElementById("carte-"+nextSess.uid);
                 if (carteCible) carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
-              }, 0);
+              }, 100);
             }
           },
             el("div",{},
