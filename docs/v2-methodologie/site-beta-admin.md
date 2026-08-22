@@ -249,17 +249,39 @@ volontaire au titre du droit à l'effacement.
 
 **Sauvegardes automatiques (21/08/2026)** — 3 crons Vercel
 (`vercel.json`, horaires distincts 04h/12h/20h UTC) appellent
-`GET /api/backup` avec l'en-tête `Authorization: Bearer ${CRON_SECRET}`
-(variable auto-provisionnée par Vercel), authentification distincte du
-cookie admin classique, réservée à ce seul chemin. Chaque exécution
-génère un export global (même fonction que le bouton manuel), l'uploade
-sur **Vercel Blob** (store créé en accès **Private** — les exports
-contiennent des données personnelles de testeurs), sous
+`GET /api/backup` avec l'en-tête `Authorization: Bearer ${CRON_SECRET}`.
+Chaque exécution génère un export global (même fonction que le bouton
+manuel), l'uploade sur **Vercel Blob** (store créé en accès **Private**
+— les exports contiennent des données personnelles de testeurs), sous
 `backups/auto-AAAA-MM-JJTHH-mm.json`, puis purge les fichiers de plus de
 7 jours (rétention glissante). Contournement volontaire de la limite du
 plan Hobby (1 exécution/jour par cron) : 3 crons distincts pointant vers
 le même endpoint plutôt qu'un seul cron plus fréquent (non disponible
 sur ce plan).
+
+**`CRON_SECRET` n'est PAS auto-provisionnée par Vercel — cause racine
+d'une panne totale de 22 jours (22/08/2026)** : contrairement à ce que
+la documentation générale sur les crons Vercel peut laisser penser (et à
+ce que ce document affirmait à tort avant cette correction), Vercel NE
+crée PAS lui-même cette variable d'environnement. Il l'ENVOIE bien
+automatiquement en en-tête `Authorization` à chaque appel cron — mais
+uniquement SI elle a préalablement été créée MANUELLEMENT dans Project
+Settings > Environment Variables. Symptôme observé : les 3 crons
+s'exécutaient bel et bien (confirmé par les logs Vercel, `User-Agent:
+vercel-cron/1.0`), mais recevaient systématiquement un `401` —
+`isValidCronRequest()` (`api/backup.js`) rejette dès la première ligne
+si `process.env.CRON_SECRET` est `undefined`. Aucune sauvegarde
+automatique n'a donc jamais été produite depuis la mise en place du
+mécanisme, sans qu'aucun log applicatif ne pointe directement vers cette
+cause (le 401 seul ne dit pas "variable absente" explicitement) —
+diagnostiqué en croisant les logs de déploiement Vercel (requête réelle,
+401) avec la liste des Environment Variables du projet (absence
+confirmée). Correctif : créer la variable manuellement (valeur aléatoire
+suffisamment longue, ex. `crypto.randomUUID()`), redéployer. **Retenir
+pour toute future variable d'environnement dont le nom suggère une
+gestion automatique (secrets, tokens système)** : vérifier positivement
+sa présence dans Environment Variables avant de supposer qu'elle existe,
+plutôt que de se fier au nom ou à une documentation générale.
 
 - **Lecture en mode Private** — toute lecture (pas seulement
   l'écriture) requiert une authentification côté Vercel Blob ; un lien
@@ -282,6 +304,73 @@ sur ce plan).
   séparé) : liste les fichiers déjà produits, bouton de déclenchement
   manuel de test (`declencher_sauvegarde_auto`, hors horaire programmé,
   utile pour valider la chaîne sans attendre le prochain cron).
+
+## Ergonomie mobile — `beta-admin` (22/08/2026)
+
+Signalé peu pratique sur smartphone (nav en scroll horizontal difficile à
+parcourir, longues pages d'accordéons/tableaux forçant à scroller
+verticalement sur tout, tableaux Candidatures/Signalements forçant un
+scroll horizontal). Trois correctifs CSS/JS, tous en `@media(max-
+width:800px)` — aucun changement de comportement au-dessus de ce seuil :
+
+- **Nav en grille compacte** (`nav`, dans `<aside>`) — remplace le
+  `display:flex;overflow:auto` (scroll horizontal) par une grille 3
+  colonnes fixes, tous les 9 onglets visibles d'un coup sans interaction
+  supplémentaire pour les découvrir. `beta/index.html` (site public, 4
+  onglets seulement) utilise un `flex:1 1 0` qui compacte nativement sur
+  une seule ligne — non transposable tel quel ici (trop d'onglets pour
+  tenir en une ligne, même compactés).
+- **Accordéon sur Maintenance et Sauvegarde** (les deux onglets les plus
+  denses, 5 et 4 cartes `.card` respectivement) — attribut
+  `data-accordeon` sur la `<section>` parente, classes `.card-entete`/
+  `.card-corps`/`.ouverte` sur chaque carte. Une seule carte ouverte à la
+  fois (clic sur une carte fermée : l'ouvre, referme les autres du même
+  accordéon — même clic sur celle déjà ouverte : la referme). Délégation
+  d'événement unique sur `document` (`script.js`, fin de fichier), pas
+  un binding par carte — les cartes de ces deux onglets ne sont jamais
+  reconstruites dynamiquement, un binding direct aurait aussi fonctionné
+  mais la délégation reste cohérente avec le style déjà en place ailleurs
+  dans ce fichier (ex. `#account-result`).
+  - **Piège rencontré** : `all:"unset"`/reset générique posé sur
+    `.card-entete` peut réinitialiser des propriétés posées AVANT lui
+    dans le même objet de style JS (`box-shadow` notamment) — la
+    propriété `all` en CSS a un comportement spécial de réinitialisation
+    globale, pas un simple shorthand séquentiel respectant l'ordre des
+    clés. Non rencontré directement sur ce composant (construit sans
+    `all:"unset"` dès le départ, contrairement à un composant similaire
+    côté app principale, cf. `architecture-generale.md` section frise de
+    navigation semaines) — noté ici par précaution pour tout futur
+    composant similaire dans ce fichier.
+- **Cartes mobile remplaçant les tableaux** (Candidatures, Signalements)
+  — en dessous de 800px, `.table-wrap` (tableau desktop classique) est
+  masqué, un nouveau conteneur `.mobile-only` (rempli par
+  `renderApplicationCards`/`renderSignalementCards` dans `table()`/
+  `signalementsTable()`, appelées EN PLUS du rendu tableau existant, pas
+  à sa place) prend le relais. Contenu volontairement minimal par carte
+  (nom + badge de statut + bouton "Voir", réutilise la fonction `card()`
+  déjà existante pour "Récentes"/"Invités" sur le dashboard) — le reste
+  des champs (plateforme, niveau, sorties, distance, Strava) reste
+  accessible via la modale de détail déjà existante (`open(id)`),
+  jamais dupliqué sur la carte elle-même : objectif explicite d'éviter
+  aussi le scroll VERTICAL excessif d'une carte trop détaillée, pas
+  seulement le scroll horizontal du tableau.
+  - **Signalements — modale de détail ajoutée** (`openSignalement()`,
+    nouvelle fonction) : n'existait pas avant ce chantier (contrairement
+    aux candidatures, qui avaient déjà `open()`) — la carte mobile
+    tronque le message sur une ligne (`text-overflow:ellipsis`), un
+    bouton "Voir" était donc nécessaire pour accéder au message complet/
+    contexte/email, réutilise le même conteneur `#modal`/`#modal-content`
+    que les candidatures. Révèle un trou pré-existant corrigé au passage :
+    `updateSignalementStatut()` ne rafraîchissait l'affichage
+    (`signalementsTable()`) qu'en cas d'ERREUR, jamais après un succès —
+    la carte derrière la modale restait affichée avec l'ancien statut
+    malgré une mise à jour réussie côté serveur.
+  - **Piège de grille CSS** : `.candidate{grid-template-columns:1fr
+    auto}` (sans `minmax(0,1fr)`) laisse un contenu large (email long,
+    plusieurs badges) pousser la colonne au-delà de la largeur
+    disponible sur mobile — corrigé en `minmax(0,1fr) auto`, plus
+    `overflow-wrap:break-word` sur le texte en filet de sécurité
+    supplémentaire pour un email très long sans espace naturel.
 
 **Modules partagés (`lib/`, cf. `architecture-generale.md`)** :
 - `beta-invitation-email.js` — génération HTML de l'email d'invitation
