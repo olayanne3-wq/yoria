@@ -27,7 +27,15 @@
  */
 
 const VERSIONS = [
-      { ver:"v2.48", title:"Onglet Course pour gérer tes plans, aide à jour", current:true, notes:[
+      { ver:"v2.49", title:"Suppression Strava fiabilisée, sauvegardes automatiques réparées, ergonomie mobile", current:true, notes:[
+        "🗑️ Supprimer une activité importée (Strava/.fit) est désormais définitif — elle n'est plus jamais réimportée automatiquement, réactivable en un tap depuis le badge dédié sur la carte",
+        "🔄 La synchronisation automatique avec Strava passe de 1h à 30 minutes",
+        "📅 Un tap sur un jour de repos dans la vue Semaine ouvre maintenant sa carte, comme n'importe quel autre jour",
+        "🧭 Nouvelle frise de navigation rapide entre les semaines, fixée en haut de l'écran",
+        "💬 Messages de confirmation et d'erreur repensés, plus lisibles et cohérents dans toute l'app",
+        "🔧 Correctifs de fiabilité importants : suppression d'une activité Strava sans effet après un échange de séances, sauvegardes automatiques quotidiennes qui ne se déclenchaient jamais",
+      ]},
+      { ver:"v2.48", title:"Onglet Course pour gérer tes plans, aide à jour", current:false, notes:[
         "🏁 Le changement de plan et la création d'un nouveau plan se font maintenant depuis l'onglet Course, accessible aussi en Mode Forme",
         "📋 L'onglet Course affiche un état dédié tant qu'aucune course n'est en préparation, avec un accès direct pour en créer une",
         "❓ Nouveau tuto \"Changer de plan actif\" dans l'aide",
