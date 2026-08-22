@@ -7718,7 +7718,7 @@ function renderWeeks() {
       // sur la semaine actuelle à l'ouverture de l'onglet Semaines) — cf.
       // le bloc de scroll juste après app.appendChild(content) dans
       // render(), qui cible cet id.
-      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px",scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px) + 12px)"}},
+      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px",scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px) + 20px)"}},
         entete,
         el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"12px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
         renderGrilleJoursSemaine(week),
