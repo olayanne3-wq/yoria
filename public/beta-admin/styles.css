@@ -14,4 +14,49 @@ input,select{border:1px solid var(--line);border-radius:10px;padding:11px 12px;b
 .bar-list{display:grid;gap:14px}.bar{display:grid;grid-template-columns:120px 1fr 48px;gap:10px;align-items:center;font-size:.8rem}.track{height:10px;border-radius:99px;background:#eeecf2;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--purple),var(--mint))}
 .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px}.backdrop{position:absolute;inset:0;background:#110c1c99}.modal-card{position:relative;z-index:1;width:min(650px,100%);max-height:90vh;overflow:auto;padding:28px;border-radius:22px;background:#fff}.close{position:absolute;right:14px;top:12px;font-size:1.4rem}.details{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}.detail{padding:13px;border-radius:12px;background:#f8f7fa}.detail span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.message{margin-top:13px;padding:14px;border:1px solid var(--line);border-radius:12px;white-space:pre-wrap}.modal-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.modal-actions button{background:#eee8fb;color:#5727b6}
 .danger{color:#fff!important;background:var(--red)!important}
-@media(max-width:1000px){.stats{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:800px){.shell{grid-template-columns:1fr}aside{position:static;height:auto}nav{display:flex;overflow:auto}.nav{white-space:nowrap}.site-link{display:none}main{padding:20px 14px}.filters{grid-template-columns:1fr}.details{grid-template-columns:1fr}}
+
+/* ── Accordéon de cartes (22/08/2026, ergonomie mobile) ──────────────────
+   Utilisé sur les onglets Maintenance et Sauvegarde : plusieurs cartes
+   .card empilées transformées en accordéon (attribut data-accordeon sur
+   le conteneur parent, script.js gère l'ouverture/fermeture). Une carte
+   fermée n'affiche que son titre (.card-entete), le reste du contenu
+   (.card-corps) est masqué — évite le long scroll vertical sur mobile où
+   toutes les cartes étaient visibles en même temps par défaut. */
+[data-accordeon] .card{padding:0;overflow:hidden}
+[data-accordeon] .card-entete{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 18px;cursor:pointer;font-weight:800;font-size:.92rem}
+[data-accordeon] .card-entete:hover{background:#faf9fc}
+[data-accordeon] .card-entete .chevron{color:var(--muted);font-size:.9rem;transition:transform .15s ease;flex:0 0 auto}
+[data-accordeon] .card.ouverte .card-entete{border-bottom:1px solid var(--line)}
+[data-accordeon] .card.ouverte .card-entete .chevron{transform:rotate(90deg);color:var(--purple)}
+[data-accordeon] .card.ouverte .card-entete{color:var(--purple)}
+[data-accordeon] .card-corps{padding:16px 18px 20px}
+[data-accordeon] .card:not(.ouverte) .card-corps{display:none}
+
+@media(max-width:1000px){.stats{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}}
+@media(max-width:800px){
+  .shell{grid-template-columns:1fr}
+  aside{position:static;height:auto;padding:16px 14px}
+  .brand{margin-bottom:14px}
+  /* Nav en grille compacte (22/08/2026, remplace le scroll horizontal —
+     9 onglets ne tenaient pas sur une ligne sans scroller, contrairement
+     à beta/index.html qui n'en a que 4). 3 colonnes, icône au-dessus du
+     libellé, police réduite — tous les onglets visibles d'un coup sans
+     interaction supplémentaire pour les découvrir. */
+  nav{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;overflow:visible}
+  .nav{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px;font-size:.62rem;white-space:normal;text-align:center;line-height:1.2}
+  .site-link{display:none}
+  main{padding:16px 12px 40px}
+  h1{font-size:1.3rem}
+  header p{font-size:.62rem}
+  header{margin-bottom:16px}
+  .filters{grid-template-columns:1fr}
+  .details{grid-template-columns:1fr}
+  /* Stats compactées (22/08/2026) — 2 colonnes au lieu de 3, chiffres et
+     padding réduits, pour que les 4 stats tiennent en moins de hauteur
+     verticale sur un petit écran. */
+  .stats{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stats article{padding:12px}
+  .stats strong{font-size:1.5rem;margin-top:4px}
+  .card{padding:16px}
+  .modal-card{padding:18px}
+}
