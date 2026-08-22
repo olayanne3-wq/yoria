@@ -7345,14 +7345,8 @@ function renderLevierJours() {
       return;
     }
     impactEl.replaceChildren(
-      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"4px"}},
+      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between"}},
         el("span",{class:"muted"},"Séances qualité/semaine"), el("span",{},impact.nbQualiteActuel+" → "+impact.nbQualiteSimule)
-      ),
-      el("div",{style:{fontSize:"12px",display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
-        el("span",{class:"muted"},"Objectif estimé"), el("span",{style:{color:"var(--accent)",fontWeight:"700"}},formatTimeMinSecApp(impact.nouvelObjectifSimule))
-      ),
-      el("div",{style:{padding:"8px 10px",borderRadius:"8px",border:"1px solid var(--border)",fontSize:"12px",display:"flex",gap:"6px"}},
-        el("span",{},"📐"), el("span",{class:"muted"},"Estimation approximative — basée sur le nombre de séances qualité/semaine, pas sur un vrai recalcul complet.")
       )
     );
     btnAppliquer.disabled = false;
