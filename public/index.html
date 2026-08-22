@@ -7682,15 +7682,7 @@ function renderFriseSemaines() {
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
       if (carteCible) {
-        const rectAvant = carteCible.getBoundingClientRect();
-        const friseBarre = document.getElementById("frise-semaines-barre");
-        const accordeonEntete = document.getElementById("accordeon-plan-root")?.firstElementChild;
-        console.log("DIAG3: avant scroll — carte.top=", rectAvant.top, "frise.bottom=", friseBarre?.getBoundingClientRect().bottom, "accordeon.bottom=", accordeonEntete?.getBoundingClientRect().bottom, "scrollMarginTop=", getComputedStyle(carteCible).scrollMarginTop);
         carteCible.scrollIntoView({ block: "start", behavior: "smooth" });
-        setTimeout(() => {
-          const rectApres = carteCible.getBoundingClientRect();
-          console.log("DIAG3: après scroll (500ms) — carte.top=", rectApres.top, "frise.bottom=", friseBarre?.getBoundingClientRect().bottom, "accordeon.bottom=", accordeonEntete?.getBoundingClientRect().bottom);
-        }, 500);
       }
     });
     return pastille;
@@ -7726,7 +7718,7 @@ function renderWeeks() {
       // sur la semaine actuelle à l'ouverture de l'onglet Semaines) — cf.
       // le bloc de scroll juste après app.appendChild(content) dans
       // render(), qui cible cet id.
-      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px",scrollMarginTop:"calc(var(--hauteur-accordeon-plan-ferme, 56px) + var(--hauteur-frise-semaines, 0px) + 12px)"}},
+      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px",scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px) + 12px)"}},
         entete,
         el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"12px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
         renderGrilleJoursSemaine(week),
