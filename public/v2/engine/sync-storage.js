@@ -400,25 +400,45 @@ export async function precharger(userId, planId) {
 }
 
 // ------------------------------------------------------------
-// Écrit une valeur vers Supabase en arrière-plan, sans bloquer.
-// Route vers la bonne table selon la clé. Appelée depuis save()
-// dans index.html, en plus de l'écriture localStorage existante.
+// Écrit une valeur vers Supabase en arrière-plan. Route vers la bonne
+// table selon la clé. Appelée depuis save() dans index.html, en plus de
+// l'écriture localStorage existante.
+//
+// RETOURNE désormais une vraie promesse de la requête Supabase pour les
+// 3 branches (profil / intégration / plan_donnees) — 22/08/2026,
+// correctif : cette fonction ne retournait jusqu'ici RIEN d'exploitable
+// (chaque branche lançait son .then()/.catch() en fire-and-forget puis
+// faisait `return;` nu), alors qu'un appelant avait besoin d'attendre
+// une confirmation réelle avant de considérer une action terminée (ex.
+// suppression définitive d'une activité Strava, où un rechargement de
+// page trop rapide après l'action pouvait faire écraser la suppression
+// locale par precharger() lisant encore l'ancienne valeur côté Supabase
+// — race condition entre l'écriture fire-and-forget et une lecture
+// concurrente). Tous les appelants EXISTANTS de cette fonction
+// continuent de l'utiliser en fire-and-forget (ils ignorent déjà la
+// valeur de retour) — ce changement est donc rétrocompatible à 100%,
+// il ne fait qu'exposer une promesse que personne n'était obligé
+// d'attendre avant. Un nouvel appelant peut désormais faire
+// `await synchroniserVersSupabase(...)` pour être notifié une fois
+// l'écriture Supabase réellement tentée (résolue même en cas d'erreur
+// applicative gérée — voir chaque branche : la promesse ne REJETTE que
+// sur une erreur inattendue, l'erreur Supabase normale est gérée en
+// interne via ajouterALaFile() comme avant).
 // ------------------------------------------------------------
 export function synchroniserVersSupabase(userId, planId, cle, valeur) {
-  if (!userId) return; // pas connecté, pas de sync possible (ne devrait pas arriver)
+  if (!userId) return Promise.resolve(); // pas connecté, pas de sync possible (ne devrait pas arriver)
   // Reste volontairement synchrone (fire-and-forget) côté appelant — en
   // pratique save() n'est appelée qu'après le premier rendu, donc
   // supabaseReady est déjà résolue. Garde de sécurité quand même : si
   // jamais appelée trop tôt, on attend silencieusement plutôt que de
   // planter sur `supabase` undefined.
   if (!supabase) {
-    supabaseReady.then(() => synchroniserVersSupabase(userId, planId, cle, valeur));
-    return;
+    return supabaseReady.then(() => synchroniserVersSupabase(userId, planId, cle, valeur));
   }
 
   if (cle === 'lk_profil_coureur') {
     const payload = { user_id: userId, data: valeur };
-    supabase.from('profils_coureur')
+    return supabase.from('profils_coureur')
       .upsert(payload)
       .then(({ error }) => {
         if (error) {
@@ -426,7 +446,6 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
           ajouterALaFile('profil', payload);
         }
       });
-    return;
   }
 
   if (CLES_INTEGRATIONS.includes(cle)) {
@@ -456,7 +475,7 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
       valeurFinale = new Date(enMillisecondes).toISOString();
     }
     const payload = { user_id: userId, [colonne]: valeurFinale };
-    supabase.from('integrations')
+    return supabase.from('integrations')
       .upsert(payload)
       .then(({ error }) => {
         if (error) {
@@ -464,21 +483,20 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
           ajouterALaFile('integration', payload);
         }
       });
-    return;
   }
 
   if (CLES_LOCALES_UNIQUEMENT.includes(cle)) {
-    return; // volontairement pas synchronisé
+    return Promise.resolve(); // volontairement pas synchronisé
   }
 
   // Toute autre clé préfixée par plan (lk_statuses_xxx, lk_notes_xxx, etc.)
   // va dans plan_donnees.data, sous sa clé SANS le suffixe d'id.
-  if (!planId) return; // pas de plan actif, rien à synchroniser
+  if (!planId) return Promise.resolve(); // pas de plan actif, rien à synchroniser
   if (!estUuidValide(planId)) {
     // Plan de repli par défaut ou tout autre id non-UUID : pas de table
     // pour ce cas, on reste volontairement en localStorage uniquement.
     // Redevient synchronisable dès qu'un vrai plan (UUID du wizard) est actif.
-    return;
+    return Promise.resolve();
   }
   const cleBase = planId ? cle.replace(`_${planId}`, '') : cle;
   marquerEchoLocal(planId); // avant l'écriture : l'événement Realtime qui
@@ -504,7 +522,7 @@ export function synchroniserVersSupabase(userId, planId, cle, valeur) {
   // merge ATOMIQUEMENT côté serveur (jsonb_set en une seule transaction)
   // — plus de fenêtre de lecture séparée, donc plus de race condition
   // possible quel que soit le nombre d'écritures concurrentes.
-  supabase.rpc('merger_plan_donnees', {
+  return supabase.rpc('merger_plan_donnees', {
     p_plan_id: planId,
     p_user_id: userId,
     p_cle: cleBase,
