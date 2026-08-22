@@ -8636,6 +8636,12 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   // limite l'ampleur du changement, sans revenu fonctionnel perdu.
   const correctionSlot = el("div",{style:{display:"none",marginTop:"8px"}});
   const liensDroite = el("div",{style:{display:"flex",gap:"12px",alignItems:"center"}});
+  // Déclarée ici, avant le premier if(stravaRun) — utilisée à la fois
+  // pour construire le badge (juste en dessous) et pour conditionner le
+  // Résumé chiffré plus bas dans cette même fonction (22/08/2026,
+  // correctif) : une const déclarée à l'intérieur du bloc if(stravaRun)
+  // n'aurait pas été accessible à cet endroit plus bas (ReferenceError).
+  const estExclue = !!datesExcluesSync[s.date];
   // Badge de source + actions de suppression — ajoutés le 03/08/2026,
   // scindés en deux intentions distinctes le 22/08/2026 (demande de
   // Laurent) : une simple suppression laissait la date libre, donc la
@@ -8644,7 +8650,6 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   // activité" par opposition à "je veux juste forcer un réimport frais".
   if (stravaRun) {
     const estFit = stravaRun._source === "fit";
-    const estExclue = !!datesExcluesSync[s.date];
 
     if (estExclue) {
       // Badge sens interdit (22/08/2026) — remplace le badge de source
@@ -8724,8 +8729,13 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     liensDroite
   ));
 
-  // Résumé chiffré : Strava si dispo, sinon la saisie manuelle
-  if (stravaRun) {
+  // Résumé chiffré : Strava si dispo ET non exclue, sinon la saisie
+  // manuelle (22/08/2026, correctif) — ce bloc affichait les données dès
+  // que stravaRun existait, sans jamais vérifier l'exclusion posée juste
+  // au-dessus (estExclue) : une activité réimportée puis re-supprimée
+  // définitivement dans le même cycle pouvait donc montrer le badge 🚫
+  // ET les données en même temps, contradictoire pour l'utilisateur.
+  if (stravaRun && !estExclue) {
     const isIntensive = effortLaps.length > 0;
     const dispPace = isIntensive ? effortLaps.reduce((s2,l)=>s2+l.average_speed,0)/effortLaps.length : stravaRun.average_speed;
     const paceLabel = isIntensive ? "allure interv." : "allure moy.";
