@@ -7674,11 +7674,11 @@ function renderFriseSemaines() {
     const color = phaseOf(week.week).color;
     const pastille = el("button",{style:{
       cursor:"pointer", flexShrink:"0",
-      border:"none", padding:"0", font:"inherit",
+      padding:"0", font:"inherit", boxSizing:"border-box",
       width:"34px", height:"34px", borderRadius:"8px", background:color,
       display:"flex", alignItems:"center", justifyContent:"center",
       fontSize:"12px", fontWeight:"700", color:"#F8FAFC",
-      boxShadow: isActive ? `0 0 0 2px #F8FAFC, 0 0 0 4px var(--bg)` : "none"
+      border: isActive ? "2px solid var(--text)" : "2px solid transparent"
     }}, "S"+week.week);
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
@@ -7696,7 +7696,7 @@ function renderFriseSemaines() {
     borderBottom:"1px solid var(--border)", padding:"10px 16px",
     boxSizing:"border-box"
   }},
-    el("div",{style:{display:"flex", gap:"6px", overflowX:"auto"}}, ...pastilles)
+    el("div",{style:{display:"flex", gap:"6px", overflowX:"auto", paddingTop:"3px", paddingBottom:"3px"}}, ...pastilles)
   );
 }
 
