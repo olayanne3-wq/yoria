@@ -14738,7 +14738,7 @@ function setView(v) {
   if (arriveeSurWeeks) {
     const carteSemaineActuelle = document.getElementById("carte-semaine-"+currentWeek());
     if (carteSemaineActuelle) {
-      carteSemaineActuelle.scrollIntoView({ block:"center", behavior:"instant" });
+      carteSemaineActuelle.scrollIntoView({ block:"start", behavior:"instant" });
     }
   }
   // Fetcher les météos historiques manquantes pour les séances avec Strava
