@@ -13271,7 +13271,13 @@ function renderSettings() {
                 ) : "")
             )
           ),
-          syncMsg?el("div",{style:{fontSize:"14px",color:syncMsg.startsWith("✅")?"var(--accent2)":"var(--text2)",marginBottom:"10px",padding:"8px 10px",background:"var(--border-soft)",borderRadius:"8px"}},syncMsg):null,
+          // Résultat final (succès/échec) désormais en toast (22/08/2026) —
+          // seul le cas "reconnexion nécessaire" reste affiché inline, car
+          // le bouton "Reconnecter Strava" juste en dessous n'a pas de
+          // timer propre : un toast qui s'efface seul laisserait ce bouton
+          // sans contexte pour expliquer pourquoi il est là.
+          stravaAuthInvalide
+            ?el("div",{style:{fontSize:"14px",color:"var(--warn)",marginBottom:"10px",padding:"8px 10px",background:"var(--border-soft)",borderRadius:"8px"}},syncMsg):null,
           stravaAuthInvalide
             ?el("a",{href:"/api/strava/auth",style:{display:"block",background:"rgba(var(--warn-rgb),0.13)",border:"1px solid rgba(var(--warn-rgb),0.33)",borderRadius:"10px",padding:"11px",cursor:"pointer",color:"var(--warn)",fontWeight:"700",fontSize:"15px",marginBottom:"8px",textAlign:"center",textDecoration:"none",display:"block"}},
               "🔄 Reconnecter Strava")
@@ -13318,7 +13324,8 @@ function renderSettings() {
         "Allure, distance et FC sont toujours récupérées correctement. Pour une sortie EF ou longue, c'est suffisant. ",
         "Pour une séance qualité (fractionné), la précision du découpage effort/récup dépend de ta montre : certaines (Zepp/Amazfit notamment, testé) n'incluent pas cette structure dans le fichier exporté, même si la séance a été suivie fidèlement. Si le découpage semble faux après import, ce n'est pas forcément une erreur — vérifie la séance manuellement si besoin. Apple Watch nécessite systématiquement une app tierce (ex. Watchletic) pour produire un .fit — Apple Fitness natif ne le permet pas."
       ),
-      syncMsg?el("div",{style:{fontSize:"14px",color:syncMsg.startsWith("✅")?"var(--accent2)":"var(--text2)",marginBottom:"10px",padding:"8px 10px",background:"var(--border-soft)",borderRadius:"8px"}},syncMsg):null,
+      // Résultat final désormais en toast (22/08/2026) — plus d'affichage
+      // inline ici, cf. commentaire équivalent section Strava plus haut.
       (()=>{
         const fileInp = document.createElement("input");
         fileInp.type = "file"; fileInp.accept = ".fit"; fileInp.style.display = "none";
@@ -13958,6 +13965,7 @@ async function importerFichierFit(file) {
     const activite = await adapterFitVersFormatActivite(fitData);
     if (!activite) {
       syncMsg = "❌ Fichier .fit illisible ou vide.";
+      afficherMessage("toast", "Fichier .fit illisible ou vide", "erreur");
       syncing = false; render();
       return;
     }
@@ -13976,6 +13984,7 @@ async function importerFichierFit(file) {
     if (activiteExistante) {
       const source = activiteExistante._source === "fit" ? "FIT" : "Strava";
       syncMsg = "❌ Une activité (" + source + ") existe déjà pour le " + dateActivite + " — supprime-la d'abord (🗑️ sur la carte de la séance) pour en importer une nouvelle.";
+      afficherMessage("toast", "Une activité existe déjà pour le " + dateActivite, "erreur");
       syncing = false; render();
       return;
     }
@@ -13984,8 +13993,10 @@ async function importerFichierFit(file) {
     save("lk_strava_activities", stravaActivities);
     matchActivitiesToPlan(stravaActivities);
     syncMsg = "✅ Séance du " + dateActivite + " importée.";
+    afficherMessage("toast", "Séance du " + dateActivite + " importée", "succes");
   } catch (e) {
     syncMsg = "❌ Erreur de lecture : " + e.message;
+    afficherMessage("toast", "Erreur de lecture du fichier", "erreur");
   } finally {
     syncing = false; render();
   }
@@ -13999,6 +14010,7 @@ async function syncStrava(force = false) {
   // rien avant d'échouer à la sauvegarde.
   if (window.__PLAN_BRUT__?.mode === 'forme' && window.__PLAN_BRUT__?.dateCloture) {
     syncMsg = "Plan clôturé — synchronisation Strava désactivée.";
+    afficherMessage("toast", "Plan clôturé, synchronisation désactivée", "info");
     render();
     return;
   }
@@ -14027,6 +14039,7 @@ async function syncStrava(force = false) {
     syncMsg = stravaAuthInvalide
       ? "❌ Connexion Strava expirée — reconnecte-toi pour continuer la synchro."
       : "Erreur de token";
+    if (!stravaAuthInvalide) afficherMessage("toast", "Erreur de connexion à Strava", "erreur");
     render();
     return;
   }
@@ -14090,6 +14103,7 @@ async function syncStrava(force = false) {
 
       save("lk_last_sync", lastSyncTime);
       syncMsg=`✅ ${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`;
+      afficherMessage("toast", `${activities.length} activité${activities.length>1?"s":""} synchronisée${activities.length>1?"s":""}`, "succes");
       // Regénérer le coach après synchro si séance terminée aujourd'hui
       const todaySynced = ALL_SESSIONS.find(s=>s.date===today()&&s.type!=="REPOS");
       if (todaySynced && statuses[todaySynced.uid]) {
@@ -14108,10 +14122,12 @@ async function syncStrava(force = false) {
         syncMsg = "❌ Connexion Strava expirée — reconnecte-toi pour continuer la synchro.";
       } else {
         syncMsg="❌ Erreur Strava";
+        afficherMessage("toast", "Erreur Strava", "erreur");
       }
     }
   } catch(e) {
     syncMsg="❌ Erreur réseau — activités précédentes conservées";
+    afficherMessage("toast", "Erreur réseau, activités précédentes conservées", "erreur");
     // On ne vide pas stravaActivities — on conserve le cache
   }
   syncing=false; render();
