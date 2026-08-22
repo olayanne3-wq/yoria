@@ -7682,18 +7682,7 @@ function renderFriseSemaines() {
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
       if (carteCible) {
-        // Mesure directe des VRAIS éléments fixes à l'instant du clic
-        // (22/08/2026, correctif) — plutôt que de lire des variables CSS
-        // potentiellement pas à jour avec l'état réel affiché à cet
-        // instant précis (dépendaient du dernier render(), pas garanti
-        // synchronisé avec le DOM au moment du clic). getBoundingClientRect
-        // sur les éléments eux-mêmes reflète toujours la réalité actuelle.
-        const friseBarre = document.getElementById("frise-semaines-barre");
-        const accordeonEntete = document.getElementById("accordeon-plan-root")?.firstElementChild;
-        const hauteurFrise = friseBarre ? friseBarre.getBoundingClientRect().height : 0;
-        const hauteurAccordeon = accordeonEntete ? accordeonEntete.getBoundingClientRect().height : 0;
-        const yCible = carteCible.getBoundingClientRect().top + window.scrollY - hauteurFrise - hauteurAccordeon - 12;
-        window.scrollTo({ top: yCible, behavior: "smooth" });
+        carteCible.scrollIntoView({ block: "start", behavior: "smooth" });
       }
     });
     return pastille;
@@ -7713,7 +7702,6 @@ function renderFriseSemaines() {
 function renderWeeks() {
   const cw=currentWeek();
   return el("div",{style:{padding:"0 16px 100px",paddingTop:"calc(var(--hauteur-accordeon-plan-ferme, 56px) + var(--hauteur-frise-semaines, 0px))"}},
-    el("div",{style:{marginTop:"8px",marginBottom:"12px",color:"var(--text2)",fontSize:"14px"}},"Semaine actuelle : ",el("span",{style:{color:"var(--accent)",fontWeight:"700"}},"S"+cw)),
     renderContenuAccordeonPlan(),
     ...PLAN.map(week=>{
       const pct=weekPct(week), isActive=week.week===cw, color=phaseOf(week.week).color, decharge=estSemaineDecharge(week.week);
@@ -7730,7 +7718,7 @@ function renderWeeks() {
       // sur la semaine actuelle à l'ouverture de l'onglet Semaines) — cf.
       // le bloc de scroll juste après app.appendChild(content) dans
       // render(), qui cible cet id.
-      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px"}},
+      const card=el("div",{id:"carte-semaine-"+week.week,style:{background:isActive?"var(--border-soft)":"var(--bg)",border:`${isActive?"2px":"1px"} solid ${isActive?"rgba(var(--accent-rgb),0.5)":"var(--border)"}`,borderLeft:`3px solid ${color}`,borderRadius:"12px",padding:"14px",marginBottom:"10px",scrollMarginTop:"calc(var(--hauteur-accordeon-plan-ferme, 56px) + var(--hauteur-frise-semaines, 0px) + 12px)"}},
         entete,
         el("div",{class:"muted",style:{fontSize:"12px",marginBottom:"12px"}},fmtDate(week.sessions[0].date)+" → "+fmtDate(week.sessions[6].date)),
         renderGrilleJoursSemaine(week),
