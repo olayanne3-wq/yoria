@@ -8637,6 +8637,7 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       }, "🚫 Bloqué");
       badgeReactiver.addEventListener("click", avecRetourTactile(async (e)=>{
         e.preventDefault(); e.stopPropagation();
+        badgeReactiver.disabled = true;
         badgeReactiver.textContent = "⏳ Réactivation...";
         delete datesExcluesSync[s.date];
         await save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
@@ -8705,6 +8706,8 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
         style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700",background:"none",border:"none",padding:"0",fontFamily:"inherit"}
       }, "🚫 Bloqué");
       badgeReactiver.addEventListener("click", avecRetourTactile(async () => {
+        badgeReactiver.disabled = true;
+        badgeReactiver.textContent = "⏳ Réactivation...";
         delete datesExcluesSync[s.date];
         await save(clePourPlan("lk_dates_exclues_sync"), datesExcluesSync);
         render();
@@ -8765,6 +8768,7 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     supprimerBtn.addEventListener("click", avecRetourTactile(async (e)=>{
       e.preventDefault(); e.stopPropagation();
       if (!confirm("Supprimer définitivement cette activité "+(estFit?"FIT":"Strava")+" du "+s.date+" ? Elle ne sera plus jamais réimportée automatiquement — réactivable via le badge 🚫 sur la carte.")) return;
+      supprimerBtn.disabled = true;
       supprimerBtn.textContent = "⏳";
       await retirerActiviteLocalement();
       datesExcluesSync[s.date] = true;
