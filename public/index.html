@@ -7673,7 +7673,8 @@ function renderFriseSemaines() {
     const isActive = week.week === cw;
     const color = phaseOf(week.week).color;
     const pastille = el("button",{style:{
-      all:"unset", boxSizing:"border-box", cursor:"pointer", flexShrink:"0",
+      cursor:"pointer", flexShrink:"0",
+      border:"none", padding:"0", font:"inherit",
       width:"34px", height:"34px", borderRadius:"8px", background:color,
       display:"flex", alignItems:"center", justifyContent:"center",
       fontSize:"12px", fontWeight:"700", color:"#F8FAFC",
