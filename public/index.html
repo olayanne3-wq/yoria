@@ -7682,14 +7682,17 @@ function renderFriseSemaines() {
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
       if (carteCible) {
-        // Décalage manuel (pas scrollIntoView seul) — les éléments fixed
-        // (frise + accordéon) superposés en haut de l'écran cachent le
-        // haut de la carte si on aligne simplement avec le haut du
-        // viewport. Même hauteur combinée que celle déjà mesurée pour le
-        // padding du contenu (cf. renderWeeks()), plus une petite marge.
-        const hauteurFixe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hauteur-accordeon-plan-ferme")) || 56;
-        const hauteurFrise = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hauteur-frise-semaines")) || 0;
-        const yCible = carteCible.getBoundingClientRect().top + window.scrollY - hauteurFixe - hauteurFrise - 12;
+        // Mesure directe des VRAIS éléments fixes à l'instant du clic
+        // (22/08/2026, correctif) — plutôt que de lire des variables CSS
+        // potentiellement pas à jour avec l'état réel affiché à cet
+        // instant précis (dépendaient du dernier render(), pas garanti
+        // synchronisé avec le DOM au moment du clic). getBoundingClientRect
+        // sur les éléments eux-mêmes reflète toujours la réalité actuelle.
+        const friseBarre = document.getElementById("frise-semaines-barre");
+        const accordeonEntete = document.getElementById("accordeon-plan-root")?.firstElementChild;
+        const hauteurFrise = friseBarre ? friseBarre.getBoundingClientRect().height : 0;
+        const hauteurAccordeon = accordeonEntete ? accordeonEntete.getBoundingClientRect().height : 0;
+        const yCible = carteCible.getBoundingClientRect().top + window.scrollY - hauteurFrise - hauteurAccordeon - 12;
         window.scrollTo({ top: yCible, behavior: "smooth" });
       }
     });
