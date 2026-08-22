@@ -6330,7 +6330,7 @@ async function mettreAJourStatutDecisionEvent(eventId, statut, ampleurAppliquee,
       ),
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
         el("span",{style:{color:phase.color,fontSize:"14px",fontWeight:"700"}},"S"+cw+" · "+phasePct+"%"),
-        el("span",{class:"muted",style:{fontSize:"14px"}},"›")
+        el("span",{class:"muted",style:{fontSize:"20px",transition:"transform 0.15s"}},"›")
       )
     ),
     el("div",{style:{height:"4px",background:"var(--border-soft)",borderRadius:"2px"}},
@@ -7234,7 +7234,7 @@ function renderLevierVolume() {
     input, btnAppliquer, msgEl
   );
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}},"›");
   const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
     el("span",{},"📊 Volume (km/semaine)"), chevron
   );
@@ -7295,7 +7295,7 @@ function renderLevierObjectif() {
     btnAppliquer, msgEl
   );
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}},"›");
   const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
     el("span",{},"🎯 Objectif de temps"), chevron
   );
@@ -7383,7 +7383,7 @@ function renderLevierJours() {
     compteurEl, grille, impactEl, btnAppliquer, msgEl
   );
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}},"›");
   const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
     el("span",{},"📅 Jours d'entraînement"), chevron
   );
@@ -7441,7 +7441,7 @@ function renderLevierDateCourse() {
     input, impactEl, btnAppliquer, msgEl
   );
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}},"›");
   const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
     el("span",{},"📆 Date de course"), chevron
   );
@@ -7549,7 +7549,7 @@ function renderLevierCourseIntermediaire() {
     label, champsEl, impactEl, btnAppliquer, msgEl
   );
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(180deg)":"rotate(0deg)"}},"▾");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform .15s",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}},"›");
   const entete = el("div",{style:{padding:"10px 4px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"13px",borderTop:"1px solid var(--border-soft)"}},
     el("span",{},"🏃 Course intermédiaire"), chevron
   );
@@ -7575,7 +7575,7 @@ function renderModifierPlanAccordeon() {
   // qu'affiché vide, même principe que renderGroupeAccordeonStats.
   if (!window.__PLAN_BRUT__?.profilOrigine || !window.__PLAN_BRUT__?.paramsOrigine) return null;
 
-  const chevron = el("span",{style:{fontSize:"18px",color:"var(--accent)",marginLeft:"auto",transition:"transform 0.15s",transform:ouvertModifierPlan?"rotate(90deg)":"rotate(0deg)"}},"›");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",marginLeft:"auto",transition:"transform 0.15s",transform:ouvertModifierPlan?"rotate(90deg)":"rotate(0deg)"}},"›");
   // En-tête volontairement plus visible qu'un groupe Réglages/Stats
   // classique (18/08/2026, retour de Laurent : "peu visible") — cadre en
   // carte avec fond/bordure teintés accent, icône et libellé agrandis,
@@ -8407,7 +8407,7 @@ function renderManualPerfRow(uid, s, stravaRun, forceOpen) {
         ? "Saisie manuelle · "+fmtPace(manualPerf[uid].average_speed)+"/km"+(stravaRun?" (prime sur Strava)":"")
         : "Saisir ou corriger manuellement"
     ));
-    summaryLine.appendChild(el("span",{style:{fontSize:"13px",color:"var(--accent)"}}, expanded?"▲":"▼"));
+    summaryLine.appendChild(el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform 0.15s",transform: expanded?"rotate(90deg)":"rotate(0deg)"}}, "›"));
   };
   rebuildSummary();
 
@@ -9428,7 +9428,7 @@ function renderGroupeAccordeonStats(icone, titre, couleurVar, contenuElements, o
   if (!contenuValide.length) return null; // rien à afficher, groupe entier omis
 
   let ouvert = etatGroupesAccordeon[titre] ?? false;
-  const chevron = el("span",{style:{fontSize:"12px",color:"var(--text-muted)",transition:"transform 0.15s",marginLeft:"auto",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}}, "›");
+  const chevron = el("span",{style:{fontSize:"20px",color:"var(--text-muted)",transition:"transform 0.15s",marginLeft:"auto",transform:ouvert?"rotate(90deg)":"rotate(0deg)"}}, "›");
   const conteneurContenu = el("div",{style:{display:ouvert?"block":"none",marginTop:"10px"}}, ...contenuValide);
 
   const entete = el("button",{style:{
@@ -12348,7 +12348,7 @@ function renderHelp() {
         section.icon, section.title,
         requete ? el("span",{class:"muted", style:{fontSize:"12px", fontWeight:"500"}}, "("+itemsAffiches.length+")") : null
       ),
-      requete ? null : el("span",{class:"muted", style:{fontSize:"14px", transform: estOuverte ? "rotate(90deg)" : "none", transition:"transform 0.15s"}}, "›")
+      requete ? null : el("span",{class:"muted", style:{fontSize:"20px", transform: estOuverte ? "rotate(90deg)" : "none", transition:"transform 0.15s"}}, "›")
     );
 
     const corps = estOuverte ? el("div",{style:{marginBottom:"8px"}}, card(
