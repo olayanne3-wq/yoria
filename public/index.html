@@ -2703,7 +2703,7 @@ function ouvrirSignalementProbleme() {
     // événement supporté par la fonction el() de ce fichier (seuls
     // onClick/onChange le sont), donc le texte n'était jamais capté.
     const description = textarea.value;
-    if (!description.trim()) { statutMsg.textContent = "Décris le problème avant d'envoyer."; return; }
+    if (!description.trim()) { afficherMessage(statutMsg, "Décris le problème avant d'envoyer.", "erreur", 0); return; }
     const planId = window.__PLAN_BRUT__?.id || "aucun";
     const estPlanRepli = !!window.__PLAN_BRUT__?.estPlanRepli;
     const contexteTxt = "vue=" + view + " | planId=" + planId + " | estPlanRepli=" + estPlanRepli + " | url=" + window.location.href;
@@ -2734,10 +2734,10 @@ function ouvrirSignalementProbleme() {
           sentry_event_id: typeof sentryEventId === 'string' ? sentryEventId : null,
         });
       }
-      statutMsg.textContent = "Merci, c'est envoyé !";
+      afficherMessage(statutMsg, "Merci, c'est envoyé !", "succes");
       setTimeout(fermer, 1200);
     } catch (e) {
-      statutMsg.textContent = "Envoi indisponible pour le moment, réessaie plus tard.";
+      afficherMessage(statutMsg, "Envoi indisponible pour le moment, réessaie plus tard.", "erreur");
     }
   };
   const modal = el("div", {style:{
