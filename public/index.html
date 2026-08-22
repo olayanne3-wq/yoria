@@ -13802,22 +13802,31 @@ function renderSettings() {
           const idPrefix = "rec-temps-"+dist;
           const roulette = roulettesActivesReglages[idPrefix];
           const conteneurReel = document.getElementById(idPrefix + "-rouletteM");
-          const conteneurEncoreAttache = document.body.contains(conteneurReel);
-          if (idPrefix === "rec-temps-5K") {
-            console.log("DIAG2:", idPrefix, "roulette=", !!roulette, "conteneurReel=", conteneurReel, "attaché=", conteneurEncoreAttache, "enfants avant=", conteneurReel?.children.length);
-          }
-          if (roulette && conteneurEncoreAttache) {
+          // Test direct sur le symptôme réel (22/08/2026, confirmé par
+          // diagnostic console en 2 passes) : un conteneur avec le bon id
+          // existe TOUJOURS après un render() (recréé à l'identique), même
+          // vide — donc "id présent et attaché" ne suffit pas à distinguer
+          // un conteneur réellement peuplé d'un nouveau conteneur vide
+          // associé par erreur à un ancien objet API fantôme
+          // (roulettesActivesReglages[idPrefix] pointant vers les nœuds de
+          // l'ANCIEN render, détruits). Seul le nombre d'enfants réels
+          // dit la vérité : 0 enfants = jamais construit dans CE DOM,
+          // peu importe ce que prétend le registre.
+          if (roulette && conteneurReel && conteneurReel.children.length > 0) {
+            // Vraiment déjà construite dans ce DOM — simple
+            // repositionnement défensif.
             roulette.h?.definirValeur(roulette.h.valeur(), false);
             roulette.m?.definirValeur(roulette.m.valeur(), false);
             roulette.s?.definirValeur(roulette.s.valeur(), false);
-            if (idPrefix === "rec-temps-5K") console.log("DIAG2: branche REPOSITIONNER prise, enfants après=", conteneurReel?.children.length);
             return;
           }
+          // Jamais construite dans CE DOM (groupe fermé au chargement,
+          // DOM pas encore layouté au premier polling, ou registre
+          // fantôme après un render antérieur) — reconstruction directe.
           const rec = profilCoureur.records?.[dist];
           const hms = window.parserTempsRecordEnHMS(rec?.temps);
           const heuresMax = HEURES_MAX_PAR_DISTANCE[dist] ?? 9;
           window.initRouletteHMS(idPrefix, hms.h ?? 0, hms.m ?? 0, hms.s ?? 0, heuresMax);
-          if (idPrefix === "rec-temps-5K") console.log("DIAG2: branche RECONSTRUIRE prise, enfants après=", document.getElementById(idPrefix + "-rouletteM")?.children.length);
         });
       };
 
