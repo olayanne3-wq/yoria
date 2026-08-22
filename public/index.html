@@ -9232,7 +9232,7 @@ function renderWeekDetail(weekNum) {
       // est validée (✅/⚠️/❌/😴) ou a une donnée quelconque (Strava/manuelle),
       // jamais pour une séance future.
       (s.date<=today() && effSess.type!=="REPOS" && effSess.type!=="RACE" && (isDoneSession || stravaRun || manualPerf[uid]))
-        ? renderBlocRealise(uid, effSess, stravaRun, effortLaps, manualPerf[uid])
+        ? renderBlocRealise(uid, {...effSess, date: s.date}, stravaRun, effortLaps, manualPerf[uid])
         : null,
       // Météo au départ (spécifique à cette vue, absente de la carte du
       // jour) — affichée seulement si une activité Strava géolocalisée
