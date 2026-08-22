@@ -56,8 +56,86 @@ indépendamment du matching).
 
 **Protection des activités importées** — la première activité sur une
 date (Strava ou FIT) ne peut plus être écrasée silencieusement par une
-resynchronisation ; distinct de l'ambiguïté Strava ci-dessus (gérée avant
-qu'une activité soit retenue). Détail complet ci-dessous.
+resynchronisation. Distincte de l'ambiguïté Strava ci-dessus (gérée avant
+qu'une activité soit retenue). Voir section "Suppression d'une activité
+importée — exclusion durable" ci-dessous pour le mécanisme complet de
+suppression volontaire (22/08/2026), qui va au-delà de cette simple
+protection contre l'écrasement automatique.
+
+## Suppression d'une activité importée — exclusion durable (22/08/2026)
+
+Avant ce chantier, un seul bouton "Supprimer" retirait localement une
+activité Strava/FIT, mais laissait sa date LIBRE — la prochaine synchro
+(automatique ou manuelle) réimportait l'activité telle quelle, annulant
+silencieusement la suppression. Aucun moyen d'exprimer durablement "je ne
+veux vraiment plus de cette activité", distinct de "je veux juste forcer
+un réimport frais".
+
+**Deux intentions désormais distinctes** (cf. `architecture-generale.md`
+pour le détail complet côté UI/rendu) :
+- **Supprimer définitivement** — ajoute la date à `datesExcluesSync`
+  (nouvelle donnée persistée, préfixée par plan, `{date: true}` — clé
+  indexée par DATE et non par `uid`, pour que le blocage tienne même si
+  le plan est régénéré ou modifié entre-temps, contrairement à un `uid`
+  qui peut changer de contenu après un swap).
+- **Retirer pour resynchroniser** — comportement historique (03/08/2026),
+  RETIRÉ le 22/08/2026 (jamais utilisé en pratique, encombrait
+  systématiquement la carte pour un besoin quasi inexistant). Sa logique
+  interne reste utilisée par "Supprimer définitivement".
+
+**Déclenchement du filtre selon le contexte** :
+- **`syncStrava()` (synchro automatique/manuelle)** — filtre
+  SILENCIEUSEMENT toute activité Strava dont la date figure dans
+  `datesExcluesSync`, avant même le filtre `type === "Run"` existant.
+  Aucune interaction possible pendant une synchro en arrière-plan, le
+  blocage doit tenir sans dialogue.
+- **`importerFichierFit()` (import manuel)** — AVERTIT plutôt que de
+  bloquer silencieusement : l'utilisateur vient de choisir un fichier
+  précis volontairement, un blocage muet serait plus surprenant qu'utile.
+  Une confirmation explicite ("Le [date] est marqué comme définitivement
+  supprimé... Importer quand même ?") retire l'exclusion si acceptée.
+
+**Réactivation** — un badge `🚫 Bloqué` (`<button>`, pas `<span>` —
+accessibilité) remplace le badge de source habituel (🟠 Strava/📁 FIT) sur
+toute carte concernée, que l'activité soit encore visible à côté ou non.
+Un clic retire l'entrée de `datesExcluesSync`, sauvegarde, puis relance
+immédiatement une `syncStrava()` pour retrouver l'activité.
+
+**Délai de synchro automatique réduit de 1h à 30 minutes** (22/08/2026,
+demande explicite) — seul point de la logique de déclenchement à avoir
+changé, sans lien direct avec le mécanisme d'exclusion ci-dessus.
+
+**Race condition corrigée (écriture fire-and-forget vs rechargement de
+page)** — `synchroniserVersSupabase()` (`sync-storage.js`) ne retournait
+auparavant AUCUNE valeur exploitable pour ses 3 branches (chaque branche
+lançait son `.then()`/`.catch()` en fire-and-forget puis faisait `return;`
+nu, malgré un commentaire suggérant le contraire) — corrigé pour
+réellement `return` la promesse de chaque requête Supabase. Changement
+rétrocompatible à 100% : tous les appelants existants ignoraient déjà
+cette valeur de retour (fire-and-forget), seul un nouvel appelant qui
+choisit explicitement d'attendre en bénéficie. `save()` (`index.html`)
+retourne à son tour cette promesse. La suppression d'activité
+(`retirerActiviteLocalement`, désormais `async`) attend cette
+confirmation d'ÉCRITURE (pas de réussite) avant de continuer — sans quoi
+un rechargement de page trop rapide après le clic pouvait déclencher
+`precharger()` AVANT que Supabase n'ait reçu la suppression, qui écrasait
+alors `localStorage` avec l'ANCIENNE valeur encore côté cloud (`i.strava_
+activities_cache`, `precharger()` l'écrase TOUJOURS sans condition,
+contrairement au token Strava qui a un vrai garde-fou `!aDejaUnTokenLocal`
+juste au-dessus dans le même fichier). Reste fire-and-forget sur le FOND
+(un échec réseau n'empêche jamais la suppression locale de s'appliquer,
+la file d'attente de rejeu déjà existante prend le relais) — seule la
+TENTATIVE d'écriture est désormais attendue, pas sa réussite.
+
+**Bug de fond révélé pendant ce chantier — date incorrecte après un
+swap** : la suppression semblait fonctionner (toast de confirmation
+affiché) mais l'activité n'était en réalité jamais retirée de
+`stravaActivities` si la séance avait été déplacée via un échange (cf.
+`architecture-generale.md`, section swap). Cause : `renderWeekDetail`
+transmettait `effSess` (contenu résolu du slot après échange) à
+`renderBlocRealise`, sous le nom de paramètre `s` — mais `effSess.date`
+porte la date D'ORIGINE du contenu échangé, pas la date réelle du slot
+affiché. Détail complet et correctif dans `architecture-generale.md`.
 
 ## Import FIT
 
@@ -159,7 +237,9 @@ structurée sur ta montre" (`_helpTutoOuvert = "programmer-montre"`,
 `_helpOngletActif = "tutos"`) — même tuto que celui déjà utilisé pour
 l'avertissement équivalent côté import FIT, cohérent avec le principe
 "un seul système de vérité pour l'explication de ce cas" plutôt qu'un
-nouveau texte d'aide dédié.
+nouveau texte d'aide dédié. Ce bandeau, comme le reste du bloc
+"Réalisé", est désormais masqué si la date est dans `datesExcluesSync`
+(cf. section "Suppression d'une activité importée" ci-dessus).
 
 **Limite connue** : ce mécanisme suppose que Strava fournit bien un flux
 `streams` complet pour l'activité (peut échouer sur une activité privée
@@ -172,10 +252,15 @@ possible".
 ## Intégrations externes
 
 **Strava** (Client ID `260339`) — OAuth via `api/strava.js`,
-`v2/engine/strava.js`. Sync conditionnelle sur `dataSource === "strava"`.
-Comparaison séance/laps filtrée par allure cible ±15%. Token
-invalide/révoqué détecté explicitement — message + bouton "🔄 Reconnecter
-Strava" (Réglages) + bandeau dashboard (cf. `architecture-generale.md`), affichés sans
+`v2/engine/strava.js`. Sync conditionnelle sur `dataSource === "strava"`,
+automatique si la dernière synchro date de plus de **30 minutes**
+(réduit depuis 1h le 22/08/2026, demande explicite) ou qu'aucune
+activité n'est encore chargée, en plus du déclenchement manuel (bouton
+Réglages) et des points de rattrapage ponctuels déjà existants
+(reconnexion, annulation d'une saisie manuelle). Comparaison séance/laps
+filtrée par allure cible ±15%. Token invalide/révoqué détecté
+explicitement — message + bouton "🔄 Reconnecter Strava" (Réglages) +
+bandeau dashboard (cf. `architecture-generale.md`), affichés sans
 auto-effacement tant que non résolu. **Synchro NON multi-device** — les
 tokens (`lk_strava_token`/`lk_strava_refresh`/`lk_strava_expires`) sont
 en `localStorage`, propres à chaque appareil ; se connecter sur un
@@ -185,11 +270,13 @@ ou utiliser les tokens Strava d'un testeur (principe transverse, cf. `inventaire
 restent volontairement locaux, jamais centralisés côté serveur au-delà
 de l'échange OAuth initial. **Ne remplace plus jamais silencieusement
 une activité déjà présente sur une date** (cf. ci-dessus, principe "premier
-arrivé, reste"). **CORS restreint** : `Access-Control-Allow-Origin`
-fixé à `https://yoria.run` (plus de wildcard `*`) sur `/refresh` et
-`/activities` — évite qu'un site tiers puisse appeler ces routes depuis
-le navigateur d'un utilisateur. Logs du callback OAuth : présence du
-code loggée (`!!code`), jamais sa valeur, même tronquée.
+arrivé, reste") — et depuis le 22/08/2026, une date peut aussi être
+EXCLUE durablement (cf. section dédiée ci-dessus). **CORS restreint** :
+`Access-Control-Allow-Origin` fixé à `https://yoria.run` (plus de
+wildcard `*`) sur `/refresh` et `/activities` — évite qu'un site tiers
+puisse appeler ces routes depuis le navigateur d'un utilisateur. Logs du
+callback OAuth : présence du code loggée (`!!code`), jamais sa valeur,
+même tronquée.
 
 **`INTERVAL_SESSION_DATES` recalculée à l'usage, pas figée (16/08/2026)**
 — cette liste (dates des séances VMA/SPEC/TEST/SEUIL, transmise à
@@ -266,7 +353,8 @@ prêt pour un lancement public.
 Sentry (`captureMessage`, best-effort, contexte technique brut) + table
 Supabase `signalements` (source de vérité pour le triage humain, RLS
 insert seul côté client). Administration dans `beta-admin` (onglet
-Signalements, filtrable, changement de statut).
+Signalements, filtrable, changement de statut, modale de détail dédiée
+sur mobile — cf. `site-beta-admin.md`).
 
 **Module "Comptes"** (`beta-admin`) — recherche un utilisateur par email
 via l'API Admin Supabase, affiche ses plans en lecture seule (contenu +
@@ -281,8 +369,11 @@ déjà stockées côté Yoria.
 
 **Module "Sauvegarde"** (`beta-admin`, cf. `persistance-donnees.md`) — export global, export
 ciblé utilisateur (réutilise la recherche par email du module Comptes),
-réinjection depuis un fichier JSON. Même règle stricte : jamais de
-lecture des tokens Strava d'un testeur.
+réinjection depuis un fichier JSON, sauvegardes automatiques quotidiennes
+(cf. `site-beta-admin.md` pour le détail complet, notamment la cause
+racine du dysfonctionnement corrigé le 22/08/2026 — variable
+d'environnement `CRON_SECRET` jamais créée). Même règle stricte : jamais
+de lecture des tokens Strava d'un testeur.
 
 **Module "Cascades"** (`beta-admin`, cf. `persistance-donnees.md`) — diagnostic proactif des
 tables sans `ON DELETE CASCADE` vers `auth.users`, avec SQL de correction
