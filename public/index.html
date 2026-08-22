@@ -8771,7 +8771,7 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
   // le bloc "répétitions" entier est absent, cf. condition juste
   // au-dessus) — pas la peine d'avertir sur une décomposition qui ne
   // s'affiche pas.
-  if (stravaRun?.laps_incoherents && effortLaps.length > 0) {
+  if (stravaRun?.laps_incoherents && effortLaps.length > 0 && !estExclue) {
     const avertLien = el("a",{href:"#",style:{color:"var(--warn)",fontSize:"12px",textDecoration:"underline"}},"en savoir plus");
     avertLien.addEventListener("click", avecRetourTactile((e)=>{
       e.preventDefault(); e.stopPropagation();
@@ -8786,7 +8786,10 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     ));
   }
 
-  if (effortLaps.length > 0) {
+  // Répétitions (22/08/2026, correctif) — même bug que le résumé chiffré
+  // ci-dessus : ce bloc ne vérifiait que effortLaps.length, jamais
+  // l'exclusion, donc pouvait rester visible en même temps que le badge 🚫.
+  if (effortLaps.length > 0 && !estExclue) {
     const detailLaps = el("div",{style:{display:"none",borderTop:"1px solid rgba(var(--warn-rgb),0.13)",paddingTop:"8px",marginTop:"8px"}});
     const { driftEl } = computeFcDrift(effortLaps);
     const rows = effortLaps.map((lap,i)=>renderLapRow(lap,i,s.type));
