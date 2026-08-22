@@ -7678,7 +7678,7 @@ function renderFriseSemaines() {
       width:"34px", height:"34px", borderRadius:"8px", background:color,
       display:"flex", alignItems:"center", justifyContent:"center",
       fontSize:"12px", fontWeight:"700", color:"#F8FAFC",
-      boxShadow: isActive ? `0 0 0 2px var(--accent), 0 0 0 4px var(--bg)` : "none"
+      boxShadow: isActive ? `0 0 0 2px #F8FAFC, 0 0 0 4px var(--bg)` : "none"
     }}, "S"+week.week);
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
