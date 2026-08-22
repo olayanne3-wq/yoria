@@ -8597,9 +8597,11 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
     // réactiver l'import, sans le savoir. Traité ici en tout premier
     // pour rester visible même sans aucune activité/saisie existante.
     if (datesExcluesSync[s.date]) {
-      const wrapExclu = el("div",{style:{marginTop:"4px",borderTop:"1px solid var(--border)",paddingTop:"8px",display:"flex",flexDirection:"column",gap:"6px"}});
-      const badgeReactiver = el("a",{href:"#",style:{display:"flex",alignItems:"center",gap:"6px",fontSize:"13px",color:"var(--warn)",textDecoration:"none",fontWeight:"600"}},
-        "🚫 Import Strava bloqué pour cette date · réactiver");
+      const wrapExclu = el("div",{style:{marginTop:"4px",borderTop:"1px solid var(--border)",paddingTop:"8px",display:"flex",justifyContent:"flex-end"}});
+      const badgeReactiver = el("span",{
+        title: "Import Strava bloqué pour cette date — cliquer pour réactiver",
+        style:{fontSize:"12px",color:"var(--warn)",display:"flex",alignItems:"center",gap:"3px",cursor:"pointer",fontWeight:"700"}
+      }, "🚫 Bloqué");
       badgeReactiver.addEventListener("click", avecRetourTactile(async (e)=>{
         e.preventDefault(); e.stopPropagation();
         badgeReactiver.textContent = "⏳ Réactivation...";
