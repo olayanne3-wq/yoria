@@ -2103,17 +2103,22 @@ function moduleAmpleurSelonReadiness(ampleurPourcent, readinessVal) {
 // type: "succes" | "erreur" | "info" — pilote couleur/icône, remplace le
 // test fragile syncMsg.startsWith("✅") qui existait avant.
 const ICONES_MESSAGE = { succes: "✅", erreur: "❌", info: "ℹ️" };
-const COULEURS_MESSAGE = {
-  succes: { bg: "rgba(var(--accent2-rgb),0.13)", text: "var(--accent2)" },
-  erreur: { bg: "rgba(var(--warn-rgb),0.13)", text: "var(--warn)" },
-  info:   { bg: "var(--border-soft)", text: "var(--text2)" },
+const COULEURS_TOAST = {
+  succes: { bg: "var(--accent2)", text: "#F8FAFC" },
+  erreur: { bg: "var(--warn)", text: "#F8FAFC" },
+  info:   { bg: "var(--accent)", text: "#F8FAFC" },
+};
+const COULEURS_INLINE = {
+  succes: "var(--accent2)",
+  erreur: "var(--warn)",
+  info:   "var(--text2)",
 };
 function afficherMessage(cible, texte, type, dureeMs) {
-  const couleurs = COULEURS_MESSAGE[type] || COULEURS_MESSAGE.info;
   const icone = ICONES_MESSAGE[type] || "";
   const duree = dureeMs != null ? dureeMs : 3000;
 
   if (cible === "toast") {
+    const couleursToast = COULEURS_TOAST[type] || COULEURS_TOAST.info;
     const root = document.getElementById("toast-root");
     if (!root) return;
     const toastEl = document.createElement("div");
@@ -2122,7 +2127,7 @@ function afficherMessage(cible, texte, type, dureeMs) {
       " max-width:398px; margin:0 auto; z-index:10000;" +
       " display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px;" +
       " font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,0.15);" +
-      " background:" + couleurs.bg + "; color:" + couleurs.text + ";";
+      " background:" + couleursToast.bg + "; color:" + couleursToast.text + ";";
     toastEl.textContent = icone + " " + texte;
     root.replaceChildren(toastEl);
     setTimeout(() => {
@@ -2132,9 +2137,10 @@ function afficherMessage(cible, texte, type, dureeMs) {
   }
 
   // Mode inline : cible est un élément DOM déjà monté à l'écran.
+  const couleurTexteInline = COULEURS_INLINE[type] || COULEURS_INLINE.info;
   if (!cible || !cible.style) return;
   cible.textContent = icone + " " + texte;
-  cible.style.color = couleurs.text;
+  cible.style.color = couleurTexteInline;
   if (duree > 0) {
     setTimeout(() => {
       if (cible.textContent === icone + " " + texte) cible.textContent = "";
