@@ -7358,6 +7358,7 @@ function renderLevierJours() {
     btnAppliquer.disabled = false;
   }
 
+  const rafraichisseurs = [];
   const grille = el("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"4px",marginTop:"8px"}},
     ...NOMS_JOURS.map((nom,i) => {
       const cellule = el("div",{style:{aspectRatio:"1",borderRadius:"8px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontSize:"11px",cursor:"pointer"}});
@@ -7369,10 +7370,11 @@ function renderLevierJours() {
         cellule.style.fontWeight = estSelectionne ? "700" : "400";
         cellule.replaceChildren(el("span",{},nom), el("span",{style:{fontSize:"9px"}},estLongue ? "★" : "●"));
       }
+      rafraichisseurs.push(rafraichirCellule);
       cellule.addEventListener("click", () => {
         if (!ouvert) return;
         toggleJourSimuleLevier(i);
-        rafraichirCellule();
+        rafraichisseurs.forEach(fn => fn());
         rafraichirImpactJours();
       });
       rafraichirCellule();
