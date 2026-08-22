@@ -7682,7 +7682,15 @@ function renderFriseSemaines() {
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
       if (carteCible) {
-        carteCible.scrollIntoView({ block:"start", behavior:"smooth" });
+        // Décalage manuel (pas scrollIntoView seul) — les éléments fixed
+        // (frise + accordéon) superposés en haut de l'écran cachent le
+        // haut de la carte si on aligne simplement avec le haut du
+        // viewport. Même hauteur combinée que celle déjà mesurée pour le
+        // padding du contenu (cf. renderWeeks()), plus une petite marge.
+        const hauteurFixe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hauteur-accordeon-plan-ferme")) || 56;
+        const hauteurFrise = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hauteur-frise-semaines")) || 0;
+        const yCible = carteCible.getBoundingClientRect().top + window.scrollY - hauteurFixe - hauteurFrise - 12;
+        window.scrollTo({ top: yCible, behavior: "smooth" });
       }
     });
     return pastille;
