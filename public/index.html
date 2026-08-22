@@ -7677,12 +7677,20 @@ function renderFriseSemaines() {
       width:"34px", height:"34px", borderRadius:"8px", background:color,
       display:"flex", alignItems:"center", justifyContent:"center",
       fontSize:"12px", fontWeight:"700", color:"#F8FAFC",
-      boxShadow: isActive ? `0 0 0 2px ${color}, 0 0 0 4px var(--bg)` : "none"
+      boxShadow: isActive ? `0 0 0 2px var(--accent), 0 0 0 4px var(--bg)` : "none"
     }}, "S"+week.week);
     pastille.addEventListener("click", () => {
       const carteCible = document.getElementById("carte-semaine-"+week.week);
       if (carteCible) {
+        const rectAvant = carteCible.getBoundingClientRect();
+        const friseBarre = document.getElementById("frise-semaines-barre");
+        const accordeonEntete = document.getElementById("accordeon-plan-root")?.firstElementChild;
+        console.log("DIAG3: avant scroll — carte.top=", rectAvant.top, "frise.bottom=", friseBarre?.getBoundingClientRect().bottom, "accordeon.bottom=", accordeonEntete?.getBoundingClientRect().bottom, "scrollMarginTop=", getComputedStyle(carteCible).scrollMarginTop);
         carteCible.scrollIntoView({ block: "start", behavior: "smooth" });
+        setTimeout(() => {
+          const rectApres = carteCible.getBoundingClientRect();
+          console.log("DIAG3: après scroll (500ms) — carte.top=", rectApres.top, "frise.bottom=", friseBarre?.getBoundingClientRect().bottom, "accordeon.bottom=", accordeonEntete?.getBoundingClientRect().bottom);
+        }, 500);
       }
     });
     return pastille;
