@@ -523,6 +523,12 @@ window._masquerEcranChargement = function() {
 <div id="app"></div>
 <div id="accordeon-plan-root"></div>
 <div id="nav-root"></div>
+<!-- Toast (22/08/2026) — même pattern que nav-root ci-dessus : conteneur
+     séparé de #app, jamais vidé par innerHTML="" en tête de render(), donc
+     jamais interrompu ou fait clignoter par le cycle de rendu très fréquent
+     de cette app. Rempli/vidé uniquement par afficherMessage("toast", ...),
+     cf. définition plus bas dans ce fichier. -->
+<div id="toast-root"></div>
 
 <!-- ============================================================
      Écran d'authentification Supabase — ajouté le 13 juillet 2026.
@@ -1551,14 +1557,27 @@ function save(key, val) {
   // N'attend pas la réponse réseau : localStorage reste la source de
   // vérité immédiate pour l'affichage, Supabase suit derrière.
   try {
-    LkSync.synchroniserVersSupabase(
+    const resultatSync = LkSync.synchroniserVersSupabase(
       window.__UTILISATEUR__?.id,
       window.__PLAN_BRUT__?.id,
       key,
       val
     );
+    // Toast d'erreur (22/08/2026) — jusqu'ici un échec de synchro restait
+    // invisible pour l'utilisateur (seul console.warn), qui pouvait croire
+    // sa saisie enregistrée alors qu'elle ne l'était qu'en local. Ne
+    // s'applique QUE si synchroniserVersSupabase() retourne une vraie
+    // promesse qui rejette (cas réseau/RLS) — reste fire-and-forget, ne
+    // bloque jamais l'appelant de save() en attendant ce résultat.
+    if (resultatSync && typeof resultatSync.catch === 'function') {
+      resultatSync.catch((e) => {
+        console.warn('Synchronisation Supabase échouée :', e.message);
+        afficherMessage("toast", "Sauvegarde en attente de connexion", "info");
+      });
+    }
   } catch (e) {
     console.warn('Synchronisation Supabase non déclenchée :', e.message);
+    afficherMessage("toast", "Sauvegarde en attente de connexion", "info");
   }
 }
 
@@ -2069,6 +2088,60 @@ function moduleAmpleurSelonReadiness(ampleurPourcent, readinessVal) {
 }
 
 
+// ── Message de feedback unifié (22/08/2026) ────────────────────────────────
+// Remplace la duplication de statutMsg (ouvrirSignalementProbleme) et
+// syncMsg (ci-dessous) : même forme (texte + icône + couleur selon type),
+// même timing d'auto-effacement, un seul endroit à maintenir. Deux modes :
+//   - cible = élément DOM déjà présent à l'écran (formulaire, modale) :
+//     le message est posé DANS cet élément, visible tant que l'utilisateur
+//     reste sur cet écran — pour un message qui doit rester lisible le
+//     temps que l'utilisateur corrige/relit (ex. erreur de saisie).
+//   - cible = "toast" : message flottant dans #toast-root, au-dessus de
+//     #nav-root, pour une action sans zone de message dédiée à l'écran
+//     (ex. suppression d'un élément dans une liste) — auto-effacé après
+//     dureeMs, jamais bloquant.
+// type: "succes" | "erreur" | "info" — pilote couleur/icône, remplace le
+// test fragile syncMsg.startsWith("✅") qui existait avant.
+const ICONES_MESSAGE = { succes: "✅", erreur: "❌", info: "ℹ️" };
+const COULEURS_MESSAGE = {
+  succes: { bg: "rgba(var(--accent2-rgb),0.13)", text: "var(--accent2)" },
+  erreur: { bg: "rgba(var(--warn-rgb),0.13)", text: "var(--warn)" },
+  info:   { bg: "var(--border-soft)", text: "var(--text2)" },
+};
+function afficherMessage(cible, texte, type, dureeMs) {
+  const couleurs = COULEURS_MESSAGE[type] || COULEURS_MESSAGE.info;
+  const icone = ICONES_MESSAGE[type] || "";
+  const duree = dureeMs != null ? dureeMs : 3000;
+
+  if (cible === "toast") {
+    const root = document.getElementById("toast-root");
+    if (!root) return;
+    const toastEl = document.createElement("div");
+    toastEl.style.cssText =
+      "position:fixed; left:12px; right:12px; bottom:calc(66px + env(safe-area-inset-bottom,0px));" +
+      " max-width:398px; margin:0 auto; z-index:9990;" +
+      " display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px;" +
+      " font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,0.15);" +
+      " background:" + couleurs.bg + "; color:" + couleurs.text + ";";
+    toastEl.textContent = icone + " " + texte;
+    root.replaceChildren(toastEl);
+    setTimeout(() => {
+      if (root.contains(toastEl)) root.replaceChildren();
+    }, duree);
+    return;
+  }
+
+  // Mode inline : cible est un élément DOM déjà monté à l'écran.
+  if (!cible || !cible.style) return;
+  cible.textContent = icone + " " + texte;
+  cible.style.color = couleurs.text;
+  if (duree > 0) {
+    setTimeout(() => {
+      if (cible.textContent === icone + " " + texte) cible.textContent = "";
+    }, duree);
+  }
+}
+
 let syncing = false;
 let syncMsg = "";
 let stravaAuthInvalide = false; // 16 juillet 2026 : détecte un access_token
@@ -2455,6 +2528,9 @@ function ouvrirPpsModale() {
         sauvegarderProfilCoureur();
         fermer();
         render();
+        // Toast (22/08/2026) — la modale se ferme immédiatement, sans quoi
+        // rien n'indiquait que la suppression avait bien eu lieu.
+        afficherMessage("toast", "PPS supprimé", "succes");
       })}, "🗑️ Supprimer") : null,
       el("div",{style:{borderTop:"1px solid rgba(255,255,255,0.2)", paddingTop:"14px", display:"flex", flexDirection:"column", gap:"8px"}},
         el("label",{style:{fontSize:"13px", color:"#fff"}}, ppsDocActuel ? "Remplacer le document :" : "Importer un document (PDF ou photo) :"),
@@ -8571,6 +8647,9 @@ function renderBlocRealise(uid, s, stravaRun, effortLaps, manuelExistant) {
       recalculerKmComptesPourUid(uid, s.date);
       rebuildPredHistory();
       render();
+      // Toast (22/08/2026) — la carte se redessine sans l'activité, mais
+      // rien ne confirmait explicitement que la suppression avait réussi.
+      afficherMessage("toast", "Activité supprimée", "succes");
     }));
     liensDroite.appendChild(supprimerBtn);
   }
