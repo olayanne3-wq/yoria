@@ -9250,7 +9250,7 @@ function renderWeekDetail(weekNum) {
       borderRadius:"12px",
       boxShadow:`0 6px 24px ${st.colorSoft}0.1), 0 2px 8px rgba(0,0,0,0.4)`,
       padding:"12px 14px",marginBottom:"8px",
-      scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px))"
+      scrollMarginTop:"calc(var(--hauteur-header-sticky, 60px) + var(--hauteur-frise-semaines, 0px) + var(--hauteur-accordeon-plan-ferme, 56px) + 6px)"
     }},
       el("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}},
         el("div",{style:{color:isPast?"var(--text-muted)":"var(--text2)",fontSize:"13px",fontWeight:"700",minWidth:"60px"}},s.day+" "+s.date.slice(8)),
